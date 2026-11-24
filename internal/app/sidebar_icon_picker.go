@@ -16,11 +16,11 @@ import (
 
 const (
 	iconPickerWidth     float32 = 236 // 6 × 34 cells + 5 × 2 gaps + 2 × 10 padding + border
-	iconPickerMaxHeight float32 = 318
-	iconPickerMinHeight float32 = 200
+	iconPickerMaxHeight float32 = 288
+	iconPickerMinHeight float32 = 180
 	iconPickerPadX      float32 = 10
-	iconPickerSearchH   float32 = 30
 	iconPickerRailBtn   float32 = 26
+	iconPickerHeaderH   float32 = 42
 	iconPickerFooterH   float32 = 42
 	iconPickerCell      float32 = 34
 	iconPickerCellGap   float32 = 2
@@ -117,33 +117,6 @@ func sidebarRelPath(notebookRoot, targetPath string) string {
 	return filepath.ToSlash(rel)
 }
 
-func matchFileIconDef(ic plugins.FileIconDef, catName plugins.LocalizedText, terms []string) bool {
-	if len(terms) == 0 {
-		return true
-	}
-	var hay strings.Builder
-	hay.WriteString(strings.ToLower(ic.ID))
-	hay.WriteByte(' ')
-	hay.WriteString(strings.ToLower(ic.Name.Zh))
-	hay.WriteByte(' ')
-	hay.WriteString(strings.ToLower(ic.Name.En))
-	hay.WriteByte(' ')
-	hay.WriteString(strings.ToLower(catName.Zh))
-	hay.WriteByte(' ')
-	hay.WriteString(strings.ToLower(catName.En))
-	for _, kw := range ic.Keywords {
-		hay.WriteByte(' ')
-		hay.WriteString(strings.ToLower(kw))
-	}
-	s := hay.String()
-	for _, t := range terms {
-		if !strings.Contains(s, t) {
-			return false
-		}
-	}
-	return true
-}
-
 func sidebarNotebookIcon(p SidebarProps, nbRoot string) (plugins.ResolvedFileIcon, bool) {
 	if nbRoot == "" {
 		return plugins.ResolvedFileIcon{}, false
@@ -225,33 +198,12 @@ func renderSidebarIconPickerCard(c *ui.Context, p SidebarProps, scrim ui.Element
 	popH := min(iconPickerMaxHeight, max(vpH-16, iconPickerMinHeight))
 	ox, oy, finalH := placeIconPicker(p.State.IconPickerIconBounds, p.State.IconPickerRowBounds, p.State.IconPickerAnchor, popW, popH, vpW, vpH)
 
-	queryTrim := strings.TrimSpace(p.State.IconPickerQuery)
-	if p.State.IconPickerQuery != p.State.IconPickerLastQuery {
-		p.State.IconPickerLastQuery = p.State.IconPickerQuery
-		p.State.IconPickerScroll.Y = 0
-	}
-	searching := queryTrim != ""
-
-	catByID := make(map[string]plugins.FileIconCategory, len(pack.Pack.Categories))
 	catIcons := make(map[string][]plugins.FileIconDef, len(pack.Pack.Categories))
-	for _, cat := range pack.Pack.Categories {
-		catByID[cat.ID] = cat
-	}
-	var filtered []plugins.FileIconDef
-	if searching {
-		terms := strings.Fields(strings.ToLower(queryTrim))
-		for _, ic := range pack.Pack.Icons {
-			if matchFileIconDef(ic, catByID[ic.Category].Name, terms) {
-				filtered = append(filtered, ic)
-			}
-		}
-	} else {
-		for _, ic := range pack.Pack.Icons {
-			catIcons[ic.Category] = append(catIcons[ic.Category], ic)
-		}
+	for _, ic := range pack.Pack.Icons {
+		catIcons[ic.Category] = append(catIcons[ic.Category], ic)
 	}
 
-	if !searching && p.State.IconPickerActiveCat == "" && len(pack.Pack.Categories) > 0 {
+	if p.State.IconPickerActiveCat == "" && len(pack.Pack.Categories) > 0 {
 		p.State.IconPickerActiveCat = pack.Pack.Categories[0].ID
 	}
 
@@ -280,10 +232,10 @@ func renderSidebarIconPickerCard(c *ui.Context, p SidebarProps, scrim ui.Element
 		p.OnSetFileIcon(pack.PluginID, nbRoot, rel, "", string(theme.IconTintNone))
 	}
 
-	showRail := !searching && len(pack.Pack.Categories) > 1
-	headerH := theme.Space10 + iconPickerSearchH + theme.Space6
+	showRail := len(pack.Pack.Categories) > 1
+	var headerH float32
 	if showRail {
-		headerH += theme.Space8 + iconPickerRailBtn
+		headerH = iconPickerHeaderH
 	}
 	bodyH := max(finalH-headerH-iconPickerFooterH-2, 80)
 
@@ -293,11 +245,6 @@ func renderSidebarIconPickerCard(c *ui.Context, p SidebarProps, scrim ui.Element
 			Label(theme.Tr("选择图标", "Choose Icon")),
 	)
 	blockui.Probe(card, "sidebar-icon-picker")
-
-	if p.State.IconPickerFocus {
-		p.State.IconPickerInput.Focus()
-		p.State.IconPickerFocus = false
-	}
 
 	renderIconCell := func(keyPrefix string, ic plugins.FileIconDef, allowReveal bool) {
 		selected := hasCustom && curIcon.IconID == ic.ID
@@ -366,135 +313,61 @@ func renderSidebarIconPickerCard(c *ui.Context, p SidebarProps, scrim ui.Element
 	}
 
 	card.Children(func() {
-		// 1. Header: search box + category rail, no divider (matches the design).
-		ui.Column(c.Key("icon-picker-header")).FillWidth().Height(headerH).Shrink(0).
-			Padding(theme.Space10, iconPickerPadX, theme.Space6, iconPickerPadX).Gap(theme.Space8).
-			Children(func() {
-				var in ui.Element
-				searchBox := ui.Row(c.Key("icon-picker-search-box")).FillWidth().MinWidth(0).Height(iconPickerSearchH).Shrink(0).
-					Padding(0, theme.Space8, 0, theme.Space8).Gap(theme.Space6).
-					AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.Shell)
-				searchBox.Children(func() {
-					icons.Draw(c, icons.FindSearch, theme.IconInline, pal.DuoIconColors(pal.MenuMuted))
-					ui.Box(c.Key("icon-picker-input-wrap")).Grow(1).MinWidth(0).Height(28).Clip().Children(func() {
-						in = ui.TextInputBase(c.Key("icon-picker-input"), &p.State.IconPickerQuery).
-							FillWidth().Height(28).Padding(0).
-							Label(theme.Tr("搜索图标", "Search icons")).
-							FontSize(theme.FontSmall).FixedLineHeight(28).
-							TextColor(pal.Text).CaretColor(pal.Accent).
-							Bind(&p.State.IconPickerInput).AutoFocus()
-						blockui.Probe(in, "icon-picker-input")
-						if p.State.IconPickerQuery == "" && !in.Composing() {
-							ph := theme.Tr("搜索图标", "Search icons")
-							ui.Row(c.Key("icon-picker-ph")).
-								Absolute().Top(0).Bottom(0).Left(theme.Space2).Right(0).
-								AlignItems(ui.Center).IgnoreInput(true).
-								Children(func() {
-									ui.Text(c, ph).FontSize(theme.FontSmall).TextColor(pal.Placeholder).SingleLine()
-								})
+		// 1. Header: category quick-jump rail.
+		if showRail {
+			ui.Row(c.Key("icon-picker-header")).FillWidth().Height(headerH).Shrink(0).
+				Padding(0, iconPickerPadX, 0, iconPickerPadX).
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).
+				BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
+				Children(func() {
+					for _, cat := range pack.Pack.Categories {
+						cat := cat
+						active := p.State.IconPickerActiveCat == cat.ID
+						cb := ui.ButtonBase(c.Key("icon-rail-"+cat.ID)).
+							Size(iconPickerRailBtn, iconPickerRailBtn).Shrink(0).Center().Radius(theme.RadiusSM).
+							Cursor(ui.CursorPointer).FocusRing(false).
+							Selected(active).Label(cat.Name.Resolve(loc))
+						hov := cb.Hovered()
+						prs := cb.Pressed()
+						bg := ui.Transparent
+						switch {
+						case active:
+							bg = pal.Selected
+						case hov || prs:
+							bg = pal.MenuHover
 						}
-					})
-					if p.State.IconPickerQuery != "" {
-						clr := ui.ButtonBase(c.Key("icon-picker-clear")).Size(18, 18).Shrink(0).Center().
-							Radius(theme.RadiusXS).Cursor(ui.CursorPointer).FocusRing(false).
-							Label(theme.Tr("清除搜索", "Clear search"))
-						clrHot := clr.Hovered() || clr.Pressed()
-						if clrHot {
-							clr.Background(pal.MenuHover)
-						}
-						clr.Children(func() {
-							icons.DrawAnimated(c, icons.Close, theme.IconMicro, pal.DuoIconColors(pal.TextSecondary), clrHot)
+						blockui.AnimateSurfaceColors(cb, bg, ui.Transparent, false)
+						blockui.RichTooltip(c, cb, blockui.TooltipSpec{
+							Placement: blockui.TooltipAbove,
+							Rows:      []blockui.TooltipRow{{Trigger: cat.Name.Resolve(loc)}},
 						})
-						if clr.Clicked() {
-							p.State.IconPickerQuery = ""
-							p.State.IconPickerScroll.Y = 0
-							p.State.IconPickerInput.Focus()
+						if def, ok := pack.ByID[cat.Icon]; ok {
+							lineCol := pal.MenuMuted
+							switch {
+							case active:
+								lineCol = pal.Text
+							case hov || prs:
+								lineCol = pal.TextSecondary
+							}
+							colors := pal.TintedDuoIconColors(theme.IconTintNone, lineCol, false)
+							var spec plugins.DuoIconSpec
+							if def.Spec != nil {
+								spec = *def.Spec
+							}
+							cb.Children(func() {
+								pluginui.DrawFileIconAnimated(c, def.Ref, spec, theme.IconAction, colors, active || hov || prs)
+							})
+						}
+						blockui.Probe(cb, "icon-rail:"+cat.ID)
+						if cb.Clicked() {
+							p.State.IconPickerActiveCat = cat.ID
+							p.State.IconPickerJumpCat = cat.ID
 						}
 					}
 				})
-				bd := pal.BtnBorder
-				if in.Valid() && in.Focused() {
-					bd = pal.Accent
-				}
-				searchBox.Border(1, bd)
-				if in.Valid() && !in.Composing() {
-					in.OnTextKey(func(k ui.TextKey) bool {
-						switch k.Key {
-						case ui.KeyEscape:
-							if p.State.IconPickerQuery != "" {
-								p.State.IconPickerQuery = ""
-								p.State.IconPickerScroll.Y = 0
-							} else if p.State.SwitcherOpen {
-								p.State.CloseIconPicker()
-							} else {
-								p.State.ClosePopups()
-							}
-							return true
-						case ui.KeyEnter:
-							if searching && len(filtered) > 0 {
-								applyIcon(filtered[0].ID)
-								return true
-							}
-						}
-						return false
-					})
-				}
+		}
 
-				// 2. Category quick-jump rail (hidden during search)
-				if !showRail {
-					return
-				}
-				ui.Row(c.Key("icon-picker-rail")).FillWidth().Height(iconPickerRailBtn).Shrink(0).
-					AlignItems(ui.Center).Justify(ui.SpaceBetween).
-					Children(func() {
-						for _, cat := range pack.Pack.Categories {
-							cat := cat
-							active := p.State.IconPickerActiveCat == cat.ID
-							cb := ui.ButtonBase(c.Key("icon-rail-"+cat.ID)).
-								Size(iconPickerRailBtn, iconPickerRailBtn).Shrink(0).Center().Radius(theme.RadiusSM).
-								Cursor(ui.CursorPointer).FocusRing(false).
-								Selected(active).Label(cat.Name.Resolve(loc))
-							hov := cb.Hovered()
-							prs := cb.Pressed()
-							bg := ui.Transparent
-							switch {
-							case active:
-								bg = pal.Selected
-							case hov || prs:
-								bg = pal.MenuHover
-							}
-							blockui.AnimateSurfaceColors(cb, bg, ui.Transparent, false)
-							blockui.RichTooltip(c, cb, blockui.TooltipSpec{
-								Placement: blockui.TooltipAbove,
-								Rows:      []blockui.TooltipRow{{Trigger: cat.Name.Resolve(loc)}},
-							})
-							if def, ok := pack.ByID[cat.Icon]; ok {
-								lineCol := pal.MenuMuted
-								switch {
-								case active:
-									lineCol = pal.Text
-								case hov || prs:
-									lineCol = pal.TextSecondary
-								}
-								colors := pal.TintedDuoIconColors(theme.IconTintNone, lineCol, false)
-								var spec plugins.DuoIconSpec
-								if def.Spec != nil {
-									spec = *def.Spec
-								}
-								cb.Children(func() {
-									pluginui.DrawFileIconAnimated(c, def.Ref, spec, theme.IconAction, colors, active || hov || prs)
-								})
-							}
-							blockui.Probe(cb, "icon-rail:"+cat.ID)
-							if cb.Clicked() {
-								p.State.IconPickerActiveCat = cat.ID
-								p.State.IconPickerJumpCat = cat.ID
-							}
-						}
-					})
-			})
-
-		// 3. Scrollable icon grid
+		// 2. Scrollable icon grid
 		scrollBox := blockui.Scroll(c.Key("icon-picker-scroll"), &p.State.IconPickerScroll).
 			FillWidth().Height(bodyH).Shrink(0)
 		scrollRect := scrollBox.Bounds()
@@ -506,20 +379,6 @@ func renderSidebarIconPickerCard(c *ui.Context, p SidebarProps, scrim ui.Element
 				})
 			}
 			ui.Column(c).FillWidth().Padding(0, iconPickerPadX, theme.Space8, iconPickerPadX).Gap(iconPickerCellGap).Children(func() {
-				if searching {
-					if len(filtered) == 0 {
-						ui.Column(c).FillWidth().Padding(theme.Space24, theme.Space8, theme.Space24, theme.Space8).
-							AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
-							ui.Text(c, theme.Tr("没有匹配的图标", "No matching icons")).
-								FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
-						})
-						return
-					}
-					ui.Box(c).Height(theme.Space6)
-					renderGrid("search", filtered, false)
-					return
-				}
-
 				if len(pack.Recent) > 0 {
 					recDefs := make([]plugins.FileIconDef, 0, len(pack.Recent))
 					for _, id := range pack.Recent {
@@ -561,11 +420,11 @@ func renderSidebarIconPickerCard(c *ui.Context, p SidebarProps, scrim ui.Element
 				}
 			})
 		})
-		if !searching && p.State.IconPickerJumpCat == "" && observedCat != "" {
+		if p.State.IconPickerJumpCat == "" && observedCat != "" {
 			p.State.IconPickerActiveCat = observedCat
 		}
 
-		// 4. Footer: 7 solid tint swatches + icon-only Reset (matches the design).
+		// 3. Footer: 7 solid tint swatches + icon-only Reset (matches the design).
 		ui.Row(c.Key("icon-picker-footer")).FillWidth().Height(iconPickerFooterH).Shrink(0).
 			Padding(0, iconPickerPadX, 0, iconPickerPadX).Gap(theme.Space4).AlignItems(ui.Center).
 			BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).
