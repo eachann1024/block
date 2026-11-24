@@ -70,13 +70,15 @@ type BlockState struct {
 	ComposeText       string
 	LastCanvasFocused bool
 
-	EditingID        int
-	EditSeq          int
-	EditDraft        string
-	EditFresh        bool
-	EditSelectAll    bool
-	EditFocusPending bool
-	EditHandle       ui.Handle
+	EditingID          int
+	EditSeq            int
+	EditDraft          string
+	EditCompose        string
+	editLastLayoutText string
+	EditFresh          bool
+	EditSelectAll      bool
+	EditFocusPending   bool
+	EditHandle         ui.Handle
 
 	LinkNodeID       int
 	LinkDraft        string
@@ -869,9 +871,12 @@ func (st *BlockState) beginEdit(n *Node, fresh bool) {
 	st.EditingID = n.ID
 	st.EditSeq++
 	st.EditDraft = n.Text
+	st.EditCompose = ""
+	st.editLastLayoutText = ""
 	st.EditFresh = fresh
 	st.EditSelectAll = true
 	st.EditFocusPending = true
+	st.EnsureVisiblePending = true
 	st.ComposeText = ""
 	st.LinkNodeID = 0
 }
@@ -883,9 +888,12 @@ func (st *BlockState) beginEditWithText(n *Node, initial string) {
 	st.EditingID = n.ID
 	st.EditSeq++
 	st.EditDraft = initial
+	st.EditCompose = ""
+	st.editLastLayoutText = ""
 	st.EditFresh = false
 	st.EditSelectAll = false
 	st.EditFocusPending = true
+	st.EnsureVisiblePending = true
 	st.ComposeText = ""
 	st.LinkNodeID = 0
 }
@@ -896,9 +904,12 @@ func (st *BlockState) finishEdit(commit bool, cb Callbacks) {
 	}
 	n := st.Root.FindByID(st.EditingID)
 	st.EditingID = 0
+	st.EditCompose = ""
+	st.editLastLayoutText = ""
 	st.EditFocusPending = false
 	st.EditSelectAll = false
 	st.ComposeText = ""
+	st.Measure.ClearTextOverride()
 	if commit && n != nil {
 		trimmed := strings.TrimSpace(st.EditDraft)
 		if trimmed != "" && trimmed != n.Text {
@@ -1323,21 +1334,46 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 	st.LastCanvasW, st.LastCanvasH = cw, ch
 	st.LastCanvasFocused = st.CanvasHandle.Focused(c) && st.EditingID == 0 && st.LinkNodeID == 0
 
-	// Pre-layout when a brand-new node is immediately entering inline edit so the
-	// editor box and camera position are exact on the very first frame.
-	if st.Root != nil && st.EditingID != 0 {
-		if en := st.Root.FindByID(st.EditingID); en != nil && (en.W <= 0 || en.H <= 0) {
-			wb := ComputeLayout(st.Root, st.Layout, nil, &st.Measure)
-			if !st.CameraInit || st.AutoFitPending {
-				st.Camera = FitCamera(wb, cw, ch, 28, 22)
-				st.CameraInit = true
-				st.AutoFitPending = false
+	// Live-layout during inline editing or direct CJK IME composition using the exact
+	// native text measurer so node geometry, Bezier curves, and the transparent inline
+	// editor stay in 1:1 sync with zero frame lag.
+	activeEditID := 0
+	activeEditText := ""
+	if !cb.ReadOnly && st.Root != nil {
+		if st.EditingID != 0 {
+			activeEditID = st.EditingID
+			activeEditText = st.EditDraft + st.EditCompose
+		} else if st.ComposeText != "" {
+			if sel := st.selectedNode(); sel != nil {
+				activeEditID = sel.ID
+				activeEditText = st.ComposeText
+			}
+		}
+	}
+	if st.Root != nil && activeEditID != 0 {
+		st.Measure.SetTextOverride(activeEditID, activeEditText)
+		wb := ComputeLayout(st.Root, st.Layout, c, &st.Measure)
+		if !st.CameraInit || st.AutoFitPending {
+			st.Camera = FitCamera(wb, cw, ch, 28, 22)
+			st.CameraInit = true
+			st.AutoFitPending = false
+			st.EnsureVisiblePending = false
+		} else if en := st.Root.FindByID(activeEditID); en != nil {
+			scale := st.Camera.Scale
+			if scale <= 0 {
+				scale = 1
+			}
+			textChanged := activeEditText != st.editLastLayoutText
+			st.editLastLayoutText = activeEditText
+			if st.EnsureVisiblePending {
 				st.EnsureVisiblePending = false
-			} else if st.EnsureVisiblePending {
-				st.EnsureVisiblePending = false
+				st.ensureNodeVisible(en, cw, ch)
+			} else if textChanged && en.W <= (cw-72)/scale {
 				st.ensureNodeVisible(en, cw, ch)
 			}
 		}
+	} else {
+		st.Measure.ClearTextOverride()
 	}
 
 	// Enable direct typing & IME composition on the selected node when canvas owns focus.
@@ -1738,6 +1774,21 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		if st.Root == nil || r.W <= 0 || r.H <= 0 {
 			return
 		}
+		paintEditID := 0
+		if !cb.ReadOnly {
+			if st.EditingID != 0 {
+				paintEditID = st.EditingID
+				st.Measure.SetTextOverride(paintEditID, st.EditDraft+st.EditCompose)
+			} else if st.ComposeText != "" {
+				if sel := st.selectedNode(); sel != nil {
+					paintEditID = sel.ID
+					st.Measure.SetTextOverride(paintEditID, st.ComposeText)
+				}
+			}
+		}
+		if paintEditID == 0 {
+			st.Measure.ClearTextOverride()
+		}
 		worldBounds := ComputeLayout(st.Root, st.Layout, p, &st.Measure)
 		if !st.CameraInit || st.AutoFitPending {
 			st.Camera = FitCamera(worldBounds, r.W, r.H, 28, 22)
@@ -1757,7 +1808,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		opt := PaintOptions{
 			SelectedID: st.SelectedID,
 			HoveredID:  hoveredID,
-			EditingID:  st.EditingID,
+			EditingID:  paintEditID,
 			Palette:    pal,
 			Background: pal.CodeBG,
 		}
@@ -1771,49 +1822,33 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		PaintScene(p, st.Root, r, st.Camera, opt)
 	})
 
-	// IME composition preview overlay while directly typing CJK on a selected node.
+	// Transparent inline IME composition preview while directly typing CJK on a selected node.
 	if st.ComposeText != "" && st.EditingID == 0 && !cb.ReadOnly && st.Root != nil {
 		if n := st.selectedNode(); n != nil {
-			sx, sy := st.Camera.WorldToScreen(n.X, n.Y-n.H/2)
-			scale := st.Camera.Scale
-			if scale <= 0 {
-				scale = 1
-			}
-			edW := max(n.W*scale+36, 96)
-			edH := max(n.H*scale+4, theme.HeightCompact)
-			edX := clampFloat32(sx-2, theme.Space6, max(cw-edW-theme.Space6, theme.Space6))
-			edY := clampFloat32(sy-2, theme.Space6, max(ch-edH-theme.Space6, theme.Space6))
-
+			m := st.inlineEditMetrics(n, pal)
 			compBox := ui.Row(c.Key("mm-ime-compose-"+id)).
-				Absolute().Left(edX).Top(edY).MinWidth(edW).Height(edH).
-				PaddingX(theme.Space8).Radius(theme.RadiusMD).
-				Background(pal.Paper).Border(1.5, pal.Accent).
-				AlignItems(ui.Center)
+				Absolute().Left(m.x).Top(m.y).Width(m.w).Height(m.h).
+				Background(ui.Transparent).IgnoreInput(true).
+				AlignItems(ui.Center).Justify(m.align)
 			compBox.Children(func() {
-				ui.Text(c, st.ComposeText).FontSize(theme.FontSmall).TextColor(pal.Text).Underline().SingleLine()
+				ui.Text(c, st.ComposeText).
+					FontSize(m.fontSize).FontWeight(m.fontWeight).
+					TextColor(m.textColor).Underline().SingleLine()
 			})
 		}
 	}
 
-	// Inline node text editor overlay positioned exactly over the editing node.
+	// Transparent inline node text editor aligned 1:1 inside the Scheme C vector node.
 	if st.EditingID != 0 && !cb.ReadOnly {
 		if n := st.Root.FindByID(st.EditingID); n != nil {
-			sx, sy := st.Camera.WorldToScreen(n.X, n.Y-n.H/2)
-			scale := st.Camera.Scale
-			if scale <= 0 {
-				scale = 1
-			}
-			edW := max(n.W*scale+36, 96)
-			edH := max(n.H*scale+4, theme.HeightCompact)
-			edX := clampFloat32(sx-2, theme.Space6, max(cw-edW-theme.Space6, theme.Space6))
-			edY := clampFloat32(sy-2, theme.Space6, max(ch-edH-theme.Space6, theme.Space6))
-
+			m := st.inlineEditMetrics(n, pal)
 			input := ui.TextInputBase(c.Key(fmt.Sprintf("mm-inline-edit-%s-%d-%d", id, st.EditingID, st.EditSeq)), &st.EditDraft).
-				Absolute().Left(edX).Top(edY).Width(edW).Height(edH).
-				PaddingX(theme.Space8).Radius(theme.RadiusMD).
-				Background(pal.Paper).Border(1.5, pal.Accent).
-				FontSize(theme.FontSmall).TextColor(pal.Text).
-				CaretColor(pal.Accent).SelectionColor(pal.EditorSelectionBG()).
+				Absolute().Left(m.x).Top(m.y).Width(m.w).Height(m.h).
+				Background(ui.Transparent).
+				FontSize(m.fontSize).FontWeight(m.fontWeight).
+				TextAlign(m.align).TextColor(m.textColor).
+				CaretColor(m.caretColor).CaretWidth(m.caretWidth).
+				SelectionColor(m.selColor).
 				Bind(&st.EditHandle)
 			if st.EditFocusPending {
 				st.EditFocusPending = false
@@ -1823,6 +1858,14 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 					st.EditHandle.Focus()
 				}
 			}
+			input.ObserveInput(func(ev ui.InputEvent) {
+				switch ev.Kind {
+				case ui.InputCompose:
+					st.EditCompose = ev.Text
+				case ui.InputText, ui.InputKeyDown, ui.InputCommand:
+					st.EditCompose = ""
+				}
+			})
 			input.HandleInput(func(ev ui.InputEvent) bool {
 				if ev.Kind != ui.InputKeyDown {
 					return false
@@ -1861,6 +1904,76 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				st.finishEdit(true, cb)
 			}
 		}
+	}
+}
+
+type inlineEditMetrics struct {
+	x, y, w, h float32
+	fontSize   float32
+	fontWeight int
+	textColor  ui.Color
+	caretColor ui.Color
+	selColor   ui.Color
+	caretWidth float32
+	align      ui.Align
+}
+
+func (st *BlockState) inlineEditMetrics(n *Node, pal theme.Palette) inlineEditMetrics {
+	scale := st.Camera.Scale
+	if scale <= 0 {
+		scale = 1
+	}
+	sx, sy := st.Camera.WorldToScreen(n.X, n.Y-n.H/2)
+	sw := n.W * scale
+	sh := n.H * scale
+	edY := sy
+	edH := sh
+	if n.Depth > 1 {
+		edY = sy - layoutLeafGap*scale
+		edH = (n.H + layoutLeafGap) * scale
+	}
+	insetX := max(float32(2)*scale, 1.5)
+	edX := sx + insetX
+	edW := max(sw-insetX*2, 24)
+	align := ui.Center
+	if n.Task != nil {
+		textLeft := nodeContentLeft(n) + layoutTaskBox + layoutTaskGap
+		offX := (textLeft - n.X) * scale
+		edX = sx + offX
+		edW = max(sw-offX-insetX, 24)
+		align = ui.Start
+	}
+
+	branches := pal.MindMapBranchColors()
+	branchCol := branches[n.Branch%len(branches)]
+	textCol := pal.Text
+	caretCol := branchCol
+	selCol := branchCol.Alpha(0.24)
+	if pal.Dark {
+		selCol = branchCol.Alpha(0.34)
+	}
+	if n.Depth == 0 {
+		textCol = pal.Paper
+		caretCol = pal.Paper
+		if pal.Dark {
+			selCol = pal.Accent.Alpha(0.36)
+		} else {
+			selCol = pal.Accent.Alpha(0.48)
+		}
+	}
+
+	return inlineEditMetrics{
+		x:          edX,
+		y:          edY,
+		w:          edW,
+		h:          edH,
+		fontSize:   max(nodeFontSize(n.Depth)*scale, 6),
+		fontWeight: nodeFontWeight(n.Depth),
+		textColor:  textCol,
+		caretColor: caretCol,
+		selColor:   selCol,
+		caretWidth: max(float32(1.6)*scale, 1.2),
+		align:      align,
 	}
 }
 
