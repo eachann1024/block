@@ -621,12 +621,16 @@ export function installLinux(binPath) {
   const dataHome = process.env.XDG_DATA_HOME || join(home, ".local", "share");
   const configHome = process.env.XDG_CONFIG_HOME || join(home, ".config");
   const appDataDir = (process.env.BLOCK_DATA_DIR || "").trim() || join(dataHome, "Block");
-  const iconDir = join(dataHome, "icons", "hicolor", "1024x1024", "apps");
+  const iconSizes = [48, 128, 256, 512];
+  const iconDir = join(dataHome, "icons", "hicolor", "256x256", "apps");
+  const legacyIconPath = join(dataHome, "icons", "hicolor", "1024x1024", "apps", "block.png");
   const appDir = join(dataHome, "applications");
 
   // Pre-flight directory permission checks BEFORE replacing ~/.local/bin/block.
   ensureDirWritable(binDir);
-  ensureDirWritable(iconDir);
+  for (const size of iconSizes) {
+    ensureDirWritable(join(dataHome, "icons", "hicolor", `${size}x${size}`, "apps"));
+  }
   ensureDirWritable(appDir);
   ensureDirWritable(configHome);
   ensureDirWritable(appDataDir);
@@ -707,11 +711,16 @@ export function installLinux(binPath) {
     const hadIcon = existsSync(iconDst);
 
     try {
-      const srcIcon = join(repoRoot, "assets", "app-icon", "icon-1024.png");
-      if (existsSync(srcIcon)) {
-        if (hadIcon) copyFileSync(iconDst, iconBackup);
-        copyFileSync(srcIcon, iconDst);
+      for (const size of iconSizes) {
+        const srcIcon = join(repoRoot, "assets", "app-icon", `icon-${size}.png`);
+        const dstDir = join(dataHome, "icons", "hicolor", `${size}x${size}`, "apps");
+        const dstPath = join(dstDir, "block.png");
+        if (existsSync(srcIcon)) {
+          if (size === 256 && hadIcon) copyFileSync(iconDst, iconBackup);
+          copyFileSync(srcIcon, dstPath);
+        }
       }
+      try { rmSync(legacyIconPath, { force: true }); } catch {}
       // Publish block-user.desktop through Block's target-machine default-application
       // protection pipeline (checks existing defaults, pins implicit non-Block
       // defaults with write-ahead journaling, updates desktop DB, and verifies).

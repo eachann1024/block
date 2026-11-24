@@ -5,7 +5,6 @@ package plugins
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -107,24 +106,29 @@ func ensureLinuxAppImageIcon(dataHome string) {
 	if appDir == "" {
 		return
 	}
-	src := filepath.Join(appDir, "block.png")
-	if _, err := os.Stat(src); err != nil {
-		return
+	installedAny := false
+	for _, size := range []string{"48x48", "128x128", "256x256", "512x512"} {
+		src := filepath.Join(appDir, "usr", "share", "icons", "hicolor", size, "apps", "block.png")
+		data, err := os.ReadFile(src)
+		if err != nil {
+			continue
+		}
+		dst := filepath.Join(dataHome, "icons", "hicolor", size, "apps", "block.png")
+		if _, err := os.Stat(dst); err != nil {
+			_ = writeFileAtomic(dst, data, 0o644)
+		}
+		installedAny = true
 	}
-	dst := filepath.Join(dataHome, "icons", "hicolor", "1024x1024", "apps", "block.png")
-	if _, err := os.Stat(dst); err == nil {
-		return
+	if !installedAny {
+		src := filepath.Join(appDir, "block.png")
+		if data, err := os.ReadFile(src); err == nil {
+			dst := filepath.Join(dataHome, "icons", "hicolor", "256x256", "apps", "block.png")
+			if _, err := os.Stat(dst); err != nil {
+				_ = writeFileAtomic(dst, data, 0o644)
+			}
+		}
 	}
-	in, err := os.Open(src)
-	if err != nil {
-		return
-	}
-	defer in.Close()
-	data, err := io.ReadAll(in)
-	if err != nil {
-		return
-	}
-	_ = writeFileAtomic(dst, data, 0o644)
+	_ = os.Remove(filepath.Join(dataHome, "icons", "hicolor", "1024x1024", "apps", "block.png"))
 }
 
 func removeLegacyLinuxCustomMIME(dataHome string) error {

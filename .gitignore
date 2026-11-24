@@ -5,6 +5,7 @@
 /.agents/
 /release-plan.json
 scripts/release/block.exe
+cmd/block/rsrc_windows_*.syso
 !.github/
 !.github/workflows/
 !.github/workflows/**

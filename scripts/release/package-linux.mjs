@@ -110,7 +110,12 @@ function writeAppDir(binary, appDir) {
     run("patchelf", ["--set-rpath", "$ORIGIN", join(libDir, name)]);
   }
 
-  copyFileSync(resolve(ROOT, "assets/app-icon/icon-1024.png"), join(appDir, "block.png"));
+  copyFileSync(resolve(ROOT, "assets/app-icon/icon-256.png"), join(appDir, "block.png"));
+  for (const size of [48, 128, 256, 512]) {
+    const iconDir = join(appDir, `usr/share/icons/hicolor/${size}x${size}/apps`);
+    mkdirSync(iconDir, { recursive: true });
+    copyFileSync(resolve(ROOT, `assets/app-icon/icon-${size}.png`), join(iconDir, "block.png"));
+  }
   // Omit static MimeType= from the AppImage desktop payload so integrators
   // (e.g. AppImageLauncher) never displace existing default editors without
   // target-machine protection; Block registers protected associations on launch.
