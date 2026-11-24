@@ -435,6 +435,14 @@ func (w *Workspace) renderTarotWorkspace(
 							activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 							activeSess.SetOutlineForceNarrow(true)
 							activeSess.SetBackground(w.pluginEditorBackground())
+							activeSess.SetMindMapConfig(w.pluginMindMapConfig())
+							activeSess.SetNotifyFunc(func(msg, tone string) {
+								w.notifyBanner(plugins.ToastRequest{
+									PluginID: "block-mindmap",
+									Message:  msg,
+									Tone:     tone,
+								})
+							})
 							activeSess.Render(c, sheetW, false)
 							if w.pluginUI != nil {
 								w.pluginUI.setEditorFocus(activeTab, activeSess.HasFocus(c))
