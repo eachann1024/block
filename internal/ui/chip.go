@@ -168,3 +168,24 @@ func FileExtBadge(c *ui.Context, ext string, active bool) {
 			SingleLine()
 	})
 }
+
+// MetaBadge renders an Ocean Paper compact metadata pill (e.g. HTML, UTF-8, 只读)
+// using the default UI font stack so mixed CJK and Latin labels stay legible.
+func MetaBadge(c *ui.Context, label string) {
+	if label == "" {
+		return
+	}
+	pal := theme.Ocean()
+	ui.Row(c).Height(theme.KeycapHeight).MinWidth(0).MaxWidth(88).PaddingX(theme.Space6).
+		Radius(theme.RadiusXS).Background(pal.MenuHover).Border(1, pal.SelectedBorder).
+		AlignItems(ui.Center).Children(func() {
+		ui.Text(c, label).
+			FontSize(theme.FontMeta).
+			FixedLineHeight(theme.LineMeta).
+			FontWeight(theme.WeightControl).
+			TextColor(pal.TextSecondary).
+			MinWidth(0).
+			SingleLine().
+			Ellipsis("…")
+	})
+}
