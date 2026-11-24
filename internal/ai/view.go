@@ -3071,11 +3071,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 
 				ui.Row(cUI).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
 					if onPickAttachments != nil {
-						attachFull := len(atts) >= maxComposerAttachments
 						attachTip := theme.Tr("添加图片或文件", "Attach image or file")
-						if attachFull {
-							attachTip = theme.Tr("最多添加 10 个附件", "Up to 10 attachments")
-						}
 						attachBtn := bui.IconButton(cUI, icons.Image, bui.IconButtonOptions{
 							ID:           "ai-attach-file",
 							Label:        attachTip,
@@ -3083,7 +3079,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 							TooltipAbove: true,
 							Size:         theme.HeightMicro,
 							IconSize:     theme.IconInline,
-							Disabled:     busy || attachFull,
+							Disabled:     busy,
 						})
 						if attachBtn.Clicked() {
 							onPickAttachments()
