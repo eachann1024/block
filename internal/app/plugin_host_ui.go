@@ -849,18 +849,11 @@ func (h *pluginHostUI) renderToast(c *ui.Context) {
 					}
 					iconWrap.Children(func() {
 						if t.Icon != nil && len(t.Icon.StrokePaths) > 0 {
-							ic := theme.IconColors{
-								Line:   pal.Text,
-								Fill:   toneCol.Alpha(0.20),
-								Accent: toneCol,
-							}
+							ic := pal.TintedIconColors(toneCol)
+							ic.Line = pal.Text
 							pluginui.DrawDuoSpec(c, *t.Icon, theme.ToastBannerIconBox, ic)
 						} else {
-							ic := theme.IconColors{
-								Line:   toneCol,
-								Fill:   toneCol.Alpha(0.16),
-								Accent: toneCol,
-							}
+							ic := pal.TintedIconColors(toneCol)
 							pluginui.DrawDuoSpec(c, plugins.ToastToneIconSpec(t.Tone), theme.ToastBannerIconBox, ic)
 						}
 					})

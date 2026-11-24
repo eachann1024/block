@@ -153,7 +153,7 @@ func renderPluginOverflowButton(c *ui.Context, p TitlebarProps, overflow []plugi
 	blockui.AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
 	blockui.TactileButton(btn, hovered, pressed, false)
 	btn.Children(func() {
-		ic := pal.MonoIconColors(pal.TextSecondary)
+		ic := pal.DuoIconColors(pal.TextSecondary)
 		if open || hovered || pressed {
 			ic = pal.DuoIconColors(pal.Text)
 		}
@@ -228,11 +228,11 @@ func renderPluginTitlebarButton(c *ui.Context, p TitlebarProps, b plugins.Resolv
 	badge := strings.TrimSpace(b.Badge)
 	dotBadge := isDotBadge(badge)
 	btn.Children(func() {
-		ic := pal.MonoIconColors(pal.TextSecondary)
+		ic := pal.DuoIconColors(pal.TextSecondary)
 		if active || hovered || pressed {
 			ic = pal.DuoIconColors(pal.Text)
 		}
-		pluginui.DrawDuoSpec(c, b.Icon, theme.IconChrome, ic)
+		pluginui.DrawDuoSpecAnimated(c, b.Icon, theme.IconChrome, ic, active || hovered || pressed)
 		if badge != "" && !dotBadge {
 			ui.Box(c).Absolute().Top(0).Right(0).Height(13).MinWidth(13).PaddingX(theme.Space2).
 				Center().Radius(theme.RadiusPill).Background(pal.Accent).IgnoreInput(true).

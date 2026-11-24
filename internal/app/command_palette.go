@@ -178,7 +178,7 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 			Padding(0, theme.Space16, 0, theme.Space16).Gap(theme.Space10).AlignItems(ui.Center).
 			BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
 			Children(func() {
-				icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+				icons.Draw(c, icons.FindSearch, theme.IconRow, pal.DuoIconColors(pal.TextSecondary))
 				ui.Box(c.Key("command-palette-input-wrap")).Grow(1).MinWidth(0).Height(30).Clip().Children(func() {
 					in = ui.TextInputBase(c.Key("command-palette-input"), &p.query).
 						FillWidth().Height(30).Padding(0).
@@ -289,11 +289,11 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 					row.Children(func() {
 						ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(theme.Space10).Children(func() {
 							if item.Icon != nil && len(item.Icon.StrokePaths) > 0 {
-								ic := pal.MonoIconColors(pal.TextSecondary)
+								ic := pal.DuoIconColors(pal.TextSecondary)
 								if selected || hovered || pressed {
 									ic = pal.DuoIconColors(pal.Text)
 								}
-								pluginui.DrawDuoSpec(c, *item.Icon, theme.IconRow, ic)
+								pluginui.DrawDuoSpecAnimated(c, *item.Icon, theme.IconRow, ic, selected || hovered || pressed)
 							}
 							ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 								var titleMarks, subMarks [][2]int

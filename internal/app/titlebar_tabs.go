@@ -229,10 +229,10 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string, centerW, avail
 	}
 	pill.Children(func() {
 		if external {
-			icons.DrawAnimated(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted), pill.Hovered() || pill.Pressed())
+			icons.DrawAnimated(c, icons.LinkOpen, theme.IconMicro, pal.DuoIconColors(pal.MenuMuted), pill.Hovered() || pill.Pressed())
 		} else if customIcon, ok := titlebarTabCustomIcon(p, path); ok {
-			pluginui.DrawFileIcon(c, customIcon.Ref, customIcon.Spec, theme.IconInline,
-				pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), pal.Text, false))
+			pluginui.DrawFileIconAnimated(c, customIcon.Ref, customIcon.Spec, theme.IconInline,
+				pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), pal.Text, false), pill.Hovered() || pill.Pressed())
 		}
 		ui.Text(c, title).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
 			FontWeight(theme.WeightRegular).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -337,7 +337,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 			Cursor(cursor).Disabled(p.Busy).Label(fmt.Sprintf(theme.Tr("关闭标签页「%s」", "Close Tab %s"), label))
 		closeHover = !p.Busy && cb.Hovered()
 		closePress := !p.Busy && cb.Pressed()
-		ic := pal.MonoIconColors(pal.TextSecondary)
+		ic := pal.DuoIconColors(pal.TextSecondary)
 		cbBG := ui.Transparent
 		if active {
 			cbBG = chrome.Hover
@@ -347,7 +347,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 			if active {
 				cbBG = pal.Selected
 			}
-			ic = pal.MonoIconColors(pal.Text)
+			ic = pal.DuoIconColors(pal.Text)
 		}
 		blockui.AnimateSurfaceColors(cb, cbBG, ui.Transparent, false)
 		blockui.TactileButton(cb, closeHover, closePress, false)
@@ -380,10 +380,10 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		}
 		sel.Children(func() {
 			if external {
-				icons.DrawAnimated(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted), hovered || sel.Pressed())
+				icons.DrawAnimated(c, icons.LinkOpen, theme.IconMicro, pal.DuoIconColors(pal.MenuMuted), hovered || sel.Pressed())
 			} else if customIcon, ok := titlebarTabCustomIcon(p, path); ok {
-				pluginui.DrawFileIcon(c, customIcon.Ref, customIcon.Spec, theme.IconInline,
-					pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), fg, false))
+				pluginui.DrawFileIconAnimated(c, customIcon.Ref, customIcon.Spec, theme.IconInline,
+					pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), fg, false), active || hovered || sel.Pressed())
 			}
 			tabLabel(c, label, fg)
 			if dirSuffix != "" {

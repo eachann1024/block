@@ -277,7 +277,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 			spec = *ic.Spec
 		}
 		cell.Children(func() {
-			pluginui.DrawFileIcon(c, ic.Ref, spec, 20, colors)
+			pluginui.DrawFileIconAnimated(c, ic.Ref, spec, 20, colors, hovered || pressed || selected)
 		})
 		blockui.Probe(cell, "icon-picker-cell:"+ic.ID)
 
@@ -314,7 +314,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 					Padding(0, theme.Space8, 0, theme.Space8).Gap(theme.Space6).
 					AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.Shell)
 				searchBox.Children(func() {
-					icons.Draw(c, icons.FindSearch, theme.IconInline, pal.MonoIconColors(pal.MenuMuted))
+					icons.Draw(c, icons.FindSearch, theme.IconInline, pal.DuoIconColors(pal.MenuMuted))
 					ui.Box(c.Key("icon-picker-input-wrap")).Grow(1).MinWidth(0).Height(28).Clip().Children(func() {
 						in = ui.TextInputBase(c.Key("icon-picker-input"), &p.State.IconPickerQuery).
 							FillWidth().Height(28).Padding(0).
@@ -342,7 +342,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 							clr.Background(pal.MenuHover)
 						}
 						clr.Children(func() {
-							icons.Draw(c, icons.Close, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+							icons.DrawAnimated(c, icons.Close, theme.IconMicro, pal.DuoIconColors(pal.TextSecondary), clrHot)
 						})
 						if clr.Clicked() {
 							p.State.IconPickerQuery = ""
@@ -419,7 +419,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 									spec = *def.Spec
 								}
 								cb.Children(func() {
-									pluginui.DrawFileIcon(c, def.Ref, spec, theme.IconAction, colors)
+									pluginui.DrawFileIconAnimated(c, def.Ref, spec, theme.IconAction, colors, active || hov || prs)
 								})
 							}
 							blockui.Probe(cb, "icon-rail:"+cat.ID)
@@ -531,7 +531,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 						ui.Box(c).Size(dotSize, dotSize).Radius(theme.RadiusPill).Background(hue).Center().
 							Children(func() {
 								if selected {
-									icons.Draw(c, icons.Check, 11, pal.MonoIconColors(pal.AccentText))
+									icons.Draw(c, icons.Check, 11, pal.MinimalIconColors(pal.AccentText))
 								}
 							})
 					})
@@ -565,7 +565,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 					Rows:      []blockui.TooltipRow{{Trigger: theme.Tr("恢复默认", "Reset")}},
 				})
 				resetBtn.Children(func() {
-					icons.Draw(c, icons.Refresh, theme.IconAction, pal.MonoIconColors(fg))
+					icons.DrawAnimated(c, icons.Refresh, theme.IconAction, pal.DuoIconColors(fg), rHov || rPrs)
 				})
 				blockui.Probe(resetBtn, "icon-picker-reset")
 				if hasCustom && resetBtn.Clicked() {
