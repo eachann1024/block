@@ -16,6 +16,10 @@ func validInstallDir(dir string) bool { return filepath.IsAbs(dir) }
 
 func setupNeedsElevation(string, bool) bool { return false }
 
+func shouldInstallMachineScope(string, bool) bool { return false }
+
+func validateMachineInstallDir(string) error { return nil }
+
 func runSilentSetup(string, string, bool) error {
 	return errors.New("setup is only available on Windows")
 }

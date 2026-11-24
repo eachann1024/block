@@ -6,6 +6,7 @@ package installer
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -24,10 +25,11 @@ import (
 
 // Environment handed over by the NSIS stub (see .onInit in block.nsi).
 const (
-	EnvSetupExe = "BLOCK_SETUP_EXE"      // setup executable to run silently
-	EnvDir      = "BLOCK_SETUP_DIR"      // initial install directory
-	EnvUpdate   = "BLOCK_SETUP_UPDATE"   // "1": started by the in-app updater
-	EnvAllUsers = "BLOCK_SETUP_ALLUSERS" // "1": machine-wide install requested
+	EnvSetupExe         = "BLOCK_SETUP_EXE"          // setup executable to run silently
+	EnvDir              = "BLOCK_SETUP_DIR"          // initial install directory
+	EnvUpdate           = "BLOCK_SETUP_UPDATE"       // "1": started by the in-app updater
+	EnvAllUsers         = "BLOCK_SETUP_ALLUSERS"     // "1": machine-wide install requested
+	EnvVerifyMachineDir = "BLOCK_VERIFY_MACHINE_DIR" // non-empty: headless ACL/reparse check for NSIS
 	// EnvPreview shows the window without installing anything, for design
 	// review on any platform: a comma list of a stage (ready, progress, done,
 	// error) and the modifiers hidden and dark.
@@ -81,6 +83,13 @@ type setup struct {
 // exit code: 0 once the window took over the install, non-zero when it could
 // not start, which makes the NSIS stub fall back to its classic pages.
 func Run() int {
+	if verifyDir := strings.TrimSpace(os.Getenv(EnvVerifyMachineDir)); verifyDir != "" {
+		if err := validateMachineInstallDir(cleanInstallDir(verifyDir)); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
 	s := &setup{
 		dir:      strings.TrimSpace(os.Getenv(EnvDir)),
 		setupExe: strings.TrimSpace(os.Getenv(EnvSetupExe)),
@@ -262,6 +271,13 @@ func install(setupExe, dir string, allUsers, preview bool) error {
 	if !validInstallDir(dir) {
 		return errInvalidDir
 	}
+	if shouldInstallMachineScope(dir, allUsers) {
+		if err := validateMachineInstallDir(dir); err != nil {
+			if !setupNeedsElevation(dir, allUsers) || !errors.Is(err, errACLReadDenied) {
+				return errUnsafeMachineDir
+			}
+		}
+	}
 	target := filepath.Join(dir, appExeName)
 	if !setupNeedsElevation(dir, allUsers) && !waitWritable(target, lockWait) {
 		return errAppRunning
@@ -279,6 +295,8 @@ func install(setupExe, dir string, allUsers, preview bool) error {
 
 var (
 	errInvalidDir        = errors.New("invalid install directory")
+	errUnsafeMachineDir  = errors.New("machine-wide install directory is not administrator-protected")
+	errACLReadDenied     = errors.New("access denied reading directory ACL")
 	errNotInstalled      = errors.New("setup finished without installing")
 	errElevationCanceled = errors.New("administrator elevation was canceled")
 )
@@ -289,6 +307,8 @@ func (s *setup) installErrorText(err error) string {
 		return s.tr.errAppRunning
 	case errors.Is(err, errInvalidDir):
 		return s.tr.errInvalidDir
+	case errors.Is(err, errUnsafeMachineDir):
+		return s.tr.errUnsafeMachineDir
 	case errors.Is(err, errElevationCanceled):
 		return s.tr.errElevationCanceled
 	default:
