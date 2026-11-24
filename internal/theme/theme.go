@@ -69,6 +69,11 @@ type Palette struct {
 	AccentPressed  ui.Color
 	AccentText     ui.Color
 	IconFill       ui.Color
+	IconShade      ui.Color
+	IconDetail     ui.Color
+	IconLitFill    ui.Color
+	IconLitShade   ui.Color
+	IconLitDetail  ui.Color
 	Hover          ui.Color
 	Selected       ui.Color
 	SelectedBorder ui.Color // neutral ring on selected rows/chips
@@ -173,6 +178,11 @@ var OceanLight = Palette{
 	AccentPressed:  ui.Hex("#395fb0"),
 	AccentText:     ui.Hex("#ffffff"),
 	IconFill:       ui.Hex("#dcdcd9"),
+	IconShade:      ui.Hex("#c1c1bd"),
+	IconDetail:     ui.Hex("#8a909a"),
+	IconLitFill:    ui.Hex("#c9d8f3"),
+	IconLitShade:   ui.Hex("#a3bcea"),
+	IconLitDetail:  ui.Hex("#5372ac"),
 	Hover:          ui.Hex("#f0f0ef"),
 	Selected:       ui.Hex("#e5e5e3"),
 	SelectedBorder: ui.RGBA(0, 0, 0, 0.10),
@@ -274,6 +284,11 @@ var OceanDark = Palette{
 	AccentPressed:  ui.Hex("#638ad8"),
 	AccentText:     ui.Hex("#111622"),
 	IconFill:       ui.Hex("#474747"),
+	IconShade:      ui.Hex("#5e5e5e"),
+	IconDetail:     ui.Hex("#8a8a8a"),
+	IconLitFill:    ui.Hex("#31456a"),
+	IconLitShade:   ui.Hex("#47629c"),
+	IconLitDetail:  ui.Hex("#8ea6d4"),
 	Hover:          ui.Hex("#2c2c2c"),
 	Selected:       ui.Hex("#3a3a3a"),
 	SelectedBorder: ui.RGBA(0xff, 0xff, 0xff, 0.12),
@@ -362,29 +377,103 @@ var OceanDark = Palette{
 type IconColors struct {
 	Line   ui.Color
 	Fill   ui.Color
+	Shade  ui.Color
+	Detail ui.Color
 	Accent ui.Color
+
+	// Lit enables staggered Ocean-blue color lighting in icons.DrawAnimated when active.
+	Lit       bool
+	LitFill   ui.Color
+	LitShade  ui.Color
+	LitDetail ui.Color
+	LitAccent ui.Color
 }
 
-func (p Palette) DuoIconColors(line ui.Color) IconColors {
+// TintedIconColors returns a harmonious single-hue 5-layer icon palette
+// (e.g. Danger, Warning, Success, Callout tones) without Ocean-blue hover override.
+func (p Palette) TintedIconColors(tone ui.Color) IconColors {
+	fillAlpha := float32(0.18)
+	shadeAlpha := float32(0.32)
+	if p.Dark {
+		fillAlpha = 0.28
+		shadeAlpha = 0.42
+	}
 	return IconColors{
-		Line:   line,
-		Fill:   p.IconFill,
-		Accent: line,
+		Line:   tone,
+		Fill:   tone.Alpha(fillAlpha),
+		Shade:  tone.Alpha(shadeAlpha),
+		Detail: tone.Alpha(0.68),
+		Accent: tone,
 	}
 }
 
-// HoverIconColors returns the idle (secondary mono) or hovered/pressed (duo) icon tint.
+// DuoIconColors returns the 5-layer neutral resting palette with Ocean-blue hover
+// targets for neutral line colors, or a harmonious tinted 5-layer set when line
+// is a semantic theme color (Accent, Success, Danger, Warning).
+func (p Palette) DuoIconColors(line ui.Color) IconColors {
+	if line == p.Accent {
+		return p.LitDuoIconColors(p.Accent)
+	}
+	if line == p.Success || line == p.Danger || line == p.Warning {
+		return p.TintedIconColors(line)
+	}
+	return IconColors{
+		Line:      line,
+		Fill:      p.IconFill,
+		Shade:     p.IconShade,
+		Detail:    p.IconDetail,
+		Accent:    line,
+		Lit:       true,
+		LitFill:   p.IconLitFill,
+		LitShade:  p.IconLitShade,
+		LitDetail: p.IconLitDetail,
+		LitAccent: p.Accent,
+	}
+}
+
+// LitDuoIconColors returns the Ocean-lit 5-layer icon colors for active/selected states.
+func (p Palette) LitDuoIconColors(line ui.Color) IconColors {
+	return IconColors{
+		Line:      line,
+		Fill:      p.IconLitFill,
+		Shade:     p.IconLitShade,
+		Detail:    p.IconLitDetail,
+		Accent:    p.Accent,
+		Lit:       true,
+		LitFill:   p.IconLitFill,
+		LitShade:  p.IconLitShade,
+		LitDetail: p.IconLitDetail,
+		LitAccent: p.Accent,
+	}
+}
+
+// HoverIconColors returns the idle or hovered/pressed 5-layer icon colors.
 func (p Palette) HoverIconColors(hot bool) IconColors {
 	if hot {
 		return p.DuoIconColors(p.Text)
 	}
-	return p.MonoIconColors(p.TextSecondary)
+	return p.DuoIconColors(p.TextSecondary)
 }
 
 func (p Palette) MonoIconColors(c ui.Color) IconColors {
 	return IconColors{
 		Line:   c,
 		Fill:   ui.Transparent,
+		Shade:  ui.Transparent,
+		Detail: c.Alpha(0.68),
+		Accent: c,
+	}
+}
+
+// MinimalIconColors renders only the primary stroke and accent layers in a
+// single color (omitting fill, shade, and fine detail) for compact ticks,
+// checkmarks, and shortcut keycap glyphs.
+func (p Palette) MinimalIconColors(c ui.Color) IconColors {
+	return IconColors{
+		Line:   c,
+		Fill:   ui.Transparent,
+		Shade:  ui.Transparent,
+		Detail: ui.Transparent,
 		Accent: c,
 	}
 }
@@ -509,29 +598,51 @@ func (p Palette) MindMapBranchColors() [6]ui.Color {
 	}
 }
 
-// TintedDuoIconColors returns Scheme A two-tone icon colors for a custom file icon
-// with optional tint and interactive hover accent highlight.
+// TintedDuoIconColors returns 5-layer icon colors for a custom file icon
+// with optional tint and interactive Ocean-blue hover lighting.
 func (p Palette) TintedDuoIconColors(t IconTint, line ui.Color, accentHover bool) IconColors {
 	if hue, ok := p.IconTintHue(t); ok {
 		fillAlpha := float32(0.24)
+		shadeAlpha := float32(0.38)
+		litFillAlpha := float32(0.34)
+		litShadeAlpha := float32(0.48)
 		if p.Dark {
 			fillAlpha = 0.36
+			shadeAlpha = 0.50
+			litFillAlpha = 0.46
+			litShadeAlpha = 0.60
+		}
+		if accentHover {
+			return IconColors{
+				Line:      line,
+				Fill:      hue.Alpha(litFillAlpha),
+				Shade:     hue.Alpha(litShadeAlpha),
+				Detail:    hue.Alpha(0.88),
+				Accent:    hue,
+				Lit:       true,
+				LitFill:   hue.Alpha(litFillAlpha),
+				LitShade:  hue.Alpha(litShadeAlpha),
+				LitDetail: hue.Alpha(0.88),
+				LitAccent: hue,
+			}
 		}
 		return IconColors{
-			Line:   line,
-			Fill:   hue.Alpha(fillAlpha),
-			Accent: hue,
+			Line:      line,
+			Fill:      hue.Alpha(fillAlpha),
+			Shade:     hue.Alpha(shadeAlpha),
+			Detail:    hue.Alpha(0.72),
+			Accent:    hue,
+			Lit:       true,
+			LitFill:   hue.Alpha(litFillAlpha),
+			LitShade:  hue.Alpha(litShadeAlpha),
+			LitDetail: hue.Alpha(0.88),
+			LitAccent: hue,
 		}
 	}
-	accent := line
 	if accentHover {
-		accent = p.Accent
+		return p.LitDuoIconColors(line)
 	}
-	return IconColors{
-		Line:   line,
-		Fill:   p.IconFill,
-		Accent: accent,
-	}
+	return p.DuoIconColors(line)
 }
 
 // SidebarIconTileHover returns the subtle translucent tile highlight shown behind

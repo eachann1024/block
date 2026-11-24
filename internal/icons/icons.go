@@ -2,7 +2,6 @@ package icons
 
 import (
 	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -17,7 +16,9 @@ type Layer uint8
 const (
 	LayerGrid Layer = iota
 	LayerFill
+	LayerShade
 	LayerLine
+	LayerDetail
 	LayerAccent
 )
 
@@ -230,9 +231,19 @@ const (
 	MascotAIGreeting  MascotState = "ai-greeting"
 )
 
+type iconLayers struct {
+	fill   *ui.SVG
+	shade  *ui.SVG
+	line   *ui.SVG
+	detail *ui.SVG
+	accent *ui.SVG
+}
+
 var (
-	svgMu    sync.RWMutex
-	svgCache = make(map[string]*ui.SVG)
+	svgMu      sync.RWMutex
+	svgCache   = make(map[string]*ui.SVG)
+	layerMu    sync.RWMutex
+	layerCache = make(map[Icon]iconLayers)
 )
 
 func loadSVG(rel string) *ui.SVG {
@@ -253,9 +264,35 @@ func loadSVG(rel string) *ui.SVG {
 	return parsed
 }
 
-// LineSVG returns the single-layer .line.svg for native menus or single-color icons.
+func loadIconLayers(glyph Icon) iconLayers {
+	layerMu.RLock()
+	cached, ok := layerCache[glyph]
+	layerMu.RUnlock()
+	if ok {
+		return cached
+	}
+	prefix := "icons/" + string(glyph)
+	layers := iconLayers{
+		fill:   loadSVG(prefix + ".fill.svg"),
+		shade:  loadSVG(prefix + ".shade.svg"),
+		line:   loadSVG(prefix + ".line.svg"),
+		detail: loadSVG(prefix + ".detail.svg"),
+		accent: loadSVG(prefix + ".accent.svg"),
+	}
+	layerMu.Lock()
+	layerCache[glyph] = layers
+	layerMu.Unlock()
+	return layers
+}
+
+// LineSVG returns the single-layer .line.svg for native menus or single-color icons,
+// falling back to .accent.svg for solid brand marks that carry no stroke layer.
 func LineSVG(glyph Icon) *ui.SVG {
-	return loadSVG("icons/" + string(glyph) + ".line.svg")
+	layers := loadIconLayers(glyph)
+	if layers.line != nil {
+		return layers.line
+	}
+	return layers.accent
 }
 
 // AgentBrandSVG returns the SVG logo for an AI agent backend.
@@ -263,368 +300,141 @@ func AgentBrandSVG(kind model.BackendKind) *ui.SVG {
 	return loadSVG(kind.AssetPath())
 }
 
-var iconMotion = ui.Animation{
-	Duration: 100 * time.Millisecond,
-	Ease:     ui.CubicBezier(0.2, 0.8, 0.25, 1),
-}
+// Color-only staggered layer transitions: geometry never moves.
+// Lighting up staggers fill -> shade (+40ms) -> detail (+80ms) -> accent (+120ms);
+// extinguishing returns all layers together with zero delay.
+var (
+	iconColorEase = ui.CubicBezier(0.25, 0.1, 0.25, 1)
 
-func clamp01(v float32) float32 {
-	if v < 0 {
-		return 0
+	IconFadeOut = ui.Animation{
+		Duration:  200 * time.Millisecond,
+		Ease:      iconColorEase,
+		Oklab:     true,
+		NonMotion: true,
 	}
-	if v > 1 {
-		return 1
+	IconLitFill = ui.Animation{
+		Duration:  200 * time.Millisecond,
+		Ease:      iconColorEase,
+		Oklab:     true,
+		NonMotion: true,
 	}
-	return v
-}
+	IconLitShade = ui.Animation{
+		Duration:  200 * time.Millisecond,
+		Delay:     40 * time.Millisecond,
+		Ease:      iconColorEase,
+		Oklab:     true,
+		NonMotion: true,
+	}
+	IconLitDetail = ui.Animation{
+		Duration:  200 * time.Millisecond,
+		Delay:     80 * time.Millisecond,
+		Ease:      iconColorEase,
+		Oklab:     true,
+		NonMotion: true,
+	}
+	IconLitAccent = ui.Animation{
+		Duration:  200 * time.Millisecond,
+		Delay:     120 * time.Millisecond,
+		Ease:      iconColorEase,
+		Oklab:     true,
+		NonMotion: true,
+	}
+)
 
-// Draw stacks the .fill, .line, and .accent SVG masks of a Scheme A Duo icon.
+// Draw stacks the 5 SVG layers (.fill, .shade, .line, .detail, .accent) of an icon.
 func Draw(c *ui.Context, glyph Icon, size float32, colors theme.IconColors) ui.Element {
 	if size <= 0 {
 		return ui.Box(c).Size(0, 0).Shrink(0)
 	}
+	layers := loadIconLayers(glyph)
 	root := ui.Box(c).Size(size, size).Shrink(0)
 	root.Children(func() {
-		if colors.Fill.A > 0 {
-			if fill := loadSVG("icons/" + string(glyph) + ".fill.svg"); fill != nil {
-				ui.Icon(c, fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Fill)
-			}
+		if colors.Fill.A > 0 && layers.fill != nil {
+			ui.Icon(c, layers.fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Fill)
 		}
-		if colors.Line.A > 0 {
-			if line := loadSVG("icons/" + string(glyph) + ".line.svg"); line != nil {
-				ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Line)
-			}
+		if colors.Shade.A > 0 && layers.shade != nil {
+			ui.Icon(c, layers.shade).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Shade)
 		}
-		if colors.Accent.A > 0 {
-			if acc := loadSVG("icons/" + string(glyph) + ".accent.svg"); acc != nil {
-				ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Accent)
-			}
+		if colors.Line.A > 0 && layers.line != nil {
+			ui.Icon(c, layers.line).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Line)
+		}
+		if colors.Detail.A > 0 && layers.detail != nil {
+			ui.Icon(c, layers.detail).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Detail)
+		}
+		if colors.Accent.A > 0 && layers.accent != nil {
+			ui.Icon(c, layers.accent).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Accent)
 		}
 	})
 	return root
 }
 
-func isFolderIcon(glyph Icon) bool {
-	switch glyph {
-	case Folder, FolderOpen, FolderPlus,
-		FolderSrc, FolderDocs, FolderAssets, FolderTests, FolderGit, FolderDeps:
-		return true
-	}
-	return false
-}
-
-// DrawAnimated gives semantic icon layers short hover motion with immediate color feedback.
+// DrawAnimated renders a 5-layer icon whose geometry stays fixed while its semantic
+// layers light up in staggered Ocean-blue order on active/hover and fade back together.
 func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColors, active bool) ui.Element {
 	if size <= 0 {
 		return ui.Box(c).Size(0, 0).Shrink(0)
 	}
+	layers := loadIconLayers(glyph)
 	root := ui.Box(c).Size(size, size).Shrink(0)
-	targetP := float32(0)
-	if active {
-		targetP = 1
+
+	fillTarget, shadeTarget, lineTarget, detailTarget, accTarget := colors.Fill, colors.Shade, colors.Line, colors.Detail, colors.Accent
+	fillAnim, shadeAnim, lineAnim, detailAnim, accAnim := IconFadeOut, IconFadeOut, IconFadeOut, IconFadeOut, IconFadeOut
+	if active && colors.Lit {
+		fillTarget = colors.LitFill
+		shadeTarget = colors.LitShade
+		detailTarget = colors.LitDetail
+		accTarget = colors.LitAccent
+		fillAnim = IconLitFill
+		shadeAnim = IconLitShade
+		detailAnim = IconLitDetail
+		accAnim = IconLitAccent
 	}
-	p := root.AnimateTo("icoAct", targetP, iconMotion)
-	fillCol, lineCol, accCol := colors.Fill, colors.Line, colors.Accent
 
-	moving := float32(math.Abs(float64(p))) > 0.002
-	k := size / 20.0
-
-	if moving {
-		switch glyph {
-		case Folder, FolderOpen, FolderPlus,
-			FolderSrc, FolderDocs, FolderAssets, FolderTests, FolderGit, FolderDeps:
-			root.Translate(0, -1.2*k*p)
-		case FolderReveal:
-			sc := 1 + 0.05*p
-			root.Scale(sc, sc)
-		case Plus:
-			sc := 1 + 0.15*p
-			root.Rotate(90*p).Scale(sc, sc)
-		case Close:
-			sc := 1 + 0.06*p
-			root.Rotate(90*p).Scale(sc, sc)
-		case Check:
-			sc := 1 + 0.12*p
-			root.Translate(0, -0.7*k*p).Scale(sc, sc)
-		case Note, NoteCheck:
-			root.Translate(0, -1.3*k*p).Rotate(-2.5*p)
-		case Package:
-			root.Translate(0, -1.4*k*p)
-		case Send:
-			root.Translate(2.0*k*p, -1.8*k*p).Rotate(-5*p)
-		case Zap:
-			sc := 1 + 0.14*p
-			root.Translate(0.5*k*p, -1.1*k*p).Rotate(-8*p).Scale(sc, sc)
-		case ChevronDown, TbChevron:
-			sc := 1 + 0.13*p
-			root.Translate(0, 2.2*k*p).Scale(sc, sc)
-		case ChevronRight, TbChevronRight:
-			sc := 1 + 0.13*p
-			root.Translate(2.2*k*p, 0).Scale(sc, sc)
-		case ChevronUp:
-			sc := 1 + 0.13*p
-			root.Translate(0, -2.2*k*p).Scale(sc, sc)
-		case ChevronLeft:
-			sc := 1 + 0.13*p
-			root.Translate(-2.2*k*p, 0).Scale(sc, sc)
-		case Refresh:
-			root.Rotate(-45 * p)
-		case TbReset, UpdateTangle:
-			root.Rotate(-42 * p)
-		case Trash:
-			root.Translate(0, -0.9*k*p).Rotate(-9*p)
-		case Pencil, Eraser, Cut:
-			root.Rotate(-6 * p)
-		case Drag:
-			sc := 1 + 0.12*p
-			root.Translate(0, -1.0*k*p).Scale(sc, sc)
-		case Clock:
-			sc := 1 + 0.05*p
-			root.Scale(sc, sc)
-		case SkipForward:
-			// Triangle layers shift right toward the vertical bar.
-		case Maximize:
-			sc := 1 + 0.14*p
-			root.Scale(sc, sc)
-		case TabClose, TabCloseAll, TabCloseOthers, TabCloseRight:
-			root.Translate(0, -0.7*k*p)
-		case Copy, Duplicate, LinkCopy:
-			sc := 1 + 0.05*p
-			root.Translate(0.8*k*p, -0.8*k*p).Scale(sc, sc)
-		case LinkEdit:
-			root.Translate(0, -0.6*k*p).Rotate(-6*p)
-		case LinkOff:
-			sc := 1 + 0.05*p
-			root.Rotate(8*p).Scale(sc, sc)
-		case Wrench, Tag, Paperclip:
-			root.Translate(0, -0.8*k*p).Rotate(-9*p)
-		case More:
-			sc := 1 + 0.08*p
-			root.Scale(sc, sc)
-		case Sliders, SortFilter:
-			sc := 1 + 0.06*p
-			root.Translate(0, -0.8*k*p).Scale(sc, sc)
-		case FindSearch:
-			root.Translate(-0.6*k*p, -0.6*k*p).Rotate(-6*p)
-		case TbPlus:
-			sc := 1 + 0.10*p
-			root.Rotate(90*p).Scale(sc, sc)
-		case TbMinus, Minus:
-			sc := 1 + 0.10*p
-			root.Scale(sc, sc)
-		case ColDelete, RowDelete:
-			root.Translate(0, -0.8*k*p).Rotate(-5*p)
-		case ColInsertLeft, ColInsertRight, RowInsertAbove, RowInsertBelow,
-			WindowMax, WindowRestore, Crop, SelectAll, History,
-			Eye, EyeOff, Stop, NotePlus, AiPlus:
-			sc := 1 + 0.05*p
-			root.Scale(sc, sc)
-		case Download, Upload, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
-			LinkOpen, Plug, SidebarExpand, SidebarCollapse,
-			Sparkles, AiPolish, Star:
-			// Bespoke layer-level transforms handle motion below.
-		default:
-			sc := 1 + 0.05*p
-			root.Translate(0, -1.0*k*p).Scale(sc, sc)
-		}
+	var fillCol, shadeCol, lineCol, detailCol, accCol ui.Color
+	if layers.fill != nil {
+		fillCol = root.AnimateColor("icoFill", fillTarget, fillAnim)
+	}
+	if layers.shade != nil {
+		shadeCol = root.AnimateColor("icoShade", shadeTarget, shadeAnim)
+	}
+	if layers.line != nil {
+		lineCol = root.AnimateColor("icoLine", lineTarget, lineAnim)
+	}
+	if layers.detail != nil {
+		detailCol = root.AnimateColor("icoDetail", detailTarget, detailAnim)
+	}
+	if layers.accent != nil {
+		accCol = root.AnimateColor("icoAcc", accTarget, accAnim)
 	}
 
 	root.Children(func() {
-		if isFolderIcon(glyph) {
-			if lineCol.A > 0 {
-				if line := loadSVG("icons/" + string(glyph) + ".line.svg"); line != nil {
-					ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(lineCol)
-				}
-			}
-			if moving && p > 0.01 {
-				pal := theme.Ocean()
-				sheet := ui.Box(c).Absolute().
-					Left(size*0.27).Top(size*0.35).
-					Size(size*0.46, size*0.26).
-					Radius(max(1, 1.2*k)).
-					Background(pal.Paper).
-					Border(1, accCol).
-					Opacity(clamp01(p * 1.15))
-				sheet.Translate(0, (1-p)*2.4*k).Rotate(-3 * p)
-			}
-			if fillCol.A > 0 {
-				if fill := loadSVG("icons/" + string(glyph) + ".fill.svg"); fill != nil {
-					fl := ui.Icon(c, fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(fillCol)
-					if moving {
-						fl.TransformOrigin(0.5, 0.85).Skew(-8.5*p, 0).Scale(1, max(0.2, 1-0.08*p))
-					}
-				}
-			}
-			if accCol.A > 0 {
-				if acc := loadSVG("icons/" + string(glyph) + ".accent.svg"); acc != nil {
-					ac := ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
-					if moving {
-						ac.TransformOrigin(0.5, 0.85).Skew(-8.5*p, 0).Scale(1, max(0.2, 1-0.08*p))
-					}
-				}
-			}
-			return
+		if fillCol.A > 0 && layers.fill != nil {
+			ui.Icon(c, layers.fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(fillCol)
 		}
-
-		if fillCol.A > 0 {
-			if fill := loadSVG("icons/" + string(glyph) + ".fill.svg"); fill != nil {
-				fl := ui.Icon(c, fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(fillCol)
-				if moving {
-					switch glyph {
-					case SidebarExpand, SidebarCollapse:
-						fl.TransformOrigin(0.2, 0.5).Scale(0.88+0.12*clamp01(p), 1)
-					case Sparkles, AiPolish, Star:
-						sc := 1 + 0.07*p
-						fl.Rotate(15*p).Scale(sc, sc)
-					case Eye:
-						sc := 1 + 0.05*p
-						fl.Scale(sc, sc)
-					case Stop:
-						sc := 1 - 0.08*p
-						fl.Scale(sc, sc)
-					case Plug:
-						fl.Translate(1.2*k*p, -1.2*k*p)
-					case SkipForward:
-						fl.Translate(2.0*k*p, 0)
-					}
-				}
-			}
+		if shadeCol.A > 0 && layers.shade != nil {
+			ui.Icon(c, layers.shade).Absolute().Top(0).Left(0).Size(size, size).TextColor(shadeCol)
 		}
-		if lineCol.A > 0 {
-			if line := loadSVG("icons/" + string(glyph) + ".line.svg"); line != nil {
-				ln := ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(lineCol)
-				if moving {
-					switch glyph {
-					case LinkOpen:
-						ln.Rotate(-3 * p)
-					case Sparkles, AiPolish, Star:
-						sc := 1 + 0.07*p
-						ln.Rotate(15*p).Scale(sc, sc)
-					case Download:
-						ln.Translate(0, 2.0*k*p)
-					case Upload:
-						ln.Translate(0, -2.0*k*p)
-					case Plug:
-						ln.Translate(1.2*k*p, -1.2*k*p)
-					case ArrowRight:
-						ln.Translate(1.6*k*p, 0)
-					case ArrowLeft:
-						ln.Translate(-1.6*k*p, 0)
-					case ArrowDown:
-						ln.Translate(0, 1.4*k*p)
-					case ArrowUp:
-						ln.Translate(0, -1.4*k*p)
-					case SkipForward:
-						ln.Translate(2.0*k*p, 0)
-					}
-				}
-			}
+		if lineCol.A > 0 && layers.line != nil {
+			ui.Icon(c, layers.line).Absolute().Top(0).Left(0).Size(size, size).TextColor(lineCol)
 		}
-		if accCol.A > 0 {
-			if acc := loadSVG("icons/" + string(glyph) + ".accent.svg"); acc != nil {
-				ac := ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
-				if moving {
-					switch glyph {
-					case Plus, Close, Check, Zap, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, TbChevron, TbChevronRight, Drag, Refresh, TbReset, UpdateTangle, Trash, Pencil, Eraser, Cut,
-						Copy, Duplicate, LinkCopy, LinkEdit, LinkOff, Wrench, Tag, Paperclip, TbPlus, TbMinus, Minus, ColDelete, RowDelete:
-						// Unified root transform already applied in sub-pixel lockstep with .line.
-					case Clock:
-						ac.Rotate(45 * p)
-					case SkipForward:
-						ac.Scale(1+0.08*p, 1+0.08*p)
-					case Maximize:
-						sc := 1 + 0.06*p
-						ac.Scale(sc, sc)
-					case TabClose:
-						ac.Rotate(90 * p)
-					case TabCloseAll:
-						ac.TransformOrigin(10.5/24.0, 13.0/24.0).Rotate(90 * p)
-					case TabCloseRight:
-						ac.Translate(1.8*k*p, 0)
-					case TabCloseOthers:
-						sc := 1 + 0.12*p
-						ac.Scale(sc, sc)
-					case More:
-						sc := 1 + 0.15*p
-						ac.Scale(sc, sc)
-					case Download, Upload:
-						ac.Scale(1+0.08*p, 1)
-					case Eye:
-						sc := 1 + 0.20*p
-						ac.Scale(sc, sc)
-					case EyeOff:
-						sc := 1 + 0.07*p
-						ac.Translate(1.0*k*p, 1.0*k*p).Scale(sc, sc)
-					case Send:
-						sc := 1 + 0.08*p
-						ac.Translate(0.9*k*p, -0.9*k*p).Scale(sc, sc)
-					case Plug:
-						sc := 1 + 0.12*p
-						ac.Scale(sc, sc)
-					case Package:
-						sc := 1 + 0.10*p
-						ac.Scale(sc, sc)
-					case Stop:
-						sc := 1 + 0.12*p
-						ac.Scale(sc, sc)
-					case Note, NoteCheck:
-						ac.Translate(1.2*k*p, 0)
-					case SidebarExpand:
-						sc := 1 + 0.08*p
-						ac.Translate(2.5*k*p, 0).Scale(sc, sc)
-					case SidebarCollapse:
-						sc := 1 + 0.08*p
-						ac.Translate(-2.5*k*p, 0).Scale(sc, sc)
-					case FolderReveal:
-						sc := 1 + 0.08*p
-						ac.Translate(2.6*k*p, 0).Scale(sc, sc)
-					case LinkOpen:
-						sc := 1 + 0.08*p
-						ac.Translate(2.6*k*p, -2.6*k*p).Scale(sc, sc)
-					case Sparkles, AiPolish, Star:
-						sc := 1 + 0.20*p
-						ac.Rotate(-14*p).Scale(sc, sc)
-					case Sliders:
-						sc := 1 + 0.08*p
-						ac.Scale(sc, sc)
-					case NotePlus, AiPlus:
-						sc := 1 + 0.16*p
-						ac.Scale(sc, sc)
-					case History:
-						ac.Rotate(-22 * p)
-					case FindSearch:
-						sc := 1 + 0.08*p
-						ac.Translate(1.2*k*p, 1.2*k*p).Scale(sc, sc)
-					case ArrowDown, RowInsertBelow:
-						ac.Translate(0, 2.0*k*p)
-					case ArrowUp, RowInsertAbove:
-						ac.Translate(0, -2.0*k*p)
-					case ArrowRight, ColInsertRight:
-						ac.Translate(1.8*k*p, 0)
-					case ArrowLeft, ColInsertLeft:
-						ac.Translate(-1.8*k*p, 0)
-					case WindowMax, WindowRestore, Crop, SelectAll:
-						sc := 1 + 0.11*p
-						ac.Scale(sc, sc)
-					default:
-						sc := 1 + 0.07*p
-						ac.Scale(sc, sc)
-					}
-				}
-			}
+		if detailCol.A > 0 && layers.detail != nil {
+			ui.Icon(c, layers.detail).Absolute().Top(0).Left(0).Size(size, size).TextColor(detailCol)
+		}
+		if accCol.A > 0 && layers.accent != nil {
+			ui.Icon(c, layers.accent).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
 		}
 	})
 	return root
 }
 
-// Duo renders a Scheme A Duo icon using Ocean Paper's standard active/hovered or idle tints
-// with short movement on its semantic layers.
+// Duo renders a 5-layer icon using Ocean Paper's neutral resting depth and
+// staggered Ocean-blue color lighting when active.
 func Duo(c *ui.Context, glyph Icon, size float32, active bool) ui.Element {
 	pal := theme.Ocean()
 	if active {
 		return DrawAnimated(c, glyph, size, pal.DuoIconColors(pal.Text), true)
 	}
-	return DrawAnimated(c, glyph, size, pal.MonoIconColors(pal.TextSecondary), false)
+	return DrawAnimated(c, glyph, size, pal.DuoIconColors(pal.TextSecondary), false)
 }
 
 // Brand renders an AI backend brand mark at `size`.
