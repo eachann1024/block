@@ -59,6 +59,7 @@ func (w *Workspace) renderNoteSource(c *ui.Context) {
 	st.SoftWrap = true
 	st.Theme = sourceEditorTheme(pal)
 	st.Bindings = sourceFindBindings(st.Bindings)
+	st.RenderFindBar = renderSourceFindBar
 
 	c.Key("note-source:" + w.noteSource.tab)
 	outer := ui.Column(c).Fill().Background(pal.Paper)
