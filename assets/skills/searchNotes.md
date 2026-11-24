@@ -2,12 +2,11 @@
 
 ## 适用
 
-- 跨笔记本、目录和页面查找内容，或目标页不明确需要先定位；来源引用不限制读取范围。
+- 在本轮授权笔记本内查找页面、定位关键词或读取其他笔记内容。
 
 ## 执行
 
-- 页面已明确时直接 `readPage`，带真实 notebookId 和 pageId。目录来源用 listFolder 分页枚举，不能把索引或未读正文当作全文已读。
-- 否则调用一次 `searchNotes`，只读回答所需页面。
-- 不为当前页润色任务搜索。
-- 搜索结果的 location 标识命中段落；随后 readPage 时传入其 blockId，无 ID 时传 blockIndex。
-- 回答引用笔记时，使用实际支持该结论的 blocks 条目返回的 citationHref 生成 Markdown 链接，标签为“文件名 · locationLabel”；只引用实际读到的段落，不编造块 ID 或链接。
+- 页面已明确时直接调用 `readPage`（传 `pageId`，`notebookRoot` 省略或传 `current`）；大文档或输出被截断时配合 `startLine`（从 1 开始）与 `lineCount` 分段读完。
+- 页面不明确时调用 `searchNotes` 按关键词检索，根据返回的 `pageId`、`line` 和 `snippet` 定位后再用 `readPage` 读取对应行段；需要浏览目录时调用 `listPages`，注意检查 `limited`。
+- 不为当前页局部润色任务额外搜索。
+- 回答仅引用实际读到的内容，不把未读正文或截断片段当作全文已读。

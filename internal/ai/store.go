@@ -2288,7 +2288,7 @@ func (c *Controller) loadBuiltinSkillsLocked() {
 		desc string
 	}{
 		{"createNoote", "createNoote.md", "在本轮确定的笔记本和目录新建页面"},
-		{"updateNote", "updateNote.md", "改写、追加、补充或重命名当前页"},
+		{"updateNote", "updateNote.md", "改写、追加或补充当前页"},
 		{"searchNotes", "searchNotes.md", "在本轮授权的笔记本内搜索并读取页面"},
 		{"chat", "chat.md", "仅解释或建议，不改笔记"},
 		{"markdown", "markdown.md", "创建或修改笔记时的 Markdown 指引"},
