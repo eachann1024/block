@@ -35,6 +35,7 @@ type Controller struct {
 	onSuggestPlugin    func(category plugins.Category)
 	onOpenStore        func()
 	isStoreVisibleFn   func() bool
+	nextPromptID       uint64
 	permQueue          []pendingPermissionPrompt
 	manualSpec         string
 	drafts             map[string]map[string]string

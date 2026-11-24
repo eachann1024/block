@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -249,7 +250,122 @@ type StoreManager struct {
 	dlGen         int
 	stateMu       sync.Mutex
 	installMu     sync.Mutex
+	stageMu       sync.Mutex
+	activeStages  map[string]bool
 	beforeReplace func(pluginID string) error
+}
+
+const (
+	stageOwnerFile       = ".block-stage-owner"
+	stageOrphanTTL       = 2 * time.Hour
+	stageMissingOwnerTTL = 10 * time.Minute
+)
+
+var processStageInstanceID = newStageInstanceID()
+
+func newStageInstanceID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return hex.EncodeToString(b[:])
+	}
+	return fmt.Sprintf("pid-%d-%d", os.Getpid(), time.Now().UnixNano())
+}
+
+type stageOwnerMeta struct {
+	PID         int    `json:"pid"`
+	Instance    string `json:"instance"`
+	CreatedUnix int64  `json:"created_unix"`
+}
+
+func (s *StoreManager) registerStageDir(dir string) {
+	if s == nil || dir == "" {
+		return
+	}
+	s.stageMu.Lock()
+	if s.activeStages == nil {
+		s.activeStages = map[string]bool{}
+	}
+	s.activeStages[dir] = true
+	s.stageMu.Unlock()
+	raw, err := json.Marshal(stageOwnerMeta{
+		PID:         os.Getpid(),
+		Instance:    processStageInstanceID,
+		CreatedUnix: time.Now().Unix(),
+	})
+	if err == nil {
+		_ = os.WriteFile(filepath.Join(dir, stageOwnerFile), raw, 0o600)
+	}
+}
+
+func (s *StoreManager) unregisterStageDir(dir string) {
+	if s == nil || dir == "" {
+		return
+	}
+	s.stageMu.Lock()
+	delete(s.activeStages, dir)
+	s.stageMu.Unlock()
+}
+
+func (s *StoreManager) isStageDirActive(dir string) bool {
+	if s == nil || dir == "" {
+		return false
+	}
+	s.stageMu.Lock()
+	active := s.activeStages[dir]
+	s.stageMu.Unlock()
+	return active
+}
+
+func (s *StoreManager) sweepStaleStagesLocked() {
+	entries, err := os.ReadDir(s.CacheRoot)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, e := range entries {
+		name := e.Name()
+		if !e.IsDir() || (!strings.HasPrefix(name, "stage-dir-") && !strings.HasPrefix(name, "stage-arc-") && !strings.HasPrefix(name, "stage-seed-")) {
+			continue
+		}
+		dir := filepath.Join(s.CacheRoot, name)
+		if s.isStageDirActive(dir) {
+			continue
+		}
+		raw, readErr := os.ReadFile(filepath.Join(dir, stageOwnerFile))
+		if readErr != nil {
+			if info, statErr := e.Info(); statErr == nil && now.Sub(info.ModTime()) > stageMissingOwnerTTL {
+				_ = os.RemoveAll(dir)
+			}
+			continue
+		}
+		var meta stageOwnerMeta
+		if json.Unmarshal(raw, &meta) != nil || meta.PID <= 0 {
+			if info, statErr := e.Info(); statErr == nil && now.Sub(info.ModTime()) > stageMissingOwnerTTL {
+				_ = os.RemoveAll(dir)
+			}
+			continue
+		}
+		if meta.Instance == processStageInstanceID {
+			// Same process instance, but no longer in activeStages -> abandoned.
+			_ = os.RemoveAll(dir)
+			continue
+		}
+		if alive, known := stageOwnerPIDAlive(meta.PID); known {
+			if !alive {
+				_ = os.RemoveAll(dir)
+			}
+			continue
+		}
+		created := time.Unix(meta.CreatedUnix, 0)
+		if meta.CreatedUnix <= 0 {
+			if info, statErr := e.Info(); statErr == nil {
+				created = info.ModTime()
+			}
+		}
+		if now.Sub(created) > stageOrphanTTL {
+			_ = os.RemoveAll(dir)
+		}
+	}
 }
 
 func NewStoreManager(blockAppDataDir string) *StoreManager {
@@ -261,10 +377,11 @@ func NewStoreManager(blockAppDataDir string) *StoreManager {
 	tr.Proxy = http.ProxyFromEnvironment
 	tr.ResponseHeaderTimeout = 10 * time.Second
 	return &StoreManager{
-		AppsRoot:  filepath.Join(blockAppDataDir, "apps"),
-		DataRoot:  filepath.Join(blockAppDataDir, "apps-data"),
-		CacheRoot: filepath.Join(blockAppDataDir, "apps-cache"),
-		IndexURLs: urls,
+		AppsRoot:     filepath.Join(blockAppDataDir, "apps"),
+		DataRoot:     filepath.Join(blockAppDataDir, "apps-data"),
+		CacheRoot:    filepath.Join(blockAppDataDir, "apps-cache"),
+		IndexURLs:    urls,
+		activeStages: map[string]bool{},
 		HTTP: &http.Client{
 			Transport: tr,
 			Timeout:   20 * time.Second,
@@ -625,6 +742,7 @@ func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
 			}
 		}
 	}
+	s.sweepStaleStagesLocked()
 	entries, err := os.ReadDir(s.AppsRoot)
 	if err != nil {
 		return nil, err
@@ -656,10 +774,12 @@ func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
 }
 
 // PermissionEscalationError is returned when installing or updating a plugin
-// would grant sensitive permissions that were not explicitly approved.
+// would grant sensitive permissions that were not explicitly approved or replace
+// an existing plugin from a different installation source.
 type PermissionEscalationError struct {
-	PluginID string
-	Added    []Permission
+	PluginID      string
+	Added         []Permission
+	SourceChanged bool
 }
 
 func (e *PermissionEscalationError) Error() string {
@@ -667,35 +787,51 @@ func (e *PermissionEscalationError) Error() string {
 	for _, p := range e.Added {
 		names = append(names, string(p))
 	}
+	if e.SourceChanged && len(names) == 0 {
+		return fmt.Sprintf("plugin %s comes from a different installation source and requires confirmation", e.PluginID)
+	}
+	if e.SourceChanged {
+		return fmt.Sprintf("plugin %s comes from a different installation source and requests permissions: %s", e.PluginID, strings.Join(names, ", "))
+	}
 	return fmt.Sprintf("plugin %s requests unapproved permissions: %s", e.PluginID, strings.Join(names, ", "))
 }
 
 type installPolicy struct {
-	allowReplace      bool
-	enforceApproved   bool
-	approvedSensitive []Permission
-	forbidEscalation  bool
+	allowReplace       bool
+	enforceSourceMatch bool
+	enforceApproved    bool
+	approvedSensitive  []Permission
+	forbidEscalation   bool
+	expectedID         string
+	expectedVersion    string
+	expectedDigest     string
 }
 
 // StagedPlugin holds a validated candidate plugin package staged on disk
 // awaiting user permission confirmation. Call Cleanup when discarding it;
 // CommitStagedPlugin cleans up automatically.
 type StagedPlugin struct {
-	Manifest     Manifest
-	Previous     *Manifest
-	Source       string
-	StagingDir   string
-	PluginRoot   string
-	CatalogEntry *StoreAppEntry
-	IsUpdate     bool
-	Sensitive    []Permission
-	Added        []Permission
+	Manifest      Manifest
+	Previous      *Manifest
+	Source        string
+	StagingDir    string
+	PluginRoot    string
+	ContentDigest string
+	CatalogEntry  *StoreAppEntry
+	IsUpdate      bool
+	SourceChanged bool
+	Sensitive     []Permission
+	Added         []Permission
+	cleanupFn     func()
 }
 
 // NeedsConfirmation reports whether committing p requires explicit user consent.
 func (p *StagedPlugin) NeedsConfirmation() bool {
 	if p == nil {
 		return false
+	}
+	if p.SourceChanged {
+		return true
 	}
 	if p.IsUpdate {
 		return len(p.Added) > 0
@@ -708,16 +844,20 @@ func (p *StagedPlugin) RequestedPermissions() []Permission {
 	if p == nil {
 		return nil
 	}
-	if p.IsUpdate {
-		return append([]Permission(nil), p.Added...)
+	if p.SourceChanged || !p.IsUpdate {
+		return append([]Permission(nil), p.Sensitive...)
 	}
-	return append([]Permission(nil), p.Sensitive...)
+	return append([]Permission(nil), p.Added...)
 }
 
 // Cleanup removes the temporary staging directory if still present.
 func (p *StagedPlugin) Cleanup() {
 	if p == nil || p.StagingDir == "" {
 		return
+	}
+	if p.cleanupFn != nil {
+		p.cleanupFn()
+		p.cleanupFn = nil
 	}
 	_ = os.RemoveAll(p.StagingDir)
 	p.StagingDir = ""
@@ -747,12 +887,14 @@ func (s *StoreManager) InstallEntryExplicit(ctx context.Context, entry StoreAppE
 }
 
 // InstallEntryConfirmed installs or updates a catalog entry after verifying
-// under lock that its sensitive permissions are a subset of approvedPermissions.
-func (s *StoreManager) InstallEntryConfirmed(ctx context.Context, entry StoreAppEntry, approvedPermissions []Permission) (*InstalledApp, error) {
+// under lock that its sensitive permissions are a subset of approvedPermissions
+// and that an unapproved cross-source replacement is rejected.
+func (s *StoreManager) InstallEntryConfirmed(ctx context.Context, entry StoreAppEntry, approvedPermissions []Permission, allowSourceChange bool) (*InstalledApp, error) {
 	inst, err := s.installEntryCore(ctx, entry, installPolicy{
-		allowReplace:      true,
-		enforceApproved:   true,
-		approvedSensitive: approvedPermissions,
+		allowReplace:       true,
+		enforceSourceMatch: !allowSourceChange,
+		enforceApproved:    true,
+		approvedSensitive:  approvedPermissions,
 	})
 	if err == nil && inst != nil {
 		s.IncrementDownloads(inst.Manifest.ID)
@@ -760,17 +902,57 @@ func (s *StoreManager) InstallEntryConfirmed(ctx context.Context, entry StoreApp
 	return inst, err
 }
 
-// UpdateEntryNoEscalation updates an installed catalog entry only if the new
-// version introduces no new sensitive permissions compared to the installed copy.
+// UpdateEntryNoEscalation updates an installed catalog entry only if it comes
+// from the same installation source and introduces no new sensitive permissions.
 func (s *StoreManager) UpdateEntryNoEscalation(ctx context.Context, entry StoreAppEntry) (*InstalledApp, error) {
 	inst, err := s.installEntryCore(ctx, entry, installPolicy{
-		allowReplace:     true,
-		forbidEscalation: true,
+		allowReplace:       true,
+		enforceSourceMatch: true,
+		forbidEscalation:   true,
 	})
 	if err == nil && inst != nil {
 		s.IncrementDownloads(inst.Manifest.ID)
 	}
 	return inst, err
+}
+
+func catalogEntrySource(entry StoreAppEntry) (string, error) {
+	u := strings.TrimSpace(entry.DownloadURL)
+	if !pluginIDRe.MatchString(entry.ID) {
+		return "", fmt.Errorf("invalid catalog plugin id %q", entry.ID)
+	}
+	if strings.HasPrefix(u, "builtin://") {
+		id := strings.TrimPrefix(u, "builtin://")
+		if id != entry.ID {
+			return "", errors.New("builtin source does not match catalog plugin id")
+		}
+		return "builtin:" + id, nil
+	}
+	archiveURL, err := parseArchiveURL(u)
+	if err != nil {
+		return "", err
+	}
+	source := "catalog-url:" + archiveURL.String()
+	if repo := githubArchiveRepo(archiveURL); repo != "" {
+		if !strings.EqualFold(repo, entry.Repo) {
+			return "", errors.New("catalog archive URL does not match its GitHub repository")
+		}
+		source = "catalog-github:" + repo
+	}
+	return source, nil
+}
+
+// MatchesEntrySource reports whether an already-installed plugin matches the
+// recorded installation provenance of catalog entry.
+func (s *StoreManager) MatchesEntrySource(installed InstalledApp, entry StoreAppEntry) bool {
+	if installed.InstallDir == "" {
+		return false
+	}
+	source, err := catalogEntrySource(entry)
+	if err != nil {
+		return false
+	}
+	return sourceMatchesInstalled(installed.InstallDir, source, &entry)
 }
 
 func (s *StoreManager) installEntryCore(ctx context.Context, entry StoreAppEntry, policy installPolicy) (*InstalledApp, error) {
@@ -890,14 +1072,18 @@ func (s *StoreManager) StageManualSource(ctx context.Context, spec string) (*Sta
 // CommitStagedPlugin commits a previously staged plugin package after user
 // confirmation and always cleans up the staging directory.
 func (s *StoreManager) CommitStagedPlugin(staged *StagedPlugin, approvedPermissions []Permission) (*InstalledApp, error) {
-	if staged == nil || strings.TrimSpace(staged.PluginRoot) == "" {
+	if staged == nil || strings.TrimSpace(staged.PluginRoot) == "" || strings.TrimSpace(staged.ContentDigest) == "" {
 		return nil, errors.New("staged plugin package is no longer available")
 	}
 	defer staged.Cleanup()
 	inst, err := s.installDirectory(staged.PluginRoot, staged.Source, staged.CatalogEntry, installPolicy{
-		allowReplace:      true,
-		enforceApproved:   true,
-		approvedSensitive: approvedPermissions,
+		allowReplace:       true,
+		enforceSourceMatch: !staged.SourceChanged,
+		enforceApproved:    true,
+		approvedSensitive:  approvedPermissions,
+		expectedID:         staged.Manifest.ID,
+		expectedVersion:    staged.Manifest.Version,
+		expectedDigest:     staged.ContentDigest,
 	})
 	if err == nil && inst != nil {
 		s.IncrementDownloads(inst.Manifest.ID)
@@ -939,22 +1125,38 @@ func (s *StoreManager) stageEntry(ctx context.Context, entry StoreAppEntry) (*St
 func (s *StoreManager) finalizeStagedPlugin(stagingDir, pluginRoot, source string, entry *StoreAppEntry) (*StagedPlugin, error) {
 	m, err := validateCandidateDir(pluginRoot, entry)
 	if err != nil {
+		s.unregisterStageDir(stagingDir)
+		_ = os.RemoveAll(stagingDir)
+		return nil, err
+	}
+	digest, err := hashPluginDir(pluginRoot)
+	if err != nil {
+		s.unregisterStageDir(stagingDir)
 		_ = os.RemoveAll(stagingDir)
 		return nil, err
 	}
 	staged := &StagedPlugin{
-		Manifest:     *m,
-		Source:       source,
-		StagingDir:   stagingDir,
-		PluginRoot:   pluginRoot,
-		CatalogEntry: entry,
-		Sensitive:    SensitivePermissions(m.Permissions),
+		Manifest:      *m,
+		Source:        source,
+		StagingDir:    stagingDir,
+		PluginRoot:    pluginRoot,
+		ContentDigest: digest,
+		CatalogEntry:  entry,
+		Sensitive:     SensitivePermissions(m.Permissions),
+		cleanupFn: func() {
+			s.unregisterStageDir(stagingDir)
+		},
 	}
 	dstDir := filepath.Join(s.AppsRoot, m.ID)
 	if prev, err := LoadManifest(dstDir); err == nil && prev != nil && prev.ID == m.ID {
 		staged.Previous = prev
 		staged.IsUpdate = true
-		staged.Added = AddedSensitivePermissions(prev.Permissions, m.Permissions)
+		staged.SourceChanged = !sourceMatchesInstalled(dstDir, source, entry)
+		if staged.SourceChanged {
+			staged.Added = append([]Permission(nil), staged.Sensitive...)
+		} else {
+			staged.Added = AddedSensitivePermissions(prev.Permissions, m.Permissions)
+		}
 	}
 	return staged, nil
 }
@@ -967,17 +1169,21 @@ func (s *StoreManager) stageDirectoryCopy(srcDir, source string, entry *StoreApp
 	if err != nil {
 		return nil, err
 	}
+	s.registerStageDir(stagingDir)
 	realStaging, err := filepath.EvalSymlinks(stagingDir)
 	if err != nil {
+		s.unregisterStageDir(stagingDir)
 		_ = os.RemoveAll(stagingDir)
 		return nil, err
 	}
 	if rel, err := filepath.Rel(srcDir, realStaging); err == nil && filepath.IsLocal(rel) {
+		s.unregisterStageDir(stagingDir)
 		_ = os.RemoveAll(stagingDir)
 		return nil, errors.New("plugin source contains the installation staging directory")
 	}
 	pluginRoot := filepath.Join(stagingDir, "candidate")
 	if err := copyDirRecursive(srcDir, pluginRoot); err != nil {
+		s.unregisterStageDir(stagingDir)
 		_ = os.RemoveAll(stagingDir)
 		return nil, err
 	}
@@ -996,12 +1202,21 @@ func (s *StoreManager) stageArchive(ctx context.Context, archiveURL *url.URL, ex
 	if err != nil {
 		return nil, err
 	}
-	if err := ExtractPluginArchive(data, archiveURL.Path, stagingDir); err != nil {
+	s.registerStageDir(stagingDir)
+	extractDir := filepath.Join(stagingDir, "extract")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		s.unregisterStageDir(stagingDir)
 		_ = os.RemoveAll(stagingDir)
 		return nil, err
 	}
-	pluginRoot, err := FindManifestRoot(stagingDir)
+	if err := ExtractPluginArchive(data, archiveURL.Path, extractDir); err != nil {
+		s.unregisterStageDir(stagingDir)
+		_ = os.RemoveAll(stagingDir)
+		return nil, err
+	}
+	pluginRoot, err := FindManifestRoot(extractDir)
 	if err != nil {
+		s.unregisterStageDir(stagingDir)
 		_ = os.RemoveAll(stagingDir)
 		return nil, err
 	}
@@ -1022,6 +1237,13 @@ func (s *StoreManager) stageBuiltin(id string, entry *StoreAppEntry) (*StagedPlu
 	if err != nil {
 		return nil, err
 	}
+	s.registerStageDir(stagingDir)
+	pluginRoot := filepath.Join(stagingDir, "candidate")
+	if err := os.MkdirAll(pluginRoot, 0o755); err != nil {
+		s.unregisterStageDir(stagingDir)
+		_ = os.RemoveAll(stagingDir)
+		return nil, err
+	}
 	err = fs.WalkDir(seed.FS, seed.Sub, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -1033,7 +1255,7 @@ func (s *StoreManager) stageBuiltin(id string, entry *StoreAppEntry) (*StagedPlu
 		if rel == "." {
 			return nil
 		}
-		dst := filepath.Join(stagingDir, rel)
+		dst := filepath.Join(pluginRoot, rel)
 		if d.IsDir() {
 			return os.MkdirAll(dst, 0o755)
 		}
@@ -1048,10 +1270,11 @@ func (s *StoreManager) stageBuiltin(id string, entry *StoreAppEntry) (*StagedPlu
 		return os.WriteFile(dst, b, mode)
 	})
 	if err != nil {
+		s.unregisterStageDir(stagingDir)
 		_ = os.RemoveAll(stagingDir)
 		return nil, err
 	}
-	return s.finalizeStagedPlugin(stagingDir, stagingDir, "builtin:"+id, entry)
+	return s.finalizeStagedPlugin(stagingDir, pluginRoot, "builtin:"+id, entry)
 }
 
 func (s *StoreManager) installFromSourceCore(ctx context.Context, spec string, policy installPolicy) (*InstalledApp, error) {
@@ -1530,6 +1753,21 @@ func (s *StoreManager) installDirectory(srcDir, source string, entry *StoreAppEn
 	if err != nil {
 		return nil, err
 	}
+	if policy.expectedID != "" && m.ID != policy.expectedID {
+		return nil, fmt.Errorf("staged plugin id changed from %q to %q before commit", policy.expectedID, m.ID)
+	}
+	if policy.expectedVersion != "" && m.Version != policy.expectedVersion {
+		return nil, fmt.Errorf("staged plugin version changed from %q to %q before commit", policy.expectedVersion, m.Version)
+	}
+	if policy.expectedDigest != "" {
+		actualDigest, err := hashPluginDir(tmpDir)
+		if err != nil {
+			return nil, err
+		}
+		if actualDigest != policy.expectedDigest {
+			return nil, errors.New("staged plugin contents changed after review; please retry installation")
+		}
+	}
 
 	dstDir := filepath.Join(s.AppsRoot, m.ID)
 	backup := filepath.Join(s.CacheRoot, m.ID+".previous")
@@ -1587,6 +1825,14 @@ func (s *StoreManager) installDirectory(srcDir, source string, entry *StoreAppEn
 			for _, permission := range m.Permissions {
 				if !previous.HasPermission(permission) {
 					return nil, fmt.Errorf("replacement adds permission %q; uninstall before reinstalling with the new permissions", permission)
+				}
+			}
+		} else if policy.enforceSourceMatch {
+			if !sourceMatchesInstalled(dstDir, source, entry) {
+				return nil, &PermissionEscalationError{
+					PluginID:      m.ID,
+					Added:         SensitivePermissions(m.Permissions),
+					SourceChanged: true,
 				}
 			}
 		}
@@ -1658,6 +1904,82 @@ func pluginInstalledAt(dir string) time.Time {
 func installSourceRecord(source string) string {
 	sum := sha256.Sum256([]byte(source))
 	return "v1:" + hex.EncodeToString(sum[:])
+}
+
+func sourceMatchesInstalled(dstDir, source string, entry *StoreAppEntry) bool {
+	candidateRecord := installSourceRecord(source)
+	root, err := os.OpenRoot(dstDir)
+	if err != nil {
+		return false
+	}
+	defer root.Close()
+	installedSource, sourceErr := readPluginFile(root, installSourceFile, int64(len(candidateRecord)))
+	if sourceErr != nil {
+		return false
+	}
+	recorded := string(installedSource)
+	if recorded == candidateRecord {
+		return true
+	}
+	if entry != nil && entry.Verified && IsOfficialRepo(entry.Repo) && recorded == installSourceRecord("builtin:"+entry.ID) {
+		return true
+	}
+	return false
+}
+
+// hashPluginDir computes a deterministic SHA-256 digest over every path, entry
+// type, executable bit, and file content inside dir.
+func hashPluginDir(dir string) (string, error) {
+	h := sha256.New()
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if d.IsDir() && (d.Name() == "__pycache__" || d.Name() == ".git") {
+			return fs.SkipDir
+		}
+		slashRel := filepath.ToSlash(rel)
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("plugin package must not contain symlinks (%s)", slashRel)
+		}
+		if d.IsDir() {
+			fmt.Fprintf(h, "D:%d:%s\n", len(slashRel), slashRel)
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return fmt.Errorf("plugin package contains unsupported entry %s", slashRel)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		execBit := 0
+		if info.Mode().Perm()&0o111 != 0 {
+			execBit = 1
+		}
+		fmt.Fprintf(h, "F:%d:%s:%d:%d\n", len(slashRel), slashRel, execBit, info.Size())
+		f, err := os.Open(p)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(h, f)
+		closeErr := f.Close()
+		if err := errors.Join(copyErr, closeErr); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (inst InstalledApp) credentialScope() string {
