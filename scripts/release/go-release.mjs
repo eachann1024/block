@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { feedbackBuildHash, feedbackLdflags, resolveFeedbackBuildConfig } from "../app-bundle.mjs";
+import { ensureWindowsIconSyso } from "./gen-windows-syso.mjs";
 import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
 
 function redactCmdArg(arg) {
@@ -72,6 +73,9 @@ export function canReuseReleaseBinary({ goos, goarch, version, outFile = release
 
 export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goarch) }) {
   mkdirSync(dirname(outFile), { recursive: true });
+  if (goos === "windows" && goarch === "amd64") {
+    ensureWindowsIconSyso();
+  }
   const version = readPackageVersion(ROOT);
   const ldflagParts = [
     "-s",

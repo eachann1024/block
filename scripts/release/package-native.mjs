@@ -28,18 +28,27 @@ function archNames() {
   return { label: "x64", deb: "amd64" };
 }
 
+const LINUX_ICON_SIZES = [48, 128, 256, 512];
+
 function stagePayload(root, binary) {
   const binDir = join(root, "usr/bin");
-  const iconDir = join(root, "usr/share/icons/hicolor/1024x1024/apps");
+  const pixmapDir = join(root, "usr/share/pixmaps");
   const appDir = join(root, "usr/share/applications");
   const autostartDir = join(root, "etc/xdg/autostart");
   mkdirSync(binDir, { recursive: true });
-  mkdirSync(iconDir, { recursive: true });
+  mkdirSync(pixmapDir, { recursive: true });
   mkdirSync(appDir, { recursive: true });
   mkdirSync(autostartDir, { recursive: true });
   copyFileSync(binary, join(binDir, "block"));
   chmodSync(join(binDir, "block"), 0o755);
-  copyFileSync(resolve(ROOT, "assets/app-icon/icon-1024.png"), join(iconDir, "block.png"));
+  // Install into standard hicolor icon-theme sizes declared by Ubuntu/Freedesktop
+  // index.theme (not 1024x1024, which Ubuntu 24.04 hicolor omits), plus pixmaps fallback.
+  for (const size of LINUX_ICON_SIZES) {
+    const dir = join(root, `usr/share/icons/hicolor/${size}x${size}/apps`);
+    mkdirSync(dir, { recursive: true });
+    copyFileSync(resolve(ROOT, `assets/app-icon/icon-${size}.png`), join(dir, "block.png"));
+  }
+  copyFileSync(resolve(ROOT, "assets/app-icon/icon-256.png"), join(pixmapDir, "block.png"));
   // Ship base block.desktop without MimeType= in the static payload so root
   // package install never overrides any user's private default fallback (e.g.
   // text/plain -> text/x-go); per-user Open-With associations are synchronized
@@ -528,6 +537,9 @@ function buildDeb(binary, version, names) {
       "  rm -rf /var/lib/block/pending-uninstall || true",
       "  /usr/bin/block --sync-system-linux-desktop || true",
       "  sync_for_installing_user_session",
+      "  if command -v gtk-update-icon-cache >/dev/null 2>&1; then",
+      "    gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true",
+      "  fi",
       "fi",
       "",
     ].join("\n"));
@@ -554,12 +566,23 @@ function buildDeb(binary, version, names) {
       "  if command -v update-desktop-database >/dev/null 2>&1; then",
       "    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true",
       "  fi",
+      "  if command -v gtk-update-icon-cache >/dev/null 2>&1; then",
+      "    gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true",
+      "  fi",
       "fi",
       "",
     ].join("\n"));
     chmodSync(postrm, 0o755);
     const outfile = join(RELEASE_DIR, installerFor({ platform: "linux", arch: names.label, kind: "deb" }));
     run("dpkg-deb", ["--root-owner-group", ...debThreadArgs(), "--build", root, outfile]);
+    const listing = spawnSync("dpkg-deb", ["-c", outfile], { encoding: "utf8" });
+    assert.equal(listing.status, 0, `dpkg-deb -c failed for ${outfile}`);
+    for (const size of LINUX_ICON_SIZES) {
+      assert.ok(
+        listing.stdout.includes(`usr/share/icons/hicolor/${size}x${size}/apps/block.png`),
+        `deb package missing hicolor ${size}x${size} icon`,
+      );
+    }
     console.log(`  ${outfile}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
