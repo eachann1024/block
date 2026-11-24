@@ -5,6 +5,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 	"unicode"
 
@@ -118,17 +119,18 @@ type BlockState struct {
 	Undo [][]byte
 	Redo [][]byte
 
-	OutlineZoomID       int
-	OutlineFocusID      int
-	OutlineFocusPending bool
-	OutlineCaretPending bool
-	OutlineCaretTarget  int
-	OutlineSelNodeID    int
-	OutlineSelStart     int
-	OutlineSelEnd       int
-	OutlineSelRuneLen   int
-	OutlineUndoNodeID   int
-	outlinePending      *outlineAction
+	OutlineZoomID             int
+	OutlineFocusID            int
+	OutlineFocusPending       bool
+	OutlineFocusPreventScroll bool
+	OutlineCaretPending       bool
+	OutlineCaretTarget        int
+	OutlineSelNodeID          int
+	OutlineSelStart           int
+	OutlineSelEnd             int
+	OutlineSelRuneLen         int
+	OutlineUndoNodeID         int
+	outlinePending            *outlineAction
 
 	SourceCopiedUntil time.Time
 
@@ -138,6 +140,46 @@ type BlockState struct {
 	HintScroll    ui.ScrollState
 	OutlineScroll ui.ScrollState
 	SourceScroll  ui.ScrollState
+
+	editorBounds        ui.Rect
+	editorBoundsValid   bool
+	inlineCardRect      ui.Rect
+	inlineCardRectValid bool
+	lastInlineFocused   bool
+
+	inlineBodyMountedThisFrame bool
+	inlineRenderedThisFrame    bool
+	inlineRenderedLastFrame    bool
+	inlineCanvasW              float32
+	inlineCanvasH              float32
+	lastCfg                    Config
+	lastCfgSet                 bool
+	reduceMotion               bool
+
+	fsSavedInlineCam      Camera
+	fsSavedInlineCamValid bool
+	fsSavedInlineSource   string
+	fsSavedInlineLayout   LayoutMode
+	fsSavedInlineCanvasW  float32
+	fsSavedInlineCanvasH  float32
+
+	fsAnimActive          bool
+	fsAnimEntering        bool
+	fsAnimStart           time.Time
+	fsAnimFromProgress    float32
+	fsVisualProgress      float32
+	fsCamAnimActive       bool
+	fsCamProgress         float32
+	fsCamFrom             Camera
+	fsCamTo               Camera
+	fsCamFromValid        bool
+	fsCamToValid          bool
+	fsCamFromW, fsCamFromH float32
+	fsCamToW, fsCamToH     float32
+	fsInlineJustLanded    bool
+	fsFocusRestorePending bool
+	fsFocusRestoreUntil   time.Time
+	fsBorderFocused       bool
 }
 
 // NewBlockState initializes a new BlockState with defaults from cfg.
@@ -1097,9 +1139,8 @@ func (st *BlockState) openNodeLink(now time.Time, n *Node, cb Callbacks) {
 		}
 		return
 	}
-	if st.Fullscreen {
-		st.Fullscreen = false
-		st.AutoFitPending = true
+	if st.Fullscreen || st.fsAnimActive {
+		st.ExitFullscreen(cb)
 	}
 	if cb.OnOpenLink != nil {
 		cb.OnOpenLink(target)
@@ -1234,6 +1275,7 @@ func (st *BlockState) ToggleLayout() {
 		st.Layout = LayoutRight
 	}
 	st.LayoutSet = true
+	st.fsCamAnimActive = false
 	st.AutoFitPending = true
 }
 
@@ -1399,31 +1441,494 @@ func sanitizeFileBase(name string) string {
 	return s
 }
 
+const (
+	fsEnterDuration = 220 * time.Millisecond
+	fsExitDuration  = 190 * time.Millisecond
+)
+
+var fsTransitionEase = ui.CubicBezier(0.22, 1, 0.36, 1)
+
+// SetEditorBounds records the host editor root rectangle in window DIPs so
+// fullscreen enter/exit transitions align seamlessly with the inline card.
+func (st *BlockState) SetEditorBounds(r ui.Rect) {
+	if st == nil {
+		return
+	}
+	if r.W > 0 && r.H > 0 {
+		st.editorBounds = r
+		st.editorBoundsValid = true
+	} else {
+		st.editorBounds = ui.Rect{}
+		st.editorBoundsValid = false
+	}
+}
+
+// IsFullscreenOverlayActive reports whether the fullscreen overlay should be
+// rendered (either logically open or animating out back to the inline card).
+func (st *BlockState) IsFullscreenOverlayActive() bool {
+	if st == nil {
+		return false
+	}
+	return st.Fullscreen || st.fsAnimActive
+}
+
+func (st *BlockState) effectiveCfg() Config {
+	if st.lastCfgSet {
+		return st.lastCfg
+	}
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	return cfg
+}
+
+func (st *BlockState) inlineRelRect() ui.Rect {
+	return ui.Rect{
+		X: st.inlineCardRect.X - st.editorBounds.X,
+		Y: st.inlineCardRect.Y - st.editorBounds.Y,
+		W: st.inlineCardRect.W,
+		H: st.inlineCardRect.H,
+	}
+}
+
+func clipRect(r, bounds ui.Rect) ui.Rect {
+	x0 := max(r.X, bounds.X)
+	y0 := max(r.Y, bounds.Y)
+	x1 := min(r.X+r.W, bounds.X+bounds.W)
+	y1 := min(r.Y+r.H, bounds.Y+bounds.H)
+	if x1 <= x0 || y1 <= y0 {
+		return ui.Rect{}
+	}
+	return ui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+}
+
+func (st *BlockState) clippedInlineRelRect() ui.Rect {
+	if !st.editorBoundsValid || st.editorBounds.W <= 0 || st.editorBounds.H <= 0 {
+		return ui.Rect{}
+	}
+	if !st.inlineCardRectValid || st.inlineCardRect.W <= 0 || st.inlineCardRect.H <= 0 {
+		return ui.Rect{}
+	}
+	return clipRect(st.inlineRelRect(), ui.Rect{W: st.editorBounds.W, H: st.editorBounds.H})
+}
+
+func (st *BlockState) isInlineRendered() bool {
+	if !st.inlineRenderedThisFrame && !st.inlineRenderedLastFrame {
+		return false
+	}
+	if st.editorBoundsValid && st.inlineCardRectValid {
+		clipped := st.clippedInlineRelRect()
+		return clipped.W > 0 && clipped.H > 0
+	}
+	return true
+}
+
+func (st *BlockState) hasValidFullscreenTransitionCoords() bool {
+	if !st.inlineRenderedThisFrame && !st.inlineRenderedLastFrame {
+		return false
+	}
+	clipped := st.clippedInlineRelRect()
+	return clipped.W >= 60 && clipped.H >= 60
+}
+
+func (st *BlockState) shouldAnimateFullscreen() bool {
+	if testing.Testing() || bui.IsProbeEnabled() || st.reduceMotion {
+		return false
+	}
+	return st.hasValidFullscreenTransitionCoords()
+}
+
+func (st *BlockState) expectedCanvasSize(fullscreen bool) (float32, float32) {
+	cfg := st.effectiveCfg()
+	if fullscreen {
+		if st.editorBoundsValid && st.editorBounds.W > 0 && st.editorBounds.H > 0 {
+			h := st.editorBounds.H - theme.HeightLarge
+			if cfg.ShowHints && st.View != ViewSource {
+				h -= theme.HeightControl
+			}
+			if h < 1 {
+				h = 1
+			}
+			return st.editorBounds.W, h
+		}
+		return 600, 360
+	}
+	var w float32
+	if st.inlineCardRectValid && st.inlineCardRect.W > 2 {
+		w = st.inlineCardRect.W - 2
+	} else if st.inlineCanvasW > 0 {
+		w = st.inlineCanvasW
+	}
+	if w <= 0 {
+		w = 600
+	}
+	h := cfg.InlineHeightDIP()
+	if h <= 0 {
+		h = st.inlineCanvasH
+	}
+	if h <= 0 {
+		h = 360
+	}
+	return w, h
+}
+
+func (st *BlockState) canReuseSavedInlineCam() bool {
+	if !st.fsSavedInlineCamValid || st.LastSource != st.fsSavedInlineSource || st.Layout != st.fsSavedInlineLayout {
+		return false
+	}
+	if st.fsSavedInlineCanvasW <= 0 || st.fsSavedInlineCanvasH <= 0 {
+		return false
+	}
+	curW, curH := st.expectedCanvasSize(false)
+	if curW <= 0 || curH <= 0 {
+		return false
+	}
+	return math.Abs(float64(curW-st.fsSavedInlineCanvasW)) <= 2 &&
+		math.Abs(float64(curH-st.fsSavedInlineCanvasH)) <= 2
+}
+
+func (st *BlockState) currentInlineCanvasSize() (float32, float32) {
+	if st.inlineCanvasW > 0 && st.inlineCanvasH > 0 {
+		return st.inlineCanvasW, st.inlineCanvasH
+	}
+	return st.expectedCanvasSize(false)
+}
+
+func (st *BlockState) prepareFullscreenTransition(cb Callbacks) {
+	st.finishEdit(true, cb)
+	st.ComposeText = ""
+	st.LinkNodeID = 0
+	st.LinkFocusPending = false
+	st.LinkBrokenNotice = false
+	st.ExportMenuOpen = false
+	st.ShortcutsOpen = false
+	st.ImportResult = nil
+	st.ImportUndoBefore = ""
+	st.ImportUndoAfter = ""
+	st.Panning = false
+	st.resetDrag()
+}
+
+// EnterFullscreen enters fullscreen mode cleanly, capturing inline layout and
+// camera state for a smooth expansion transition.
+func (st *BlockState) EnterFullscreen(cb Callbacks) {
+	if st == nil {
+		return
+	}
+	st.prepareFullscreenTransition(cb)
+	if st.Fullscreen {
+		return
+	}
+	if !st.fsAnimActive {
+		st.fsSavedInlineCam = st.Camera
+		st.fsSavedInlineCamValid = st.CameraInit
+		st.fsSavedInlineSource = st.LastSource
+		st.fsSavedInlineLayout = st.Layout
+		st.fsSavedInlineCanvasW, st.fsSavedInlineCanvasH = st.currentInlineCanvasSize()
+		st.fsBorderFocused = st.lastInlineFocused
+	}
+	st.Fullscreen = true
+	st.fsInlineJustLanded = false
+	st.fsFocusRestorePending = false
+	st.fsFocusRestoreUntil = time.Time{}
+
+	if st.shouldAnimateFullscreen() {
+		fromP := float32(0)
+		if st.fsAnimActive {
+			fromP = clampFloat32(st.fsVisualProgress, 0, 1)
+		}
+		st.fsAnimActive = true
+		st.fsAnimEntering = true
+		st.fsAnimFromProgress = fromP
+		st.fsVisualProgress = fromP
+		st.fsAnimStart = time.Time{}
+		st.fsCamProgress = 0
+		st.fsCamToValid = false
+		if st.View == ViewMap && st.Root != nil {
+			st.fsCamAnimActive = true
+			if fromP > 0 && st.CameraInit && st.LastCanvasW > 0 && st.LastCanvasH > 0 {
+				st.fsCamFrom = st.Camera
+				st.fsCamFromW, st.fsCamFromH = st.LastCanvasW, st.LastCanvasH
+				st.fsCamFromValid = true
+			} else if st.fsSavedInlineCamValid && st.fsSavedInlineCanvasW > 0 && st.fsSavedInlineCanvasH > 0 {
+				st.fsCamFrom = st.fsSavedInlineCam
+				st.fsCamFromW, st.fsCamFromH = st.fsSavedInlineCanvasW, st.fsSavedInlineCanvasH
+				st.fsCamFromValid = true
+			} else {
+				st.fsCamFromValid = false
+			}
+		} else {
+			st.fsCamAnimActive = false
+		}
+		st.AutoFitPending = false
+		return
+	}
+
+	st.fsAnimActive = false
+	st.fsAnimEntering = false
+	st.fsVisualProgress = 1
+	st.fsCamAnimActive = false
+	st.AutoFitPending = true
+}
+
+func (st *BlockState) finishExitAnimation() {
+	st.fsAnimActive = false
+	st.fsAnimEntering = false
+	st.fsVisualProgress = 0
+	st.fsCamAnimActive = false
+	st.fsInlineJustLanded = true
+	if st.isInlineRendered() {
+		st.fsFocusRestorePending = true
+		st.fsFocusRestoreUntil = time.Now().Add(150 * time.Millisecond)
+	} else {
+		st.fsFocusRestorePending = false
+		st.fsFocusRestoreUntil = time.Time{}
+	}
+
+	unchanged := st.canReuseSavedInlineCam()
+	if unchanged {
+		st.Camera = st.fsSavedInlineCam
+		st.CameraInit = true
+		st.AutoFitPending = false
+	} else if st.fsCamToValid {
+		st.Camera = st.fsCamTo
+		st.CameraInit = true
+		st.AutoFitPending = false
+	} else {
+		st.AutoFitPending = true
+	}
+	if w, h := st.expectedCanvasSize(false); w > 0 && h > 0 {
+		st.LastCanvasW, st.LastCanvasH = w, h
+	} else {
+		st.LastCanvasW, st.LastCanvasH = 0, 0
+	}
+}
+
+func (st *BlockState) consumeFullscreenFocusRestore() bool {
+	if !st.fsFocusRestorePending {
+		return false
+	}
+	st.fsFocusRestorePending = false
+	until := st.fsFocusRestoreUntil
+	st.fsFocusRestoreUntil = time.Time{}
+	if !until.IsZero() && time.Now().After(until) {
+		return false
+	}
+	return true
+}
+
+// CancelFullscreen immediately clears fullscreen, animation, edit, and popup states
+// without scheduling focus restoration (used when the block is deleted or converted).
+func (st *BlockState) CancelFullscreen() {
+	if st == nil {
+		return
+	}
+	st.Fullscreen = false
+	st.fsAnimActive = false
+	st.fsAnimEntering = false
+	st.fsAnimStart = time.Time{}
+	st.fsAnimFromProgress = 0
+	st.fsVisualProgress = 0
+	st.fsCamAnimActive = false
+	st.fsCamProgress = 0
+	st.fsCamFromValid = false
+	st.fsCamToValid = false
+	st.fsInlineJustLanded = false
+	st.fsFocusRestorePending = false
+	st.fsFocusRestoreUntil = time.Time{}
+	st.fsBorderFocused = false
+	st.inlineBodyMountedThisFrame = false
+	st.inlineRenderedThisFrame = false
+	st.inlineRenderedLastFrame = false
+	st.EditingID = 0
+	st.EditDraft = ""
+	st.EditCompose = ""
+	st.editLastLayoutText = ""
+	st.EditFocusPending = false
+	st.ComposeText = ""
+	st.LinkNodeID = 0
+	st.LinkFocusPending = false
+	st.LinkBrokenNotice = false
+	st.ExportMenuOpen = false
+	st.ShortcutsOpen = false
+	st.ImportResult = nil
+	st.ImportUndoBefore = ""
+	st.ImportUndoAfter = ""
+	st.Panning = false
+	st.resetDrag()
+	st.Measure.ClearTextOverride()
+	st.SetEditorBounds(ui.Rect{})
+}
+
+func (st *BlockState) snapFullscreenTransition() {
+	st.fsAnimActive = false
+	st.fsAnimEntering = false
+	if st.Fullscreen {
+		st.fsVisualProgress = 1
+		st.fsCamAnimActive = false
+		st.AutoFitPending = true
+		return
+	}
+	st.finishExitAnimation()
+}
+
+// ExitFullscreen exits fullscreen mode cleanly, collapsing smoothly back to the
+// inline card and restoring or refitting the inline camera.
+func (st *BlockState) ExitFullscreen(cb Callbacks) {
+	if st == nil {
+		return
+	}
+	st.prepareFullscreenTransition(cb)
+	if !st.Fullscreen && !st.fsAnimActive {
+		return
+	}
+	if !st.Fullscreen && st.fsAnimActive && !st.fsAnimEntering && st.shouldAnimateFullscreen() {
+		return
+	}
+	wasFullscreen := st.Fullscreen
+	st.Fullscreen = false
+	st.fsFocusRestorePending = false
+	st.fsFocusRestoreUntil = time.Time{}
+	unchanged := st.canReuseSavedInlineCam()
+
+	if st.shouldAnimateFullscreen() && (wasFullscreen || st.fsVisualProgress > 0) {
+		fromP := float32(1)
+		if st.fsAnimActive {
+			fromP = clampFloat32(st.fsVisualProgress, 0, 1)
+		}
+		st.fsAnimActive = true
+		st.fsAnimEntering = false
+		st.fsAnimFromProgress = fromP
+		st.fsVisualProgress = fromP
+		st.fsAnimStart = time.Time{}
+		st.fsCamProgress = 0
+		if st.View == ViewMap && st.Root != nil {
+			st.fsCamAnimActive = true
+			st.fsCamFrom = st.Camera
+			st.fsCamFromW, st.fsCamFromH = st.LastCanvasW, st.LastCanvasH
+			st.fsCamFromValid = st.CameraInit && st.LastCanvasW > 0 && st.LastCanvasH > 0
+			if unchanged && st.fsSavedInlineCanvasW > 0 && st.fsSavedInlineCanvasH > 0 {
+				st.fsCamTo = st.fsSavedInlineCam
+				st.fsCamToW, st.fsCamToH = st.fsSavedInlineCanvasW, st.fsSavedInlineCanvasH
+				st.fsCamToValid = true
+			} else {
+				st.fsCamToValid = false
+			}
+		} else {
+			st.fsCamAnimActive = false
+		}
+		st.AutoFitPending = false
+		return
+	}
+
+	st.fsCamToValid = false
+	st.finishExitAnimation()
+}
+
+func (st *BlockState) inlinePlaceholderInnerHeight(cfg Config) float32 {
+	h := theme.HeightLarge + cfg.InlineHeightDIP()
+	if cfg.ShowHints && st.View != ViewSource {
+		h += theme.HeightControl
+	}
+	return h
+}
+
+func lerpFloat32(a, b, t float32) float32 {
+	return a + (b-a)*t
+}
+
+func lerpRect(a, b ui.Rect, t float32) ui.Rect {
+	return ui.Rect{
+		X: lerpFloat32(a.X, b.X, t),
+		Y: lerpFloat32(a.Y, b.Y, t),
+		W: lerpFloat32(a.W, b.W, t),
+		H: lerpFloat32(a.H, b.H, t),
+	}
+}
+
+func lerpCameraViewport(from, to Camera, fromW, fromH, toW, toH, curW, curH, t float32) Camera {
+	if t <= 0 {
+		return from
+	}
+	if t >= 1 {
+		return to
+	}
+	fromScale := from.Scale
+	if fromScale <= 0 {
+		fromScale = 1
+	}
+	toScale := to.Scale
+	if toScale <= 0 {
+		toScale = 1
+	}
+	scale := lerpFloat32(fromScale, toScale, t)
+	if scale <= 0 {
+		scale = 1
+	}
+	if fromW > 0 && fromH > 0 && toW > 0 && toH > 0 && curW > 0 && curH > 0 {
+		fromCX := from.X + (fromW*0.5)/fromScale
+		fromCY := from.Y + (fromH*0.5)/fromScale
+		toCX := to.X + (toW*0.5)/toScale
+		toCY := to.Y + (toH*0.5)/toScale
+		cx := lerpFloat32(fromCX, toCX, t)
+		cy := lerpFloat32(fromCY, toCY, t)
+		return Camera{
+			X:     cx - (curW*0.5)/scale,
+			Y:     cy - (curH*0.5)/scale,
+			Scale: scale,
+		}
+	}
+	return Camera{
+		X:     lerpFloat32(from.X, to.X, t),
+		Y:     lerpFloat32(from.Y, to.Y, t),
+		Scale: scale,
+	}
+}
+
 // --- Inline & Fullscreen Render Entry Points ---
 
 // RenderInline renders the interactive Ocean Paper MindMap block inside the note editor.
 func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg Config, focused bool, cb Callbacks) {
+	st.inlineRenderedThisFrame = true
+	st.inlineRenderedLastFrame = true
 	st.SyncSource(source, cfg)
+	st.lastCfg = cfg
+	st.lastCfgSet = true
+	st.reduceMotion = c.Preferences().ReduceMotion
+	st.lastInlineFocused = focused || st.HasFocus(c) || st.EditingID != 0
 	pal := theme.Ocean()
 	borderCol := pal.Hairline
-	if focused || st.HasFocus(c) || st.EditingID != 0 {
+	if st.lastInlineFocused {
 		borderCol = pal.Accent
 	}
 
 	card := ui.Column(c.Key("mm-card-"+id)).FillWidth().Radius(theme.RadiusLG).
 		Background(pal.Paper).Border(1, borderCol).Clip()
-	bui.Probe(card, "mm-card-"+id)
+	if cr := card.LayoutBounds(); cr.W > 0 && cr.H > 0 {
+		st.inlineCardRect = cr
+		st.inlineCardRectValid = true
+	}
+	card.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+		if r.W > 0 && r.H > 0 {
+			st.inlineCardRect = r
+			st.inlineCardRectValid = true
+		}
+		if bui.IsProbeEnabled() {
+			bui.RecordBounds("mm-card-"+id, r)
+		}
+	})
 	card.Children(func() {
-		if st.Fullscreen {
-			// Keep only one active interactive canvas mounted while fullscreen is open,
-			// preventing inline/fullscreen resize ping-pong and duplicate Handle bindings.
-			row := ui.Row(c.Key("mm-inline-fs-placeholder-"+id)).FillWidth().Height(theme.HeightLarge).
-				PaddingX(theme.Space12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Background(pal.CodeBG)
-			row.Children(func() {
+		if st.IsFullscreenOverlayActive() {
+			// Keep only one active interactive canvas mounted while fullscreen (or its exit
+			// animation) is active, preserving the exact inline height to prevent scroll jump.
+			placeholderH := st.inlinePlaceholderInnerHeight(cfg)
+			box := ui.Column(c.Key("mm-inline-fs-placeholder-"+id)).FillWidth().Height(placeholderH).
+				Padding(theme.Space16).AlignItems(ui.Center).Justify(ui.Center).Gap(theme.Space10).
+				Background(pal.CodeBG)
+			box.Children(func() {
 				ui.Text(c, theme.Tr("正在全屏查看思维导图", "Mind map is open in fullscreen")).
 					FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 				exitBtn := ui.ButtonBase(c.Key("mm-inline-fs-exit-"+id)).
-					Height(theme.HeightChrome).PaddingX(theme.Space10).Radius(theme.RadiusSM).
+					Height(theme.HeightChrome).PaddingX(theme.Space12).Radius(theme.RadiusSM).
 					Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
 					Label(theme.Tr("退出全屏", "Exit Fullscreen"))
 				if exitBtn.Hovered() || exitBtn.Pressed() {
@@ -1434,20 +1939,20 @@ func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg 
 						FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 				})
 				if exitBtn.Clicked() {
-					st.Fullscreen = false
-					st.AutoFitPending = true
+					st.ExitFullscreen(cb)
 					c.Invalidate()
 				}
 			})
 			return
 		}
 		st.renderHeader(c, id, false, cb)
-		if st.Fullscreen {
+		if st.IsFullscreenOverlayActive() {
 			// Fullscreen was just toggled on during header click; defer body/hint rendering
 			// to RenderFullscreen in this frame so ui.Handle/ScrollState are never bound twice.
 			c.Invalidate()
 			return
 		}
+		st.inlineBodyMountedThisFrame = true
 		st.renderBody(c, id, cfg.InlineHeightDIP(), false, cb)
 		if cfg.ShowHints && st.View != ViewSource {
 			st.renderHintBar(c, id)
@@ -1457,13 +1962,85 @@ func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg 
 
 // RenderFullscreen renders the full-window interactive MindMap overlay when Fullscreen is active.
 func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, cfg Config, cb Callbacks) {
-	if !st.Fullscreen {
+	if st == nil {
+		return
+	}
+	if !st.IsFullscreenOverlayActive() {
+		st.inlineBodyMountedThisFrame = false
+		st.inlineRenderedLastFrame = false
+		st.inlineRenderedThisFrame = false
+		return
+	}
+	st.inlineRenderedLastFrame = st.inlineRenderedThisFrame
+	st.inlineRenderedThisFrame = false
+	if st.inlineBodyMountedThisFrame {
+		// RenderInline already mounted live handles in this frame; defer overlay mount to next frame.
+		st.inlineBodyMountedThisFrame = false
+		c.Invalidate()
 		return
 	}
 	st.SyncSource(source, cfg)
+	st.lastCfg = cfg
+	st.lastCfgSet = true
+	st.reduceMotion = c.Preferences().ReduceMotion
 	pal := theme.Ocean()
 
-	if st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) && !st.OutlineHandle.FocusWithin(c) && c.Shortcut(0, ui.KeyEscape) {
+	if st.fsAnimActive {
+		if testing.Testing() || bui.IsProbeEnabled() || st.reduceMotion || !st.hasValidFullscreenTransitionCoords() {
+			st.snapFullscreenTransition()
+			if !st.Fullscreen {
+				c.Invalidate()
+				return
+			}
+		} else {
+			now := c.Now()
+			if now.IsZero() {
+				now = time.Now()
+			}
+			if st.fsAnimStart.IsZero() {
+				st.fsAnimStart = now
+			}
+			if st.fsAnimEntering {
+				dur := time.Duration(float64(fsEnterDuration) * float64(max(1-st.fsAnimFromProgress, 0)))
+				if dur <= 0 {
+					st.fsAnimActive = false
+					st.fsVisualProgress = 1
+					st.fsCamProgress = 1
+				} else {
+					rawT := clampFloat32(float32(now.Sub(st.fsAnimStart))/float32(dur), 0, 1)
+					eased := fsTransitionEase(rawT)
+					st.fsCamProgress = eased
+					st.fsVisualProgress = st.fsAnimFromProgress + (1-st.fsAnimFromProgress)*eased
+					if rawT >= 1 {
+						st.fsAnimActive = false
+						st.fsVisualProgress = 1
+					} else {
+						c.AnimationFrame()
+					}
+				}
+			} else {
+				dur := time.Duration(float64(fsExitDuration) * float64(max(st.fsAnimFromProgress, 0)))
+				if dur <= 0 {
+					st.fsCamProgress = 1
+					st.finishExitAnimation()
+					c.Invalidate()
+				} else {
+					rawT := clampFloat32(float32(now.Sub(st.fsAnimStart))/float32(dur), 0, 1)
+					eased := fsTransitionEase(rawT)
+					st.fsCamProgress = eased
+					st.fsVisualProgress = st.fsAnimFromProgress * (1 - eased)
+					if rawT >= 1 {
+						st.finishExitAnimation()
+						c.Invalidate()
+					} else {
+						c.AnimationFrame()
+					}
+				}
+			}
+		}
+	}
+
+	if st.Fullscreen && st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) && !st.OutlineHandle.FocusWithin(c) && c.Shortcut(0, ui.KeyEscape) {
 		if st.DragActive || st.DragNodeID != 0 {
 			st.resetDrag()
 		} else if st.FindOpen {
@@ -1483,13 +2060,12 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 			c.Invalidate()
 			return
 		} else {
-			st.Fullscreen = false
-			st.AutoFitPending = true
+			st.ExitFullscreen(cb)
 			c.Invalidate()
 			return
 		}
 	}
-	if st.View == ViewOutline && st.EditingID == 0 && st.LinkNodeID == 0 && !st.OutlineHandle.FocusWithin(c) {
+	if st.Fullscreen && st.View == ViewOutline && st.EditingID == 0 && st.LinkNodeID == 0 && !st.OutlineHandle.FocusWithin(c) {
 		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyPeriod) {
 			st.outlineToggleFoldAll()
 			c.Invalidate()
@@ -1502,12 +2078,46 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 		}
 	}
 
-	overlay := ui.Column(c.Key("mm-fullscreen-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-		Background(pal.Paper)
+	var overlay ui.Element
+	animatingOverlay := (st.fsAnimActive || !st.Fullscreen) && st.hasValidFullscreenTransitionCoords()
+	if animatingOverlay {
+		p := clampFloat32(st.fsVisualProgress, 0, 1)
+		inlineRel := st.inlineRelRect()
+		if !st.Fullscreen {
+			targetH := st.inlinePlaceholderInnerHeight(cfg) + 2
+			if targetH > 0 {
+				inlineRel.H = targetH
+			}
+		}
+		inlineRel = clipRect(inlineRel, ui.Rect{W: st.editorBounds.W, H: st.editorBounds.H})
+		fullRel := ui.Rect{X: 0, Y: 0, W: st.editorBounds.W, H: st.editorBounds.H}
+		cur := lerpRect(inlineRel, fullRel, p)
+		radius := theme.RadiusLG * (1 - p)
+		borderCol := pal.Hairline
+		if st.fsBorderFocused {
+			borderCol = pal.Accent
+		}
+		borderAlpha := 1 - p
+		overlay = ui.Column(c.Key("mm-fullscreen-"+id)).Absolute().
+			Left(cur.X).Top(cur.Y).Width(cur.W).Height(cur.H).
+			Background(pal.Paper).Border(1, borderCol.Alpha(borderAlpha)).Clip()
+		if radius > 0.05 {
+			overlay.Radius(radius)
+		}
+		if !st.Fullscreen {
+			overlay.IgnoreInput(true)
+		}
+	} else {
+		overlay = ui.Column(c.Key("mm-fullscreen-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+			Background(pal.Paper).Clip()
+		if !st.Fullscreen {
+			overlay.IgnoreInput(true)
+		}
+	}
 	bui.Probe(overlay, "mm-fullscreen-"+id)
 	overlay.Children(func() {
 		st.renderHeader(c, id+"-fs", true, cb)
-		if !st.Fullscreen {
+		if !st.IsFullscreenOverlayActive() && animatingOverlay == false {
 			c.Invalidate()
 			return
 		}
@@ -1576,6 +2186,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 							st.HintScroll.X = 0
 						}
 						st.View = tab.mode
+						st.fsCamAnimActive = false
 						if tab.mode == ViewMap {
 							st.AutoFitPending = true
 						}
@@ -1828,12 +2439,11 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				Radius:   theme.RadiusSM,
 			})
 			if fsBtn.Clicked() {
-				st.finishEdit(true, cb)
-				st.LinkNodeID = 0
-				st.ExportMenuOpen = false
-				st.ShortcutsOpen = false
-				st.Fullscreen = !fullscreen
-				st.AutoFitPending = true
+				if fullscreen {
+					st.ExitFullscreen(cb)
+				} else {
+					st.EnterFullscreen(cb)
+				}
 				c.Invalidate()
 			}
 		})
@@ -1913,7 +2523,7 @@ func (st *BlockState) renderBody(c *ui.Context, id string, fixedHeight float32, 
 		case ViewSource:
 			st.renderSourceView(c, id, fullscreen, cb)
 		default:
-			st.renderCanvasView(c, id, cb)
+			st.renderCanvasView(c, id, fullscreen, cb)
 		}
 
 		if st.FindOpen && st.View == ViewMap {
@@ -1936,24 +2546,41 @@ func (st *BlockState) renderBody(c *ui.Context, id string, fixedHeight float32, 
 
 // --- Native GPU MindMap Canvas ---
 
-func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
+func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool, cb Callbacks) {
 	pal := theme.Ocean()
 	canvas := ui.Box(c.Key("mm-canvas-"+id)).Fill().Focusable().FocusRing(false).Bind(&st.CanvasHandle)
 	bui.Probe(canvas, "mm-canvas-"+id)
+	if !fullscreen && st.consumeFullscreenFocusRestore() {
+		canvas.Focus(ui.FocusOptions{PreventScroll: true})
+		if cb.OnRequestFocus != nil {
+			cb.OnRequestFocus()
+		}
+	}
 
 	// Measure viewport size and ensure camera fits initially or after layout/resize.
 	bounds := canvas.LayoutBounds()
 	cw, ch := bounds.W, bounds.H
-	if cw <= 0 {
-		cw = 600
+	hasMeasuredBounds := cw > 0 && ch > 0
+	if !hasMeasuredBounds {
+		cw, ch = st.expectedCanvasSize(fullscreen)
 	}
-	if ch <= 0 {
-		ch = 360
+	if !st.fsAnimActive && hasMeasuredBounds {
+		if st.fsInlineJustLanded {
+			if st.LastCanvasW <= 0 || st.LastCanvasH <= 0 ||
+				math.Abs(float64(cw-st.LastCanvasW)) > 4 || math.Abs(float64(ch-st.LastCanvasH)) > 4 {
+				st.AutoFitPending = true
+			}
+			st.fsInlineJustLanded = false
+		} else if st.LastCanvasW > 0 &&
+			(math.Abs(float64(cw-st.LastCanvasW)) > 24 || math.Abs(float64(ch-st.LastCanvasH)) > 24) {
+			st.AutoFitPending = true
+		}
 	}
-	if st.LastCanvasW > 0 && (math.Abs(float64(cw-st.LastCanvasW)) > 24 || math.Abs(float64(ch-st.LastCanvasH)) > 24) {
-		st.AutoFitPending = true
+	if hasMeasuredBounds {
+		st.LastCanvasW, st.LastCanvasH = cw, ch
+	} else if st.LastCanvasW <= 0 || st.LastCanvasH <= 0 {
+		st.LastCanvasW, st.LastCanvasH = cw, ch
 	}
-	st.LastCanvasW, st.LastCanvasH = cw, ch
 	st.LastCanvasFocused = st.CanvasHandle.Focused(c) && st.EditingID == 0 && st.LinkNodeID == 0
 
 	// Live-layout during inline editing or direct CJK IME composition using the exact
@@ -2163,6 +2790,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		switch ev.Kind {
 		case ui.InputPointerMove:
 			if st.Panning && st.Camera.Scale > 0 {
+				st.fsCamAnimActive = false
 				dx := ev.X - st.PanLastX
 				dy := ev.Y - st.PanLastY
 				st.Camera.X -= dx / st.Camera.Scale
@@ -2290,7 +2918,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				return true
 			default:
 				if ev.Clicks >= 2 {
-					st.AutoFitPending = true
+					st.FitCanvas()
 					return true
 				}
 				st.Panning = true
@@ -2333,6 +2961,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			}
 			// In fullscreen or when actively holding Shift/horizontal scroll, pan the canvas.
 			if st.Fullscreen || math.Abs(float64(ev.DX)) > 0.5 || st.CanvasHandle.Focused(c) {
+				st.fsCamAnimActive = false
 				st.Camera.X += ev.DX / st.Camera.Scale
 				st.Camera.Y += ev.DY / st.Camera.Scale
 				return true
@@ -2415,6 +3044,11 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 					st.ImportResult = nil
 					return true
 				}
+				if st.Fullscreen {
+					st.ExitFullscreen(cb)
+					c.Invalidate()
+					return true
+				}
 			}
 			return st.handleCanvasKey(c, ev.Key, ev.Mods, cb)
 		}
@@ -2474,7 +3108,60 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			st.Measure.ClearTextOverride()
 		}
 		worldBounds := ComputeLayout(st.Root, st.Layout, p, &st.Measure)
-		if !st.CameraInit || st.AutoFitPending {
+		if !fullscreen && !st.fsAnimActive && st.fsInlineJustLanded {
+			if st.LastCanvasW <= 0 || st.LastCanvasH <= 0 ||
+				math.Abs(float64(r.W-st.LastCanvasW)) > 4 || math.Abs(float64(r.H-st.LastCanvasH)) > 4 {
+				st.AutoFitPending = true
+			}
+			st.fsInlineJustLanded = false
+		}
+		st.LastCanvasW, st.LastCanvasH = r.W, r.H
+		if !fullscreen && !st.fsAnimActive {
+			st.inlineCanvasW, st.inlineCanvasH = r.W, r.H
+		}
+		if st.fsCamAnimActive {
+			if st.fsAnimEntering {
+				fullW, fullH := st.expectedCanvasSize(true)
+				if !st.fsCamToValid && fullW > 0 && fullH > 0 {
+					st.fsCamTo = FitCamera(worldBounds, fullW, fullH, 28, 22)
+					st.fsCamToW, st.fsCamToH = fullW, fullH
+					st.fsCamToValid = true
+				}
+				if !st.fsCamFromValid {
+					inlineW, inlineH := st.expectedCanvasSize(false)
+					if inlineW > 0 && inlineH > 0 {
+						st.fsCamFrom = FitCamera(worldBounds, inlineW, inlineH, 28, 22)
+						st.fsCamFromW, st.fsCamFromH = inlineW, inlineH
+						st.fsCamFromValid = true
+					} else if st.fsCamToValid {
+						st.fsCamFrom = st.fsCamTo
+						st.fsCamFromW, st.fsCamFromH = st.fsCamToW, st.fsCamToH
+						st.fsCamFromValid = true
+					}
+				}
+			} else {
+				inlineW, inlineH := st.expectedCanvasSize(false)
+				if !st.fsCamToValid && inlineW > 0 && inlineH > 0 {
+					st.fsCamTo = FitCamera(worldBounds, inlineW, inlineH, 28, 22)
+					st.fsCamToW, st.fsCamToH = inlineW, inlineH
+					st.fsCamToValid = true
+				}
+			}
+			if st.fsCamFromValid && st.fsCamToValid {
+				st.Camera = lerpCameraViewport(st.fsCamFrom, st.fsCamTo, st.fsCamFromW, st.fsCamFromH, st.fsCamToW, st.fsCamToH, r.W, r.H, st.fsCamProgress)
+				st.CameraInit = true
+				st.AutoFitPending = false
+				st.EnsureVisiblePending = false
+			}
+			if !st.fsAnimActive {
+				st.fsCamAnimActive = false
+				if !st.fsAnimEntering && st.fsCamToValid {
+					st.Camera = st.fsCamTo
+					st.CameraInit = true
+					st.AutoFitPending = false
+				}
+			}
+		} else if !st.CameraInit || st.AutoFitPending {
 			st.Camera = FitCamera(worldBounds, r.W, r.H, 28, 22)
 			st.CameraInit = true
 			st.AutoFitPending = false
@@ -2759,10 +3446,12 @@ func (st *BlockState) FitCanvas() {
 	if st == nil {
 		return
 	}
+	st.fsCamAnimActive = false
 	st.AutoFitPending = true
 }
 
 func (st *BlockState) zoomAt(sx, sy, targetScale float32) {
+	st.fsCamAnimActive = false
 	targetScale = clampFloat32(targetScale, 0.2, 3.0)
 	if st.Camera.Scale <= 0 {
 		st.Camera.Scale = 1
@@ -2813,7 +3502,7 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 			st.opToggleFold()
 			return true
 		case ui.Key0:
-			st.AutoFitPending = true
+			st.FitCanvas()
 			return true
 		case ui.KeyEqual:
 			st.zoomAt(st.LastCanvasW*0.5, st.LastCanvasH*0.5, st.Camera.Scale*1.15)
@@ -3140,7 +3829,7 @@ func (st *BlockState) renderZoomHUD(c *ui.Context, id string) {
 				FontSize(theme.FontMeta).FontWeight(theme.WeightMono).TextColor(pal.Text).SingleLine()
 		})
 		if pctBtn.Clicked() {
-			st.AutoFitPending = true
+			st.FitCanvas()
 		}
 
 		inBtn := bui.IconButton(c, icons.TbPlus, bui.IconButtonOptions{
@@ -3293,6 +3982,12 @@ func (st *BlockState) renderSourceView(c *ui.Context, id string, fullscreen bool
 			Bind(&st.SourceHandle)
 		if cb.ReadOnly {
 			ta.ReadOnly(true)
+		}
+		if !fullscreen && st.consumeFullscreenFocusRestore() {
+			ta.Focus(ui.FocusOptions{PreventScroll: true})
+			if cb.OnRequestFocus != nil {
+				cb.OnRequestFocus()
+			}
 		}
 		bui.AutoHideScrollbars(c, ta, &st.SourceScroll)
 		if !cb.ReadOnly && (ta.Changed() || draft != prev) {
