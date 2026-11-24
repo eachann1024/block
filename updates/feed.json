@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T04:43:27.397Z",
-  "latest_version": "1.0.920",
-  "latest_tag": "v1.0.920",
+  "updated_at": "2026-11-24T04:59:17.596Z",
+  "latest_version": "1.0.921",
+  "latest_tag": "v1.0.921",
   "releases": [
+    {
+      "version": "1.0.921",
+      "tag": "v1.0.921",
+      "published_at": "2026-11-24T04:59:16Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.921",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "侧边栏：图标选择面板现在会与点击的行保持平齐。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Sidebar: The icon picker now opens level with the clicked row."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.921/block-macos-arm64.dmg",
+          "size": 15532098,
+          "sha256": "10a4906edd68e08cee27a5936afd439bbbc67dd8b18bd2a662570bef90684e28"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.921/block-macos-x64.dmg",
+          "size": 17108160,
+          "sha256": "f2d1f10cf319ebdfe0d41d29f649d8fe74795f28b9ecc0b9c31356aa6ad27bc5"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.921/block-windows-x64-setup.exe",
+          "size": 12499941,
+          "sha256": "9ce2d2b44cfab542695fbce85fa03a70cef5922eab1ed6c1b56b0ebf0bf86d81"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.921/block-linux-x64.deb",
+          "size": 11041218,
+          "sha256": "5bcc5e432bd3c31d6d05b5757cdabddffb75b2dc443de2a62550959018c2e18f"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.921/block-linux-x64.AppImage",
+          "size": 24017400,
+          "sha256": "63c146a1e433f803238e74820debfee5687e66652739a6294e35c3e1f501d25d"
+        }
+      ]
+    },
     {
       "version": "1.0.920",
       "tag": "v1.0.920",
@@ -28,38 +84,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.920/block-macos-arm64.dmg",
-          "size": 15531723,
-          "sha256": "7453ed445ae8729533b2b3b20d2c1c54cad2936067acd3359d052517d2032996"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.920/block-macos-x64.dmg",
-          "size": 17107897,
-          "sha256": "f9d1ac07dfc130c29cfddc4fc65c99073f0e3d8adb92d5571ab3d6108f63d6ec"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.920/block-windows-x64-setup.exe",
-          "size": 12499905,
-          "sha256": "040dbcb5d16a02e069a24de698031736a5f2ca04e54462852ffdac3cd5adb728"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.920/block-linux-x64.deb",
-          "size": 11043572,
-          "sha256": "3694f00a04e8d426e2c3811e525dd2dd9d063f43a03bbc7f253f2a6f669f55fc"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.920/block-linux-x64.AppImage",
-          "size": 24013304,
-          "sha256": "a96515807a46ea8fc9c9a683354fc7c8886379a6b0178fb10442d421aaebd23d"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.919",
@@ -1424,31 +1449,6 @@
         "improvements": [],
         "fixes": [
           "Open deck notes in the current tab."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.871",
-      "tag": "v1.0.871",
-      "published_at": "2026-11-21T03:32:13Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.871",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "改进表格编辑、列宽调整与单元格选择体验。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Keep table spread visible in narrow windows and cache static art during resize."
         ],
         "other": []
       },
