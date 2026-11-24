@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,7 +11,13 @@ import (
 	"unicode/utf8"
 )
 
-var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+var (
+	htmlCommentRe  = regexp.MustCompile(`(?s)<!--.*?-->`)
+	mdImageRe      = regexp.MustCompile(`!\[[^\]]*\]\(\s*(<[^>]+>|[^)\s]+)(?:\s+[^)]*)?\)`)
+	htmlMediaTagRe = regexp.MustCompile(`(?is)<(img|source)\b[^>]*>`)
+	htmlSrcAttrRe  = regexp.MustCompile(`(?is)\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>` + "`" + `]+))`)
+	htmlSrcsetRe   = regexp.MustCompile(`(?is)\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>` + "`" + `]+))`)
+)
 
 func stripHTMLComments(s string) string {
 	s = htmlCommentRe.ReplaceAllString(s, "")
@@ -193,7 +200,195 @@ func ValidateBilingualDocs(pluginDir string) error {
 	if strings.TrimSpace(zhText) == strings.TrimSpace(enText) {
 		return fmt.Errorf("README.en.md must not be identical to README.md")
 	}
+	if err := validateBilingualReadmeImages(pluginDir, zhText, enText); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateBilingualReadmeImages(pluginDir, zhText, enText string) error {
+	zhImgs := extractLocalReadmeImages(zhText)
+	enImgs := extractLocalReadmeImages(enText)
+
+	if len(zhImgs) == 0 && len(enImgs) == 0 {
+		return nil
+	}
+	if len(zhImgs) > 0 && len(enImgs) == 0 {
+		return fmt.Errorf("README.md references %d local image(s), but README.en.md has none; provide localized English image/SVG assets", len(zhImgs))
+	}
+	if len(enImgs) > 0 && len(zhImgs) == 0 {
+		return fmt.Errorf("README.en.md references %d local image(s), but README.md has none; provide localized Chinese image/SVG assets", len(enImgs))
+	}
+
+	zhSet := make(map[string]struct{}, len(zhImgs))
+	for _, rel := range zhImgs {
+		if err := validateLocalReadmeImageFile(pluginDir, "README.md", rel, false); err != nil {
+			return err
+		}
+		zhSet[rel] = struct{}{}
+	}
+	for _, rel := range enImgs {
+		if err := validateLocalReadmeImageFile(pluginDir, "README.en.md", rel, true); err != nil {
+			return err
+		}
+		if _, shared := zhSet[rel]; shared {
+			return fmt.Errorf("README.md and README.en.md share the same local image %q; provide separate Chinese and English image/SVG assets", rel)
+		}
+	}
+	return nil
+}
+
+func validateLocalReadmeImageFile(pluginDir, docName, relPath string, requireEnglishSVG bool) error {
+	cleanRel := filepath.Clean(relPath)
+	if filepath.IsAbs(cleanRel) || cleanRel == "." || cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s references invalid local image path %q", docName, relPath)
+	}
+	fullPath := filepath.Join(pluginDir, cleanRel)
+	info, err := os.Lstat(fullPath)
+	if err != nil {
+		return fmt.Errorf("%s references missing local image %q", docName, relPath)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s references non-regular local image %q", docName, relPath)
+	}
+	if strings.EqualFold(filepath.Ext(cleanRel), ".svg") {
+		raw, err := os.ReadFile(fullPath)
+		if err != nil {
+			return fmt.Errorf("%s failed to read SVG %q: %w", docName, relPath, err)
+		}
+		if !utf8.Valid(raw) {
+			return fmt.Errorf("%s references invalid UTF-8 SVG %q", docName, relPath)
+		}
+		if requireEnglishSVG {
+			if bad, ok := FindChineseRune(string(raw)); ok {
+				return fmt.Errorf("%s references SVG %q containing untranslated Chinese character %q", docName, relPath, bad)
+			}
+		}
+	}
+	return nil
+}
+
+func extractLocalReadmeImages(markdown string) []string {
+	cleaned := htmlCommentRe.ReplaceAllString(markdown, "")
+	cleaned = stripFencedCodeBlocks(cleaned)
+
+	seen := make(map[string]struct{})
+	var out []string
+	add := func(rawTarget string) {
+		rel, ok := normalizeLocalImageRef(rawTarget)
+		if !ok {
+			return
+		}
+		if _, exists := seen[rel]; exists {
+			return
+		}
+		seen[rel] = struct{}{}
+		out = append(out, rel)
+	}
+
+	for _, match := range mdImageRe.FindAllStringSubmatch(cleaned, -1) {
+		if len(match) >= 2 {
+			add(match[1])
+		}
+	}
+	for _, tagMatch := range htmlMediaTagRe.FindAllStringSubmatch(cleaned, -1) {
+		tag := tagMatch[0]
+		tagName := strings.ToLower(tagMatch[1])
+		if tagName == "img" {
+			if m := htmlSrcAttrRe.FindStringSubmatch(tag); len(m) >= 4 {
+				add(firstNonEmpty(m[1], m[2], m[3]))
+			}
+		}
+		if m := htmlSrcsetRe.FindStringSubmatch(tag); len(m) >= 4 {
+			srcset := firstNonEmpty(m[1], m[2], m[3])
+			for _, candidate := range strings.Split(srcset, ",") {
+				fields := strings.Fields(strings.TrimSpace(candidate))
+				if len(fields) > 0 {
+					add(fields[0])
+				}
+			}
+		}
+	}
+	return out
+}
+
+func stripFencedCodeBlocks(s string) string {
+	lines := strings.Split(s, "\n")
+	var out []string
+	var fenceChar byte
+	fenceLen := 0
+	for _, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		if fenceLen == 0 {
+			if len(trimmed) >= 3 && (trimmed[0] == '`' || trimmed[0] == '~') {
+				ch := trimmed[0]
+				n := 0
+				for n < len(trimmed) && trimmed[n] == ch {
+					n++
+				}
+				if n >= 3 {
+					fenceChar = ch
+					fenceLen = n
+					continue
+				}
+			}
+			out = append(out, line)
+		} else {
+			n := 0
+			for n < len(trimmed) && trimmed[n] == fenceChar {
+				n++
+			}
+			if n >= fenceLen && strings.TrimSpace(trimmed[n:]) == "" {
+				fenceChar = 0
+				fenceLen = 0
+			}
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func normalizeLocalImageRef(raw string) (string, bool) {
+	ref := strings.TrimSpace(raw)
+	ref = strings.TrimPrefix(ref, "<")
+	ref = strings.TrimSuffix(ref, ">")
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", false
+	}
+	lower := strings.ToLower(ref)
+	if strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "data:") ||
+		strings.HasPrefix(lower, "mailto:") ||
+		strings.HasPrefix(lower, "//") ||
+		strings.HasPrefix(ref, "#") {
+		return "", false
+	}
+	if idx := strings.IndexAny(ref, "?#"); idx >= 0 {
+		ref = ref[:idx]
+	}
+	if unescaped, err := url.PathUnescape(ref); err == nil {
+		ref = unescaped
+	}
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", false
+	}
+	cleaned := filepath.ToSlash(filepath.Clean(strings.ReplaceAll(ref, "\\", "/")))
+	cleaned = strings.TrimPrefix(cleaned, "./")
+	if cleaned == "" || cleaned == "." {
+		return "", false
+	}
+	return cleaned, true
 }
 
 func readStrictDoc(dir, exactName string) (string, error) {
