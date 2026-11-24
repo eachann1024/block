@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"block/internal/editor"
@@ -438,13 +439,22 @@ func (s *TabSurface) JumpToLine(line, col int) {
 
 func sourceFindBindings(bindings []codeed.Binding) []codeed.Binding {
 	mods, key, ok := blockui.ParseShortcut(editor.FindShortcut())
-	if !ok || (mods == ui.Cmd && key == ui.KeyF) {
-		return bindings[:0]
+	out := bindings[:0]
+	if ok && !(mods == ui.Cmd && key == ui.KeyF) {
+		out = append(out,
+			codeed.Binding{Mods: mods, Key: key, Command: codeed.Find},
+			codeed.Binding{Mods: ui.Cmd, Key: ui.KeyF, Command: codeed.NoCommand},
+		)
 	}
-	return append(bindings[:0],
-		codeed.Binding{Mods: mods, Key: key, Command: codeed.Find},
-		codeed.Binding{Mods: ui.Cmd, Key: ui.KeyF, Command: codeed.NoCommand},
-	)
+	// The titlebar wrap button is the only wrap control. The editor's own
+	// toggle flips an internal flag that is XOR'd with SoftWrap, so after one
+	// press the button lights up while the lines stay unwrapped.
+	if runtime.GOOS == "darwin" {
+		out = append(out, codeed.Binding{Mods: ui.Cmd, Key: ui.KeyK, ThenKey: ui.KeyZ, Command: codeed.NoCommand})
+	} else {
+		out = append(out, codeed.Binding{Mods: ui.Alt, Key: ui.KeyZ, Command: codeed.NoCommand})
+	}
+	return out
 }
 
 // OpenFind opens the source editor's find (or find-and-replace) bar and focuses its query input.
