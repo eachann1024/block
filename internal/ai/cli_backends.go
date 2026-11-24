@@ -61,6 +61,7 @@ func (c *Controller) SetBackendStatusOverride(kind model.BackendKind, status *Ba
 		c.backendStatuses[kind] = *status
 	}
 	c.ensureValidSelectionLocked()
+	_, _ = c.ensureValidAnnotationConfigLocked()
 	c.mu.Unlock()
 	c.requestRedraw()
 }
@@ -375,6 +376,7 @@ func (c *Controller) probeAllBackendsAsync() {
 			prev, had := c.backendStatuses[k]
 			c.backendStatuses[k] = st
 			c.ensureValidSelectionLocked()
+			_, _ = c.ensureValidAnnotationConfigLocked()
 			changed := !had || prev != st
 			c.mu.Unlock()
 			if changed {
@@ -388,18 +390,44 @@ func (c *Controller) isBackendRecognizedLocked(kind model.BackendKind) bool {
 	if kind == model.BackendBuiltin {
 		return true
 	}
-	if ov, ok := c.statusOverrides[kind]; ok {
-		return ov.State != BackendStateMissing
-	}
 	opt, hasOpt := c.backendsCfg.Adapters[string(kind)]
 	if !hasOpt || !opt.Added {
 		return false
+	}
+	if ov, ok := c.statusOverrides[kind]; ok {
+		return ov.State != BackendStateMissing
 	}
 	if st, ok := c.backendStatuses[kind]; ok {
 		return st.State != BackendStateMissing
 	}
 	_, installed := resolveConfiguredCLIBinary(string(kind), opt.BinaryPath)
 	return installed
+}
+
+func (c *Controller) isBackendAvailableLocked(kind model.BackendKind) bool {
+	if kind == model.BackendBuiltin {
+		if !isBackendEnabled(c.backendsCfg, model.BackendBuiltin) {
+			return false
+		}
+		_, ok := latestEnabledProviderEntry(c.providerCfg)
+		return ok
+	}
+	return c.isBackendRecognizedLocked(kind) && isBackendEnabled(c.backendsCfg, kind)
+}
+
+func (c *Controller) latestAvailableBackendLocked() model.BackendKind {
+	visible := c.visibleBackendsLocked()
+	for i := len(visible) - 1; i >= 0; i-- {
+		if c.isBackendAvailableLocked(visible[i]) {
+			return visible[i]
+		}
+	}
+	for i := len(model.AllBackends) - 1; i >= 0; i-- {
+		if c.isBackendAvailableLocked(model.AllBackends[i]) {
+			return model.AllBackends[i]
+		}
+	}
+	return model.BackendBuiltin
 }
 
 func (c *Controller) addedCLIAgentsLocked() []model.BackendKind {
@@ -463,35 +491,21 @@ func (c *Controller) visibleBackendsLocked() []model.BackendKind {
 }
 
 func (c *Controller) ensureValidSelectionLocked() {
-	recognized := c.recognizedBackendsLocked()
-	for _, r := range recognized {
-		if r == c.backendsCfg.Selected && isBackendEnabled(c.backendsCfg, r) {
-			return
-		}
+	if c.isBackendAvailableLocked(c.backendsCfg.Selected) {
+		return
 	}
-	visible := c.visibleBackendsLocked()
-	if len(visible) > 0 {
-		c.backendsCfg.Selected = visible[0]
-	} else {
-		c.backendsCfg.Selected = model.BackendBuiltin
-	}
+	c.backendsCfg.Selected = c.latestAvailableBackendLocked()
 }
 
 func (c *Controller) selectedBackendLocked() model.BackendKind {
-	visible := c.visibleBackendsLocked()
 	cand := c.backendsCfg.Selected
 	if conv := c.findConvLocked(c.currentID); conv != nil && conv.Backend != "" {
 		cand = conv.Backend
 	}
-	for _, v := range visible {
-		if v == cand {
-			return cand
-		}
+	if c.isBackendAvailableLocked(cand) {
+		return cand
 	}
-	if len(visible) > 0 {
-		return visible[0]
-	}
-	return model.BackendBuiltin
+	return c.latestAvailableBackendLocked()
 }
 
 func (c *Controller) selectBackendLocked(kind model.BackendKind) {
@@ -728,10 +742,70 @@ func (c *Controller) finishModelRefreshLocked(kind model.BackendKind, gen uint64
 	c.backendModels[kind] = opts
 	c.modelRefreshed[kind] = time.Now()
 	c.modelStatus[kind] = "ready"
-	if c.annotCfg.Backend == kind && strings.TrimSpace(c.annotCfg.Model) == "" && len(opts) > 0 {
+	if c.annotCfg.Backend == kind && len(opts) > 0 {
 		next := c.annotCfg
-		next.Model = opts[0].Value
-		_ = c.saveAnnotationConfigLocked(next)
+		curModel := strings.TrimSpace(next.Model)
+		if kind == model.BackendBuiltin {
+			normPrimary := normalizeProviderConfig(c.providerCfg).Provider
+			curProv, curPure := splitProviderModelRef(curModel)
+			targetProv := strings.TrimSpace(next.Provider)
+			if curProv != "" {
+				targetProv = curProv
+			}
+			if _, ok := findEnabledProviderEntry(c.providerCfg, targetProv); !ok {
+				if entry, ok := latestEnabledProviderEntry(c.providerCfg); ok {
+					targetProv = entry.ID
+				}
+			}
+			matchedCur := false
+			var firstForTarget *ModelOption
+			for i := range opts {
+				optProv, optPure := splitProviderModelRef(opts[i].Value)
+				if optProv == "" {
+					optProv = normPrimary
+				}
+				if optProv == targetProv {
+					if firstForTarget == nil {
+						firstForTarget = &opts[i]
+					}
+					if curPure != "" && optPure == curPure {
+						matchedCur = true
+					}
+				}
+			}
+			if matchedCur {
+				if targetProv != "" {
+					next.Provider = targetProv
+				}
+			} else if firstForTarget != nil {
+				next.Provider = targetProv
+				_, optPure := splitProviderModelRef(firstForTarget.Value)
+				next.Model = formatProviderModelRef(targetProv, optPure)
+			} else {
+				optProv, optPure := splitProviderModelRef(opts[0].Value)
+				if optProv == "" {
+					optProv = normPrimary
+				}
+				next.Provider = optProv
+				next.Model = formatProviderModelRef(optProv, optPure)
+			}
+		} else {
+			found := false
+			if curModel != "" {
+				for _, opt := range opts {
+					if opt.Value == curModel {
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				next.Model = opts[0].Value
+			}
+		}
+		if next != c.annotCfg {
+			_ = c.saveAnnotationConfigLocked(next)
+		}
 	}
 	return true
 }

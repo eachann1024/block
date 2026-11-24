@@ -5364,11 +5364,13 @@ func thinkingDisplayLabel(lv string) string {
 }
 
 func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Palette, annotCfg model.AnnotationConfig, annotOpen bool) ui.Element {
+	c.mu.Lock()
+	changed, needRefresh := c.ensureValidAnnotationConfigLocked()
+	annotCfg = c.annotCfg
 	kind := annotCfg.Backend
 	if kind == "" {
 		kind = model.BackendBuiltin
 	}
-	c.mu.RLock()
 	lbl := c.modelLabelLocked(kind, strings.TrimSpace(annotCfg.Model))
 	fullLbl := c.modelFullLabelLocked(kind, strings.TrimSpace(annotCfg.Model))
 	errTargetKind := kind
@@ -5376,7 +5378,11 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 		errTargetKind = c.annotMenuBackend
 	}
 	annotModelStatus := c.modelStatus[errTargetKind]
-	c.mu.RUnlock()
+	canRefresh := needRefresh != "" && c.providerCfg.Enabled && !c.mockResponder && (changed || c.modelStatus[needRefresh] == "")
+	c.mu.Unlock()
+	if canRefresh {
+		c.refreshAnnotationModelsAsync(needRefresh)
+	}
 	if lbl == "" {
 		lbl = backendLabel(kind)
 	}
@@ -5442,10 +5448,11 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 				nextOpen := c.annotMenuOpen
 				if nextOpen {
 					c.annotMenuSearch = ""
+					_, _ = c.ensureValidAnnotationConfigLocked()
 					if c.annotCfg.Backend != "" {
 						c.annotMenuBackend = c.annotCfg.Backend
 					} else {
-						c.annotMenuBackend = model.BackendBuiltin
+						c.annotMenuBackend = c.latestAvailableBackendLocked()
 					}
 				}
 				targetKind := c.annotMenuBackend
@@ -5469,14 +5476,20 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 	activeKind := c.annotMenuBackend
 	annotCfg := c.annotCfg
 	query := strings.TrimSpace(c.annotMenuSearch)
+	enabledOrder := c.visibleBackendsLocked()
+	normPrimary := normalizeProviderConfig(c.providerCfg).Provider
+	if activeKind == "" || !slices.Contains(enabledOrder, activeKind) {
+		if slices.Contains(enabledOrder, annotCfg.Backend) {
+			activeKind = annotCfg.Backend
+		} else if len(enabledOrder) > 0 {
+			activeKind = enabledOrder[0]
+		} else {
+			activeKind = model.BackendBuiltin
+		}
+	}
 	choices := append([]ModelOption(nil), c.backendModels[activeKind]...)
 	status := c.modelStatus[activeKind]
-	enabledOrder := c.visibleBackendsLocked()
 	c.mu.RUnlock()
-
-	if activeKind == "" {
-		activeKind = model.BackendBuiltin
-	}
 	_ = recognized
 	_ = backends
 	winW, winH := cUI.Size()
@@ -5642,8 +5655,14 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 								c.mu.Lock()
 								next := c.annotCfg
 								next.Backend = activeKind
-								if activeKind == model.BackendBuiltin && c.providerCfg.Provider != "" {
-									next.Provider = c.providerCfg.Provider
+								if activeKind == model.BackendBuiltin {
+									if prov, _ := splitProviderModelRef(pickVal); prov != "" {
+										next.Provider = prov
+									} else if np := normalizeProviderConfig(c.providerCfg).Provider; np != "" {
+										next.Provider = np
+									}
+								} else {
+									next.Provider = ""
 								}
 								next.Model = pickVal
 								_ = c.saveAnnotationConfigLocked(next)
@@ -5673,6 +5692,20 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							})
 						}
 						isAct := annotCfg.Backend == activeKind && annotCfg.Model == opt.Value
+						if !isAct && annotCfg.Backend == activeKind && activeKind == model.BackendBuiltin {
+							curProv, curPure := splitProviderModelRef(strings.TrimSpace(annotCfg.Model))
+							if curProv == "" {
+								curProv = strings.TrimSpace(annotCfg.Provider)
+							}
+							if curProv == "" {
+								curProv = normPrimary
+							}
+							optProv, optPure := splitProviderModelRef(opt.Value)
+							if optProv == "" {
+								optProv = normPrimary
+							}
+							isAct = curPure != "" && curPure == optPure && curProv == optProv
+						}
 						highlighted := pos == *annotCursor
 						rowID := fmt.Sprintf("annotation-model-%d", idx)
 						row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(34).PaddingX(10).Gap(8).
@@ -5708,8 +5741,14 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							c.mu.Lock()
 							next := c.annotCfg
 							next.Backend = activeKind
-							if activeKind == model.BackendBuiltin && c.providerCfg.Provider != "" {
-								next.Provider = c.providerCfg.Provider
+							if activeKind == model.BackendBuiltin {
+								if prov, _ := splitProviderModelRef(opt.Value); prov != "" {
+									next.Provider = prov
+								} else if np := normalizeProviderConfig(c.providerCfg).Provider; np != "" {
+									next.Provider = np
+								}
+							} else {
+								next.Provider = ""
 							}
 							next.Model = opt.Value
 							_ = c.saveAnnotationConfigLocked(next)
