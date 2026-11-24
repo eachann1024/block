@@ -1,5 +1,6 @@
 Unicode true
 !include "MUI2.nsh"
+!include "FileFunc.nsh"
 
 !ifndef VERSION
   !error "VERSION is required"
@@ -12,6 +13,10 @@ Unicode true
 !endif
 !ifndef ASSOC_NSH
   !error "ASSOC_NSH is required"
+!endif
+!ifdef ICON
+  !define MUI_ICON "${ICON}"
+  !define MUI_UNICON "${ICON}"
 !endif
 
 Name "Block"
@@ -204,6 +209,46 @@ Var BLOCK_DISPLAY_NAME
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
+
+; Block draws its own setup window (internal/installer): an interactive run
+; unpacks block.exe to the plugins directory and starts it with --installer-ui.
+; That window re-runs this executable with /S /D=<dir>, so the Install section
+; below stays the single place that lays down files and registry keys. If the
+; window cannot start (non-zero exit code), setup continues with the classic
+; pages instead of leaving the user without a way to install.
+Function .onInit
+  IfSilent init_done
+  InitPluginsDir
+  ClearErrors
+  File "/oname=$PLUGINSDIR\block-setup.exe" "${BINARY}"
+  IfErrors init_done
+
+  ; "/UPDATE" is passed by the in-app updater (internal/updater).
+  StrCpy $R2 ""
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} "$R0" "/UPDATE" $R1
+  IfErrors init_env
+    StrCpy $R2 "1"
+  init_env:
+  ClearErrors
+
+  ; Values travel through the environment: an install path ending in "\" or
+  ; holding quotes cannot break the child's command line that way.
+  System::Call 'kernel32::SetEnvironmentVariable(t "BLOCK_SETUP_EXE", t "$EXEPATH")'
+  System::Call 'kernel32::SetEnvironmentVariable(t "BLOCK_SETUP_DIR", t "$INSTDIR")'
+  System::Call 'kernel32::SetEnvironmentVariable(t "BLOCK_SETUP_UPDATE", t "$R2")'
+
+  StrCpy $R3 "1"
+  ClearErrors
+  ExecWait '"$PLUGINSDIR\block-setup.exe" --installer-ui' $R3
+  IfErrors init_fallback
+  StrCmp $R3 "0" 0 init_fallback
+    Quit
+  init_fallback:
+    ClearErrors
+  init_done:
+FunctionEnd
 
 Section "Install"
   SetShellVarContext all

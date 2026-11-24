@@ -50,6 +50,7 @@ export async function packageWindows() {
       `${defineFlag}OUTFILE=${stagedOutfile.replaceAll("\\", "/")}`,
       `${defineFlag}BINARY=block.exe`,
       `${defineFlag}ASSOC_NSH=${assocNshName}`,
+      `${defineFlag}ICON=${resolve(ROOT, "resources/icon.ico").replaceAll("\\", "/")}`,
       workScript,
     ]);
     assert.ok(existsSync(stagedOutfile), `Failed to create ${SETUP_NAME}`);
