@@ -734,6 +734,7 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	completed := false
 	gotAny := false
+	finishReason := ""
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -787,6 +788,7 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 		ch := chunk.Choices[0]
 		if ch.FinishReason != nil && *ch.FinishReason != "" {
 			completed = true
+			finishReason = *ch.FinishReason
 		}
 		if r := ch.Delta.ReasoningContent; r != "" {
 			gotAny = true
@@ -799,6 +801,8 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 			idx := len(calls)
 			if tc.Index != nil && *tc.Index >= 0 {
 				idx = *tc.Index
+			} else if tc.ID == "" && tc.Function.Name == "" && len(calls) > 0 {
+				idx = len(calls) - 1
 			}
 			toolArgBytes += len(tc.ID) + len(tc.Function.Name) + len(tc.Function.Arguments)
 			if idx >= maxTurnTools || toolArgBytes > maxToolArgsBytes {
@@ -835,6 +839,14 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 		emitSSE(ctx, out, sseEvent{err: theme.Tr("AI 未返回可写入的内容。", "AI returned an empty response.")})
 		return
 	}
+	if finishReason == "length" {
+		if len(calls) > 0 {
+			files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=tool call truncated by length limit", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond))
+			emitSSE(ctx, out, sseEvent{err: theme.Tr("AI 输出达到长度上限，工具调用参数可能不完整，请缩小单次修改范围后重试。", "AI output reached the length limit and tool arguments may be incomplete. Narrow the edit scope and retry.")})
+			return
+		}
+		emitSSE(ctx, out, sseEvent{delta: "\n\n" + theme.Tr("（回复已达长度上限，内容可能不完整。）", "(Response reached the length limit and may be truncated.)")})
+	}
 	for i := range calls {
 		if calls[i].ID == "" {
 			calls[i].ID = fmt.Sprintf("call_%d", i)
@@ -851,9 +863,13 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 	start := time.Now()
 	files.LogInfof("ai request started: provider=%s protocol=%s model=%s", cfg.Provider, cfg.Protocol, cfg.Model)
 	systemText, anthropicMsgs := convertMessagesToAnthropic(msgs)
+	maxTokens := 16384
+	if (cfg.Provider == "deepseek" || strings.Contains(strings.ToLower(cfg.BaseURL), "api.deepseek.com")) && thinkingLevel == "" {
+		maxTokens = 8192
+	}
 	body := map[string]any{
 		"model":      cfg.Model,
-		"max_tokens": 8192,
+		"max_tokens": maxTokens,
 		"stream":     true,
 		"messages":   anthropicMsgs,
 	}
@@ -894,6 +910,7 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	completed := false
+	stopReason := ""
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -925,12 +942,17 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 				Text        string `json:"text"`
 				Thinking    string `json:"thinking"`
 				PartialJSON string `json:"partial_json"`
+				StopReason  string `json:"stop_reason"`
 			} `json:"delta"`
 		}
 		if json.Unmarshal([]byte(data), &ev) != nil {
 			continue
 		}
 		switch ev.Type {
+		case "message_delta":
+			if ev.Delta != nil && ev.Delta.StopReason != "" {
+				stopReason = ev.Delta.StopReason
+			}
 		case "message_stop":
 			completed = true
 		case "error":
@@ -996,6 +1018,14 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 		files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("empty response"))
 		emitSSE(ctx, out, sseEvent{err: theme.Tr("AI 响应中断，请重试。", "AI response interrupted. Please retry.")})
 		return
+	}
+	if stopReason == "max_tokens" {
+		if len(calls) > 0 {
+			files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=tool call truncated by max_tokens", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond))
+			emitSSE(ctx, out, sseEvent{err: theme.Tr("AI 输出达到长度上限，工具调用参数可能不完整，请缩小单次修改范围后重试。", "AI output reached the length limit and tool arguments may be incomplete. Narrow the edit scope and retry.")})
+			return
+		}
+		emitSSE(ctx, out, sseEvent{delta: "\n\n" + theme.Tr("（回复已达长度上限，内容可能不完整。）", "(Response reached the length limit and may be truncated.)")})
 	}
 	finalCalls := make([]streamToolCall, len(calls))
 	for i, c := range calls {
