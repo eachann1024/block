@@ -28,7 +28,6 @@ const (
 	maxCachedAttachmentThumbs = 64
 	attachmentThumbMaxSide    = 448 // 2x Retina for 224px max single-image thumbnail
 	maxConcurrentImageDecodes = 3
-	maxAttachmentPreviewRunes = 40000
 )
 
 type cachedAttachmentThumb struct {
@@ -285,7 +284,7 @@ func openAttachmentInDir(dir string, att model.Attachment) (*os.Root, string, in
 		return nil, "", 0, err
 	}
 	info, err := root.Lstat(name)
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxAttachmentBytes {
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
 		root.Close()
 		return nil, "", 0, attachmentUnreadable()
 	}
@@ -293,12 +292,12 @@ func openAttachmentInDir(dir string, att model.Attachment) (*os.Root, string, in
 }
 
 func decodeCachedAttachmentFull(dir string, att model.Attachment) (*ui.Bitmap, int, int, error) {
-	root, name, size, err := openAttachmentInDir(dir, att)
+	root, name, _, err := openAttachmentInDir(dir, att)
 	if err != nil {
 		return nil, 0, 0, err
 	}
 	defer root.Close()
-	raw, err := readCachedAttachment(root, name, size)
+	raw, err := readCachedAttachment(root, name)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -314,12 +313,12 @@ func decodeCachedAttachmentFull(dir string, att model.Attachment) (*ui.Bitmap, i
 }
 
 func decodeCachedAttachmentThumb(dir string, att model.Attachment) cachedAttachmentThumb {
-	root, name, size, err := openAttachmentInDir(dir, att)
+	root, name, _, err := openAttachmentInDir(dir, att)
 	if err != nil {
 		return cachedAttachmentThumb{failed: true}
 	}
 	defer root.Close()
-	raw, err := readCachedAttachment(root, name, size)
+	raw, err := readCachedAttachment(root, name)
 	if err != nil {
 		return cachedAttachmentThumb{failed: true}
 	}
@@ -557,12 +556,12 @@ func applyAttachmentClip(svc ui.Services, clip pendingAttachmentClip) {
 }
 
 func buildAttachmentClipPayload(dir string, att model.Attachment) (pendingAttachmentClip, bool) {
-	root, name, size, err := openAttachmentInDir(dir, att)
+	root, name, _, err := openAttachmentInDir(dir, att)
 	if err != nil {
 		return pendingAttachmentClip{}, false
 	}
 	defer root.Close()
-	raw, err := readCachedAttachment(root, name, size)
+	raw, err := readCachedAttachment(root, name)
 	if err != nil || len(raw) == 0 {
 		return pendingAttachmentClip{}, false
 	}
@@ -595,34 +594,21 @@ func buildAttachmentClipPayload(dir string, att model.Attachment) (pendingAttach
 	return pendingAttachmentClip{}, false
 }
 
-// readAttachmentPreviewText loads a bounded UTF-8 text preview for a non-image attachment.
+// readAttachmentPreviewText loads UTF-8 text preview for a non-image attachment.
 func (c *Controller) readAttachmentPreviewText(att model.Attachment) (string, bool, bool) {
 	if !attachmentIsText(att) {
 		return "", false, false
 	}
-	root, name, size, err := openAttachmentInDir(c.attachmentsDir(), att)
+	root, name, _, err := openAttachmentInDir(c.attachmentsDir(), att)
 	if err != nil {
 		return "", false, false
 	}
 	defer root.Close()
-	limit := min(size, int64(maxAttachmentPreviewRunes*utf8.UTFMax))
-	raw, err := readCachedAttachment(root, name, limit)
-	if err != nil {
+	raw, err := readCachedAttachment(root, name)
+	if err != nil || !utf8.Valid(raw) {
 		return "", false, false
 	}
-	return attachmentTextWithLimit(raw, size, maxAttachmentPreviewRunes)
-}
-
-func attachmentTextWithLimit(raw []byte, size int64, maxRunes int) (string, bool, bool) {
-	end := 0
-	for n := 0; n < maxRunes && end < len(raw); n++ {
-		r, width := utf8.DecodeRune(raw[end:])
-		if r == utf8.RuneError && width == 1 {
-			return "", false, false
-		}
-		end += width
-	}
-	return string(raw[:end]), int64(end) < size, true
+	return string(raw), false, true
 }
 
 func formatAttachmentSize(size int64) string {

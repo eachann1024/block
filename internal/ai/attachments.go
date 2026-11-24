@@ -21,13 +21,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const (
-	maxComposerAttachments = 10
-	maxAttachmentBytes     = 20 << 20
-	maxAttachmentTextRunes = 12000
-	maxInlineImageBytes    = 8 << 20
-)
-
 func (c *Controller) attachmentsDir() string {
 	return filepath.Join(c.dataDir, "ai-attachments")
 }
@@ -63,7 +56,7 @@ func (c *Controller) handleComposerPaste(svc ui.Services) bool {
 
 func (c *Controller) showAttachmentPasteError() {
 	c.mu.Lock()
-	c.setTurnErrorLocked(c.currentID, theme.Tr("部分附件无法添加。最多 10 个文件，每个文件最多 20 MB。", "Some attachments could not be added. Add up to 10 files, up to 20 MB each."), false)
+	c.setTurnErrorLocked(c.currentID, theme.Tr("部分附件无法添加，请检查文件是否可读。", "Some attachments could not be added. Check that the files are readable."), false)
 	c.mu.Unlock()
 	c.requestRedraw()
 }
@@ -87,13 +80,12 @@ func (c *Controller) uniqueDraftAttachmentName(base, ext string) string {
 	if !existing[cand] {
 		return cand
 	}
-	for n := 2; n <= maxComposerAttachments+2; n++ {
+	for n := 2; ; n++ {
 		cand = fmt.Sprintf("%s-%d%s", base, n, ext)
 		if !existing[cand] {
 			return cand
 		}
 	}
-	return base + ext
 }
 
 // AddAttachmentFiles imports local files into the active composer draft and
@@ -118,12 +110,6 @@ func (c *Controller) AddAttachmentFiles(paths []string) int {
 func (c *Controller) addAttachmentFiles(paths []string) int {
 	added := 0
 	for _, p := range paths {
-		c.mu.RLock()
-		full := len(c.draftAttachments) >= maxComposerAttachments
-		c.mu.RUnlock()
-		if full {
-			break
-		}
 		raw, err := readAttachmentSource(p)
 		if err == nil && c.addAttachmentBytes(raw, filepath.Base(p)) {
 			added++
@@ -137,7 +123,7 @@ func readAttachmentSource(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxAttachmentBytes {
+	if !info.Mode().IsRegular() || info.Size() <= 0 {
 		return nil, errors.New("invalid attachment file type or size")
 	}
 	f, err := os.Open(path)
@@ -145,12 +131,12 @@ func readAttachmentSource(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return io.ReadAll(io.LimitReader(f, maxAttachmentBytes+1))
+	return io.ReadAll(f)
 }
 
 // addAttachmentBytes stores a content-addressed copy and appends it to the draft.
 func (c *Controller) addAttachmentBytes(raw []byte, name string) bool {
-	if len(raw) == 0 || len(raw) > maxAttachmentBytes {
+	if len(raw) == 0 {
 		return false
 	}
 	sum := sha256.Sum256(raw)
@@ -166,7 +152,7 @@ func (c *Controller) addAttachmentBytes(raw []byte, name string) bool {
 		c.mu.Unlock()
 		return true
 	}
-	if len(c.draftAttachments) >= maxComposerAttachments || cacheAttachment(dir, dst, raw) != nil {
+	if cacheAttachment(dir, dst, raw) != nil {
 		c.mu.Unlock()
 		return false
 	}
@@ -234,7 +220,6 @@ func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, native
 	defer root.Close()
 	var b strings.Builder
 	var images []map[string]any
-	imageBudget := int64(maxInlineImageBytes)
 	imageIdx := 0
 	for _, a := range atts {
 		name, err := filepath.Rel(dir, a.Path)
@@ -242,18 +227,14 @@ func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, native
 			return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
 		}
 		info, err := root.Lstat(name)
-		if err != nil || !info.Mode().IsRegular() || info.Size() != a.Size || a.Size <= 0 || a.Size > maxAttachmentBytes {
+		if err != nil || !info.Mode().IsRegular() || info.Size() != a.Size || a.Size <= 0 {
 			return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
 		}
 		if builtin && a.IsImage() {
-			if a.Size > imageBudget {
-				return "", nil, fmt.Errorf("%q: %s", a.Name, theme.Tr("每条消息最多发送 8 MB 图片，请缩小图片或减少张数。", "Images can total up to 8 MB per message. Resize or remove an image."))
-			}
-			raw, err := readCachedAttachment(root, name, a.Size)
+			raw, err := readCachedAttachment(root, name)
 			if err != nil || int64(len(raw)) != a.Size {
 				return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
 			}
-			imageBudget -= a.Size
 			imageIdx++
 			url := "data:" + a.Mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
 			images = append(images,
@@ -263,19 +244,12 @@ func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, native
 			continue
 		}
 		if attachmentIsText(a) {
-			limit := min(a.Size, maxAttachmentTextRunes*utf8.UTFMax)
-			raw, err := readCachedAttachment(root, name, limit)
-			if err != nil || int64(len(raw)) != limit {
+			raw, err := readCachedAttachment(root, name)
+			if err != nil || int64(len(raw)) != a.Size {
 				return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
 			}
-			if prefix, truncated, ok := attachmentText(raw, a.Size); ok {
-				fmt.Fprintf(&b, theme.Tr("\n\n# 用户附件：%q\n\n    %s", "\n\n# User attachment: %q\n\n    %s"), a.Name, strings.ReplaceAll(prefix, "\n", "\n    "))
-				if truncated {
-					b.WriteString(theme.Tr("\n\n（附件内容已截断。）", "\n\n(Attachment content was cut off.)"))
-					if nativeTools {
-						fmt.Fprintf(&b, theme.Tr("\n完整文件路径：%q", "\nFull file path: %q"), a.Path)
-					}
-				}
+			if utf8.Valid(raw) {
+				fmt.Fprintf(&b, theme.Tr("\n\n# 用户附件：%q\n\n    %s", "\n\n# User attachment: %q\n\n    %s"), a.Name, strings.ReplaceAll(string(raw), "\n", "\n    "))
 				continue
 			}
 		}
@@ -291,7 +265,7 @@ func attachmentUnreadable() error {
 	return errors.New(theme.Tr("附件无法读取，请移除后重新粘贴。", "The attachment could not be read. Remove and paste it again."))
 }
 
-func readCachedAttachment(root *os.Root, name string, limit int64) ([]byte, error) {
+func readCachedAttachment(root *os.Root, name string) ([]byte, error) {
 	f, err := root.Open(name)
 	if err != nil {
 		return nil, err
@@ -301,19 +275,7 @@ func readCachedAttachment(root *os.Root, name string, limit int64) ([]byte, erro
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, attachmentUnreadable()
 	}
-	return io.ReadAll(io.LimitReader(f, limit))
-}
-
-func attachmentText(raw []byte, size int64) (string, bool, bool) {
-	end := 0
-	for n := 0; n < maxAttachmentTextRunes && end < len(raw); n++ {
-		r, width := utf8.DecodeRune(raw[end:])
-		if r == utf8.RuneError && width == 1 {
-			return "", false, false
-		}
-		end += width
-	}
-	return string(raw[:end]), int64(end) < size, true
+	return io.ReadAll(f)
 }
 
 // openAIPartsToAnthropic converts OpenAI content parts into Anthropic blocks.
