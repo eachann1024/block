@@ -23,7 +23,8 @@ Unicode true
 
 Name "Block"
 OutFile "${OUTFILE}"
-InstallDir "$LOCALAPPDATA\Programs\Block"
+; Leave InstallDir unset so $INSTDIR starts empty unless /D= was explicitly
+; passed on the command line (NSIS strips /D= from $CMDLINE before .onInit).
 RequestExecutionLevel user
 
 Var BLOCK_NORM_DIR
@@ -36,8 +37,8 @@ Var BLOCK_SHORTCUT_PATH
 Var BLOCK_DISPLAY_NAME
 Var BLOCK_IS_UPDATE
 Var BLOCK_FORCE_ALLUSERS
-Var BLOCK_HAS_CUSTOM_DIR
 Var BLOCK_IS_ADMIN
+Var BLOCK_FAIL_REASON
 
 !macro BLOCK_CHECK_ADMIN PREFIX
   Push $0
@@ -204,6 +205,31 @@ Var BLOCK_IS_ADMIN
   Push $1
 
   StrCpy $0 100
+  ${PREFIX}_loop:
+    IfFileExists "$INSTDIR\block.exe" 0 ${PREFIX}_done
+    System::Call 'kernel32::CreateFileW(t "$INSTDIR\block.exe", i 0x40000000, i 0, p 0, i 3, i 0, p 0) p .r1'
+    IntCmp $1 -1 ${PREFIX}_locked ${PREFIX}_unlocked ${PREFIX}_unlocked
+  ${PREFIX}_unlocked:
+    System::Call 'kernel32::CloseHandle(p r1)'
+    Goto ${PREFIX}_done
+  ${PREFIX}_locked:
+    IntOp $0 $0 - 1
+    IntCmp $0 0 ${PREFIX}_done ${PREFIX}_done 0
+    Sleep 200
+    Goto ${PREFIX}_loop
+  ${PREFIX}_done:
+
+  Pop $1
+  Pop $0
+!macroend
+
+; Wait up to 2 seconds for an existing $INSTDIR\block.exe to release its file
+; lock during uninstall (e.g. if the user closed Block right before uninstalling).
+!macro BLOCK_WAIT_EXE_UNLOCKED_SHORT PREFIX
+  Push $0
+  Push $1
+
+  StrCpy $0 10
   ${PREFIX}_loop:
     IfFileExists "$INSTDIR\block.exe" 0 ${PREFIX}_done
     System::Call 'kernel32::CreateFileW(t "$INSTDIR\block.exe", i 0x40000000, i 0, p 0, i 3, i 0, p 0) p .r1'
@@ -437,6 +463,76 @@ VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${VERSION}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "Block installer"
 
+LangString UN_EXE_IN_USE ${LANG_ENGLISH} "Block is still running. Please close Block and try uninstalling again."
+LangString UN_EXE_IN_USE ${LANG_SIMPCHINESE} "Block 正在运行，请先关闭 Block 后重试卸载。"
+LangString UN_EXE_IN_USE ${LANG_TRADCHINESE} "Block 正在執行，請先關閉 Block 後再重試解除安裝。"
+LangString UN_EXE_IN_USE ${LANG_JAPANESE} "Block が実行中です。Block を終了してからアンインストールを再試行してください。"
+LangString UN_EXE_IN_USE ${LANG_KOREAN} "Block이 실행 중입니다. Block을 종료한 후 다시 제거해 주세요."
+LangString UN_EXE_IN_USE ${LANG_FRENCH} "Block est encore en cours d'exécution. Fermez Block puis relancez la désinstallation."
+LangString UN_EXE_IN_USE ${LANG_GERMAN} "Block wird noch ausgeführt. Schließen Sie Block und versuchen Sie die Deinstallation erneut."
+LangString UN_EXE_IN_USE ${LANG_SPANISH} "Block sigue ejecutándose. Cierra Block e intenta desinstalarlo de nuevo."
+LangString UN_EXE_IN_USE ${LANG_SPANISHINTERNATIONAL} "Block sigue ejecutándose. Cierra Block e intenta desinstalarlo de nuevo."
+LangString UN_EXE_IN_USE ${LANG_PORTUGUESE} "O Block ainda está em execução. Feche o Block e tente desinstalar novamente."
+LangString UN_EXE_IN_USE ${LANG_PORTUGUESEBR} "O Block ainda está em execução. Feche o Block e tente desinstalar novamente."
+LangString UN_EXE_IN_USE ${LANG_RUSSIAN} "Block всё ещё запущен. Закройте Block и повторите удаление."
+LangString UN_EXE_IN_USE ${LANG_ITALIAN} "Block è ancora in esecuzione. Chiudi Block e riprova a disinstallarlo."
+
+LangString INST_FAIL_GENERIC ${LANG_ENGLISH} "Failed to install Block."
+LangString INST_FAIL_GENERIC ${LANG_SIMPCHINESE} "安装 Block 失败。"
+LangString INST_FAIL_GENERIC ${LANG_TRADCHINESE} "安裝 Block 失敗。"
+LangString INST_FAIL_GENERIC ${LANG_JAPANESE} "Block のインストールに失敗しました。"
+LangString INST_FAIL_GENERIC ${LANG_KOREAN} "Block 설치에 실패했습니다."
+LangString INST_FAIL_GENERIC ${LANG_FRENCH} "Échec de l'installation de Block."
+LangString INST_FAIL_GENERIC ${LANG_GERMAN} "Block konnte nicht installiert werden."
+LangString INST_FAIL_GENERIC ${LANG_SPANISH} "No se pudo instalar Block."
+LangString INST_FAIL_GENERIC ${LANG_SPANISHINTERNATIONAL} "No se pudo instalar Block."
+LangString INST_FAIL_GENERIC ${LANG_PORTUGUESE} "Falha ao instalar o Block."
+LangString INST_FAIL_GENERIC ${LANG_PORTUGUESEBR} "Falha ao instalar o Block."
+LangString INST_FAIL_GENERIC ${LANG_RUSSIAN} "Не удалось установить Block."
+LangString INST_FAIL_GENERIC ${LANG_ITALIAN} "Installazione di Block non riuscita."
+
+LangString INST_FAIL_ADMIN ${LANG_ENGLISH} "Administrator privileges are required to update Block in $INSTDIR."
+LangString INST_FAIL_ADMIN ${LANG_SIMPCHINESE} "更新 $INSTDIR 中的 Block 需要管理员权限。"
+LangString INST_FAIL_ADMIN ${LANG_TRADCHINESE} "更新 $INSTDIR 中的 Block 需要系統管理員權限。"
+LangString INST_FAIL_ADMIN ${LANG_JAPANESE} "$INSTDIR の Block を更新するには管理者権限が必要です。"
+LangString INST_FAIL_ADMIN ${LANG_KOREAN} "$INSTDIR의 Block을 업데이트하려면 관리자 권한이 필요합니다."
+LangString INST_FAIL_ADMIN ${LANG_FRENCH} "Des droits d'administrateur sont requis pour mettre à jour Block dans $INSTDIR."
+LangString INST_FAIL_ADMIN ${LANG_GERMAN} "Für das Aktualisieren von Block in $INSTDIR sind Administratorrechte erforderlich."
+LangString INST_FAIL_ADMIN ${LANG_SPANISH} "Se requieren privilegios de administrador para actualizar Block en $INSTDIR."
+LangString INST_FAIL_ADMIN ${LANG_SPANISHINTERNATIONAL} "Se requieren privilegios de administrador para actualizar Block en $INSTDIR."
+LangString INST_FAIL_ADMIN ${LANG_PORTUGUESE} "São necessários privilégios de administrador para atualizar o Block em $INSTDIR."
+LangString INST_FAIL_ADMIN ${LANG_PORTUGUESEBR} "São necessários privilégios de administrador para atualizar o Block em $INSTDIR."
+LangString INST_FAIL_ADMIN ${LANG_RUSSIAN} "Для обновления Block в $INSTDIR требуются права администратора."
+LangString INST_FAIL_ADMIN ${LANG_ITALIAN} "Sono necessari i privilegi di amministratore per aggiornare Block in $INSTDIR."
+
+LangString INST_FAIL_UNSAFE_DIR ${LANG_ENGLISH} "System-wide installation requires an administrator-protected directory."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_SIMPCHINESE} "全局安装必须选择受管理员保护的目录。"
+LangString INST_FAIL_UNSAFE_DIR ${LANG_TRADCHINESE} "全域安裝必須選擇受系統管理員保護的目錄。"
+LangString INST_FAIL_UNSAFE_DIR ${LANG_JAPANESE} "全ユーザー向けインストールには管理者保護されたフォルダーが必要です。"
+LangString INST_FAIL_UNSAFE_DIR ${LANG_KOREAN} "시스템 전체 설치에는 관리자 보호 폴더가 필요합니다."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_FRENCH} "L'installation globale nécessite un dossier protégé par administrateur."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_GERMAN} "Für eine systemweite Installation ist ein administratorgeschützter Ordner erforderlich."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_SPANISH} "La instalación para todo el sistema requiere una carpeta protegida por administrador."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_SPANISHINTERNATIONAL} "La instalación para todo el sistema requiere una carpeta protegida por administrador."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_PORTUGUESE} "A instalação para todo o sistema requer uma pasta protegida por administrador."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_PORTUGUESEBR} "A instalação para todo o sistema requer uma pasta protegida por administrador."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_RUSSIAN} "Для установки для всех пользователей требуется защищённая администратором папка."
+LangString INST_FAIL_UNSAFE_DIR ${LANG_ITALIAN} "L'installazione di sistema richiede una cartella protetta da amministratore."
+
+LangString INST_FAIL_RELAUNCH ${LANG_ENGLISH} "Updated Block failed to launch; restored previous version."
+LangString INST_FAIL_RELAUNCH ${LANG_SIMPCHINESE} "更新后的 Block 启动失败，已恢复到上一版本。"
+LangString INST_FAIL_RELAUNCH ${LANG_TRADCHINESE} "更新後的 Block 啟動失敗，已還原至上一版本。"
+LangString INST_FAIL_RELAUNCH ${LANG_JAPANESE} "更新後の Block の起動に失敗したため、以前のバージョンを復元しました。"
+LangString INST_FAIL_RELAUNCH ${LANG_KOREAN} "업데이트된 Block을 실행하지 못해 이전 버전으로 복원했습니다."
+LangString INST_FAIL_RELAUNCH ${LANG_FRENCH} "Le lancement de la nouvelle version de Block a échoué ; la version précédente a été restaurée."
+LangString INST_FAIL_RELAUNCH ${LANG_GERMAN} "Die aktualisierte Version von Block konnte nicht gestartet werden; vorherige Version wiederhergestellt."
+LangString INST_FAIL_RELAUNCH ${LANG_SPANISH} "No se pudo iniciar la nueva versión de Block; se restauró la versión anterior."
+LangString INST_FAIL_RELAUNCH ${LANG_SPANISHINTERNATIONAL} "No se pudo iniciar la nueva versión de Block; se restauró la versión anterior."
+LangString INST_FAIL_RELAUNCH ${LANG_PORTUGUESE} "Falha ao iniciar o Block atualizado; a versão anterior foi restaurada."
+LangString INST_FAIL_RELAUNCH ${LANG_PORTUGUESEBR} "Falha ao iniciar o Block atualizado; a versão anterior foi restaurada."
+LangString INST_FAIL_RELAUNCH ${LANG_RUSSIAN} "Не удалось запустить обновлённый Block; восстановлена предыдущая версия."
+LangString INST_FAIL_RELAUNCH ${LANG_ITALIAN} "Impossibile avviare la nuova versione di Block; versione precedente ripristinata."
+
 ; Block defaults to a per-user install in %LOCALAPPDATA%\Programs\Block so
 ; in-app updates run seamlessly with no installer window and no UAC prompt.
 ; Machine-wide installs (e.g. C:\Program Files\Block or /ALLUSERS) remain fully
@@ -445,7 +541,6 @@ VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "Block installer"
 Function .onInit
   StrCpy $BLOCK_IS_UPDATE ""
   StrCpy $BLOCK_FORCE_ALLUSERS ""
-  StrCpy $BLOCK_HAS_CUSTOM_DIR ""
 
   ${GetParameters} $R0
   ClearErrors
@@ -455,23 +550,16 @@ Function .onInit
   init_check_allusers:
   ClearErrors
   ${GetOptions} "$R0" "/ALLUSERS" $R1
-  IfErrors init_check_custom_dir
-    StrCpy $BLOCK_FORCE_ALLUSERS "1"
-  init_check_custom_dir:
-  ClearErrors
-  ${GetOptions} "$R0" "/D=" $R1
   IfErrors init_check_existing_dir
-    StrCpy $BLOCK_HAS_CUSTOM_DIR "1"
+    StrCpy $BLOCK_FORCE_ALLUSERS "1"
   init_check_existing_dir:
   ClearErrors
 
-  ; When launched without /D= and no per-user install exists yet, preserve an
-  ; existing machine-wide install (for example when upgrading from v1.0.926)
-  ; instead of creating a duplicate side-by-side copy.
-  StrCmp $BLOCK_HAS_CUSTOM_DIR "1" init_dir_ready 0
-  StrCmp $INSTDIR "$LOCALAPPDATA\Programs\Block" 0 init_dir_ready
+  ; InstallDir is intentionally unset, so a non-empty $INSTDIR here means /D=
+  ; was explicitly passed on the command line and must never be overridden.
+  StrCmp $INSTDIR "" 0 init_dir_ready
   StrCmp $BLOCK_FORCE_ALLUSERS "1" init_default_machine 0
-  IfFileExists "$LOCALAPPDATA\Programs\Block\block.exe" init_dir_ready 0
+  IfFileExists "$LOCALAPPDATA\Programs\Block\block.exe" init_default_user 0
   IfFileExists "$PROGRAMFILES64\Block\block.exe" 0 init_check_legacy_hklm
     StrCpy $INSTDIR "$PROGRAMFILES64\Block"
     Goto init_dir_ready
@@ -485,7 +573,7 @@ Function .onInit
   StrCpy $R5 0
   init_hklm_loop:
     EnumRegKey $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall" $R5
-    StrCmp $R6 "" init_dir_ready
+    StrCmp $R6 "" init_default_user
     IntOp $R5 $R5 + 1
     StrCpy $R7 $R6 6
     StrCmp $R7 "Block-" 0 init_hklm_loop
@@ -494,6 +582,9 @@ Function .onInit
     IfFileExists "$R4\block.exe" 0 init_hklm_loop
       StrCpy $INSTDIR "$R4"
       Goto init_dir_ready
+  init_default_user:
+    StrCpy $INSTDIR "$LOCALAPPDATA\Programs\Block"
+    Goto init_dir_ready
   init_default_machine:
     StrCpy $INSTDIR "$PROGRAMFILES64\Block"
   init_dir_ready:
@@ -532,12 +623,37 @@ Function .onInit
 FunctionEnd
 
 Section "Install"
+  StrCpy $BLOCK_FAIL_REASON "$(INST_FAIL_GENERIC)"
   !insertmacro BLOCK_CHECK_ADMIN inst_adm
   !insertmacro BLOCK_COMPUTE_SCOPE_HASH inst_hash
   !insertmacro BLOCK_DETECT_INSTALL_SCOPE inst_scope
 
   StrCmp $BLOCK_INSTALL_SCOPE "machine" inst_ctx_all inst_ctx_user
   inst_ctx_all:
+    StrCmp $BLOCK_IS_ADMIN "1" inst_verify_machine_dir 0
+      StrCpy $BLOCK_FAIL_REASON "$(INST_FAIL_ADMIN)"
+      Goto inst_fail_have_exe
+    inst_verify_machine_dir:
+      ; Reject machine-wide installs into directories modifiable or hijackable
+      ; via junctions/symlinks by non-administrator accounts before touching disk.
+      InitPluginsDir
+      ClearErrors
+      File "/oname=$PLUGINSDIR\block-verify.exe" "${BINARY}"
+      IfErrors inst_acl_check_failed
+      System::Call 'kernel32::SetEnvironmentVariable(t "BLOCK_VERIFY_MACHINE_DIR", t "$INSTDIR")'
+      StrCpy $R9 "1"
+      ClearErrors
+      ExecWait '"$PLUGINSDIR\block-verify.exe" --installer-ui' $R9
+      System::Call 'kernel32::SetEnvironmentVariable(t "BLOCK_VERIFY_MACHINE_DIR", p 0)'
+      IfErrors inst_acl_check_failed
+      StrCmp $R9 "0" inst_acl_ok inst_acl_check_failed
+    inst_acl_check_failed:
+      ; Do not touch $INSTDIR or launch anything from an untrusted directory.
+      StrCpy $BLOCK_FAIL_REASON "$(INST_FAIL_UNSAFE_DIR)"
+      StrCmp $BLOCK_IS_UPDATE "1" 0 inst_fail_abort
+        WriteRegStr HKCU "Software\Block" "LastUpdateError" "$BLOCK_FAIL_REASON"
+      Goto inst_fail_abort
+    inst_acl_ok:
     SetShellVarContext all
     Goto inst_ctx_done
   inst_ctx_user:
@@ -555,11 +671,32 @@ Section "Install"
     Delete "$APPDATA\Block\cleanup-$BLOCK_SCOPE_ID.ps1"
   inst_skip_cancel_cleanup:
 
-  SetOutPath $INSTDIR
   ClearErrors
-  File /oname=block.exe "${BINARY}"
+  SetOutPath $INSTDIR
   IfErrors inst_write_failed
-  CreateShortcut "$BLOCK_SHORTCUT_PATH" "$INSTDIR\block.exe"
+
+  ; Stage the new binary on the same volume first, then swap atomically so an
+  ; interruption mid-unpack never leaves a truncated block.exe behind.
+  Delete "$INSTDIR\block.exe.new"
+  ClearErrors
+  File "/oname=$INSTDIR\block.exe.new" "${BINARY}"
+  IfErrors inst_write_failed
+  IfFileExists "$INSTDIR\block.exe.new" 0 inst_write_failed
+
+  Delete "$INSTDIR\block.exe.old"
+  IfFileExists "$INSTDIR\block.exe" inst_replace_existing inst_move_new
+  inst_replace_existing:
+    ; REPLACEFILE_IGNORE_MERGE_ERRORS (2) | REPLACEFILE_IGNORE_ACL_ERRORS (4) = 6
+    System::Call 'kernel32::ReplaceFileW(t "$INSTDIR\block.exe", t "$INSTDIR\block.exe.new", t "$INSTDIR\block.exe.old", i 6, p 0, p 0) i .r0'
+    IntCmp $0 0 inst_write_failed inst_exe_ready inst_exe_ready
+  inst_move_new:
+    ; MOVEFILE_REPLACE_EXISTING = 1
+    System::Call 'kernel32::MoveFileExW(t "$INSTDIR\block.exe.new", t "$INSTDIR\block.exe", i 1) i .r0'
+    IntCmp $0 0 inst_write_failed inst_exe_ready inst_exe_ready
+  inst_exe_ready:
+
+  CreateShortcut "$BLOCK_SHORTCUT_PATH" "$INSTDIR\block.exe" "" "$INSTDIR\block.exe" 0
+  ClearErrors
   WriteUninstaller "$INSTDIR\uninstall.exe"
   IfErrors inst_write_failed
 
@@ -575,6 +712,7 @@ Section "Install"
     WriteRegStr HKLM "$BLOCK_UNINSTALL_KEY" "DisplayName" "$BLOCK_DISPLAY_NAME"
     WriteRegStr HKLM "$BLOCK_UNINSTALL_KEY" "DisplayVersion" "${VERSION}"
     WriteRegStr HKLM "$BLOCK_UNINSTALL_KEY" "Publisher" "Block"
+    WriteRegStr HKLM "$BLOCK_UNINSTALL_KEY" "DisplayIcon" "$INSTDIR\block.exe,0"
     WriteRegStr HKLM "$BLOCK_UNINSTALL_KEY" "InstallLocation" "$INSTDIR"
     WriteRegStr HKLM "$BLOCK_UNINSTALL_KEY" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
     WriteRegStr HKLM "$BLOCK_UNINSTALL_KEY" "BlockScopeId" "$BLOCK_SCOPE_ID"
@@ -589,6 +727,7 @@ Section "Install"
     WriteRegStr HKCU "$BLOCK_UNINSTALL_KEY" "DisplayName" "$BLOCK_DISPLAY_NAME"
     WriteRegStr HKCU "$BLOCK_UNINSTALL_KEY" "DisplayVersion" "${VERSION}"
     WriteRegStr HKCU "$BLOCK_UNINSTALL_KEY" "Publisher" "Block"
+    WriteRegStr HKCU "$BLOCK_UNINSTALL_KEY" "DisplayIcon" "$INSTDIR\block.exe,0"
     WriteRegStr HKCU "$BLOCK_UNINSTALL_KEY" "InstallLocation" "$INSTDIR"
     WriteRegStr HKCU "$BLOCK_UNINSTALL_KEY" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
     WriteRegStr HKCU "$BLOCK_UNINSTALL_KEY" "BlockScopeId" "$BLOCK_SCOPE_ID"
@@ -602,19 +741,45 @@ Section "Install"
   !include "${ASSOC_NSH}"
 
   ; Seamless in-app updates automatically reopen Block once installation completes.
-  StrCmp $BLOCK_IS_UPDATE "1" 0 inst_done
+  StrCmp $BLOCK_IS_UPDATE "1" 0 inst_cleanup_backup
+    DeleteRegValue HKCU "Software\Block" "LastUpdateError"
+    ClearErrors
     StrCmp $BLOCK_IS_ADMIN "1" inst_relaunch_via_shell inst_relaunch_direct
     inst_relaunch_via_shell:
       ; Avoid handing administrator elevation to Block when updating a machine install.
       Exec '"$WINDIR\explorer.exe" "$INSTDIR\block.exe"'
-      Goto inst_done
+      IfErrors inst_relaunch_failed inst_cleanup_backup
     inst_relaunch_direct:
       Exec '"$INSTDIR\block.exe"'
-      Goto inst_done
+      IfErrors inst_relaunch_failed inst_cleanup_backup
+  inst_relaunch_failed:
+    IfFileExists "$INSTDIR\block.exe.old" 0 inst_relaunch_fail_msg
+      System::Call 'kernel32::MoveFileExW(t "$INSTDIR\block.exe.old", t "$INSTDIR\block.exe", i 1) i .r0'
+    inst_relaunch_fail_msg:
+      StrCpy $BLOCK_FAIL_REASON "$(INST_FAIL_RELAUNCH)"
+      Goto inst_write_failed
+
+  inst_cleanup_backup:
+    Delete "$INSTDIR\block.exe.old"
+    Goto inst_done
 
   inst_write_failed:
-    SetErrorLevel 1
-    Abort
+    Delete "$INSTDIR\block.exe.new"
+    IfFileExists "$INSTDIR\block.exe.old" 0 inst_fail_have_exe
+      System::Call 'kernel32::MoveFileExW(t "$INSTDIR\block.exe.old", t "$INSTDIR\block.exe", i 1) i .r0'
+    inst_fail_have_exe:
+    StrCmp $BLOCK_IS_UPDATE "1" 0 inst_fail_abort
+      WriteRegStr HKCU "Software\Block" "LastUpdateError" "$BLOCK_FAIL_REASON"
+      IfFileExists "$INSTDIR\block.exe" 0 inst_fail_abort
+        StrCmp $BLOCK_IS_ADMIN "1" inst_fail_relaunch_shell inst_fail_relaunch_direct
+        inst_fail_relaunch_shell:
+          Exec '"$WINDIR\explorer.exe" "$INSTDIR\block.exe"'
+          Goto inst_fail_abort
+        inst_fail_relaunch_direct:
+          Exec '"$INSTDIR\block.exe"'
+    inst_fail_abort:
+      SetErrorLevel 1
+      Abort
   inst_done:
 SectionEnd
 
@@ -669,7 +834,15 @@ Section "Uninstall"
       StrCpy $R0 "$BLOCK_SHORTCUT_PATH"
     un_user_have_shortcut:
 
-    Delete "$INSTDIR\block.exe"
+    Delete "$INSTDIR\block.exe.new"
+    Delete "$INSTDIR\block.exe.old"
+    IfFileExists "$INSTDIR\block.exe" 0 un_user_exe_removed
+      !insertmacro BLOCK_WAIT_EXE_UNLOCKED_SHORT un_user_wait
+      ClearErrors
+      Delete "$INSTDIR\block.exe"
+      IfFileExists "$INSTDIR\block.exe" un_exe_in_use 0
+    un_user_exe_removed:
+
     Delete "$INSTDIR\uninstall.exe"
     Delete "$R0"
     RMDir "$INSTDIR"
@@ -698,7 +871,15 @@ Section "Uninstall"
       StrCpy $R1 "$BLOCK_MACHINE_PROGID"
     un_have_progid:
 
-    Delete "$INSTDIR\block.exe"
+    Delete "$INSTDIR\block.exe.new"
+    Delete "$INSTDIR\block.exe.old"
+    IfFileExists "$INSTDIR\block.exe" 0 un_machine_exe_removed
+      !insertmacro BLOCK_WAIT_EXE_UNLOCKED_SHORT un_machine_wait
+      ClearErrors
+      Delete "$INSTDIR\block.exe"
+      IfFileExists "$INSTDIR\block.exe" un_exe_in_use 0
+    un_machine_exe_removed:
+
     Delete "$INSTDIR\uninstall.exe"
     Delete "$R0"
     RMDir "$INSTDIR"
@@ -802,6 +983,14 @@ Section "Uninstall"
     un_skip_deferred:
 
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
+    Goto un_done
+
+  un_exe_in_use:
+    IfSilent un_exe_in_use_abort
+      MessageBox MB_ICONEXCLAMATION|MB_OK "$(UN_EXE_IN_USE)"
+    un_exe_in_use_abort:
+      SetErrorLevel 1
+      Abort
 
   un_done:
 SectionEnd
