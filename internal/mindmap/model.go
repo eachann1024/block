@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // LayoutMode selects the branch expansion geometry.
@@ -315,9 +316,6 @@ func ParseMarkdown(src string) *Node {
 			ensureRoot("中心主题")
 			task, rest := parseTaskPrefix(content)
 			text, link := parseInlineLink(rest)
-			if text == "" {
-				text = "新节点"
-			}
 			// Pop list entries with indent >= current indent; keep heading ancestors intact.
 			for len(stack) > 1 && stack[len(stack)-1].heading == 0 && stack[len(stack)-1].indent >= indent {
 				stack = stack[:len(stack)-1]
@@ -367,33 +365,13 @@ func SerializeMarkdown(root *Node) string {
 		return "# 中心主题\n"
 	}
 	var b strings.Builder
-	b.WriteString("# ")
-	if root.Task != nil {
-		if *root.Task {
-			b.WriteString("[x] ")
-		} else {
-			b.WriteString("[ ] ")
-		}
-	}
-	b.WriteString(formatNodeText(root))
-	b.WriteByte('\n')
+	writeNodeMarkdown(&b, "#", root)
 
 	var writeChildren func(parent *Node, depth int)
 	writeChildren = func(parent *Node, depth int) {
 		for _, ch := range parent.Children {
-			for i := 0; i < depth; i++ {
-				b.WriteString("  ")
-			}
-			b.WriteString("- ")
-			if ch.Task != nil {
-				if *ch.Task {
-					b.WriteString("[x] ")
-				} else {
-					b.WriteString("[ ] ")
-				}
-			}
-			b.WriteString(formatNodeText(ch))
-			b.WriteByte('\n')
+			b.WriteString(strings.Repeat("  ", depth))
+			writeNodeMarkdown(&b, "-", ch)
 			writeChildren(ch, depth+1)
 		}
 	}
@@ -414,19 +392,8 @@ func SerializeSubtreeMarkdown(n *Node) string {
 	var b strings.Builder
 	var writeNode func(cur *Node, depth int)
 	writeNode = func(cur *Node, depth int) {
-		for i := 0; i < depth; i++ {
-			b.WriteString("  ")
-		}
-		b.WriteString("- ")
-		if cur.Task != nil {
-			if *cur.Task {
-				b.WriteString("[x] ")
-			} else {
-				b.WriteString("[ ] ")
-			}
-		}
-		b.WriteString(formatNodeText(cur))
-		b.WriteByte('\n')
+		b.WriteString(strings.Repeat("  ", depth))
+		writeNodeMarkdown(&b, "-", cur)
 		for _, ch := range cur.Children {
 			writeNode(ch, depth+1)
 		}
@@ -460,9 +427,6 @@ func ParseClipboardNodes(src string) []*Node {
 		if lvl, rest, ok := parseHeadingLine(trimmed); ok {
 			task, restText := parseTaskPrefix(rest)
 			text, link := parseInlineLink(restText)
-			if text == "" {
-				continue
-			}
 			for len(stack) > 1 && (stack[len(stack)-1].heading == 0 || stack[len(stack)-1].heading >= lvl) {
 				stack = stack[:len(stack)-1]
 			}
@@ -475,9 +439,6 @@ func ParseClipboardNodes(src string) []*Node {
 		if indent, content, ok := parseListLine(rawLine); ok {
 			task, rest := parseTaskPrefix(content)
 			text, link := parseInlineLink(rest)
-			if text == "" {
-				continue
-			}
 			for len(stack) > 1 && stack[len(stack)-1].heading == 0 && stack[len(stack)-1].indent >= indent {
 				stack = stack[:len(stack)-1]
 			}
@@ -509,14 +470,20 @@ func ParseClipboardNodes(src string) []*Node {
 
 var brTagRe = regexp.MustCompile(`(?i)<br\s*/?>`)
 
-func normalizeNodeText(s string) string {
+func normalizeNodeLineEndings(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "\n")
-	return strings.TrimSpace(s)
+	return strings.ReplaceAll(s, "\r", "\n")
+}
+
+func normalizeNodeText(s string) string {
+	return strings.TrimSpace(normalizeNodeLineEndings(s))
 }
 
 func encodeNodeLineBreaks(s string) string {
-	return strings.ReplaceAll(normalizeNodeText(s), "\n", "<br>")
+	s = strings.TrimFunc(normalizeNodeLineEndings(s), func(r rune) bool {
+		return r != '\n' && unicode.IsSpace(r)
+	})
+	return strings.ReplaceAll(s, "\n", "<br>")
 }
 
 func decodeNodeLineBreaks(s string) string {
@@ -526,11 +493,24 @@ func decodeNodeLineBreaks(s string) string {
 	return brTagRe.ReplaceAllString(s, "\n")
 }
 
+func writeNodeMarkdown(b *strings.Builder, marker string, n *Node) {
+	b.WriteString(marker)
+	if n.Task != nil {
+		if *n.Task {
+			b.WriteString(" [x]")
+		} else {
+			b.WriteString(" [ ]")
+		}
+	}
+	if text := formatNodeText(n); text != "" {
+		b.WriteByte(' ')
+		b.WriteString(text)
+	}
+	b.WriteByte('\n')
+}
+
 func formatNodeText(n *Node) string {
 	text := encodeNodeLineBreaks(n.Text)
-	if text == "" {
-		text = "新节点"
-	}
 	link := strings.TrimSpace(n.Link)
 	if link == "" {
 		return text
@@ -548,7 +528,10 @@ func parseHeadingLine(trimmed string) (level int, text string, ok bool) {
 	for i < len(trimmed) && i < 6 && trimmed[i] == '#' {
 		i++
 	}
-	if i == 0 || i >= len(trimmed) || (trimmed[i] != ' ' && trimmed[i] != '\t') {
+	if i == len(trimmed) {
+		return i, "", true
+	}
+	if trimmed[i] != ' ' && trimmed[i] != '\t' {
 		return 0, "", false
 	}
 	return i, strings.TrimSpace(trimmed[i+1:]), true
@@ -645,8 +628,13 @@ func parseListLine(raw string) (indent int, content string, ok bool) {
 	}
 marker:
 	rest := raw[i:]
-	if len(rest) >= 2 && (rest[0] == '-' || rest[0] == '*' || rest[0] == '+') && (rest[1] == ' ' || rest[1] == '\t') {
-		return cols, strings.TrimSpace(rest[2:]), true
+	if len(rest) > 0 && (rest[0] == '-' || rest[0] == '*' || rest[0] == '+') {
+		if len(rest) == 1 {
+			return cols, "", true
+		}
+		if rest[1] == ' ' || rest[1] == '\t' {
+			return cols, strings.TrimSpace(rest[2:]), true
+		}
 	}
 	// Ordered list marker: digits + '.' + space
 	j := 0
@@ -660,12 +648,13 @@ marker:
 }
 
 func parseTaskPrefix(s string) (*bool, string) {
-	if len(s) >= 4 && s[0] == '[' && s[2] == ']' && (s[3] == ' ' || s[3] == '\t') {
+	if len(s) >= 3 && s[0] == '[' && s[2] == ']' && (len(s) == 3 || s[3] == ' ' || s[3] == '\t') {
+		text := strings.TrimSpace(s[3:])
 		switch s[1] {
 		case ' ':
-			return BoolPtr(false), strings.TrimSpace(s[4:])
+			return BoolPtr(false), text
 		case 'x', 'X':
-			return BoolPtr(true), strings.TrimSpace(s[4:])
+			return BoolPtr(true), text
 		}
 	}
 	return nil, s
@@ -674,7 +663,7 @@ func parseTaskPrefix(s string) (*bool, string) {
 func parseInlineLink(s string) (text, link string) {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "[") || !strings.HasSuffix(s, ")") {
-		return normalizeNodeText(decodeNodeLineBreaks(s)), ""
+		return decodeNodeLineBreaks(s), ""
 	}
 	// Find matching unescaped "]("
 	closeIdx := -1
@@ -688,14 +677,14 @@ func parseInlineLink(s string) (text, link string) {
 			break
 		}
 	}
-	if closeIdx <= 1 {
-		return normalizeNodeText(decodeNodeLineBreaks(s)), ""
+	if closeIdx < 0 {
+		return decodeNodeLineBreaks(s), ""
 	}
 	rawText := s[1:closeIdx]
 	rawLink := s[closeIdx+2 : len(s)-1]
 	rawText = strings.ReplaceAll(rawText, `\]`, "]")
 	rawLink = strings.ReplaceAll(rawLink, `\)`, ")")
-	return normalizeNodeText(decodeNodeLineBreaks(rawText)), strings.TrimSpace(rawLink)
+	return decodeNodeLineBreaks(strings.TrimSpace(rawText)), strings.TrimSpace(rawLink)
 }
 
 // --- Tree Snapshot & Fold State Preservation ---
