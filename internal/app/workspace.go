@@ -673,9 +673,7 @@ func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Ann
 "earlier" (when present) lists previous rounds on the same note, oldest first ({"q": note, "a": your reply}); "note" is then a follow-up to them, so read it in that context.
 When unsure, prefer "answer". Return ONLY valid JSON: [{"id":"...","kind":"edit"|"answer","text":"..."}]. No markdown fences or extra prose.`
 		userPrompt := fmt.Sprintf("Document Markdown:\n%s\n\nNotes:\n%s", docMarkdown, string(payload))
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		raw, err := w.ai.CompletePrompt(ctx, sysPrompt, userPrompt)
-		cancel()
+		raw, err := w.ai.CompletePrompt(context.Background(), sysPrompt, userPrompt)
 		if err == nil && strings.TrimSpace(raw) != "" {
 			clean := stripOuterMarkdownFence(raw)
 			type respItem struct {
@@ -756,9 +754,7 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 	}
 	w.quick.SetAIEnabled(w.ai.Enabled())
 	w.quick.SetInlineAIStreamResponder(func(ctx context.Context, ctxText, orig, draft, instruction string, _ func(string)) (string, error) {
-		requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		out, err := w.inlineAIStreamRespond(requestCtx, ctxText, orig, draft, instruction, nil)
+		out, err := w.inlineAIStreamRespond(ctx, ctxText, orig, draft, instruction, nil)
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
