@@ -1181,8 +1181,10 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 				return fmt.Errorf("cannot save changes before updating: %w", err)
 			}
 		}
-		// Trigger UAC elevation BEFORE quitting so canceling UAC keeps Block open and ready.
-		if err := launchWindowsElevatedInstaller(rec.ArchivePath); err != nil {
+		// Launch the silent updater BEFORE quitting so any UAC cancellation
+		// (only needed for legacy/machine-wide Program Files installs) keeps
+		// Block open and ready.
+		if err := launchWindowsUpdater(rec.ArchivePath); err != nil {
 			logError("install.windows_launch_failed", "err", err)
 			return err
 		}
