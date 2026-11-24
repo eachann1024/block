@@ -13,7 +13,6 @@ type themeThumbCacheKey struct {
 	theme model.ExportTheme
 	w     int
 	h     int
-	rad   int
 }
 
 type themeThumbCacheEntry struct {
@@ -36,7 +35,6 @@ func PaintThemeThumb(p *ui.Painter, r ui.Rect, t model.ExportTheme, radius float
 		theme: t,
 		w:     int(math.Round(float64(r.W * thumbScale))),
 		h:     int(math.Round(float64(r.H * thumbScale))),
-		rad:   int(math.Round(float64(radius * thumbScale))),
 	}
 	themeThumbCacheMu.RLock()
 	entry, ok := themeThumbCache[key]
@@ -46,7 +44,9 @@ func PaintThemeThumb(p *ui.Painter, r ui.Rect, t model.ExportTheme, radius float
 		hPx := max(int(math.Ceil(float64(r.H))), 1)
 		rgba := ui.Render(func(c *ui.Context) {
 			ui.Box(c).Size(float32(wPx), float32(hPx)).Draw(func(tp *ui.Painter, _ ui.Rect) {
-				paintThemeThumbUncached(tp, ui.Rect{W: r.W, H: r.H}, t, radius)
+				// Render full-bleed into the offscreen cache and clip at blit time so
+				// rounded corners never bake the offscreen surface's white background.
+				paintThemeThumbUncached(tp, ui.Rect{W: r.W, H: r.H}, t, 0)
 			})
 		}, wPx, hPx, thumbScale)
 		if rgba == nil || rgba.Bounds().Empty() {
@@ -61,7 +61,9 @@ func PaintThemeThumb(p *ui.Painter, r ui.Rect, t model.ExportTheme, radius float
 		themeThumbCache[key] = entry
 		themeThumbCacheMu.Unlock()
 	}
-	p.ImageRegion(entry.bm, ui.Rect{W: r.W * thumbScale, H: r.H * thumbScale}, r, ui.ImageOptions{})
+	p.Clip(r, radius, func() {
+		p.ImageRegion(entry.bm, ui.Rect{W: r.W * thumbScale, H: r.H * thumbScale}, r, ui.ImageOptions{})
+	})
 }
 
 func paintThemeThumbUncached(p *ui.Painter, r ui.Rect, t model.ExportTheme, radius float32) {

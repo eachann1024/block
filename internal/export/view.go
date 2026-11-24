@@ -23,7 +23,7 @@ const (
 	previewPadX         = float32(32)
 	previewPadTop       = float32(36)
 	previewPadBottom    = float32(36)
-	minFitScale         = float32(0.75)
+	minFitScale         = float32(0.45)
 	exportPageWidth     = float32(816)
 	exportRasterScale   = float32(markdown.ExportScale)
 )
@@ -873,9 +873,10 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 
 	btn.Children(func() {
 		ui.Box(ctx).FillWidth().Height(theme.ExportThemeThumbHeight).Shrink(0).
-			Radius(theme.RadiusSM).Border(1, chipBorder).
+			Radius(theme.RadiusSM).
 			Draw(func(p *ui.Painter, r ui.Rect) {
 				markdown.PaintThemeThumb(p, r, st, theme.RadiusSM)
+				p.Stroke(ui.Rect{X: r.X + 0.5, Y: r.Y + 0.5, W: r.W - 1, H: r.H - 1}, chipBorder, max(theme.RadiusSM-0.5, 0), 1)
 			})
 		ui.Row(ctx).FillWidth().PaddingX(theme.Space4).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space4).Children(func() {
 			ui.Text(ctx, spec.Label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
