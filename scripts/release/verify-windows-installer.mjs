@@ -1,11 +1,14 @@
 // Runs the packaged Windows setup on a real Windows machine and fails unless
-// Block's own setup window installs it. Gate for the release workflow:
+// both per-user (default, seamless updates) and machine-wide (/ALLUSERS /
+// legacy Program Files) flows work end-to-end. Gate for the release workflow:
 //   node scripts/release/verify-windows-installer.mjs <setup.exe> <mygo-automation.exe> <screenshot-dir>
 //
-// 1. Interactive run with a custom directory holding spaces: the setup window
-//    must come up, show that directory, install on "Install", and reach "Open".
-// 2. Updater run (/UPDATE): setup must install unattended and exit by itself.
-// 3. Silent uninstall, so the uninstaller keeps working too.
+// 1. Interactive per-user install with a custom directory holding spaces.
+// 2. Seamless silent updater run (/S /UPDATE) on that per-user install.
+// 3. Silent per-user uninstall.
+// 4. Machine-wide install (/S /ALLUSERS) + seamless silent in-place update
+//    preserving HKLM scope without duplicating to HKCU.
+// 5. Silent machine-wide uninstall.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
@@ -26,9 +29,14 @@ assert.ok(!/\s/.test(setupExe), `setup path must not contain spaces: ${setupExe}
 mkdirSync(shotsDir, { recursive: true });
 
 // Spaces on purpose: NSIS reads /D= verbatim, the easiest thing to get wrong.
-const INSTALL_DIR = "C:\\Block Smoke\\Custom Dir";
-const APP_EXE = join(INSTALL_DIR, "block.exe");
-const UNINSTALL_EXE = join(INSTALL_DIR, "uninstall.exe");
+const USER_DIR = "C:\\Block Smoke\\Custom Dir";
+const USER_EXE = join(USER_DIR, "block.exe");
+const USER_UNINSTALL = join(USER_DIR, "uninstall.exe");
+
+const MACHINE_DIR = "C:\\Block Smoke\\Machine Dir";
+const MACHINE_EXE = join(MACHINE_DIR, "block.exe");
+const MACHINE_UNINSTALL = join(MACHINE_DIR, "uninstall.exe");
+
 const SOCKET = join(tmpdir(), `block-setup-smoke-${process.pid}.sock`);
 const SESSION_ENV = { ...process.env, MYGO_AUTOMATION_SESSION: `block-setup-smoke-${process.pid}` };
 
@@ -86,21 +94,33 @@ function killBlock() {
   spawnSync("taskkill", ["/F", "/IM", "block.exe"], { stdio: "ignore" });
 }
 
-function assertInstalled(label) {
-  assert.ok(existsSync(APP_EXE), `${label}: ${APP_EXE} is missing`);
-  assert.ok(existsSync(UNINSTALL_EXE), `${label}: ${UNINSTALL_EXE} is missing`);
+function hasUninstallEntry(hive, installDir) {
+  const args = [
+    "query",
+    `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall`,
+    "/s",
+    "/d",
+    "/f",
+    installDir,
+  ];
   // The NSIS setup is a 32-bit process, so its HKLM writes land in the 32-bit view.
-  const reg = spawnSync(
-    "reg",
-    ["query", "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "/s", "/d", "/f", INSTALL_DIR, "/reg:32"],
-    { encoding: "utf8" },
-  );
-  assert.equal(reg.status, 0, `${label}: no uninstall entry points at ${INSTALL_DIR}\n${reg.stdout}${reg.stderr}`);
+  if (hive === "HKLM") {
+    args.push("/reg:32");
+  }
+  const reg = spawnSync("reg", args, { encoding: "utf8" });
+  return { ok: reg.status === 0, out: `${reg.stdout || ""}${reg.stderr || ""}` };
 }
 
-async function interactiveInstall() {
-  console.log("[1/3] interactive install through the setup window");
-  const run = startSetup([`/D=${INSTALL_DIR}`], { ...process.env, MYGO_AUTOMATION: SOCKET });
+function assertInstalled(label, { dir, exe, uninstall, hive }) {
+  assert.ok(existsSync(exe), `${label}: ${exe} is missing`);
+  assert.ok(existsSync(uninstall), `${label}: ${uninstall} is missing`);
+  const reg = hasUninstallEntry(hive, dir);
+  assert.ok(reg.ok, `${label}: no ${hive} uninstall entry points at ${dir}\n${reg.out}`);
+}
+
+async function interactiveUserInstall() {
+  console.log("[1/5] interactive per-user install through the setup window");
+  const run = startSetup([`/D=${USER_DIR}`], { ...process.env, MYGO_AUTOMATION: SOCKET });
   try {
     await waitFor("the setup window", 90_000, () => automation(["open", "--socket", SOCKET], { check: false }).ok);
     const ready = await waitFor("the Install button", 30_000, () => {
@@ -123,7 +143,12 @@ async function interactiveInstall() {
     });
     console.log(done);
     automation(["screenshot", join(shotsDir, "3-done.png")], { check: false });
-    assertInstalled("interactive install");
+    assertInstalled("interactive per-user install", {
+      dir: USER_DIR,
+      exe: USER_EXE,
+      uninstall: USER_UNINSTALL,
+      hive: "HKCU",
+    });
 
     automation(["press", "key=setup-close"]);
     const code = await exitCodeWithin(run, "setup after closing its window", 30_000);
@@ -134,38 +159,80 @@ async function interactiveInstall() {
   }
 }
 
-async function updaterInstall() {
-  console.log("[2/3] unattended install as started by the in-app updater");
-  const run = startSetup(["/UPDATE", `/D=${INSTALL_DIR}`]);
-  const code = await exitCodeWithin(run, "setup /UPDATE", 180_000);
-  assert.equal(code, 0, `setup /UPDATE exited ${code}`);
-  assertInstalled("updater install");
-  // Reopening Block goes through the desktop shell, which a CI session may not
-  // run; report it without failing the release on that alone.
+async function seamlessUserUpdate() {
+  console.log("[2/5] seamless silent per-user update (/S /UPDATE)");
+  const run = startSetup(["/S", "/UPDATE", `/D=${USER_DIR}`]);
+  const code = await exitCodeWithin(run, "setup /S /UPDATE (per-user)", 180_000);
+  assert.equal(code, 0, `setup /S /UPDATE (per-user) exited ${code}`);
+  assertInstalled("per-user updater install", {
+    dir: USER_DIR,
+    exe: USER_EXE,
+    uninstall: USER_UNINSTALL,
+    hive: "HKCU",
+  });
   let reopened = false;
   for (let i = 0; i < 20 && !reopened; i += 1) {
-    reopened = blockProcessPaths().some((p) => p.toLowerCase() === APP_EXE.toLowerCase());
+    reopened = blockProcessPaths().some((p) => p.toLowerCase() === USER_EXE.toLowerCase());
     if (!reopened) await sleep(500);
   }
-  console.log(reopened ? "Block was reopened after the update" : "::warning::Block was not reopened after the update on this runner");
+  console.log(reopened ? "Block was reopened after the per-user update" : "::warning::Block was not reopened after the per-user update on this runner");
   killBlock();
   await sleep(1000);
 }
 
-async function silentUninstall() {
-  console.log("[3/3] silent uninstall");
+async function silentUserUninstall() {
+  console.log("[3/5] silent per-user uninstall");
   // _?= keeps the uninstaller from re-launching itself from %TEMP%, so its exit means it is done.
-  const res = spawnSync(UNINSTALL_EXE, ["/S", `_?=${INSTALL_DIR}`], { windowsVerbatimArguments: true, timeout: 120_000 });
-  assert.equal(res.status, 0, `uninstall exited ${res.status}`);
-  assert.ok(!existsSync(APP_EXE), `${APP_EXE} survived uninstall`);
+  const res = spawnSync(USER_UNINSTALL, ["/S", `_?=${USER_DIR}`], { windowsVerbatimArguments: true, timeout: 120_000 });
+  assert.equal(res.status, 0, `per-user uninstall exited ${res.status}`);
+  assert.ok(!existsSync(USER_EXE), `${USER_EXE} survived uninstall`);
+  assert.ok(!hasUninstallEntry("HKCU", USER_DIR).ok, `HKCU uninstall entry survived for ${USER_DIR}`);
+}
+
+async function machineInstallAndUpdate() {
+  console.log("[4/5] machine-wide install (/S /ALLUSERS) and silent in-place update");
+  const installRun = startSetup(["/S", "/ALLUSERS", `/D=${MACHINE_DIR}`]);
+  const installCode = await exitCodeWithin(installRun, "setup /S /ALLUSERS", 180_000);
+  assert.equal(installCode, 0, `setup /S /ALLUSERS exited ${installCode}`);
+  assertInstalled("machine-wide install", {
+    dir: MACHINE_DIR,
+    exe: MACHINE_EXE,
+    uninstall: MACHINE_UNINSTALL,
+    hive: "HKLM",
+  });
+
+  // Update without passing /ALLUSERS to confirm existing HKLM installs are
+  // auto-detected and updated in place without creating a duplicate HKCU entry.
+  const updateRun = startSetup(["/S", "/UPDATE", `/D=${MACHINE_DIR}`]);
+  const updateCode = await exitCodeWithin(updateRun, "setup /S /UPDATE (machine)", 180_000);
+  assert.equal(updateCode, 0, `setup /S /UPDATE (machine) exited ${updateCode}`);
+  assertInstalled("machine-wide updater install", {
+    dir: MACHINE_DIR,
+    exe: MACHINE_EXE,
+    uninstall: MACHINE_UNINSTALL,
+    hive: "HKLM",
+  });
+  assert.ok(!hasUninstallEntry("HKCU", MACHINE_DIR).ok, `machine-wide update unexpectedly wrote HKCU uninstall entry for ${MACHINE_DIR}`);
+  killBlock();
+  await sleep(1000);
+}
+
+async function silentMachineUninstall() {
+  console.log("[5/5] silent machine-wide uninstall");
+  const res = spawnSync(MACHINE_UNINSTALL, ["/S", `_?=${MACHINE_DIR}`], { windowsVerbatimArguments: true, timeout: 120_000 });
+  assert.equal(res.status, 0, `machine-wide uninstall exited ${res.status}`);
+  assert.ok(!existsSync(MACHINE_EXE), `${MACHINE_EXE} survived uninstall`);
+  assert.ok(!hasUninstallEntry("HKLM", MACHINE_DIR).ok, `HKLM uninstall entry survived for ${MACHINE_DIR}`);
 }
 
 killBlock();
 try {
-  await interactiveInstall();
-  await updaterInstall();
-  await silentUninstall();
-  console.log("Windows setup verified.");
+  await interactiveUserInstall();
+  await seamlessUserUpdate();
+  await silentUserUninstall();
+  await machineInstallAndUpdate();
+  await silentMachineUninstall();
+  console.log("Windows setup verified (per-user & machine-wide).");
 } finally {
   killBlock();
   rmSync("C:\\Block Smoke", { recursive: true, force: true });
