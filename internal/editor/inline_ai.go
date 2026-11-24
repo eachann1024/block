@@ -1612,7 +1612,7 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 	case model.BlockCode, model.BlockRawHTML:
 		ui.Column(c.Key(fmt.Sprintf("aip-code-%d", idx))).FillWidth().Padding(theme.Space10, theme.Space12).Radius(theme.RadiusSM).
 			Background(pal.CodeBlockBG).Children(func() {
-			ui.Text(c, b.Code).Font("monospace").FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text).FillWidth()
+			ui.Text(c, b.Code).Font(resolvedCodeFont()).FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text).FillWidth()
 		})
 	case model.BlockCallout:
 		st := calloutTone(b.Callout, theme.IsDark())
@@ -1620,7 +1620,9 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 			Padding(38, theme.Space16, theme.Space12, 44).Radius(theme.RadiusLG).Background(st.BG).Border(1, st.Border)
 		card.Children(func() {
 			ui.Row(c).Absolute().Left(theme.Space12).Top(theme.Space6).Height(theme.HeightChrome).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
-				icons.Draw(c, icons.Callout, 16, theme.IconColors{Line: st.Accent, Fill: st.IconFill, Accent: st.Accent})
+				calloutIC := pal.TintedIconColors(st.Accent)
+				calloutIC.Fill = st.IconFill
+				icons.Draw(c, icons.Callout, 16, calloutIC)
 				ui.Text(c, calloutLabel(b.Callout)).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(st.Text).SingleLine()
 			})
 			ui.RichText(c, s.buildDisplaySpans(0, b, fontSize, weight)...).FontSize(fontSize).LineHeight(lh).TextColor(pal.Text).FillWidth()
@@ -1644,7 +1646,7 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 						Background(pal.TodoBG).Border(1, pal.TodoRing)
 					if b.Checked {
 						cb.Children(func() {
-							icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.Accent))
+							icons.Draw(c, icons.Check, theme.IconMicro, pal.MinimalIconColors(pal.Accent))
 						})
 					}
 				})
@@ -1906,11 +1908,11 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 										starBtn.Background(pal.Hover)
 									}
 									starBtn.Children(func() {
-										ic := theme.IconColors{Line: pal.TextSecondary, Fill: ui.Transparent, Accent: ui.Transparent}
+										ic := pal.DuoIconColors(pal.TextSecondary)
 										if it.Starred {
-											ic = theme.IconColors{Line: pal.Accent, Fill: pal.Accent, Accent: ui.Transparent}
+											ic = pal.LitDuoIconColors(pal.Accent)
 										}
-										icons.DrawAnimated(c, icons.Star, 13, ic, starBtn.Hovered() || starBtn.Pressed())
+										icons.DrawAnimated(c, icons.Star, 13, ic, it.Starred || starBtn.Hovered() || starBtn.Pressed())
 									})
 									appUi.Probe(starBtn, starID)
 									if starBtn.Clicked() {
