@@ -53,7 +53,7 @@ func Checkbox(c *ui.Context, id, label string, value *bool, disabled bool) bool 
 			}
 			p := SpringTo(box, "cbTick", target)
 			if p > 0.02 {
-				tick := icons.Draw(c, icons.Check, 12, pal.MonoIconColors(pal.AccentText))
+				tick := icons.Draw(c, icons.Check, 12, pal.MinimalIconColors(pal.AccentText))
 				tick.Opacity(min(p, 1)).Scale(0.6+0.4*p, 0.6+0.4*p)
 			}
 		})

@@ -114,22 +114,22 @@ func keyGlyphMetrics(glyph icons.Icon, fontSize float32) (svgSize, inkW float32)
 	)
 	switch glyph {
 	case icons.KeyPlus:
-		// key-plus spans 16.1 / 24 units; 0.56em matches compact connector proportions.
+		// key-plus spans 15.5 / 24 units; 0.56em matches compact connector proportions.
 		inkW = fontSize * plusInkEm
-		svgSize = inkW / (16.1 / 24.0)
+		svgSize = inkW / (15.5 / 24.0)
 	case icons.ArrowUp, icons.ArrowDown:
-		// Vertical arrow icons span 14.5 / 24 tall and 12.0 / 24 wide.
-		svgSize = fontSize * (targetInkEm / (14.5 / 24.0))
-		inkW = svgSize * (12.0 / 24.0)
+		// Vertical arrow icons span 16.75 / 24 tall and 13.0 / 24 wide.
+		svgSize = fontSize * (targetInkEm / (16.75 / 24.0))
+		inkW = svgSize * (13.0 / 24.0)
 	case icons.ArrowLeft, icons.ArrowRight:
-		// Horizontal arrow icons span 14.5 / 24 wide and 12.0 / 24 tall.
+		// Horizontal arrow icons span 16.75 / 24 wide and 13.0 / 24 tall.
 		inkW = fontSize * targetInkEm
-		svgSize = inkW / (14.5 / 24.0)
+		svgSize = inkW / (16.75 / 24.0)
 	default:
 		// key-command, key-option, key-shift, key-control, key-return, key-backspace
-		// are all normalized onto one 16.8 / 24 optical ink grid (1.8 stroke).
+		// are all normalized onto one 16.5 / 24 optical ink grid (1.5 stroke).
 		inkW = fontSize * targetInkEm
-		svgSize = inkW / (16.8 / 24.0)
+		svgSize = inkW / (16.5 / 24.0)
 	}
 	return svgSize, inkW
 }
@@ -199,7 +199,7 @@ func ShortcutLabel(c *ui.Context, text string, style ShortcutLabelStyle) ui.Elem
 				}
 				slot := ui.Box(c).Size(slotW, lineH).Shrink(0)
 				slot.Children(func() {
-					icons.Draw(c, seg.key, svgSize, pal.MonoIconColors(style.Color)).
+					icons.Draw(c, seg.key, svgSize, pal.MinimalIconColors(style.Color)).
 						Absolute().
 						Left((slotW - svgSize) / 2).
 						Top((lineH - svgSize) / 2)

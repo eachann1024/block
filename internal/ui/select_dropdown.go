@@ -125,7 +125,7 @@ func DropdownSelect(
 		if open {
 			glyph = icons.ChevronUp
 		}
-		ic := pal.MonoIconColors(pal.TextSecondary)
+		ic := pal.DuoIconColors(pal.TextSecondary)
 		if open || hovered || pressed {
 			ic = pal.DuoIconColors(pal.Text)
 		}

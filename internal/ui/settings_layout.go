@@ -106,7 +106,7 @@ func SettingsTextAction(c *ui.Context, id, label string, leading *icons.Icon) ui
 	Probe(btn, id)
 	btn.Children(func() {
 		if leading != nil {
-			icons.Draw(c, *leading, theme.IconMicro, pal.MonoIconColors(pal.Accent))
+			icons.Draw(c, *leading, theme.IconMicro, pal.DuoIconColors(pal.Accent))
 		}
 		ui.Text(c, label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).
 			TextColor(pal.Accent).SingleLine()
