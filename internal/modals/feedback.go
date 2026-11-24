@@ -468,7 +468,7 @@ func feedbackFieldLabel(c *ui.Context, text string) {
 func feedbackTile(c *ui.Context, glyph icons.Icon, fg, bg ui.Color) {
 	ui.Box(c).Size(feedbackTileSize, feedbackTileSize).Shrink(0).Radius(theme.RadiusSM).Background(bg).Center().
 		Children(func() {
-			icons.Draw(c, glyph, 16, theme.Ocean().MonoIconColors(fg))
+			icons.Draw(c, glyph, 16, theme.Ocean().DuoIconColors(fg))
 		})
 }
 
@@ -568,7 +568,7 @@ func (m *Manager) renderFeedbackDone(c *ui.Context) {
 	doneBox.Children(func() {
 		ui.Box(c).Size(52, 52).Radius(theme.RadiusPill).Background(pal.SuccessSurface).
 			Border(1, pal.Success).Center().Children(func() {
-			icons.DrawAnimated(c, icons.Check, 24, pal.MonoIconColors(pal.Success), true)
+			icons.DrawAnimated(c, icons.Check, 24, pal.DuoIconColors(pal.Success), true)
 		})
 		ui.Text(c, theme.Tr("收到了，谢谢你", "Got it, thank you")).
 			FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
@@ -869,7 +869,7 @@ func (m *Manager) renderFeedbackLogChoice(c *ui.Context) {
 		})
 		ui.Row(c).FillWidth().MinWidth(0).Padding(theme.Space10, theme.Space12).Gap(theme.Space8).
 			BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-			icons.Draw(c, icons.ShieldCheck, 16, pal.MonoIconColors(pal.Success))
+			icons.Draw(c, icons.ShieldCheck, 16, pal.DuoIconColors(pal.Success))
 			ui.Text(c, theme.Tr("日志在这台设备上打码后才发送，不含笔记内容、路径和密钥。你添加的附件会连同文件名原样发送。",
 				"The log is masked on this device before sending, with no note content, paths or keys. Attachments you add are sent as-is, file names included.")).
 				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
@@ -1094,7 +1094,7 @@ func renderFeedbackPart(c *ui.Context, index int, p feedback.Part) {
 			switch p.State {
 			case feedback.PartDone:
 				feedbackMeta(c, size, pal.TextSecondary)
-				icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Success), true)
+				icons.DrawAnimated(c, icons.Check, 16, pal.DuoIconColors(pal.Success), true)
 			case feedback.PartUploading:
 				if p.Attempt > 1 {
 					feedbackMeta(c, fmt.Sprintf(theme.Tr("重试 %d/%d", "Retry %d/%d"), p.Attempt, feedback.MaxAttempts), pal.TextSecondary)

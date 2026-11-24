@@ -645,7 +645,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				}
 				bui.AnimateSurfaceColors(btn, bg, border, active)
 				btn.Children(func() {
-					icons.Draw(c, tab.icon, theme.IconInline, pal.MonoIconColors(fg))
+					icons.DrawAnimated(c, tab.icon, theme.IconInline, pal.DuoIconColors(fg), active || hov || prs)
 					ui.Text(c, tab.label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
 				})
 				if btn.Clicked() {
@@ -1340,11 +1340,16 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, cb Callbacks) {
 			impRow := ui.ButtonBase(c.Key("mm-exp-imp-"+id)).
 				FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
 				AlignItems(ui.Center).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(theme.Tr("导入文件", "Import File"))
-			if impRow.Hovered() || impRow.Pressed() {
+			impHot := impRow.Hovered() || impRow.Pressed()
+			if impHot {
 				impRow.Background(pal.MenuHover)
 			}
 			impRow.Children(func() {
-				icons.Draw(c, icons.Upload, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+				ic := pal.DuoIconColors(pal.TextSecondary)
+				if impHot {
+					ic = pal.DuoIconColors(pal.Text)
+				}
+				icons.DrawAnimated(c, icons.Upload, theme.IconInline, ic, impHot)
 				ui.Text(c, theme.Tr("导入文件", "Import File")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
 					TextColor(pal.Text).SingleLine()
 			})
@@ -1418,11 +1423,16 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 				row := ui.ButtonBase(c.Key("mm-link-note-"+id+"-"+cand.RelPath)).
 					FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
 					AlignItems(ui.Center).Gap(theme.Space6).Cursor(ui.CursorPointer).Label(cand.Title)
-				if row.Hovered() || row.Pressed() {
+				rowHot := row.Hovered() || row.Pressed()
+				if rowHot {
 					row.Background(pal.MenuHover)
 				}
 				row.Children(func() {
-					icons.Draw(c, icons.Note, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+					ic := pal.DuoIconColors(pal.TextSecondary)
+					if rowHot {
+						ic = pal.DuoIconColors(pal.Text)
+					}
+					icons.DrawAnimated(c, icons.Note, theme.IconInline, ic, rowHot)
 					ui.Text(c, cand.Title).FontSize(theme.FontSmall).TextColor(pal.Text).
 						Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
