@@ -40,8 +40,9 @@ func storeRowDivider(c *ui.Context, ranked bool) {
 	if ranked {
 		inset += storeRankWidth + theme.Space12
 	}
-	ui.Box(c).FillWidth().Height(1).Shrink(0).Margin(0, storeRowPadX, 0, inset).
-		Background(theme.Ocean().StoreCard().Divider)
+	ui.Row(c).FillWidth().MinWidth(0).Padding(0, storeRowPadX, 0, inset).Shrink(0).Children(func() {
+		ui.Box(c).Grow(1).Height(1).Background(theme.Ocean().StoreCard().Divider)
+	})
 }
 
 func renderStoreList(
@@ -112,10 +113,11 @@ func renderStoreRow(
 				FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 				FontWeight(theme.WeightTitle).TextColor(rankColor).SingleLine()
 		}
-		ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
-			Radius(theme.RadiusLG).Background(iconBG).Border(1, iconBorder).Children(func() {
-			DrawDuoSpecAnimated(c, entry.Icon, theme.StoreIconGlyphSize, iconColors, hovered || pressed)
-		})
+		renderStorePluginIcon(
+			c, entry, card.source == storeSourceOfficial,
+			theme.StoreIconBoxSize, theme.StoreIconGlyphSize, theme.RadiusLG,
+			iconBG, iconBorder, iconColors, hovered || pressed,
+		)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
 				var marks [][2]int
@@ -178,6 +180,8 @@ func renderStoreSkeleton(c *ui.Context) {
 	}
 	ui.Column(c.Key("app-store-skeleton")).FillWidth().MinWidth(0).Gap(theme.Space24).Role(ui.RoleStatus).
 		Label(theme.Tr("正在加载插件目录", "Loading plugin catalog")).Children(func() {
+		ui.Box(c).FillWidth().Height(theme.StoreHeroHeight).Radius(theme.RadiusXL).
+			Background(pal.Selected).Opacity(alpha)
 		ui.Column(c).FillWidth().Gap(theme.Space12).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
 				for range 1 + len(plugins.StoreCategories()) {

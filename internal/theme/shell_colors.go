@@ -164,6 +164,181 @@ func (p Palette) StoreCard() StoreCardColors {
 	}
 }
 
+// StoreHeroTone identifies one curated App Store featured showcase backdrop.
+type StoreHeroTone string
+
+const (
+	StoreHeroToneFileIcons StoreHeroTone = "file-icons"
+	StoreHeroToneSync      StoreHeroTone = "sync"
+	StoreHeroToneTitlebar  StoreHeroTone = "titlebar"
+	StoreHeroToneMindmap   StoreHeroTone = "mindmap"
+)
+
+// StoreHeroColors holds the atmospheric backdrop gradient, ambient blooms,
+// border, and action button colours for one App Store featured showcase slide.
+type StoreHeroColors struct {
+	BGStart           ui.Color
+	BGMid             ui.Color
+	BGEnd             ui.Color
+	GlowPrimary       ui.Color
+	GlowSecondary     ui.Color
+	Border            ui.Color
+	HoverBorder       ui.Color
+	AccentBG          ui.Color
+	AccentHoverBG     ui.Color
+	AccentPressedBG   ui.Color
+	AccentFG          ui.Color
+	SurfaceBtnBG      ui.Color
+	SurfaceBtnHoverBG ui.Color
+	SurfaceBtnBorder  ui.Color
+}
+
+// StoreHero returns the themed atmospheric showcase palette for tone.
+func (p Palette) StoreHero(tone StoreHeroTone) StoreHeroColors {
+	switch tone {
+	case StoreHeroToneSync:
+		if p.Dark {
+			return StoreHeroColors{
+				BGStart:           ui.Hex("#162527"),
+				BGMid:             ui.Hex("#132022"),
+				BGEnd:             ui.Hex("#182a2c"),
+				GlowPrimary:       ui.RGBA(62, 208, 174, 0.18),
+				GlowSecondary:     ui.RGBA(64, 160, 210, 0.10),
+				Border:            ui.RGBA(86, 208, 182, 0.22),
+				HoverBorder:       ui.RGBA(86, 208, 182, 0.42),
+				AccentBG:          ui.Hex("#229e8c"),
+				AccentHoverBG:     ui.Hex("#2ab29e"),
+				AccentPressedBG:   ui.Hex("#1c8f7d"),
+				AccentFG:          ui.Hex("#111416"),
+				SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.08),
+				SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.14),
+				SurfaceBtnBorder:  ui.RGBA(255, 255, 255, 0.14),
+			}
+		}
+		return StoreHeroColors{
+			BGStart:           ui.Hex("#f7fdfb"),
+			BGMid:             ui.Hex("#ebf8f4"),
+			BGEnd:             ui.Hex("#ddf2ec"),
+			GlowPrimary:       ui.RGBA(42, 186, 156, 0.16),
+			GlowSecondary:     ui.RGBA(56, 158, 196, 0.10),
+			Border:            ui.RGBA(42, 158, 138, 0.26),
+			HoverBorder:       ui.RGBA(32, 142, 124, 0.46),
+			AccentBG:          ui.Hex("#197d70"),
+			AccentHoverBG:     ui.Hex("#147568"),
+			AccentPressedBG:   ui.Hex("#106358"),
+			AccentFG:          ui.Hex("#ffffff"),
+			SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.78),
+			SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.96),
+			SurfaceBtnBorder:  ui.RGBA(120, 184, 172, 0.36),
+		}
+	case StoreHeroToneTitlebar:
+		if p.Dark {
+			return StoreHeroColors{
+				BGStart:           ui.Hex("#1d2028"),
+				BGMid:             ui.Hex("#181b22"),
+				BGEnd:             ui.Hex("#20242e"),
+				GlowPrimary:       ui.RGBA(76, 210, 156, 0.15),
+				GlowSecondary:     ui.RGBA(240, 184, 92, 0.10),
+				Border:            ui.RGBA(132, 146, 174, 0.24),
+				HoverBorder:       ui.RGBA(132, 146, 174, 0.42),
+				AccentBG:          ui.Hex("#2da476"),
+				AccentHoverBG:     ui.Hex("#36b886"),
+				AccentPressedBG:   ui.Hex("#248e65"),
+				AccentFG:          ui.Hex("#111416"),
+				SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.08),
+				SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.14),
+				SurfaceBtnBorder:  ui.RGBA(255, 255, 255, 0.14),
+			}
+		}
+		return StoreHeroColors{
+			BGStart:           ui.Hex("#f9fafc"),
+			BGMid:             ui.Hex("#f1f4f8"),
+			BGEnd:             ui.Hex("#e7ecf3"),
+			GlowPrimary:       ui.RGBA(62, 192, 138, 0.14),
+			GlowSecondary:     ui.RGBA(238, 184, 88, 0.11),
+			Border:            ui.RGBA(136, 150, 174, 0.28),
+			HoverBorder:       ui.RGBA(108, 126, 154, 0.46),
+			AccentBG:          ui.Hex("#21865d"),
+			AccentHoverBG:     ui.Hex("#1c7d57"),
+			AccentPressedBG:   ui.Hex("#166b49"),
+			AccentFG:          ui.Hex("#ffffff"),
+			SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.80),
+			SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.96),
+			SurfaceBtnBorder:  ui.RGBA(158, 170, 192, 0.36),
+		}
+	case StoreHeroToneMindmap:
+		if p.Dark {
+			return StoreHeroColors{
+				BGStart:           ui.Hex("#27201b"),
+				BGMid:             ui.Hex("#201a16"),
+				BGEnd:             ui.Hex("#2a211b"),
+				GlowPrimary:       ui.RGBA(242, 155, 75, 0.18),
+				GlowSecondary:     ui.RGBA(146, 118, 224, 0.10),
+				Border:            ui.RGBA(232, 158, 92, 0.24),
+				HoverBorder:       ui.RGBA(232, 158, 92, 0.44),
+				AccentBG:          ui.Hex("#df7c3e"),
+				AccentHoverBG:     ui.Hex("#ec8b4e"),
+				AccentPressedBG:   ui.Hex("#c86a2f"),
+				AccentFG:          ui.Hex("#111416"),
+				SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.08),
+				SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.14),
+				SurfaceBtnBorder:  ui.RGBA(255, 255, 255, 0.14),
+			}
+		}
+		return StoreHeroColors{
+			BGStart:           ui.Hex("#fffdf7"),
+			BGMid:             ui.Hex("#fdf5e8"),
+			BGEnd:             ui.Hex("#f7e8d2"),
+			GlowPrimary:       ui.RGBA(242, 155, 75, 0.17),
+			GlowSecondary:     ui.RGBA(133, 101, 216, 0.09),
+			Border:            ui.RGBA(218, 146, 78, 0.28),
+			HoverBorder:       ui.RGBA(212, 128, 56, 0.48),
+			AccentBG:          ui.Hex("#b45d27"),
+			AccentHoverBG:     ui.Hex("#af571f"),
+			AccentPressedBG:   ui.Hex("#aa4f1b"),
+			AccentFG:          ui.Hex("#ffffff"),
+			SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.78),
+			SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.96),
+			SurfaceBtnBorder:  ui.RGBA(206, 166, 126, 0.36),
+		}
+	default: // StoreHeroToneFileIcons
+		if p.Dark {
+			return StoreHeroColors{
+				BGStart:           ui.Hex("#231f2c"),
+				BGMid:             ui.Hex("#1e1b26"),
+				BGEnd:             ui.Hex("#271f28"),
+				GlowPrimary:       ui.RGBA(240, 124, 104, 0.18),
+				GlowSecondary:     ui.RGBA(56, 198, 150, 0.11),
+				Border:            ui.RGBA(240, 148, 126, 0.22),
+				HoverBorder:       ui.RGBA(240, 148, 126, 0.42),
+				AccentBG:          ui.Hex("#e06558"),
+				AccentHoverBG:     ui.Hex("#eb7467"),
+				AccentPressedBG:   ui.Hex("#ce5c4f"),
+				AccentFG:          ui.Hex("#111416"),
+				SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.08),
+				SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.14),
+				SurfaceBtnBorder:  ui.RGBA(255, 255, 255, 0.14),
+			}
+		}
+		return StoreHeroColors{
+			BGStart:           ui.Hex("#fffdf9"),
+			BGMid:             ui.Hex("#fdf5eb"),
+			BGEnd:             ui.Hex("#f7e8dc"),
+			GlowPrimary:       ui.RGBA(238, 126, 102, 0.16),
+			GlowSecondary:     ui.RGBA(42, 163, 119, 0.10),
+			Border:            ui.RGBA(217, 134, 108, 0.28),
+			HoverBorder:       ui.RGBA(217, 110, 88, 0.48),
+			AccentBG:          ui.Hex("#cb473d"),
+			AccentHoverBG:     ui.Hex("#c8453b"),
+			AccentPressedBG:   ui.Hex("#b23a31"),
+			AccentFG:          ui.Hex("#ffffff"),
+			SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.78),
+			SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.96),
+			SurfaceBtnBorder:  ui.RGBA(205, 162, 142, 0.36),
+		}
+	}
+}
+
 // DotPagerColors holds recessed-track tactile bead and companion header dot colours.
 type DotPagerColors struct {
 	TrackBG          ui.Color

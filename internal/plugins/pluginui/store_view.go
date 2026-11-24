@@ -206,6 +206,9 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 		}
 
 		view := ctrl.storeView(locale)
+		if strings.TrimSpace(ctrl.storeQuery) == "" && ctrl.storeSource == "" && selectedCat == "" {
+			renderStoreHero(c, ctrl, locale, installingID, onSelectTab)
+		}
 		renderStoreCategoryTabs(c, ctrl, selectedCat, locale, view)
 
 		list := view.cards

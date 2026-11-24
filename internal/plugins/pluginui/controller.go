@@ -21,29 +21,32 @@ type Controller struct {
 	sup         *plugins.Supervisor
 	storeReadme *storeReadmePreview
 
-	mu                 sync.Mutex
-	storeQuery         string
-	storeSource        string
-	storeSort          string
-	storeFilterOpen    bool
-	storeFilterAnchor  ui.Rect
-	storeFilterCursor  int
-	storeSearchFocused bool
-	storeCategory      plugins.Category
-	storeBaseSnap      *storeBaseSnapshot
-	storeViewSnap      *storeViewSnapshot
-	onSuggestPlugin    func(category plugins.Category)
-	onOpenStore        func()
-	isStoreVisibleFn   func() bool
-	nextPromptID       uint64
-	permQueue          []pendingPermissionPrompt
-	manualSpec         string
-	drafts             map[string]map[string]string
-	lastSynced         map[string]map[string]string
-	secretRevealed     map[string]map[string]bool
-	selectStates       map[string]map[string]*bui.DropdownSelectState
-	treemapStates      map[string]map[string]*bui.TreemapState
-	cardExpanded       map[string]map[string]bool
+	mu                  sync.Mutex
+	storeQuery          string
+	storeSource         string
+	storeSort           string
+	storeFilterOpen     bool
+	storeFilterAnchor   ui.Rect
+	storeFilterCursor   int
+	storeSearchFocused  bool
+	storeCategory       plugins.Category
+	storeBaseSnap       *storeBaseSnapshot
+	storeViewSnap       *storeViewSnapshot
+	storeHeroIndex      int
+	storeHeroLastSwitch time.Time
+	storeHeroPaused     bool
+	onSuggestPlugin     func(category plugins.Category)
+	onOpenStore         func()
+	isStoreVisibleFn    func() bool
+	nextPromptID        uint64
+	permQueue           []pendingPermissionPrompt
+	manualSpec          string
+	drafts              map[string]map[string]string
+	lastSynced          map[string]map[string]string
+	secretRevealed      map[string]map[string]bool
+	selectStates        map[string]map[string]*bui.DropdownSelectState
+	treemapStates       map[string]map[string]*bui.TreemapState
+	cardExpanded        map[string]map[string]bool
 
 	titlebarMenuOpen    bool
 	titlebarMenuTarget  string
@@ -114,7 +117,18 @@ func (c *Controller) SettingsTabChanged(previous, current string) {
 	}
 	c.closeStoreMenus()
 	if modals.IsStoreTab(current) && !modals.IsStoreTab(previous) {
+		c.storeHeroIndex = 0
+		c.storeHeroPaused = false
+		c.storeHeroLastSwitch = time.Time{}
 		c.sup.RefreshCatalogAsync()
+	}
+}
+
+func (c *Controller) selectStoreHero(index int, manual bool, now time.Time) {
+	c.storeHeroIndex = index
+	c.storeHeroLastSwitch = now
+	if manual {
+		c.storeHeroPaused = true
 	}
 }
 
