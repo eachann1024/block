@@ -204,8 +204,11 @@
 14. **`host.ui.editor_background` / `host.ui.set_editor_background`**（无需声明权限）
     - `host.ui.editor_background`（参数 `{}`）：返回当前插件设置的编辑器背景状态 `{"mode": "off"|"dots"|"grid", "contrast": "standard"|"high"}`。
     - `host.ui.set_editor_background`（参数 `{"mode": "dots", "contrast": "standard"}`）：设置与编辑器行高对齐的点阵（`"dots"`）、方格（`"grid"`）或关闭（`"off"`）背景及对比度（`"standard"` | `"high"`，兼容 `"strong"` 归一化为 `"high"`），持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动失效，返回归一化后的状态对象。
+15. **`host.ui.mindmap_state` / `host.ui.set_mindmap`**（无需声明权限）
+    - `host.ui.mindmap_state`（参数 `{}`）：返回当前插件设置的原生思维导图配置 `{"layout": "right"|"both", "height": "compact"|"standard"|"tall", "show_hints": true}`。
+    - `host.ui.set_mindmap`（参数 `{"layout": "right"|"both", "height": "compact"|"standard"|"tall", "show_hints": true}`，字段均可选）：更新原生思维导图块（```` ```mindmap ````）的默认布局、行内画布高度与底部快捷键提示栏显隐，持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动恢复默认，返回归一化后的状态对象。
 
-15. **`host.menubar.set`**（无需声明权限）
+16. **`host.menubar.set`**（无需声明权限）
     - 参数：`{"id": "<item_id>", "title": "3", "tooltip": "上传中", "menu": [{"id": "r1", "title": "shot.png", "subtitle": "https://...", "command": "copy_link", "payload": "https://..."}, {"separator": true}], "clear_menu": false}`（`id` 必填且须为本插件声明的 `menubar_items[].id`，其余字段可选，省略的字段保持原值）。
     - `title`：图标右侧的短文字（禁止 Emoji，截断至 16 个字符，传 `""` 清除）；`tooltip`：覆盖清单里的提示（截断至 200 个字符）。
     - `menu`：动态条目，整体替换上一次的动态条目，显示在静态 `menu` 下方（最多 20 条）。`title` 必填（截断至 60 个字符），`subtitle` 可选（截断至 80 个字符）；`command` 须引用 `commands[].id`，省略时条目置灰；`payload` 为最多 4096 字节的字符串，点击时作为 `context.payload` 随命令下发。`clear_menu: true` 清空动态条目。
