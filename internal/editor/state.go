@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"block/internal/files"
+	"block/internal/mindmap"
 	"block/internal/model"
 	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -43,6 +44,7 @@ const (
 	cmdCallout
 	cmdCode
 	cmdCodeMermaid
+	cmdCodeMindMap
 	cmdCodeMath
 	cmdTable
 	cmdDivider
@@ -284,6 +286,12 @@ type Session struct {
 	codeLangScroll    ui.ScrollState
 	codeCopiedBlock   model.BlockID
 	codeCopiedUntil   time.Time
+
+	// MindMap block UI
+	mindMapStates map[model.BlockID]*mindmap.BlockState
+	mindMapCfg    mindmap.Config
+	mindMapCfgSet bool
+	onNotify      func(msg, tone string)
 
 	// Callout block UI
 	calloutMenuBlock model.BlockID

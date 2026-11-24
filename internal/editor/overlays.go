@@ -1672,7 +1672,7 @@ func cmdIcon(cmd blockCmdKind) icons.Icon {
 		return icons.Callout
 	case cmdCode:
 		return icons.Code
-	case cmdCodeMermaid:
+	case cmdCodeMermaid, cmdCodeMindMap:
 		return icons.Diagram
 	case cmdCodeMath:
 		return icons.Math

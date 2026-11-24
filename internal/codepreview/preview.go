@@ -21,6 +21,8 @@ func CanonicalLanguage(tag string) string {
 		return "markdown"
 	case "mermaid", "mmd":
 		return "mermaid"
+	case "mindmap", "mind-map":
+		return "mindmap"
 	case "bash", "sh", "shell", "zsh":
 		return "bash"
 	case "css":

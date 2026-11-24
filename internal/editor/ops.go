@@ -5203,6 +5203,7 @@ func allSlashItems() []blockMenuItem {
 		{Kind: cmdCallout, Label: theme.Tr("标注", "Callout"), Keywords: "callout note tip warning alert biaozhu 标注 提示", Hint: "[!note]"},
 		{Separator: true},
 		{Kind: cmdCodeMermaid, Label: theme.Tr("Mermaid 图表", "Mermaid Diagram"), Keywords: "mermaid diagram flow chart tubiao liuchengtu 图表 流程图", Hint: "```mermaid"},
+		{Kind: cmdCodeMindMap, Label: theme.Tr("思维导图", "Mind Map"), Keywords: "mindmap mind map siweidaotu naotu daotu 思维导图 脑图 导图", Hint: "```mindmap"},
 		{Kind: cmdCodeMath, Label: theme.Tr("数学公式", "Math Formula"), Keywords: "math latex formula shuxue gongshi 数学公式", Hint: "$$"},
 	}
 }
@@ -5602,6 +5603,15 @@ func (s *Session) executeBlockCmd(svc ui.Services, idx int, mode blockMenuMode, 
 		b.Language = "mermaid"
 		b.ShowSource = true
 		b.Code = "flowchart LR\n  A[Start] --> B[End]"
+		b.Spans = nil
+	case cmdCodeMindMap:
+		b.Kind = model.BlockCode
+		b.Language = "mindmap"
+		b.ShowSource = false
+		b.Code = theme.Tr(
+			"# 中心主题\n- 分支一\n  - [x] 已完成任务\n  - [ ] 待办任务\n- 分支二\n  - 子主题 A\n  - 子主题 B",
+			"# Central Topic\n- Branch 1\n  - [x] Done task\n  - [ ] Todo task\n- Branch 2\n  - Subtopic A\n  - Subtopic B",
+		)
 		b.Spans = nil
 	case cmdCodeMath:
 		b.Kind = model.BlockCode
@@ -6950,6 +6960,7 @@ var codeLanguages = []codeLangOption{
 	{Tag: "latex", Label: "LaTeX"},
 	{Tag: "markdown", Label: "Markdown"},
 	{Tag: "mermaid", Label: "Mermaid"},
+	{Tag: "mindmap", Label: "MindMap"},
 	{Tag: "plaintext", Label: "Plain Text"},
 	{Tag: "apache", Label: "Apache"},
 	{Tag: "astro", Label: "Astro"},
