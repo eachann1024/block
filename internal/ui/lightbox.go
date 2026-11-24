@@ -491,22 +491,43 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		canWinFS := hasWindowFullscreen()
 
 		var (
-			titleStripEl ui.Element
-			toolbarEl    ui.Element
-			stageEl      ui.Element
-			contentEl    ui.Element
-			prevBtn      ui.Element
-			nextBtn      ui.Element
-			filmstripEl  ui.Element
-			stageW       float32
-			stageH       float32
-			stagePadX    = theme.LightboxStagePad
-			stagePadY    = theme.LightboxStagePad
-			drawW        float32
-			drawH        float32
+			titleStripEl   ui.Element
+			toolbarEl      ui.Element
+			stageEl        ui.Element
+			contentEl      ui.Element
+			prevBtn        ui.Element
+			nextBtn        ui.Element
+			filmstripEl    ui.Element
+			stageW         float32
+			stageH         float32
+			stagePadX      = theme.LightboxStagePad
+			stagePadTop    = theme.LightboxStagePad
+			stagePadBottom = theme.LightboxStagePad
+			drawW          float32
+			drawH          float32
 		)
 
 		headerH := max(titleClearance, theme.LightboxToolbarHeight)
+		filmstripBandH := theme.LightboxFilmstripThumb + theme.Space6*2 + theme.Space2 + theme.Space12
+		if immersiveMedia {
+			if activeVideo {
+				stagePadX = 0
+				stagePadTop = 0
+				stagePadBottom = 0
+			} else {
+				stagePadX = theme.Space12
+				stagePadTop = theme.Space12
+				stagePadBottom = theme.Space12
+				if !chromeHidden {
+					stagePadTop = headerH + theme.Space12
+					if multi {
+						stagePadBottom = filmstripBandH + theme.Space12
+					}
+				}
+			}
+		} else if multi {
+			stagePadX = theme.LightboxStagePad + theme.HeightLarge
+		}
 
 		renderTopChrome := func() {
 			darkChrome := immersiveMedia
@@ -605,8 +626,8 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 							if st.FitScale > 0 {
 								effectiveZoom = st.FitScale
 							} else if item.ImageW > 0 && item.ImageH > 0 && vpWinW > 0 && vpWinH > 0 {
-								estAvailW := max(vpWinW-2*theme.Space12, 1)
-								estAvailH := max(vpWinH-2*theme.Space12, 1)
+								estAvailW := max(vpWinW-2*stagePadX, 1)
+								estAvailH := max(vpWinH-stagePadTop-stagePadBottom, 1)
 								effectiveZoom = min(float32(1.0), min(estAvailW/float32(item.ImageW), estAvailH/float32(item.ImageH)))
 								minZ = effectiveMinZoom(effectiveZoom)
 							} else {
@@ -977,18 +998,6 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				stageH = max(vpWinH-chromeH, 1)
 			}
 
-			if immersiveMedia {
-				if activeVideo {
-					stagePadX = 0
-					stagePadY = 0
-				} else {
-					stagePadX = theme.Space12
-					stagePadY = theme.Space12
-				}
-			} else if multi {
-				stagePadX = theme.LightboxStagePad + theme.HeightLarge
-			}
-
 			stageWrap.Children(func() {
 				stageEl = ScrollBoth(c.Key(id+"-stage"), &st.Scroll).Fill().MinWidth(0).MinHeight(0)
 				Probe(stageEl, id+"-stage")
@@ -996,7 +1005,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				stageEl.Children(func() {
 					ui.Column(c).
 						MinWidth(stageW).MinHeight(stageH).
-						Padding(stagePadY, stagePadX, stagePadY, stagePadX).
+						Padding(stagePadTop, stagePadX, stagePadBottom, stagePadX).
 						Center().
 						Children(func() {
 							switch {
@@ -1095,7 +1104,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								}
 
 								availW := max(stageW-2*stagePadX, 1)
-								availH := max(stageH-2*stagePadY, 1)
+								availH := max(stageH-stagePadTop-stagePadBottom, 1)
 								fitScale := min(float32(1.0), min(availW/iw, availH/ih))
 								if fitScale <= 0 {
 									fitScale = 0.01
@@ -1175,14 +1184,14 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								contentEl = frame
 
 							default:
-								contentEl = renderLightboxFileCard(c, id, st, item, cb, pal, displayName, stageW-2*stagePadX, stageH-2*stagePadY)
+								contentEl = renderLightboxFileCard(c, id, st, item, cb, pal, displayName, stageW-2*stagePadX, stageH-stagePadTop-stagePadBottom)
 							}
 						})
 				})
 
 				if multi && !chromeHidden {
 					navSize := theme.HeightLarge
-					navTop := max((stageH-navSize)*0.5, theme.Space8)
+					navTop := max(stagePadTop+max(stageH-stagePadTop-stagePadBottom-navSize, 0)*0.5, theme.Space8)
 					prevShortcut := "←"
 					nextShortcut := "→"
 					if activeVideo {
@@ -1233,7 +1242,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 			(nextBtn.Valid() && nextBtn.PressedInside()) ||
 			(filmstripEl.Valid() && filmstripEl.PressedInside())
 
-		stageOverflow := canZoom && (drawW > max(stageW-2*stagePadX, 1) || drawH > max(stageH-2*stagePadY, 1))
+		stageOverflow := canZoom && (drawW > max(stageW-2*stagePadX, 1) || drawH > max(stageH-stagePadTop-stagePadBottom, 1))
 		overStageScrollbar := stageOverflow && stageEl.Valid() &&
 			pointerOverScrollbarTrack(c, stageEl, axisVertical|axisHorizontal)
 
