@@ -475,7 +475,13 @@ func (s *Session) isFindShortcut(mods ui.Modifiers, key ui.Key) bool {
 }
 
 func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
-	if s.lightbox.Open || s.HasMindMapFullscreen() {
+	if s.lightbox.Open {
+		return
+	}
+	if s.HasMindMapFullscreen() {
+		if s.previewMedia == nil && appUi.MatchShortcut(c, FindShortcut()) && s.openMindMapFind(c) {
+			c.Invalidate()
+		}
 		return
 	}
 	svc := c.Services()
@@ -492,6 +498,10 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 		return
 	}
 	if appUi.MatchShortcut(c, FindShortcut()) {
+		if s.openMindMapFind(c) {
+			c.Invalidate()
+			return
+		}
 		s.ToggleFind()
 	}
 	if appUi.MatchShortcut(c, appUi.FindReplaceShortcut()) {
@@ -1688,6 +1698,10 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 					s.ToggleMarkOnSelection(model.MarkStrike)
 					return true
 				case s.isFindShortcut(mods, key):
+					if s.OpenMindMapFind() {
+						s.requestRedraw()
+						return true
+					}
 					s.ToggleFind()
 					return true
 				case mods == 0 && key == ui.KeyEnter:
