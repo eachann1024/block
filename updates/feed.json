@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T09:43:14.736Z",
-  "latest_version": "1.0.928",
-  "latest_tag": "v1.0.928",
+  "updated_at": "2026-11-24T09:56:44.876Z",
+  "latest_version": "1.0.929",
+  "latest_tag": "v1.0.929",
   "releases": [
+    {
+      "version": "1.0.929",
+      "tag": "v1.0.929",
+      "published_at": "2026-11-24T09:56:44Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.929",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "AI 对话：展开内容时固定视窗底部，防止对话界面意外跳转至顶部。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "AI Chat: Pinned the bottom of the chat view to prevent it from jumping to the top when expanding content."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.929/block-macos-arm64.dmg",
+          "size": 15641791,
+          "sha256": "03c4537a9134de8bf2a53353988ab948bd1aa866c168dee03bbbf0de337cc98c"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.929/block-macos-x64.dmg",
+          "size": 17250979,
+          "sha256": "b5855260758341e18c76a8d2a91fab4d3d13c6a778fe4a05e85c37665fc9febe"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.929/block-windows-x64-setup.exe",
+          "size": 13061912,
+          "sha256": "548daf879de6e0947087edc4c2b5c4ed5b821905366a8485c29abdf047265d06"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.929/block-linux-x64.deb",
+          "size": 10601916,
+          "sha256": "6f9c013c0acd4ca370cff90e376e4b761dd53e8ab9a43bbc3790e378ff88914f"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.929/block-linux-x64.AppImage",
+          "size": 23624184,
+          "sha256": "29a28a092ab8fa1cd52485f0b2ea7d9d2f428ccbb85f8b56c337a50ebf7072fb"
+        }
+      ]
+    },
     {
       "version": "1.0.928",
       "tag": "v1.0.928",
@@ -134,38 +190,7 @@
           "Release: An empty feedback address now falls back to the local configuration, and release builds require the address to be set."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-macos-arm64.dmg",
-          "size": 15636690,
-          "sha256": "63fea6f366523265cd06ea423f92df933ba3918a59a78c201df9dc3886589ab2"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-macos-x64.dmg",
-          "size": 17244626,
-          "sha256": "c96e45cf22d876294009eb082c482fd5951bc7df88dc85357520022280427923"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-windows-x64-setup.exe",
-          "size": 13054324,
-          "sha256": "7d2cf66c3c121ca9dcab3daffeb1427e8e26736d7a6ad58ea11b5aba053c7eb8"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-linux-x64.deb",
-          "size": 10601266,
-          "sha256": "73719021106d6eb3078a48b8633eb5268c596875fee1f258c4c29f16f1a5bcf0"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-linux-x64.AppImage",
-          "size": 23624184,
-          "sha256": "1cf6510edf1da62a8ef17822ea2abb74321c59cc463fc9287a5782b469236519"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.927",
@@ -1545,31 +1570,6 @@
         "new": [],
         "improvements": [
           "Use segmented radios for language, decoration, tempo, and update source."
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.879",
-      "tag": "v1.0.879",
-      "published_at": "2026-11-21T05:38:45Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.879",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "优化了界面细节与日常编辑操作的顺滑度。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "Point store empty guide url to docs.block.cooool.top."
         ],
         "fixes": [],
         "other": []
