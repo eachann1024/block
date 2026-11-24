@@ -5,6 +5,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"block/internal/icons"
@@ -91,7 +92,23 @@ type BlockState struct {
 	Undo [][]byte
 	Redo [][]byte
 
+	OutlineZoomID       int
+	OutlineFocusID      int
+	OutlineFocusPending bool
+	OutlineCaretPending bool
+	OutlineCaretTarget  int
+	OutlineSelNodeID    int
+	OutlineSelStart     int
+	OutlineSelEnd       int
+	OutlineSelRuneLen   int
+	OutlineUndoNodeID   int
+	outlinePending      *outlineAction
+
+	SourceCopiedUntil time.Time
+
 	CanvasHandle  ui.Handle
+	OutlineHandle ui.Handle
+	SourceHandle  ui.Handle
 	HintScroll    ui.ScrollState
 	OutlineScroll ui.ScrollState
 	SourceScroll  ui.ScrollState
@@ -127,8 +144,12 @@ func (st *BlockState) SyncSource(src string, cfg Config) {
 	// External source updates (Source tab, Editor Undo/Redo, external reload) supersede local snapshots.
 	st.Undo = st.Undo[:0]
 	st.Redo = st.Redo[:0]
+	st.OutlineUndoNodeID = 0
 	if st.Root != nil && st.Root.FindByID(st.SelectedID) == nil {
 		st.SelectedID = st.Root.ID
+	}
+	if st.OutlineZoomID != 0 && (st.Root == nil || st.Root.FindByID(st.OutlineZoomID) == nil) {
+		st.OutlineZoomID = 0
 	}
 	st.AutoFitPending = true
 }
@@ -138,7 +159,11 @@ func (st *BlockState) HasFocus(c *ui.Context) bool {
 	if st == nil || c == nil {
 		return false
 	}
-	return st.CanvasHandle.Focused(c) || st.EditHandle.Focused(c) || st.LinkHandle.Focused(c)
+	return st.CanvasHandle.Focused(c) ||
+		st.EditHandle.Focused(c) ||
+		st.LinkHandle.Focused(c) ||
+		st.OutlineHandle.FocusWithin(c) ||
+		st.SourceHandle.Focused(c)
 }
 
 func maxNodeID(n *Node) int {
@@ -1026,11 +1051,11 @@ func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg 
 	st.SyncSource(source, cfg)
 	pal := theme.Ocean()
 	borderCol := pal.Hairline
-	if focused || st.CanvasHandle.Focused(c) || st.EditingID != 0 {
+	if focused || st.HasFocus(c) || st.EditingID != 0 {
 		borderCol = pal.Accent
 	}
 
-	card := ui.Column(c.Key("mm-card-"+id)).FillWidth().Radius(theme.RadiusXL).
+	card := ui.Column(c.Key("mm-card-"+id)).FillWidth().Radius(theme.RadiusLG).
 		Background(pal.Paper).Border(1, borderCol).Clip()
 	bui.Probe(card, "mm-card-"+id)
 	card.Children(func() {
@@ -1069,7 +1094,7 @@ func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg 
 			return
 		}
 		st.renderBody(c, id, cfg.InlineHeightDIP(), false, cb)
-		if cfg.ShowHints {
+		if cfg.ShowHints && st.View != ViewSource {
 			st.renderHintBar(c, id)
 		}
 	})
@@ -1083,13 +1108,21 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 	st.SyncSource(source, cfg)
 	pal := theme.Ocean()
 
-	if st.EditingID == 0 && st.LinkNodeID == 0 && c.Shortcut(0, ui.KeyEscape) {
+	if st.EditingID == 0 && st.LinkNodeID == 0 && !st.OutlineHandle.FocusWithin(c) && c.Shortcut(0, ui.KeyEscape) {
 		if st.DragActive || st.DragNodeID != 0 {
 			st.resetDrag()
 		} else if st.ImportResult != nil {
 			st.ImportResult = nil
 		} else if st.ExportMenuOpen {
 			st.ExportMenuOpen = false
+		} else if st.View == ViewOutline && st.OutlineZoomID != 0 {
+			if cur := st.outlineActiveRoot(); cur != nil && cur != st.Root && cur.Parent != nil && cur.Parent != st.Root {
+				st.OutlineZoomID = cur.Parent.ID
+			} else {
+				st.OutlineZoomID = 0
+			}
+			c.Invalidate()
+			return
 		} else {
 			st.Fullscreen = false
 			st.AutoFitPending = true
@@ -1097,11 +1130,16 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 			return
 		}
 	}
-	if !cb.ReadOnly && st.View == ViewOutline && st.EditingID == 0 && st.LinkNodeID == 0 {
-		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyZ) || c.Shortcut(ui.Cmd, ui.KeyY) {
-			st.opRedo(cb)
-		} else if c.Shortcut(ui.Cmd, ui.KeyZ) {
-			st.opUndo(cb)
+	if st.View == ViewOutline && st.EditingID == 0 && st.LinkNodeID == 0 && !st.OutlineHandle.FocusWithin(c) {
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyPeriod) {
+			st.outlineToggleFoldAll()
+			c.Invalidate()
+		} else if !cb.ReadOnly {
+			if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyZ) || c.Shortcut(ui.Cmd, ui.KeyY) {
+				st.opRedo(cb)
+			} else if c.Shortcut(ui.Cmd, ui.KeyZ) {
+				st.opUndo(cb)
+			}
 		}
 	}
 
@@ -1115,7 +1153,7 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 			return
 		}
 		st.renderBody(c, id+"-fs", 0, true, cb)
-		if cfg.ShowHints {
+		if cfg.ShowHints && st.View != ViewSource {
 			st.renderHintBar(c, id+"-fs")
 		}
 	})
@@ -1125,15 +1163,15 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 
 func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb Callbacks) {
 	pal := theme.Ocean()
-	hdr := ui.Row(c.Key("mm-hdr-"+id)).FillWidth().Height(theme.HeightLarge).Shrink(0).
-		PaddingX(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space6).
+	hdr := ui.Row(c.Key("mm-hdr-" + id)).FillWidth().Height(theme.HeightLarge).Shrink(0).
+		PaddingX(theme.Space6).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space6).
 		Background(pal.Paper)
 	hdr.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		p.Line(r.X, r.Y+r.H-0.5, r.X+r.W, r.Y+r.H-0.5, 1, pal.Hairline)
 	})
 	hdr.Children(func() {
-		// Left: Segmented view switcher (导图 / 大纲 / 源码)
-		seg := ui.Row(c.Key("mm-seg-"+id)).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
+		// Left: Neutral-ring segmented view switcher (导图 / 大纲 / 源码) so it never competes with card focus Accent.
+		seg := ui.Row(c.Key("mm-seg-" + id)).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
 		seg.Children(func() {
 			tabs := []struct {
 				mode  ViewMode
@@ -1156,7 +1194,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				fg := pal.TextSecondary
 				if active {
 					bg = pal.Selected
-					border = pal.Accent
+					border = pal.SelectedBorder
 					fg = pal.Text
 				} else if hov || prs {
 					bg = pal.Hover
@@ -1171,6 +1209,10 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					st.finishEdit(true, cb)
 					st.LinkNodeID = 0
 					st.ExportMenuOpen = false
+					st.OutlineUndoNodeID = 0
+					if st.View != tab.mode {
+						st.HintScroll.X = 0
+					}
 					st.View = tab.mode
 					if tab.mode == ViewMap {
 						st.AutoFitPending = true
@@ -1179,77 +1221,151 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 			}
 		})
 
-		// Right: Layout toggle, Fit view, Import, Export dropdown, Fullscreen/Close
-		actions := ui.Row(c.Key("mm-act-"+id)).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
+		// Right: Context-aware actions tailored to the active view.
+		actions := ui.Row(c.Key("mm-act-" + id)).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
 		actions.Children(func() {
-			layIcon := icons.AlignLeft
-			layTip := theme.Tr("切换为左右平衡布局", "Switch to balanced layout")
-			if st.Layout == LayoutBoth {
-				layIcon = icons.Columns
-				layTip = theme.Tr("切换为向右布局", "Switch to right-side layout")
-			}
-			layBtn := bui.IconButton(c, layIcon, bui.IconButtonOptions{
-				ID:       "mm-layout-" + id,
-				Label:    layTip,
-				Tooltip:  layTip,
-				Size:     theme.HeightChrome,
-				IconSize: theme.IconAction,
-			})
-			if layBtn.Clicked() {
-				if st.Layout == LayoutRight {
-					st.Layout = LayoutBoth
-				} else {
-					st.Layout = LayoutRight
+			k := func(mac, other string) string {
+				if theme.IsMacOS() {
+					return mac
 				}
-				st.LayoutSet = true
-				st.AutoFitPending = true
+				return other
 			}
 
-			fitTip := theme.Tr("适配画布", "Fit to view")
-			fitBtn := bui.IconButton(c, icons.TbReset, bui.IconButtonOptions{
-				ID:       "mm-fit-" + id,
-				Label:    fitTip,
-				Tooltip:  fitTip,
-				Size:     theme.HeightChrome,
-				IconSize: theme.IconAction,
-			})
-			if fitBtn.Clicked() {
-				st.AutoFitPending = true
-			}
-
-			if !cb.ReadOnly {
-				impSpec := bui.TooltipSpec{
-					Rows: []bui.TooltipRow{{
-						Trigger: theme.Tr("导入", "Import"),
-						Detail:  ".md / .opml / .mm / .xmind",
-					}},
+			switch st.View {
+			case ViewMap:
+				layIcon := icons.AlignLeft
+				layTip := theme.Tr("切换为左右平衡布局", "Switch to balanced layout")
+				if st.Layout == LayoutBoth {
+					layIcon = icons.Columns
+					layTip = theme.Tr("切换为向右布局", "Switch to right-side layout")
 				}
-				impBtn := bui.IconButton(c, icons.Upload, bui.IconButtonOptions{
-					ID:          "mm-import-" + id,
-					Label:       theme.Tr("导入 (.md / .opml / .mm / .xmind)", "Import (.md / .opml / .mm / .xmind)"),
-					TooltipSpec: &impSpec,
+				layBtn := bui.IconButton(c, layIcon, bui.IconButtonOptions{
+					ID:       "mm-layout-" + id,
+					Label:    layTip,
+					Tooltip:  layTip,
+					Size:     theme.HeightChrome,
+					IconSize: theme.IconAction,
+					Radius:   theme.RadiusSM,
+				})
+				if layBtn.Clicked() {
+					if st.Layout == LayoutRight {
+						st.Layout = LayoutBoth
+					} else {
+						st.Layout = LayoutRight
+					}
+					st.LayoutSet = true
+					st.AutoFitPending = true
+				}
+
+				fitTip := theme.Tr("适配画布", "Fit to view")
+				fitBtn := bui.IconButton(c, icons.TbReset, bui.IconButtonOptions{
+					ID:       "mm-fit-" + id,
+					Label:    fitTip,
+					Tooltip:  fitTip,
+					Shortcut: k("⌘0", "Ctrl+0"),
+					Size:     theme.HeightChrome,
+					IconSize: theme.IconAction,
+					Radius:   theme.RadiusSM,
+				})
+				if fitBtn.Clicked() {
+					st.AutoFitPending = true
+				}
+
+			case ViewOutline:
+				hasExpanded := st.outlineHasAnyExpanded()
+				foldIcon := icons.UnfoldAll
+				foldTip := theme.Tr("全部展开", "Expand all")
+				if hasExpanded {
+					foldIcon = icons.FoldAll
+					foldTip = theme.Tr("全部折叠", "Collapse all")
+				}
+				foldBtn := bui.IconButton(c, foldIcon, bui.IconButtonOptions{
+					ID:       "mm-fold-all-" + id,
+					Label:    foldTip,
+					Tooltip:  foldTip,
+					Shortcut: k("⌘⇧.", "Ctrl+Shift+."),
+					Size:     theme.HeightChrome,
+					IconSize: theme.IconAction,
+					Radius:   theme.RadiusSM,
+				})
+				if foldBtn.Clicked() {
+					st.outlineToggleFoldAll()
+					c.Invalidate()
+				}
+
+			case ViewSource:
+				now := c.Now()
+				copied := !st.SourceCopiedUntil.IsZero() && now.Before(st.SourceCopiedUntil)
+				if copied {
+					if rem := st.SourceCopiedUntil.Sub(now); rem > 0 {
+						c.After(rem + 5*time.Millisecond)
+					}
+				}
+				copyIcon := icons.Copy
+				copyTip := theme.Tr("复制源码", "Copy source")
+				if copied {
+					copyIcon = icons.Check
+					copyTip = theme.Tr("已复制", "Copied")
+				}
+				copyBtn := bui.IconButton(c, copyIcon, bui.IconButtonOptions{
+					ID:          "mm-src-copy-" + id,
+					Label:       copyTip,
+					Tooltip:     copyTip,
 					Size:        theme.HeightChrome,
 					IconSize:    theme.IconAction,
+					Radius:      theme.RadiusSM,
+					Active:      copied,
+					ActiveStyle: bui.ActiveAccentFlat,
 				})
-				if impBtn.Clicked() {
-					st.triggerImport(cb)
+				if copyBtn.Clicked() {
+					src := st.LastSource
+					if src == "" && st.Root != nil {
+						src = SerializeMarkdown(st.Root)
+					}
+					c.Services().WriteClipboard(src)
+					st.SourceCopiedUntil = c.Now().Add(1500 * time.Millisecond)
+					c.After(1505 * time.Millisecond)
 				}
 			}
 
-			expTip := theme.Tr("导出", "Export")
-			expOpts := bui.IconButtonOptions{
-				ID:       "mm-export-" + id,
-				Label:    expTip,
-				Size:     theme.HeightChrome,
-				IconSize: theme.IconAction,
-				Active:   st.ExportMenuOpen,
-			}
-			if !st.ExportMenuOpen {
-				expOpts.Tooltip = expTip
-			}
-			expBtn := bui.IconButton(c, icons.Download, expOpts)
-			if expBtn.Clicked() {
-				st.ExportMenuOpen = !st.ExportMenuOpen
+			// Import & Export apply to structured views (Map & Outline); Source stays clean (Copy + Fullscreen).
+			if st.View != ViewSource {
+				if !cb.ReadOnly {
+					impSpec := bui.TooltipSpec{
+						Rows: []bui.TooltipRow{{
+							Trigger: theme.Tr("导入", "Import"),
+							Detail:  ".md / .opml / .mm / .xmind",
+						}},
+					}
+					impBtn := bui.IconButton(c, icons.Upload, bui.IconButtonOptions{
+						ID:          "mm-import-" + id,
+						Label:       theme.Tr("导入 (.md / .opml / .mm / .xmind)", "Import (.md / .opml / .mm / .xmind)"),
+						TooltipSpec: &impSpec,
+						Size:        theme.HeightChrome,
+						IconSize:    theme.IconAction,
+						Radius:      theme.RadiusSM,
+					})
+					if impBtn.Clicked() {
+						st.triggerImport(cb)
+					}
+				}
+
+				expTip := theme.Tr("导出", "Export")
+				expOpts := bui.IconButtonOptions{
+					ID:       "mm-export-" + id,
+					Label:    expTip,
+					Size:     theme.HeightChrome,
+					IconSize: theme.IconAction,
+					Radius:   theme.RadiusSM,
+					Active:   st.ExportMenuOpen,
+				}
+				if !st.ExportMenuOpen {
+					expOpts.Tooltip = expTip
+				}
+				expBtn := bui.IconButton(c, icons.Download, expOpts)
+				if expBtn.Clicked() {
+					st.ExportMenuOpen = !st.ExportMenuOpen
+				}
 			}
 
 			fsIcon := icons.Maximize
@@ -1267,6 +1383,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				Shortcut: fsShortcut,
 				Size:     theme.HeightChrome,
 				IconSize: theme.IconAction,
+				Radius:   theme.RadiusSM,
 			})
 			if fsBtn.Clicked() {
 				st.finishEdit(true, cb)
@@ -1284,7 +1401,11 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 
 func (st *BlockState) renderBody(c *ui.Context, id string, fixedHeight float32, fullscreen bool, cb Callbacks) {
 	pal := theme.Ocean()
-	body := ui.Box(c.Key("mm-body-"+id)).FillWidth().Background(pal.CodeBG).Clip()
+	bodyBG := pal.CodeBG
+	if st.View == ViewOutline {
+		bodyBG = pal.Paper
+	}
+	body := ui.Box(c.Key("mm-body-" + id)).FillWidth().Background(bodyBG).Clip()
 	if fullscreen {
 		body.Grow(1).MinHeight(0)
 	} else {
@@ -1293,9 +1414,9 @@ func (st *BlockState) renderBody(c *ui.Context, id string, fixedHeight float32, 
 	body.Children(func() {
 		switch st.View {
 		case ViewOutline:
-			st.renderOutlineView(c, id, cb)
+			st.renderOutlineView(c, id, fullscreen, cb)
 		case ViewSource:
-			st.renderSourceView(c, id, cb)
+			st.renderSourceView(c, id, fullscreen, cb)
 		default:
 			st.renderCanvasView(c, id, cb)
 		}
@@ -2226,95 +2347,9 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 	return false
 }
 
-// --- Outline View ---
-
-func (st *BlockState) renderOutlineView(c *ui.Context, id string, cb Callbacks) {
-	st.LastCanvasFocused = false
-	pal := theme.Ocean()
-	scr := bui.Scroll(c.Key("mm-out-scroll-"+id), &st.OutlineScroll).Fill().Padding(theme.Space12, theme.Space16)
-	scr.Children(func() {
-		col := ui.Column(c.Key("mm-out-col-"+id)).FillWidth().Gap(theme.Space2)
-		col.Children(func() {
-			if st.Root == nil {
-				return
-			}
-			// Root heading row
-			ui.Text(c, strings.ReplaceAll(st.Root.Text, "\n", " ")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).
-				TextColor(pal.Text).Margin(0, 0, theme.Space6, 0).SingleLine()
-
-			var renderChildren func(parent *Node, depth int)
-			renderChildren = func(parent *Node, depth int) {
-				for _, ch := range parent.Children {
-					node := ch
-					indent := float32(depth) * 18
-					selected := node.ID == st.SelectedID
-					row := ui.Row(c.Key(fmt.Sprintf("mm-out-row-%s-%d", id, node.ID))).
-						FillWidth().Height(theme.HeightChrome).Padding(0, theme.Space6, 0, indent+theme.Space4).
-						AlignItems(ui.Center).Gap(theme.Space8).Radius(theme.RadiusSM).Cursor(ui.CursorPointer)
-					if selected {
-						row.Background(pal.Selected)
-					} else if row.Hovered() {
-						row.Background(pal.Hover)
-					}
-					row.Children(func() {
-						if node.Task != nil {
-							done := *node.Task
-							cbBox := ui.ButtonBase(c.Key(fmt.Sprintf("mm-out-cb-%s-%d", id, node.ID))).
-								Size(14, 14).Shrink(0).Radius(theme.RadiusXS).Cursor(ui.CursorPointer)
-							if done {
-								cbBox.Background(pal.Accent)
-							} else {
-								cbBox.Background(pal.Paper).Border(1, pal.TextSecondary)
-							}
-							cbBox.DrawOver(func(p *ui.Painter, r ui.Rect) {
-								if !done {
-									return
-								}
-								var ck ui.Path
-								ck.Cap(ui.RoundCap).Join(ui.RoundJoin)
-								ck.MoveTo(r.X+3.2, r.Y+7.2)
-								ck.LineTo(r.X+5.8, r.Y+9.8)
-								ck.LineTo(r.X+10.8, r.Y+4.2)
-								p.StrokePath(&ck, 1.5, pal.Paper)
-							})
-							if cbBox.Clicked() {
-								st.opFlipTaskDone(node, cb)
-							}
-						} else {
-							dot := ui.Box(c).Size(14, 14).Shrink(0).Center()
-							dot.Draw(func(p *ui.Painter, r ui.Rect) {
-								cR := ui.Rect{X: r.X + 4.5, Y: r.Y + 4.5, W: 5, H: 5}
-								p.Fill(cR, pal.TextSecondary, 2.5)
-							})
-						}
-
-						txtCol := pal.Text
-						if strings.TrimSpace(node.Link) != "" {
-							txtCol = pal.Accent
-						}
-						if node.Task != nil && *node.Task {
-							txtCol = txtCol.Alpha(0.55)
-						}
-						ui.Text(c, strings.ReplaceAll(node.Text, "\n", " ")).FontSize(theme.FontSmall).TextColor(txtCol).
-							Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
-					})
-					if row.Clicked() {
-						st.SelectedID = node.ID
-						if strings.TrimSpace(node.Link) != "" && (row.ClickModifiers()&(ui.Cmd|ui.Ctrl)) != 0 && cb.OnOpenLink != nil {
-							cb.OnOpenLink(node.Link)
-						}
-					}
-					renderChildren(node, depth+1)
-				}
-			}
-			renderChildren(st.Root, 0)
-		})
-	})
-}
-
 // --- Source View ---
 
-func (st *BlockState) renderSourceView(c *ui.Context, id string, cb Callbacks) {
+func (st *BlockState) renderSourceView(c *ui.Context, id string, fullscreen bool, cb Callbacks) {
 	st.LastCanvasFocused = false
 	pal := theme.Ocean()
 	draft := st.LastSource
@@ -2322,16 +2357,29 @@ func (st *BlockState) renderSourceView(c *ui.Context, id string, cb Callbacks) {
 		draft = SerializeMarkdown(st.Root)
 	}
 	prev := draft
+	padY, padX := theme.Space12, theme.Space16
+	if fullscreen {
+		padY, padX = theme.Space20, theme.Space24
+	}
+	_, codeFont, _ := theme.Typography()
+	codeFont = strings.TrimSpace(codeFont)
+	if codeFont == "" || strings.EqualFold(codeFont, "auto") {
+		codeFont = "JetBrains Mono, Menlo, Monaco, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"
+	}
 	ta := ui.TextAreaBase(c.Key("mm-src-"+id), &draft).Fill().
-		Padding(theme.Space12, theme.Space16).BorderWidth(0).Background(pal.CodeBG).
-		FontSize(theme.FontSmall).LineHeight(1.6).TextColor(pal.Text).
-		CaretColor(pal.Accent).SelectionColor(pal.EditorSelectionBG())
+		Padding(padY, padX).BorderWidth(0).Background(pal.CodeBG).
+		Font(codeFont).FontSize(theme.FontSmall).LineHeight(1.6).
+		TextColor(pal.CodeBlock().TextFG).
+		Placeholder(theme.Tr("# 中心主题\n- 分支一", "# Central Topic\n- Branch 1")).
+		PlaceholderColor(pal.Placeholder).
+		CaretColor(pal.Accent).SelectionColor(pal.EditorSelectionBG()).
+		Bind(&st.SourceHandle)
 	if cb.ReadOnly {
 		ta.ReadOnly(true)
 	}
 	bui.AutoHideScrollbars(c, ta, &st.SourceScroll)
-	if !cb.ReadOnly && draft != prev {
-		st.SyncSource(draft, DefaultConfig())
+	if !cb.ReadOnly && (ta.Changed() || draft != prev) {
+		st.SyncSource(draft, Config{})
 		if cb.OnChange != nil {
 			cb.OnChange(draft)
 		}
@@ -2611,8 +2659,8 @@ func (st *BlockState) renderImportResultCard(c *ui.Context, id string) {
 
 func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 	pal := theme.Ocean()
-	bar := ui.Row(c.Key("mm-hint-bar-"+id)).FillWidth().Height(theme.HeightControl).Shrink(0).
-		Background(pal.Paper).AlignItems(ui.Center).Clip()
+	bar := ui.Row(c.Key("mm-hint-bar-" + id)).FillWidth().Height(theme.HeightControl).Shrink(0).
+		Background(pal.HintBand).AlignItems(ui.Center).Clip()
 
 	// Convert vertical mouse wheel directly into horizontal scroll over the bottom hint bar
 	// whenever the strip overflows horizontally (no line wrapping!).
@@ -2629,9 +2677,9 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 	bar.HandleInput(handleHintWheel)
 
 	bar.Children(func() {
-		strip := ui.ScrollHorizontal(c.Key("mm-hint-scroll-"+id)).
+		strip := ui.ScrollHorizontal(c.Key("mm-hint-scroll-" + id)).
 			Grow(1).Shrink(1).MinWidth(0).FillHeight().
-			AlignItems(ui.Center).PaddingX(theme.Space10).Gap(theme.Space12).
+			AlignItems(ui.Center).PaddingX(theme.Space10).Gap(theme.Space10).
 			Scrollbars(false).TrackScroll(&st.HintScroll)
 		strip.HandleInput(handleHintWheel)
 		strip.Children(func() {
@@ -2646,7 +2694,22 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 				return other
 			}
 			var items []hintItem
-			if st.EditingID != 0 {
+			switch {
+			case st.View == ViewOutline:
+				items = []hintItem{
+					{[]string{"↵"}, theme.Tr("新行", "New")},
+					{[]string{k("⇧↵", "Shift+↵")}, theme.Tr("换行", "Break")},
+					{[]string{"Tab", k("⇧Tab", "Shift+Tab")}, theme.Tr("缩进", "Indent")},
+					{[]string{k("⌥↑↓", "Alt+↑↓")}, theme.Tr("移动", "Move")},
+					{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("待办", "Todo")},
+					{[]string{k("⌘.", "Ctrl+.")}, theme.Tr("折叠", "Fold")},
+				}
+				if st.OutlineZoomID != 0 {
+					items = append(items, hintItem{[]string{"Esc"}, theme.Tr("返回上级", "Zoom out")})
+				} else {
+					items = append(items, hintItem{nil, theme.Tr("· 点圆点聚焦", "· Click dot to zoom")})
+				}
+			case st.EditingID != 0:
 				items = []hintItem{
 					{[]string{"↵"}, theme.Tr("完成", "Done")},
 					{[]string{k("⇧↵", "Shift+↵")}, theme.Tr("换行", "Newline")},
@@ -2654,16 +2717,14 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 					{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("父节点", "Parent")},
 					{[]string{"Esc"}, theme.Tr("取消", "Cancel")},
 				}
-			} else {
+			default:
 				items = []hintItem{
 					{[]string{"Tab"}, theme.Tr("子节点", "Child")},
 					{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("父节点", "Parent")},
-					{[]string{"↵", k("⇧↵", "Shift+↵")}, theme.Tr("同级", "Sibling")},
-					{[]string{k("⌥↑", "Alt+↑"), k("⌥↓", "Alt+↓")}, theme.Tr("移动", "Move")},
-					{[]string{k("⌥←", "Alt+←"), k("⌥→", "Alt+→")}, theme.Tr("升降级", "Level")},
+					{[]string{"↵"}, theme.Tr("同级", "Sibling")},
+					{[]string{k("⌥↑↓←→", "Alt+↑↓←→")}, theme.Tr("移动", "Move")},
 					{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("任务", "Task")},
 					{[]string{"Space"}, theme.Tr("折叠", "Fold")},
-					{[]string{"⌫"}, theme.Tr("删除", "Delete")},
 					{[]string{"F2"}, theme.Tr("改名", "Rename")},
 					{[]string{k("⌘L", "Ctrl+L")}, theme.Tr("链接", "Link")},
 				}
@@ -2671,8 +2732,8 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 			for _, it := range items {
 				itemRow := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0)
 				itemRow.Children(func() {
-					for _, k := range it.keys {
-						bui.Keycap(c, k)
+					for _, key := range it.keys {
+						bui.Keycap(c, key)
 					}
 					ui.Text(c, it.label).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 				})
@@ -2680,17 +2741,24 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 		})
 	})
 
-	// Subtle horizontal overflow edge indicators so users can spot hidden hints.
+	// Smooth stepped edge fades when overflowing horizontally on ultra-narrow windows.
 	bar.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		p.Line(r.X, r.Y+0.5, r.X+r.W, r.Y+0.5, 1, pal.Hairline)
 		if st.HintScroll.MaxX <= 1 {
 			return
 		}
+		fadeAlphas := [3]float32{0.92, 0.58, 0.25}
+		const bandW float32 = 7
 		if st.HintScroll.X > 1 {
-			p.Fill(ui.Rect{X: r.X, Y: r.Y + 1, W: 14, H: r.H - 1}, pal.Paper.Alpha(0.75), 0)
+			for i, a := range fadeAlphas {
+				p.Fill(ui.Rect{X: r.X + float32(i)*bandW, Y: r.Y + 1, W: bandW, H: r.H - 1}, pal.HintBand.Alpha(a), 0)
+			}
 		}
 		if st.HintScroll.X < st.HintScroll.MaxX-1 {
-			p.Fill(ui.Rect{X: r.X + r.W - 14, Y: r.Y + 1, W: 14, H: r.H - 1}, pal.Paper.Alpha(0.75), 0)
+			for i, a := range fadeAlphas {
+				x := r.X + r.W - float32(i+1)*bandW
+				p.Fill(ui.Rect{X: x, Y: r.Y + 1, W: bandW, H: r.H - 1}, pal.HintBand.Alpha(a), 0)
+			}
 		}
 	})
 }
