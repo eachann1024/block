@@ -73,7 +73,7 @@ func renderSourceFindBar(c *ui.Context, bar ui.Element, f *codeed.FindBar) {
 				default:
 					countText = fmt.Sprintf("%d / %d", cur+1, count)
 				}
-				ui.Row(c).Width(72).PaddingX(theme.Space6).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).PaddingX(theme.Space6).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, countText).FontSize(theme.FontMeta).TextColor(countColor).FontFeatures("tnum").SingleLine()
 				})
 
