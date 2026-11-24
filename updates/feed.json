@@ -1,10 +1,172 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T07:07:54.096Z",
-  "latest_version": "1.0.927",
-  "latest_tag": "v1.0.927",
+  "updated_at": "2026-11-24T09:43:14.736Z",
+  "latest_version": "1.0.928",
+  "latest_tag": "v1.0.928",
   "releases": [
+    {
+      "version": "1.0.928",
+      "tag": "v1.0.928",
+      "published_at": "2026-11-24T09:43:14Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.928",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "自动更新：Windows 版本默认按当前用户交付更新，并能在不显示任何安装界面的情况下完成更新。",
+          "安装包：安装程序默认只为当前用户安装，仅在需要时才请求管理员权限。",
+          "自动更新：Windows 更新可以不显示任何界面直接完成，条件不满足时自动回退到原有流程。",
+          "思维导图：思维导图支持原生快捷键、拖动节点调整层级、剪贴板操作，并可直接在画布上输入文字。",
+          "界面语言：Block 现在能在 macOS、Windows 和 Linux 上直接读取系统的首选语言。"
+        ],
+        "improvements": [
+          "模型选择器：模型选择器改为更轻量的单列浮层，搜索、后端标签和 AI 设置共用同一行标题栏。",
+          "模型选择器：列表在不同后端之间保持固定高度，切换到尚未缓存模型的后端时显示加载骨架，标题行不再跳动。",
+          "图标：190 个图标按新的五层风格重新绘制。",
+          "图标：图标改为五层渲染，并加入错落的海蓝色高光。",
+          "图标：复选框、标签、键帽、下拉菜单和空状态等通用控件同步使用五层图标高光。",
+          "插件商店：插件图标与设置导航加入错落式高光。",
+          "侧边栏：标题栏、工作区外框和侧边栏图标改用五层高光。",
+          "编辑器：编辑器浮层、列表标记和表格控制点改用五层图标。",
+          "AI 对话：AI 面板与模型选择器的图标改用五层高光。",
+          "弹窗：弹窗、导出和思维导图相关图标改用五层高光。",
+          "AI 对话：应用启动时会预热各后端模型，打开 AI 面板或模型选择器时再刷新，切换标签时很少再等待加载。",
+          "思维导图：移除了撤销提示，并更新了底部快捷键栏。",
+          "本地代理：添加本地代理弹窗一打开就列出全部受支持的本地代理，不再把部分代理藏在「显示更多」后面。",
+          "思维导图：选中节点改用柔和的选中底色，叶子节点两侧留白更对称。",
+          "安装包：自定义安装窗口会跟随系统语言显示。",
+          "安装包：Windows 安装程序与卸载程序会按系统语言显示对应语言。",
+          "思维导图：正在编辑的节点会显示编辑光晕，并随输入实时测量尺寸。",
+          "思维导图：节点内联编辑和输入法预览改为原位无缝编辑，不再弹出单独的浮层输入框。",
+          "界面动效：文字支持流光效果，步骤切换以实时过渡的方式替换。",
+          "AI 对话：最新步骤以更轻量的过程块实时显示。",
+          "文件选择：macOS 打开文件对话框增加缓存与预热，弹出更快。",
+          "文件选择：应用启动时预热文件对话框，首次打开选择器不再等待。",
+          "思维导图：在内联节点编辑器中按 Shift+Enter 可插入换行。",
+          "AI 对话：回复下方的来源卡片已移除。",
+          "文件选择：macOS 保存面板加入预热，各类文件选择流程更稳定。"
+        ],
+        "fixes": [
+          "自动更新：准备更新和重启应用的过程中会显示转圈的加载动画。",
+          "思维导图：工具栏操作按钮带有悬停提示。",
+          "思维导图：选中节点的边框不再透出叶子节点下划线的痕迹。",
+          "思维导图：指针离开画布后会清除残留的节点悬停状态。",
+          "图片查看：图片区域增加了内边距，不再被顶部工具栏和底部缩略图条遮挡。",
+          "安装包：Windows 可执行文件内嵌了应用图标，Linux 安装时把图标放入系统标准图标主题。",
+          "安装包：Windows 全机器安装会对安装目录应用受管理员保护的权限设置。",
+          "自动更新：更新前会先确认 Windows 的安装范围再执行卸载步骤，出现错误时也会向用户提示。",
+          "安装包：Windows 安装流程更稳妥，安装步骤更原子，权限检查更严格，自定义安装路径处理正确，并会检查卸载程序是否被占用。",
+          "反馈：响应和上传卡住时会超时结束，重复发送相同内容会复用原来的请求。",
+          "安装包：Windows 安装时把本机管理员组成员视为受信任的权限所有者。",
+          "界面语言：在 POSIX 系统上按语言环境变量的标准优先级选择界面语言。",
+          "安装包：语言判断会优先采用明确的中文文字子标签，并规范化 POSIX 语言标签。",
+          "安装包：Windows 安装语言会从完整的首选界面语言列表中选择。",
+          "安装包：macOS 磁盘映像窗口不再固定显示英文的应用程序文件夹标签。",
+          "安装包：Linux 安装包的描述改为中性表述，桌面入口注释按语言本地化。",
+          "思维导图：多行节点的换行现在会在 Markdown 输出和导图布局中保留。",
+          "AI 对话：发送消息以及回复流式输出期间，对话保持固定在底部。"
+        ],
+        "other": [
+          "界面语言：macOS 应用包声明了所支持的本地化语言，系统会把这些语言列为应用可用语言。",
+          "发布流程：发布时会先挂载生成的 macOS 磁盘映像并严格校验代码签名。",
+          "发布流程：反馈地址为空时会回退到本地配置，发布构建中必须设置该地址。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Updates: Windows updates can now be delivered per user by default and complete without any installer interface.",
+          "Installer: Setup now installs for the current user by default and only requests administrator rights when they are needed.",
+          "Updates: Windows updates now run seamlessly with no interface and fall back to the previous flow when that is not possible.",
+          "Mindmap: The mind map now supports native shortcuts, dragging nodes to re-parent them, clipboard operations, and typing directly on the canvas.",
+          "Interface Language: Block now detects the operating system's preferred languages natively on macOS, Windows, and Linux."
+        ],
+        "improvements": [
+          "Model Picker: The model picker is now a lighter single-column popover, with search, backend tabs, and AI settings sharing one header row.",
+          "Model Picker: The list keeps a fixed height across providers and shows a loading skeleton while an uncached backend's models are fetched, so the header no longer shifts.",
+          "Icons: 190 icons were redrawn in the new five-layer style.",
+          "Icons: Icons are now rendered in five layers with staggered ocean-blue lighting.",
+          "Icons: Shared controls such as checkboxes, chips, keycaps, dropdowns, and empty states now use the five-layer icon lighting.",
+          "Plugin Store: Plugin icons and the settings navigation now use the staggered lighting.",
+          "Sidebar: The titlebar, workspace chrome, and sidebar icons now use the five-layer lighting.",
+          "Editor: Editor overlays, list markers, and table handles now use five-layer icons.",
+          "AI Chat: The AI panel and model picker icons now use the five-layer lighting.",
+          "Modals: Modal, export, and mind map icons now use the five-layer lighting.",
+          "AI Chat: Backend models are prewarmed at launch and refreshed when the AI panel or model picker opens, so switching tabs rarely waits on the loading skeleton.",
+          "Mindmap: The undo hint was removed and the bottom shortcut bar was updated.",
+          "Local Agents: The Add Local Agent dialog now lists all supported local agents as soon as it opens instead of hiding some behind a \"Show more\" toggle.",
+          "Mindmap: Selected nodes now use a soft selection tint, and leaf nodes get symmetric padding.",
+          "Installer: The custom setup window is now shown in the system language.",
+          "Installer: The Windows setup and uninstaller are now localized to the system language.",
+          "Mind Map: The node you are editing now shows an editing halo, and its size is measured live as you type.",
+          "Mind Map: Inline node editing and the IME preview now happen seamlessly in place instead of in a separate overlay box.",
+          "UI Motion: Text can now render with a shimmer effect, and step changes swap in with a live transition.",
+          "AI Chat: The latest step is now shown live in a lighter-weight process block.",
+          "File Dialogs: macOS open dialogs are cached and prewarmed, so they come up faster.",
+          "File Dialogs: File dialogs are prewarmed when the app starts, so the first picker opens without delay.",
+          "Mind Map: Pressing Shift+Enter in the inline node editor inserts a line break.",
+          "AI Chat: The sources card under replies has been removed.",
+          "File Dialogs: macOS save panels are prewarmed, and all file picker flows are more reliable."
+        ],
+        "fixes": [
+          "Updates: A spinner now animates while the update is prepared and the app restarts.",
+          "Mindmap: Toolbar action buttons now show tooltips.",
+          "Mindmap: A leaf node's underline no longer shows through the border of a selected node.",
+          "Mindmap: Node hover highlighting is now cleared when the pointer leaves the canvas.",
+          "Lightbox: The image stage now has inset padding, so it is no longer covered by the top toolbar and bottom filmstrip.",
+          "Installer: The Windows executable now embeds the app icon, and Linux installs place icons in the standard system icon theme.",
+          "Installer: Machine-wide Windows installs now enforce administrator-protected permissions on the install directory.",
+          "Updates: The Windows install scope is now checked before the uninstall step, and update errors are surfaced to the user.",
+          "Installer: Windows installation is more robust, with atomic install steps, stricter permission checks, correct handling of custom install paths, and a check for a locked uninstaller.",
+          "Feedback: Stalled responses and uploads now time out instead of hanging, and resending identical content reuses the original request.",
+          "Installer: Members of the local Administrators group are now treated as privileged owners during Windows installs.",
+          "Interface Language: On POSIX systems, the interface language is now chosen with the standard priority order of locale variables.",
+          "Installer: Language detection now prefers an explicit Chinese script subtag and normalizes POSIX language tags.",
+          "Installer: The Windows setup language is now chosen from the full list of preferred interface languages.",
+          "Installer: The macOS disk image window no longer shows a hardcoded English applications folder label.",
+          "Installer: The Linux package description is now neutral, and desktop entry comments are localized.",
+          "Mind Map: Line breaks in multiline nodes are now preserved in Markdown output and in the mind map layout.",
+          "AI Chat: The conversation stays pinned to the bottom when you send a message and while a reply is streaming."
+        ],
+        "other": [
+          "Interface Language: The macOS app bundle now declares its supported localizations, so the system lists them for the app.",
+          "Release: Generated macOS disk images are now mounted and strictly verified for code signing during the release process.",
+          "Release: An empty feedback address now falls back to the local configuration, and release builds require the address to be set."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-macos-arm64.dmg",
+          "size": 15636690,
+          "sha256": "63fea6f366523265cd06ea423f92df933ba3918a59a78c201df9dc3886589ab2"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-macos-x64.dmg",
+          "size": 17244626,
+          "sha256": "c96e45cf22d876294009eb082c482fd5951bc7df88dc85357520022280427923"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-windows-x64-setup.exe",
+          "size": 13054324,
+          "sha256": "7d2cf66c3c121ca9dcab3daffeb1427e8e26736d7a6ad58ea11b5aba053c7eb8"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-linux-x64.deb",
+          "size": 10601266,
+          "sha256": "73719021106d6eb3078a48b8633eb5268c596875fee1f258c4c29f16f1a5bcf0"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.928/block-linux-x64.AppImage",
+          "size": 23624184,
+          "sha256": "1cf6510edf1da62a8ef17822ea2abb74321c59cc463fc9287a5782b469236519"
+        }
+      ]
+    },
     {
       "version": "1.0.927",
       "tag": "v1.0.927",
@@ -44,38 +206,7 @@
           "Installer: Setup now exits with a success status once the custom window has finished the installation."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-macos-arm64.dmg",
-          "size": 15533269,
-          "sha256": "5abfa09277eee664ccd64f6251864beae5cbf6e7c5af215073c82ef802d4e122"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-macos-x64.dmg",
-          "size": 17124530,
-          "sha256": "80a31fa497c5c26c9ff9375f50b3fe57534ea17ddf217537cbe210ff5248b25a"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-windows-x64-setup.exe",
-          "size": 12836606,
-          "sha256": "66a4dbeee858d934bc4bce4805cb2b6cd72716ce7d93a02a6bfb122050ea9190"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-linux-x64.deb",
-          "size": 11183994,
-          "sha256": "376c685ea3cb80e03a31817939db78802dc0df40e45407523ff2d4ebd1a9bdb4"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-linux-x64.AppImage",
-          "size": 24181240,
-          "sha256": "a5d6dfece6084582a8ff8470a4dcfc5a65f78bda8e5c0a067a18b1faf7d81724"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.926",
@@ -1439,37 +1570,6 @@
         "new": [],
         "improvements": [
           "Point store empty guide url to docs.block.cooool.top."
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.878",
-      "tag": "v1.0.878",
-      "published_at": "2026-11-21T05:12:57Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.878",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "优化段落与列表拖拽移动时的跟手度与指示线。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "打磨设置面板、快捷键与菜单界面细节。",
-          "优化了界面细节与日常编辑操作的顺滑度。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "Lighten shared controls, dropdowns, chips, and tooltips.",
-          "Lighten AI panel inputs and titlebar brand pill.",
-          "Lighten settings layout, controls, and plugin nav states.",
-          "Clarify plugin enablement states and lighten store views."
         ],
         "fixes": [],
         "other": []
