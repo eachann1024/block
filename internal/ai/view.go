@@ -38,11 +38,10 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 	if shouldProbe {
 		c.panelProbedOnce = true
 	}
-	initKind := c.selectedBackendLocked()
 	c.mu.Unlock()
 	if shouldProbe {
 		c.probeAllBackendsAsync()
-		c.refreshModelsAsync(initKind)
+		c.refreshVisibleModelsAsync()
 	}
 
 	c.refreshPickerIfNeeded()
@@ -3387,7 +3386,7 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 		c.mu.Unlock()
 		if shouldProbe {
 			c.probeAllBackendsAsync()
-			c.refreshModelsAsync(kind)
+			c.refreshVisibleModelsAsync()
 		}
 	}
 	return btn
