@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T13:32:24.200Z",
-  "latest_version": "1.0.932",
-  "latest_tag": "v1.0.932",
+  "updated_at": "2026-11-24T13:47:56.086Z",
+  "latest_version": "1.0.933",
+  "latest_tag": "v1.0.933",
   "releases": [
+    {
+      "version": "1.0.933",
+      "tag": "v1.0.933",
+      "published_at": "2026-11-24T13:47:55Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.933",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：新增笔记与文件夹删除事件的派发支持，并提供自动重试机制。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "工作区：删除笔记前不再触发多余的保存操作，并确保正常发送笔记删除通知。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: The plugin system now dispatches note and folder deletion events with automatic retry support."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Workspace: Deleting a note no longer triggers an unnecessary save before removal, and note deletion notifications are now reliably sent."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-macos-arm64.dmg",
+          "size": 15879299,
+          "sha256": "e2f05b5920ee7a917405563f3234d093ac4cbf89df6ff9286a5c35176c8a07f9"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-macos-x64.dmg",
+          "size": 17512532,
+          "sha256": "c5f011772ddfcbc88bbff73314033405cc1730fc29c5296cd5f5aa174dbd89c4"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-windows-x64-setup.exe",
+          "size": 13285053,
+          "sha256": "8d8e16931bb043399bd39c6d16efe729522eb5b066c159e95db4994e1ac25e20"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-linux-x64.deb",
+          "size": 10779446,
+          "sha256": "a93372a36e46fb7b4c2dd032dd2ef68f20215862ac7eab96802caba1dc873283"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-linux-x64.AppImage",
+          "size": 23824888,
+          "sha256": "52606b92b380f5971994ce11beeac96d13f0f1fb0d633d24fb3b0c1c1a7d7a28"
+        }
+      ]
+    },
     {
       "version": "1.0.932",
       "tag": "v1.0.932",
@@ -30,38 +90,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-macos-arm64.dmg",
-          "size": 15893903,
-          "sha256": "9410355138cb1e9c2804c23d7952d20f5347a6feb5ffadfb93c55faf473b460e"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-macos-x64.dmg",
-          "size": 17505532,
-          "sha256": "538a1ad5d4d71609e8272aad022419d9f3aeaed1503a1a6e72282a4a4f7344ae"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-windows-x64-setup.exe",
-          "size": 13276131,
-          "sha256": "9582294399ca6582236e0f161c4be3e93898935b858905604fe9cafce76abfda"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-linux-x64.deb",
-          "size": 10778158,
-          "sha256": "6e3d3a4fef8b2edb1ff533558536f8a9755bf0a43faf5ecdfb580f9e89fa1f29"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-linux-x64.AppImage",
-          "size": 23808504,
-          "sha256": "31b9fef455bb99ff5be5c8d9fc8d5667bc7eeb02aaf91e29b59c57bad0a43eec"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.931",
@@ -1619,31 +1648,6 @@
         ],
         "improvements": [],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.883",
-      "tag": "v1.0.883",
-      "published_at": "2026-11-21T06:18:29Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.883",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Disable native DevTools so Cmd+Shift+C copies file path."
-        ],
         "other": []
       },
       "assets": []
