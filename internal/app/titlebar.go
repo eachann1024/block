@@ -771,7 +771,7 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps, availW float32) {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 						if len(stats) > 0 {
 							for _, st := range stats {
-								renderPageStat(c, st.ID, st.Label, st.Value)
+								renderPageStat(c, st)
 							}
 							blockui.MenuRow(c, blockui.MenuItemSpec{Separator: true}, false)
 						}
@@ -846,15 +846,29 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps, availW float32) {
 	}
 }
 
-func renderPageStat(c *ui.Context, id, label, value string) {
+func renderPageStat(c *ui.Context, st PageMenuStat) {
 	pal := theme.Ocean()
-	row := ui.Row(c.Key(id)).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).AlignItems(ui.Center)
-	blockui.Probe(row, id)
+	row := ui.Row(c.Key(st.ID)).FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space10).Gap(theme.Space8).AlignItems(ui.Center)
+	blockui.Probe(row, st.ID)
 	row.Children(func() {
-		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-			TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		ui.Text(c, value).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-			TextColor(pal.Text).Shrink(0).SingleLine()
+		ui.Text(c, st.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+			TextColor(pal.TextSecondary).Grow(1).MinWidth(36).SingleLine().Ellipsis("…")
+		var badges []string
+		for _, b := range st.Badges {
+			if b != "" {
+				badges = append(badges, b)
+			}
+		}
+		if len(badges) > 0 {
+			ui.Row(c).Gap(theme.Space4).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+				for _, b := range badges {
+					blockui.MetaBadge(c, b)
+				}
+			})
+			return
+		}
+		ui.Text(c, st.Value).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+			TextColor(pal.Text).MinWidth(0).SingleLine().Ellipsis("…")
 	})
 }
 
@@ -900,12 +914,19 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 		}}
 	}
 
+	appendSep := func(items []blockui.MenuItemSpec) []blockui.MenuItemSpec {
+		if len(items) > 0 && !items[len(items)-1].Separator {
+			items = append(items, blockui.MenuItemSpec{Separator: true})
+		}
+		return items
+	}
+
 	// Plugin page_menu items apply to every surface (notes, code, images…).
 	appendPluginPageItems := func(items []blockui.MenuItemSpec) []blockui.MenuItemSpec {
 		if len(p.PluginPageMenu) == 0 {
 			return items
 		}
-		items = append(items, blockui.MenuItemSpec{Separator: true})
+		items = appendSep(items)
 		if legacyProbeIDs == nil {
 			legacyProbeIDs = make(map[string]string, len(p.PluginPageMenu))
 		}
@@ -1071,13 +1092,8 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 		)
 	}
 
-	if len(items) > 0 {
-		items = append(items, blockui.MenuItemSpec{Separator: true})
-	}
 	items = appendPluginPageItems(items)
-	if len(p.PluginPageMenu) > 0 {
-		items = append(items, blockui.MenuItemSpec{Separator: true})
-	}
+	items = appendSep(items)
 	if surface != SurfaceHTML {
 		items = append(items, item("page-open-external", theme.Tr("用默认应用打开", "Open in Default App"), "", &icOpen, p.OnOpenExternal))
 	}

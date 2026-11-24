@@ -28,9 +28,10 @@ var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
 // PageMenuStat represents one key-value metadata row at the top of the titlebar page menu.
 type PageMenuStat struct {
-	ID    string
-	Label string
-	Value string
+	ID     string
+	Label  string
+	Value  string
+	Badges []string
 }
 
 // PageMenuStats builds metadata rows for non-Markdown tabs shown at the top of the page menu.
@@ -62,9 +63,9 @@ func (s *TabSurface) PageMenuStats() []PageMenuStat {
 		}
 		if ext := upperFileExt(s.Path); ext != "" {
 			stats = append(stats, PageMenuStat{
-				ID:    "page-stat-format",
-				Label: theme.Tr("格式", "Format"),
-				Value: ext,
+				ID:     "page-stat-format",
+				Label:  theme.Tr("格式", "Format"),
+				Badges: []string{ext},
 			})
 		}
 		return stats
@@ -83,9 +84,9 @@ func (s *TabSurface) PageMenuStats() []PageMenuStat {
 			fmtVal = theme.Tr("二进制", "Binary")
 		}
 		stats = append(stats, PageMenuStat{
-			ID:    "page-stat-format",
-			Label: theme.Tr("格式", "Format"),
-			Value: fmtVal,
+			ID:     "page-stat-format",
+			Label:  theme.Tr("格式", "Format"),
+			Badges: []string{fmtVal},
 		})
 		return stats
 
@@ -114,16 +115,14 @@ func (s *TabSurface) PageMenuStats() []PageMenuStat {
 				},
 			)
 		}
-		formatVal := "SVG · UTF-8"
-		if s.Source.BOM {
-			formatVal = "SVG · UTF-8 BOM"
-		} else if !s.HasSource {
-			formatVal = theme.Tr("SVG · 只读", "SVG · Read-only")
+		badges := []string{"SVG", theme.Tr("只读", "Read-only")}
+		if s.HasSource {
+			badges = s.sourceFormatBadges()
 		}
 		stats = append(stats, PageMenuStat{
-			ID:    "page-stat-format",
-			Label: theme.Tr("格式", "Format"),
-			Value: formatVal,
+			ID:     "page-stat-format",
+			Label:  theme.Tr("格式", "Format"),
+			Badges: badges,
 		})
 		return stats
 
@@ -141,9 +140,9 @@ func (s *TabSurface) PageMenuStats() []PageMenuStat {
 				Value: strconv.Itoa(utf8.RuneCountInString(text)),
 			},
 			{
-				ID:    "page-stat-format",
-				Label: theme.Tr("格式", "Format"),
-				Value: s.sourceFormatLabel(),
+				ID:     "page-stat-format",
+				Label:  theme.Tr("格式", "Format"),
+				Badges: s.sourceFormatBadges(),
 			},
 		}
 	}
@@ -237,7 +236,7 @@ func (s *TabSurface) fenceLanguageTag() string {
 	return ext
 }
 
-func (s *TabSurface) sourceFormatLabel() string {
+func (s *TabSurface) sourceFormatBadges() []string {
 	lang := strings.ToUpper(strings.TrimSpace(s.Source.Language))
 	if s.IsSVG {
 		lang = "SVG"
@@ -258,7 +257,7 @@ func (s *TabSurface) sourceFormatLabel() string {
 	} else if s.Source.BOM {
 		enc = "UTF-8 BOM"
 	}
-	return fmt.Sprintf("%s · %s", lang, enc)
+	return []string{lang, enc}
 }
 
 func countTextLines(text string) int {
