@@ -63,7 +63,11 @@ func (s *Session) isPreviewOnlyCodeBlock(idx int) bool {
 	if b.Kind != model.BlockCode {
 		return false
 	}
-	return codepreview.IsPreviewLanguage(codepreview.CanonicalLanguage(b.Language)) && !b.ShowSource && strings.TrimSpace(b.Code) != ""
+	canon := codepreview.CanonicalLanguage(b.Language)
+	if canon == "mindmap" {
+		return true
+	}
+	return codepreview.IsPreviewLanguage(canon) && !b.ShowSource && strings.TrimSpace(b.Code) != ""
 }
 
 func (s *Session) hasWholeAtomicSelection() bool {

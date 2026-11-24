@@ -423,6 +423,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		}
 		s.renderPlanDiffCard(c)
 		s.renderMediaLightbox(c)
+		s.renderMindMapFullscreen(c, readOnly)
 		s.renderHoveredPathTooltip(c)
 		if s.hasMenuPopupOpen() {
 			appUi.ReserveMenuNavKeys(c)
@@ -456,11 +457,12 @@ func (s *Session) isFindShortcut(mods ui.Modifiers, key ui.Key) bool {
 }
 
 func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
-	if s.lightbox.Open {
+	if s.lightbox.Open || s.HasMindMapFullscreen() {
 		return
 	}
 	svc := c.Services()
 	annotInputFocused := s.HasAnnotationInputFocused(c)
+	mindMapFocused := s.HasMindMapFocus(c)
 	// Only register window-level clipboard/selectAll shortcuts when no editor input
 	// holds focus; otherwise c.Shortcut claims the key in mygo before RichInput /
 	// multi-sel-focus HandleInput can handle single-block Cmd+X or staged table Cmd+A.
@@ -493,7 +495,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if readOnly {
 		return
 	}
-	if s.rootHandle.FocusWithin(c) && !s.hasBlockingOverlay() {
+	if s.rootHandle.FocusWithin(c) && !s.hasBlockingOverlay() && !mindMapFocused {
 		for _, mods := range []ui.Modifiers{ui.Alt, ui.Cmd | ui.Alt} {
 			if c.Shortcut(mods, ui.KeyUp) {
 				s.rangeShortcut(mods, ui.KeyUp)
@@ -509,12 +511,14 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 			return
 		}
 	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyZ) || c.Shortcut(ui.Cmd, ui.KeyY) {
-		s.Redo()
-	} else if c.Shortcut(ui.Cmd, ui.KeyZ) {
-		s.Undo()
+	if !mindMapFocused {
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyZ) || c.Shortcut(ui.Cmd, ui.KeyY) {
+			s.Redo()
+		} else if c.Shortcut(ui.Cmd, ui.KeyZ) {
+			s.Undo()
+		}
 	}
-	if !annotInputFocused {
+	if !annotInputFocused && !mindMapFocused {
 		if c.Shortcut(ui.Cmd, ui.KeyB) {
 			s.ToggleMarkOnSelection(model.MarkBold)
 		}
@@ -2093,6 +2097,10 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 	dark := theme.IsDark()
 	id := b.ID
 	canon := codepreview.CanonicalLanguage(b.Language)
+	if canon == "mindmap" {
+		s.renderMindMapCodeBlock(c, idx, b, isFocused, isHovered, readOnly)
+		return
+	}
 	previewable := codepreview.IsPreviewLanguage(canon)
 	previewOnly := s.isPreviewOnlyCodeBlock(idx)
 
