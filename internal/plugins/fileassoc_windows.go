@@ -78,29 +78,67 @@ func winMachineProgIDForExe(exePath string) string {
 			}
 		}
 	}
-	if uninstKey, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, registry.ENUMERATE_SUB_KEYS); err == nil {
-		names, _ := uninstKey.ReadSubKeyNames(-1)
-		uninstKey.Close()
-		sort.Strings(names)
-		for _, name := range names {
-			if name != "Block" && !strings.HasPrefix(name, "Block-") {
-				continue
-			}
-			k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Microsoft\Windows\CurrentVersion\Uninstall\`+name, registry.QUERY_VALUE)
-			if err != nil {
-				continue
-			}
-			loc, _, locErr := k.GetStringValue("InstallLocation")
-			progID, _, _ := k.GetStringValue("BlockMachineProgID")
-			k.Close()
-			if locErr == nil && strings.TrimSpace(loc) != "" {
-				candExe := filepath.Join(strings.TrimSpace(loc), "block.exe")
-				if normalizeWinPath(candExe) == normExe {
-					if strings.TrimSpace(progID) != "" {
-						return strings.TrimSpace(progID)
-					}
-					return winBlockMachineProgID
+	for _, viewFlag := range []uint32{registry.WOW64_32KEY, 0} {
+		if uninstKey, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, registry.ENUMERATE_SUB_KEYS|viewFlag); err == nil {
+			names, _ := uninstKey.ReadSubKeyNames(-1)
+			uninstKey.Close()
+			sort.Strings(names)
+			for _, name := range names {
+				if name != "Block" && !strings.HasPrefix(name, "Block-") {
+					continue
 				}
+				k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Microsoft\Windows\CurrentVersion\Uninstall\`+name, registry.QUERY_VALUE|viewFlag)
+				if err != nil {
+					continue
+				}
+				loc, _, locErr := k.GetStringValue("InstallLocation")
+				progID, _, _ := k.GetStringValue("BlockMachineProgID")
+				k.Close()
+				if locErr == nil && strings.TrimSpace(loc) != "" {
+					candExe := filepath.Join(strings.TrimSpace(loc), "block.exe")
+					if normalizeWinPath(candExe) == normExe {
+						if strings.TrimSpace(progID) != "" {
+							return strings.TrimSpace(progID)
+						}
+						return winBlockMachineProgID
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// winUserProgIDForExe searches HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Block-*
+// so per-user NSIS installs placed in a custom folder share the same ProgID between
+// the installer and runtime association sync.
+func winUserProgIDForExe(exePath string) string {
+	normExe := normalizeWinPath(exePath)
+	if normExe == "" {
+		return ""
+	}
+	uninstKey, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return ""
+	}
+	names, _ := uninstKey.ReadSubKeyNames(-1)
+	uninstKey.Close()
+	sort.Strings(names)
+	for _, name := range names {
+		if !strings.HasPrefix(name, "Block-") {
+			continue
+		}
+		k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Uninstall\`+name, registry.QUERY_VALUE)
+		if err != nil {
+			continue
+		}
+		loc, _, locErr := k.GetStringValue("InstallLocation")
+		progID, _, _ := k.GetStringValue("BlockUserProgID")
+		k.Close()
+		if locErr == nil && strings.TrimSpace(loc) != "" && strings.TrimSpace(progID) != "" {
+			candExe := filepath.Join(strings.TrimSpace(loc), "block.exe")
+			if normalizeWinPath(candExe) == normExe {
+				return strings.TrimSpace(progID)
 			}
 		}
 	}
@@ -172,6 +210,9 @@ func resolveWinProgID(exePath string) (progID string, machineProgID string) {
 	}
 	if userExe := winUserInstallExePath(); userExe != "" && normalizeWinPath(userExe) == normExe {
 		return winBlockUserProgID, ""
+	}
+	if uProgID := winUserProgIDForExe(exePath); uProgID != "" {
+		return uProgID, ""
 	}
 	return winBlockPortableProgIDPrefix + stableInstallScopeHash(normExe), ""
 }
