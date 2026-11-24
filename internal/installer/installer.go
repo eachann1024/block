@@ -25,9 +25,10 @@ import (
 
 // Environment handed over by the NSIS stub (see .onInit in block.nsi).
 const (
-	EnvSetupExe = "BLOCK_SETUP_EXE"    // setup executable to run silently
-	EnvDir      = "BLOCK_SETUP_DIR"    // initial install directory
-	EnvUpdate   = "BLOCK_SETUP_UPDATE" // "1": started by the in-app updater
+	EnvSetupExe = "BLOCK_SETUP_EXE"      // setup executable to run silently
+	EnvDir      = "BLOCK_SETUP_DIR"      // initial install directory
+	EnvUpdate   = "BLOCK_SETUP_UPDATE"   // "1": started by the in-app updater
+	EnvAllUsers = "BLOCK_SETUP_ALLUSERS" // "1": machine-wide install requested
 	// EnvPreview shows the window without installing anything, for design
 	// review on any platform: a comma list of a stage (ready, progress, done,
 	// error) and the modifiers hidden and dark.
@@ -67,6 +68,7 @@ type setup struct {
 	dir      string
 	setupExe string
 	update   bool
+	allUsers bool
 	preview  bool
 	previews map[string]bool
 	errText  string
@@ -83,6 +85,7 @@ func Run() int {
 		dir:      strings.TrimSpace(os.Getenv(EnvDir)),
 		setupExe: strings.TrimSpace(os.Getenv(EnvSetupExe)),
 		update:   os.Getenv(EnvUpdate) == "1",
+		allUsers: os.Getenv(EnvAllUsers) == "1",
 		previews: map[string]bool{},
 	}
 	for _, part := range strings.Split(os.Getenv(EnvPreview), ",") {
@@ -225,12 +228,12 @@ func (s *setup) startInstall() {
 		return
 	}
 	s.stage, s.errText, s.started = stageInstalling, "", time.Now()
-	dir, setupExe, update, preview := s.dir, s.setupExe, s.update, s.preview
+	dir, setupExe, update, allUsers, preview := s.dir, s.setupExe, s.update, s.allUsers, s.preview
 	s.mu.Unlock()
 	s.invalidate()
 
 	go func() {
-		err := install(setupExe, dir, preview)
+		err := install(setupExe, dir, allUsers, preview)
 		if err != nil {
 			s.setStage(stageError, installErrorText(err))
 			return
@@ -247,7 +250,7 @@ func (s *setup) startInstall() {
 	}()
 }
 
-func install(setupExe, dir string, preview bool) error {
+func install(setupExe, dir string, allUsers, preview bool) error {
 	if preview {
 		time.Sleep(2500 * time.Millisecond)
 		return nil
@@ -257,10 +260,10 @@ func install(setupExe, dir string, preview bool) error {
 		return errInvalidDir
 	}
 	target := filepath.Join(dir, appExeName)
-	if !waitWritable(target, lockWait) {
+	if !setupNeedsElevation(dir, allUsers) && !waitWritable(target, lockWait) {
 		return errAppRunning
 	}
-	if err := runSilentSetup(setupExe, dir); err != nil {
+	if err := runSilentSetup(setupExe, dir, allUsers); err != nil {
 		return err
 	}
 	// A silent NSIS run can exit cleanly without having used /D=, so confirm
@@ -272,8 +275,9 @@ func install(setupExe, dir string, preview bool) error {
 }
 
 var (
-	errInvalidDir   = errors.New("invalid install directory")
-	errNotInstalled = errors.New("setup finished without installing")
+	errInvalidDir        = errors.New("invalid install directory")
+	errNotInstalled      = errors.New("setup finished without installing")
+	errElevationCanceled = errors.New("administrator elevation was canceled")
 )
 
 func installErrorText(err error) string {
@@ -282,6 +286,8 @@ func installErrorText(err error) string {
 		return theme.Tr("请先关闭正在运行的 Block，再重试。", "Close the running Block, then try again.")
 	case errors.Is(err, errInvalidDir):
 		return theme.Tr("这个位置无法安装，请换一个文件夹。", "Block can't be installed here. Choose another folder.")
+	case errors.Is(err, errElevationCanceled):
+		return theme.Tr("已取消管理员授权，可重试或更改位置。", "Administrator permission was canceled. Try again or change location.")
 	default:
 		return theme.Tr("安装没有完成，请重试。", "Setup didn't finish. Try again.")
 	}

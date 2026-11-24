@@ -13,11 +13,13 @@ import (
 // Setup only ships on Windows; elsewhere the window exists for design preview
 // (BLOCK_SETUP_PREVIEW), which never reaches the real install steps.
 
-func defaultInstallDir() string { return `C:\Program Files\Block` }
+func defaultInstallDir() string { return `C:\Users\You\AppData\Local\Programs\Block` }
 
 func validInstallDir(dir string) bool { return filepath.IsAbs(dir) }
 
-func runSilentSetup(string, string) error {
+func setupNeedsElevation(string, bool) bool { return false }
+
+func runSilentSetup(string, string, bool) error {
 	return errors.New("setup is only available on Windows")
 }
 
