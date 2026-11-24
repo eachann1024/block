@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,20 +42,44 @@ function runAsync(cmd, args) {
   });
 }
 
-async function createDmgWithRetry(stageDir, outDmg) {
+// The drag-to-install window (arrow background, icon positions, window size)
+// lives in the volume's .DS_Store. Its background reference is an alias bound
+// to that exact volume, so a prebuilt .DS_Store cannot be copied in; dmgbuild
+// writes it against the real image and needs no Finder automation.
+const DMGBUILD_VERSION = "1.6.5";
+const DMG_ASSETS = resolve(ROOT, "scripts/release/dmg");
+
+function ensureDmgbuild() {
+  const venv = resolve(ROOT, "dist/.dmgbuild-venv");
+  const bin = join(venv, "bin/dmgbuild");
+  const marker = join(venv, `.dmgbuild-${DMGBUILD_VERSION}`);
+  if (existsSync(bin) && existsSync(marker)) return bin;
+  rmSync(venv, { recursive: true, force: true });
+  const steps = [
+    ["python3", ["-m", "venv", venv]],
+    [join(venv, "bin/pip"), ["install", "--quiet", "--disable-pip-version-check", `dmgbuild==${DMGBUILD_VERSION}`]],
+    ["touch", [marker]],
+  ];
+  for (const [cmd, args] of steps) {
+    const res = spawnSync(cmd, args, { stdio: "inherit" });
+    assert.equal(res.status, 0, `${cmd} ${args.join(" ")} failed`);
+  }
+  return bin;
+}
+
+async function createDmgWithRetry(dmgbuild, stagedApp, outDmg) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       rmSync(outDmg, { force: true });
-      await runAsync("hdiutil", [
-        "create",
-        "-volname",
+      await runAsync(dmgbuild, [
+        "-s",
+        join(DMG_ASSETS, "settings.py"),
+        "-D",
+        `app=${stagedApp}`,
+        "-D",
+        `background=${join(DMG_ASSETS, "background.tiff")}`,
         "Block",
-        "-srcfolder",
-        stageDir,
-        "-ov",
-        "-format",
-        "UDZO",
         outDmg,
       ]);
       return;
@@ -75,7 +99,10 @@ export async function packageRelease(arches = resolveTargetArches()) {
 
   // Build each arch sequentially (buildApp shares dist/ staging), while overlapping
   // hdiutil DMG compression in the background with the next arch's Go compilation.
+  // DMG builds are chained: each one mounts a volume named "Block".
+  const dmgbuild = ensureDmgbuild();
   const dmgTasks = [];
+  let dmgQueue = Promise.resolve();
   for (const rawArch of arches) {
     const dmgName = installerFor({ platform: "macos", arch: rawArch, kind: "dmg" });
     const built = await buildApp({
@@ -93,24 +120,25 @@ export async function packageRelease(arches = resolveTargetArches()) {
     try {
       cloneDir(appBundle, stagedApp);
       verifySignature(stagedApp);
-      symlinkSync("/Applications", join(stageDir, "Applications"));
     } catch (err) {
       rmSync(stageDir, { recursive: true, force: true });
       throw err;
     }
 
     const dmgPath = join(RELEASE_DIR, dmgName);
-    dmgTasks.push(
-      (async () => {
+    const previous = dmgQueue;
+    const task = (async () => {
         try {
-          await createDmgWithRetry(stageDir, dmgPath);
+          await previous.catch(() => {});
+          await createDmgWithRetry(dmgbuild, stagedApp, dmgPath);
           assert.ok(existsSync(dmgPath), `Failed to create ${dmgName}`);
           return dmgPath;
         } finally {
           rmSync(stageDir, { recursive: true, force: true });
         }
-      })(),
-    );
+      })();
+    dmgQueue = task;
+    dmgTasks.push(task);
   }
 
   const dmgPaths = await Promise.all(dmgTasks);
