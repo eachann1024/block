@@ -14,9 +14,11 @@ import (
 )
 
 // mygo's tray has no drop target, so Block finds the NSStatusBarButton
-// behind a tray (by a one-off tooltip) and makes it one: AppKit sends the
-// NSDraggingDestination messages to a view registered for dragged types,
-// and NSStatusBarButton gets those methods once, dispatching by button.
+// behind a tray (by a one-off tooltip) and registers its status bar window
+// for dragged types, with a delegate of its own: NSWindow forwards the
+// NSDraggingDestination messages to its delegate (the approach uPic uses).
+// Registering the button itself does not work, as the status bar window
+// does not route drags to its subviews.
 
 const (
 	pbFileURL = "public.file-url"
@@ -30,14 +32,16 @@ const (
 )
 
 type menubarDropTarget struct {
+	button objc.ID
+	window objc.ID
 	types  []string
 	onDrop func(plugins.MenubarPayload)
 }
 
 var menubarDrops struct {
 	once    sync.Once
-	ok      bool
-	targets map[objc.ID]*menubarDropTarget // main thread only
+	class   objc.Class
+	targets map[objc.ID]*menubarDropTarget // delegate -> target; main thread only
 }
 
 func mbSend(receiver objc.ID, selector string, args ...any) objc.ID {
@@ -77,61 +81,59 @@ func mbArray(values []string) objc.ID {
 	return arr
 }
 
-func installMenubarDropMethods() bool {
+func menubarDropDelegateClass() objc.Class {
 	menubarDrops.once.Do(func() {
 		menubarDrops.targets = map[objc.ID]*menubarDropTarget{}
-		cls := objc.GetClass("NSStatusBarButton")
-		if cls == 0 {
-			return
-		}
-		highlight := func(self objc.ID, on bool) { mbSend(self, "highlight:", on) }
-		accepts := func(self, info objc.ID) bool {
-			t := menubarDrops.targets[self]
+		accepts := func(t *menubarDropTarget, info objc.ID) bool {
 			if t == nil || info == 0 {
 				return false
 			}
 			pb := mbSend(info, "draggingPasteboard")
 			return pb != 0 && mbSend(pb, "availableTypeFromArray:", mbArray(t.types)) != 0
 		}
-		entered := objc.NewIMP(func(self objc.ID, _ objc.SEL, info objc.ID) uint {
-			if !accepts(self, info) {
+		highlight := func(t *menubarDropTarget, on bool) {
+			if t != nil {
+				mbSend(t.button, "highlight:", on)
+			}
+		}
+		entered := func(self objc.ID, _ objc.SEL, info objc.ID) uint {
+			t := menubarDrops.targets[self]
+			if !accepts(t, info) {
 				return dragOperationNone
 			}
-			highlight(self, true)
+			highlight(t, true)
 			return dragOperationCopy
-		})
-		exited := objc.NewIMP(func(self objc.ID, _ objc.SEL, _ objc.ID) {
-			if menubarDrops.targets[self] != nil {
-				highlight(self, false)
-			}
-		})
-		prepare := objc.NewIMP(func(self objc.ID, _ objc.SEL, info objc.ID) bool {
-			return accepts(self, info)
-		})
-		perform := objc.NewIMP(func(self objc.ID, _ objc.SEL, info objc.ID) bool {
-			t := menubarDrops.targets[self]
-			if t == nil {
-				return false
-			}
-			highlight(self, false)
-			payload := readMenubarPasteboard(mbSend(info, "draggingPasteboard"))
-			if payload.Empty() {
-				return false
-			}
-			go t.onDrop(payload)
-			return true
-		})
-		ok := cls.AddMethod(objc.RegisterName("draggingEntered:"), entered, "Q@:@")
-		ok = cls.AddMethod(objc.RegisterName("draggingUpdated:"), entered, "Q@:@") && ok
-		ok = cls.AddMethod(objc.RegisterName("draggingExited:"), exited, "v@:@") && ok
-		ok = cls.AddMethod(objc.RegisterName("prepareForDragOperation:"), prepare, "B@:@") && ok
-		ok = cls.AddMethod(objc.RegisterName("performDragOperation:"), perform, "B@:@") && ok
-		if !ok {
-			log.Printf("menubar: NSStatusBarButton already implements dragging; drop disabled")
 		}
-		menubarDrops.ok = ok
+		cls, err := objc.RegisterClass("BlockMenubarDropDelegate", objc.GetClass("NSObject"), nil, nil, []objc.MethodDef{
+			{Cmd: objc.RegisterName("draggingEntered:"), Fn: entered},
+			{Cmd: objc.RegisterName("draggingUpdated:"), Fn: entered},
+			{Cmd: objc.RegisterName("draggingExited:"), Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+				highlight(menubarDrops.targets[self], false)
+			}},
+			{Cmd: objc.RegisterName("prepareForDragOperation:"), Fn: func(self objc.ID, _ objc.SEL, info objc.ID) bool {
+				return accepts(menubarDrops.targets[self], info)
+			}},
+			{Cmd: objc.RegisterName("performDragOperation:"), Fn: func(self objc.ID, _ objc.SEL, info objc.ID) bool {
+				t := menubarDrops.targets[self]
+				if t == nil {
+					return false
+				}
+				highlight(t, false)
+				payload := readMenubarPasteboard(mbSend(info, "draggingPasteboard"))
+				if payload.Empty() {
+					return false
+				}
+				go t.onDrop(payload)
+				return true
+			}},
+		})
+		if err != nil {
+			log.Printf("menubar: drop delegate: %v; drop disabled", err)
+			return
+		}
+		menubarDrops.class = cls
 	})
-	return menubarDrops.ok
+	return menubarDrops.class
 }
 
 // findStatusButton returns the NSStatusBarButton whose tooltip is sentinel.
@@ -168,12 +170,24 @@ func findStatusButton(sentinel string) objc.ID {
 // attachMenubarDrop makes the tray whose tooltip is currently sentinel a drop
 // target for the drop's accepted kinds. Main thread only.
 func attachMenubarDrop(sentinel string, drop *plugins.MenubarDrop, onDrop func(plugins.MenubarPayload)) func() {
-	if drop == nil || !installMenubarDropMethods() {
+	if drop == nil {
+		return nil
+	}
+	cls := menubarDropDelegateClass()
+	if cls == 0 {
 		return nil
 	}
 	button := findStatusButton(sentinel)
-	if button == 0 {
+	window := objc.ID(0)
+	if button != 0 {
+		window = mbSend(button, "window")
+	}
+	if window == 0 {
 		log.Printf("menubar: status button not found; drop disabled")
+		return nil
+	}
+	if mbSend(window, "delegate") != 0 {
+		log.Printf("menubar: status bar window already has a delegate; drop disabled")
 		return nil
 	}
 	var types []string
@@ -186,11 +200,15 @@ func attachMenubarDrop(sentinel string, drop *plugins.MenubarDrop, onDrop func(p
 	if drop.Accepts(plugins.MenubarAcceptText) {
 		types = append(types, pbText)
 	}
-	menubarDrops.targets[button] = &menubarDropTarget{types: types, onDrop: onDrop}
-	mbSend(button, "registerForDraggedTypes:", mbArray(types))
+	delegate := mbSend(objc.ID(cls), "new")
+	menubarDrops.targets[delegate] = &menubarDropTarget{button: button, window: window, types: types, onDrop: onDrop}
+	mbSend(window, "setDelegate:", delegate)
+	mbSend(window, "registerForDraggedTypes:", mbArray(types))
 	return func() {
-		delete(menubarDrops.targets, button)
-		mbSend(button, "unregisterDraggedTypes")
+		mbSend(window, "unregisterDraggedTypes")
+		mbSend(window, "setDelegate:", objc.ID(0))
+		delete(menubarDrops.targets, delegate)
+		mbSend(delegate, "release")
 	}
 }
 
