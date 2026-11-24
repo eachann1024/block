@@ -233,7 +233,6 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 	defer blockui.ResetSmoke()
 
 	dark := th == "dark"
-	theme.SetDark(dark)
 
 	ws := app.NewWorkspace(dataDir)
 	defer func() {
@@ -249,6 +248,7 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 	}
 
 	tt := ui.NewTester(ws.Render, sz.Width, sz.Height)
+	theme.SetDark(dark)
 	tt.SetDark(dark)
 	tt.Frame()
 	tt.Advance(250 * time.Millisecond)
@@ -270,8 +270,18 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 		tt.Frame()
 		tt.Advance(200 * time.Millisecond)
 		tt.Type("Ocean")
+	case "ai":
+		ws.AI().SeedScenePreview(false)
+		tt.Frame()
+		tt.Advance(120 * time.Millisecond)
+	case "ai-stream":
+		ws.AI().SeedScenePreview(true)
+		for i := 0; i < 12; i++ {
+			tt.Frame()
+			tt.Advance(20 * time.Millisecond)
+		}
 	default:
-		return SceneShotResult{}, fmt.Errorf("unknown scene %q (supported: workspace, settings, store, export, find)", scene)
+		return SceneShotResult{}, fmt.Errorf("unknown scene %q (supported: workspace, settings, store, export, find, ai, ai-stream)", scene)
 	}
 
 	tt.Frame()
@@ -316,13 +326,18 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 
 func inspectProbeBounds(targets map[string]ui.Rect, viewW, viewH int) []ProbeAnomaly {
 	const eps = float32(0.5)
+	scrollRect, hasChatScroll := targets["ai-chat-scroll"]
 	var anomalies []ProbeAnomaly
 	for id, r := range targets {
 		var reasons []string
 		if r.W <= 0 || r.H <= 0 {
 			reasons = append(reasons, "non-positive size")
 		}
-		if r.X < -eps || r.Y < -eps || r.X+r.W > float32(viewW)+eps || r.Y+r.H > float32(viewH)+eps {
+		if hasChatScroll && isAIChatScrollChild(id) {
+			if r.X < scrollRect.X-eps || r.X+r.W > scrollRect.X+scrollRect.W+eps {
+				reasons = append(reasons, "exceeds scroll horizontal bounds")
+			}
+		} else if r.X < -eps || r.Y < -eps || r.X+r.W > float32(viewW)+eps || r.Y+r.H > float32(viewH)+eps {
 			reasons = append(reasons, "exceeds viewport bounds")
 		}
 		if len(reasons) > 0 {
@@ -337,4 +352,12 @@ func inspectProbeBounds(targets map[string]ui.Rect, viewW, viewH int) []ProbeAno
 		}
 	}
 	return anomalies
+}
+
+func isAIChatScrollChild(id string) bool {
+	switch id {
+	case "ai-user-message", "ai-assistant-message", "ai-process-card", "ai-process-toggle", "ai-process-steps", "ai-process-live":
+		return true
+	}
+	return strings.HasPrefix(id, "ai-process-tool-")
 }
