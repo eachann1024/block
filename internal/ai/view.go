@@ -78,6 +78,7 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 		c.mu.Unlock()
 	}
 	bui.Probe(panel, "ai-chat-panel")
+	chrome := ensureStreamChrome(panel)
 
 	c.mu.RLock()
 	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
@@ -97,7 +98,7 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 			return
 		}
 
-		c.renderMessageStream(cUI, pal, fullscreen)
+		c.renderMessageStream(cUI, pal, fullscreen, chrome)
 		c.renderTurnError(cUI, pal, fullscreen)
 		c.renderDeferredDraftBanner(cUI, pal, fullscreen)
 		c.renderPicker(cUI, pal, fullscreen)
@@ -487,7 +488,7 @@ func (c *Controller) renderEmptySuggestions(cUI *ui.Context, pal theme.Palette, 
 }
 
 type mdPaletteKey struct {
-	paper, text, textSecondary, accent, codeBlockBG, hairline ui.Color
+	paper, text, textSecondary, accent, codeBlockBG, inlineCodeBG, hairline ui.Color
 }
 
 type cachedMsgEntry struct {
@@ -813,7 +814,7 @@ func (sc *chatStreamCache) syncLocked(found *model.Conversation) {
 	}
 }
 
-func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, fullscreen bool) {
+func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, fullscreen bool, chrome *streamChromeState) {
 	c.mu.Lock()
 	if c.streamCache == nil {
 		c.streamCache = newChatStreamCache()
@@ -847,9 +848,13 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 		}
 	}
 	partial := ""
+	partialThink := ""
 	var partialSteps []model.ProcessStep
 	if st != nil {
 		partial = st.partialText.String()
+		if streaming {
+			partialThink = st.partialThink.String()
+		}
 		if streaming && len(st.partialSteps) > 0 {
 			partialSteps = append([]model.ProcessStep(nil), st.partialSteps...)
 		}
@@ -862,6 +867,10 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 		c.scrollToBottom = convID != 0
 		c.scrollToBottomForce = convID != 0
 	}
+	wasRevealing := chrome != nil && chrome.lastReplyRevealing
+	if chrome != nil {
+		chrome.lastReplyRevealing = false
+	}
 	// 贴底跟随：在底部时内容增长（发消息、流式输出、步骤追加）一直跟到底部；
 	// 不写 math.MaxFloat32（否则 ScrollIntoView 在 place 夹紧前会把 Y 算成 0 跳到最顶部），
 	// 改用底部零高度锚点的 ScrollIntoView(ScrollEnd) 贴底。
@@ -873,7 +882,10 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 				c.scrollToBottomForce = false
 			}
 		} else if c.scrollToBottom && !atBottom {
-			c.scrollToBottom = false
+			followTail := streaming || wasRevealing || y > c.lastScrollY+0.5
+			if !followTail || y < c.lastScrollY-2 {
+				c.scrollToBottom = false
+			}
 		} else if !c.scrollToBottom && atBottom && (y > c.lastScrollY || (c.lastScrollMaxY > 0 && maxY <= 0)) {
 			c.scrollToBottom = true
 		}
@@ -881,6 +893,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 		c.lastScrollMaxY = maxY
 	}
 	needScrollBottom := c.scrollToBottom && convID != 0
+	forceScrollBottom := c.scrollToBottomForce && convID != 0
 	expandedSnap := make(map[string]bool, len(turns))
 	for i := range turns {
 		k := turns[i].key
@@ -890,128 +903,143 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	}
 	c.mu.Unlock()
 
-	scroll := bui.Scroll(cUI.Key("ai-chat-scroll"), &c.messagesScroll).FillWidth().Grow(1)
-	bui.Probe(scroll, "ai-chat-scroll")
-	scroll.ObserveInput(func(ev ui.InputEvent) {
-		if ev.Kind != ui.InputScroll {
-			return
-		}
-		c.mu.Lock()
-		if ev.DY < 0 {
-			c.scrollToBottom = false
-			c.scrollToBottomForce = false
-		} else if ev.DY > 0 && c.messagesScroll.Y >= c.messagesScroll.MaxY-2 {
-			c.scrollToBottom = true
-		}
-		c.mu.Unlock()
-	})
-	scrollH := scroll.Bounds().H
-	if needScrollBottom && scrollH <= 0 {
-		c.requestRedraw()
-	}
-	scrollY := min(c.messagesScroll.Y, c.messagesScroll.MaxY)
-	overscan := max(scrollH*1.5, 600)
-	visTop := scrollY - overscan
-	visBot := scrollY + scrollH + overscan
-
-	scroll.Children(func() {
-		skipScrollBottom := false
-		outer := ui.Column(cUI).FillWidth().Padding(16).Gap(16).Selectable()
-		if fullscreen {
-			outer.MaxWidth(720).Margin(0, ui.Auto)
-		}
-		outer.Children(func() {
-			if !hasConv || (len(turns) == 0 && !streaming) {
-				c.renderEmptySuggestions(cUI, pal, fullscreen, max(scrollH-32, 0))
+	scrollWrap := ui.Column(cUI.Key("ai-chat-scroll-wrap")).FillWidth().Grow(1).MinHeight(0)
+	drawScrollEdgeMasks(scrollWrap, &c.messagesScroll, pal)
+	scrollWrap.Children(func() {
+		scroll := bui.Scroll(cUI.Key("ai-chat-scroll"), &c.messagesScroll).FillWidth().Grow(1).MinHeight(0)
+		bui.Probe(scroll, "ai-chat-scroll")
+		scroll.ObserveInput(func(ev ui.InputEvent) {
+			if ev.Kind != ui.InputScroll {
 				return
 			}
+			c.mu.Lock()
+			if ev.DY < 0 {
+				c.scrollToBottom = false
+				c.scrollToBottomForce = false
+			} else if ev.DY > 0 && c.messagesScroll.Y >= c.messagesScroll.MaxY-2 {
+				c.scrollToBottom = true
+			}
+			c.mu.Unlock()
+		})
+		scrollH := scroll.Bounds().H
+		if needScrollBottom && scrollH <= 0 {
+			c.requestRedraw()
+		}
+		scrollY := min(c.messagesScroll.Y, c.messagesScroll.MaxY)
+		overscan := max(scrollH*1.5, 600)
+		visTop := scrollY - overscan
+		visBot := scrollY + scrollH + overscan
 
-			const virtualizeThreshold = 20
-			curY := float32(16)
-			for ti := range turns {
-				t := &turns[ti]
-				turnStreaming := streaming && ti == len(turns)-1
-
-				h := turnHeights[t.key]
-				canVirtualize := len(turns) > virtualizeThreshold &&
-					scrollH > 0 &&
-					ti < len(turns)-2 &&
-					!turnStreaming &&
-					!t.hasInteractive &&
-					!expandedSnap[t.key] &&
-					(h > 0 || (scrollY > overscan && ti < len(turns)-12))
-				if canVirtualize {
-					phH := h
-					if phH <= 0 {
-						phH = t.estHeight
-					}
-					yBottom := curY + phH
-					if yBottom < visTop || curY > visBot {
-						ui.Box(cUI.Key("ai-turn-ph-" + t.key)).FillWidth().Height(phH)
-						curY = yBottom + 16
-						continue
-					}
+		scroll.Children(func() {
+			skipScrollBottom := false
+			outer := ui.Column(cUI).FillWidth().Padding(16).Gap(16).Selectable()
+			if fullscreen {
+				outer.MaxWidth(720).Margin(0, ui.Auto)
+			}
+			outer.Children(func() {
+				if !hasConv || (len(turns) == 0 && !streaming) {
+					c.renderEmptySuggestions(cUI, pal, fullscreen, max(scrollH-32, 0))
+					return
 				}
 
-				turnWrap := ui.Column(cUI.Key("ai-turn-" + t.key)).FillWidth().Gap(16)
-				turnWrap.Children(func() {
-					if t.hasUser {
-						c.renderUserMessage(cUI, pal, convID, t.startIdx, t.userText, t.userAttachments, t.userAttachmentsSeparate)
-					}
+				const virtualizeThreshold = 20
+				curY := float32(16)
+				for ti := range turns {
+					t := &turns[ti]
+					turnStreaming := streaming && ti == len(turns)-1
 
-					if theme.IsTarotMode() && ti == len(turns)-1 && (turnStreaming || tarotGlintProg > 0) {
-						tarot.RenderAIDevelopingCard(cUI, turnStreaming, tarotGlintProg)
-					}
-
-					steps := t.steps
-					notes := t.notes
-					if turnStreaming {
-						steps, notes = appendStreamingProcess(steps, notes, partial, partialSteps)
-					}
-					if len(steps) > 0 {
-						if c.renderProcessCard(cUI, pal, t.key, t.outcome, steps, notes, turnStreaming) {
-							skipScrollBottom = true
+					h := turnHeights[t.key]
+					canVirtualize := len(turns) > virtualizeThreshold &&
+						scrollH > 0 &&
+						ti < len(turns)-2 &&
+						!turnStreaming &&
+						!t.hasInteractive &&
+						!expandedSnap[t.key] &&
+						(h > 0 || (scrollY > overscan && ti < len(turns)-12))
+					if canVirtualize {
+						phH := h
+						if phH <= 0 {
+							phH = t.estHeight
 						}
-					}
-
-					for _, card := range t.cards {
-						if card.plan != nil {
-							c.renderPlanCard(cUI, pal, convID, card.msgIdx, card.plan)
-						}
-						if card.question != nil {
-							c.renderQuestionCard(cUI, pal, convID, card.msgIdx, card.question)
-						}
-						if card.approval != nil {
-							c.renderApprovalCard(cUI, pal, convID, card.msgIdx, card.approval)
+						yBottom := curY + phH
+						if yBottom < visTop || curY > visBot {
+							ui.Box(cUI.Key("ai-turn-ph-" + t.key)).FillWidth().Height(phH)
+							curY = yBottom + 16
+							continue
 						}
 					}
 
-					if !t.hasPendingPlan {
-						nextReplyIdx := 0
-						for _, rep := range t.replies {
-							c.renderAssistantReply(cUI, pal, convID, rep.replyIdx, rep.content, !turnStreaming, false)
-							nextReplyIdx = rep.replyIdx + 1
+					turnWrap := ui.Column(cUI.Key("ai-turn-" + t.key)).FillWidth().Gap(16)
+					turnWrap.Children(func() {
+						if t.hasUser {
+							c.renderUserMessage(cUI, pal, convID, t.startIdx, t.userText, t.userAttachments, t.userAttachmentsSeparate)
 						}
-						if turnStreaming && strings.TrimSpace(partial) != "" {
-							c.renderAssistantReply(cUI, pal, convID, nextReplyIdx, partial, false, true)
-						}
-					}
 
+						if theme.IsTarotMode() && ti == len(turns)-1 && (turnStreaming || tarotGlintProg > 0) {
+							tarot.RenderAIDevelopingCard(cUI, turnStreaming, tarotGlintProg)
+						}
+
+						steps := t.steps
+						notes := t.notes
+						if turnStreaming {
+							steps, notes = appendStreamingProcess(steps, notes, partial, partialSteps)
+						}
+						thinkText := ""
+						if turnStreaming {
+							thinkText = partialThink
+						}
+						if len(steps) > 0 || (turnStreaming && strings.TrimSpace(thinkText) != "") {
+							if c.renderProcessCard(cUI, pal, t.key, t.outcome, steps, notes, turnStreaming, partial, thinkText, chrome) {
+								skipScrollBottom = true
+							}
+						}
+
+						for _, card := range t.cards {
+							if card.plan != nil {
+								c.renderPlanCard(cUI, pal, convID, card.msgIdx, card.plan)
+							}
+							if card.question != nil {
+								c.renderQuestionCard(cUI, pal, convID, card.msgIdx, card.question)
+							}
+							if card.approval != nil {
+								c.renderApprovalCard(cUI, pal, convID, card.msgIdx, card.approval)
+							}
+						}
+
+						if !t.hasPendingPlan {
+							nextReplyIdx := t.nextReplyIdx
+							for _, rep := range t.replies {
+								c.renderAssistantReply(cUI, pal, convID, rep.replyIdx, rep.content, !turnStreaming, false, chrome)
+								nextReplyIdx = rep.replyIdx + 1
+							}
+							if turnStreaming && strings.TrimSpace(partial) != "" {
+								c.renderAssistantReply(cUI, pal, convID, nextReplyIdx, partial, false, true, chrome)
+							}
+						}
+
+					})
+					if b := turnWrap.Bounds(); b.H > 0 {
+						turnHeights[t.key] = b.H
+						curY += b.H + 16
+					} else if h > 0 {
+						curY += h + 16
+					} else {
+						curY += t.estHeight + 16
+					}
+				}
+			})
+			anchor := ui.Box(cUI.Key("ai-chat-bottom")).Height(0)
+			if needScrollBottom && !skipScrollBottom {
+				var scrollAnim *ui.Animation
+				if (streaming || (chrome != nil && chrome.lastReplyRevealing)) && !forceScrollBottom {
+					scrollAnim = streamingScrollAnimation()
+				}
+				anchor.ScrollIntoView(ui.ScrollIntoViewOptions{
+					Block:     ui.ScrollEnd,
+					Animation: scrollAnim,
 				})
-				if b := turnWrap.Bounds(); b.H > 0 {
-					turnHeights[t.key] = b.H
-					curY += b.H + 16
-				} else if h > 0 {
-					curY += h + 16
-				} else {
-					curY += t.estHeight + 16
-				}
 			}
 		})
-		anchor := ui.Box(cUI.Key("ai-chat-bottom")).Height(0)
-		if needScrollBottom && !skipScrollBottom {
-			anchor.ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollEnd})
-		}
 	})
 }
 
@@ -1037,20 +1065,15 @@ func appendStreamingProcess(baseSteps []model.ProcessStep, baseNotes []string, p
 	return steps, notes
 }
 
-// streamingLiveStep is the trailing step of a running turn: the answer being
-// written once text arrives, a waiting placeholder only before any step exists;
-// otherwise the newest real step already leads as the live one.
+// streamingLiveStep is the trailing step of a running turn: a waiting placeholder
+// only before any step exists; once text arrives or real steps exist, nothing
+// extra is appended so the answer itself leads without redundant rows.
 func streamingLiveStep(partial string, haveSteps bool) (model.ProcessStep, bool) {
 	st := model.ProcessStep{ID: "streaming", Kind: model.ToolKindThink}
-	switch {
-	case strings.TrimSpace(partial) != "":
-		st.Title = theme.Tr("正在生成回答", "Generating answer")
-		st.Detail = latestStreamLine(partial)
-	case !haveSteps:
-		st.Title = theme.Tr("等待模型响应", "Waiting for model response")
-	default:
+	if strings.TrimSpace(partial) != "" || haveSteps {
 		return st, false
 	}
+	st.Title = theme.Tr("等待模型响应", "Waiting for model response")
 	return st, true
 }
 
@@ -1075,24 +1098,36 @@ func (c *Controller) renderUserMessage(cUI *ui.Context, pal theme.Palette, convI
 	})
 }
 
-func (c *Controller) renderAssistantReply(cUI *ui.Context, pal theme.Palette, convID uint64, replyIdx int, text string, copyable bool, isStreaming bool) {
+func (c *Controller) renderAssistantReply(cUI *ui.Context, pal theme.Palette, convID uint64, replyIdx int, text string, copyable bool, isStreaming bool, chrome *streamChromeState) {
 	boxKey := fmt.Sprintf("reply-%d-%d", convID, replyIdx)
-	wrap := ui.Column(cUI.Key(boxKey)).FillWidth().Gap(4).
-		Transition(probeSafeTransition(bui.CascadeItemTransition(replyIdx, false)))
+	wrap := ui.Column(cUI.Key(boxKey)).FillWidth().Gap(4)
+	if !isStreaming {
+		wrap.Transition(probeSafeTransition(bui.CascadeItemTransition(replyIdx, false)))
+	}
 	hoveredWrap := wrap.Hovered()
-	mdOpts := c.markdownOptions(pal)
+	mdOpts := c.markdownOptions(pal, chrome)
 
 	wrap.Children(func() {
-		msgBox := ui.Box(cUI).FillWidth()
+		msgBox := ui.Box(cUI.Key(boxKey + "-md")).FillWidth()
 		bui.Probe(msgBox, "ai-assistant-message")
+		var mdEl ui.Element
 		msgBox.Children(func() {
 			if isStreaming {
-				markdown.Stream(cUI, text, mdOpts)
+				mdEl = markdown.Stream(cUI, text, mdOpts)
 			} else {
-				markdown.View(cUI, text, mdOpts)
+				mdEl = markdown.View(cUI, text, mdOpts)
 			}
 		})
+		if chrome != nil && !streamInstantSettle() && !markdown.Revealed(mdEl) {
+			chrome.lastReplyRevealing = true
+		}
 		if copyable {
+			revealed := streamInstantSettle() || markdown.Revealed(mdEl)
+			revealTarget := float32(0)
+			if revealed {
+				revealTarget = 1
+			}
+			revealAlpha := bui.RevealTo(wrap, "ai-msg-copy-reveal", revealTarget)
 			copyID := fmt.Sprintf("ai-msg-copy-%d", replyIdx)
 			ui.Row(cUI).FillWidth().Justify(ui.End).Children(func() {
 				copyBtn := bui.IconButton(cUI, icons.Copy, bui.IconButtonOptions{
@@ -1101,11 +1136,18 @@ func (c *Controller) renderAssistantReply(cUI *ui.Context, pal theme.Palette, co
 					Tooltip:  theme.Tr("复制", "Copy"),
 					Size:     26,
 					IconSize: 14,
+					Disabled: !revealed,
 				})
-				if !hoveredWrap && !copyBtn.Hovered() {
-					copyBtn.Opacity(0.05)
+				op := float32(0)
+				if revealed {
+					op = 0.05
+					if hoveredWrap || copyBtn.Hovered() {
+						op = 1
+					}
+					op *= revealAlpha
 				}
-				if copyBtn.Clicked() {
+				copyBtn.Opacity(op)
+				if revealed && copyBtn.Clicked() {
 					c.mu.Lock()
 					c.cancelPendingClipboardLocked()
 					c.mu.Unlock()
@@ -1116,34 +1158,25 @@ func (c *Controller) renderAssistantReply(cUI *ui.Context, pal theme.Palette, co
 	})
 }
 
-func (c *Controller) markdownOptions(pal theme.Palette) *markdown.Options {
+func (c *Controller) markdownOptions(pal theme.Palette, chrome *streamChromeState) *markdown.Options {
 	key := mdPaletteKey{
 		paper:         pal.Paper,
 		text:          pal.Text,
 		textSecondary: pal.TextSecondary,
 		accent:        pal.Accent,
 		codeBlockBG:   pal.CodeBlockBG,
+		inlineCodeBG:  pal.InlineCodeBG,
 		hairline:      pal.Hairline,
 	}
-	if c.mdOpts.Theme == nil || c.mdThemeKey != key {
+	codeFont := aiResolvedCodeFont()
+	if c.mdOpts.Theme == nil || c.mdThemeKey != key || c.mdOpts.Theme.CodeFont != codeFont {
 		c.mdThemeKey = key
 		c.mdOpts.ShareSelection = true
-		c.mdOpts.Theme = &markdown.Theme{
-			FontSize:            theme.FontBody,
-			LineHeight:          1.55,
-			Text:                pal.Text,
-			Muted:               pal.TextSecondary,
-			Link:                pal.Accent,
-			Strong:              pal.Text,
-			StrongWeight:        600,
-			Code:                pal.Text,
-			CodeBackground:      pal.CodeBlockBG,
-			CodeBlockBackground: pal.CodeBlockBG,
-			CodeBlockBorder:     pal.Hairline,
-			Rule:                pal.Hairline,
-			TableBorder:         pal.Hairline,
-			TableHeader:         pal.CodeBlockBG,
-		}
+		c.mdOpts.Reveal = aiMarkdownReveal()
+		c.mdOpts.Theme = aiMarkdownTheme(pal, chrome)
+	}
+	c.mdOpts.CodeBlock = func(cUI *ui.Context, b *markdown.CodeBlockView) {
+		c.renderAICodeBlock(cUI, b, chrome)
 	}
 	if c.mdOpts.OnLink == nil {
 		c.mdOpts.OnLink = func(url string) {
@@ -1509,22 +1542,18 @@ func collectTurnSources(turn []model.ChatMessage) []model.SourceNote {
 	return out
 }
 
-func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, outcome string, steps []model.ProcessStep, notes []string, streaming bool) bool {
+func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, outcome string, steps []model.ProcessStep, notes []string, streaming bool, partial string, partialThink string, chrome *streamChromeState) bool {
 	c.mu.RLock()
 	// 执行中只显示最新一步和已完成步骤的图标轨迹，完整列表按用户点开状态展示。
 	expanded := c.expandedProcess[turnKey]
 	c.mu.RUnlock()
 	localScroll := false
 
-	headline := fmt.Sprintf("%d 步执行完成", len(steps))
-	if theme.IsEn() {
-		headline = fmt.Sprintf("%d steps completed", len(steps))
-	}
-	if outcome == "failed" {
-		headline = theme.Tr("执行失败", "Execution failed")
-	} else if outcome == "stopped" {
-		headline = theme.Tr("已停止", "Stopped")
-	}
+	processLive := streaming && strings.TrimSpace(partial) == ""
+	activelyThinking := processLive && (strings.TrimSpace(partialThink) != "" ||
+		(len(steps) > 0 && steps[len(steps)-1].Kind == model.ToolKindThink && steps[len(steps)-1].ID != "streaming" && !steps[len(steps)-1].Done))
+	thinkSecs := updateThinkTiming(chrome, turnKey, cUI.Now(), activelyThinking)
+	headline, toolSummary, toolCount := formatProcessHeadline(steps, outcome, thinkSecs)
 
 	ais := pal.AISurface()
 	// 无底无框：过程是正文的辅助信息，不能比回答更显眼。
@@ -1534,12 +1563,13 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 	bui.RevealOnExpand(card, expanded)
 
 	card.Children(func() {
-		if streaming {
-			if c.renderProcessLive(cUI, pal, turnKey, steps, expanded) {
+		if processLive {
+			if activelyThinking {
+				renderThinkingLive(cUI, pal, turnKey, partialThink)
+			} else if c.renderProcessLive(cUI, pal, turnKey, steps, expanded) {
 				localScroll = true
 			}
-		}
-		if !streaming {
+		} else {
 			toggleBtn := ui.ButtonBase(cUI.Key("ai-process-toggle-" + turnKey)).FillWidth().MinHeight(28).
 				PaddingX(4).Gap(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(headline)
 			bui.Probe(toggleBtn, "ai-process-toggle")
@@ -1550,7 +1580,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 				}
 				chevActive := toggleBtn.Hovered() || toggleBtn.Pressed()
 				icons.DrawAnimated(cUI, chev, 14, pal.HoverIconColors(chevActive), chevActive)
-				ui.Text(cUI.Key("ai-process-headline-"+turnKey), headline).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Grow(1).SingleLine()
+				ui.Text(cUI.Key("ai-process-headline-"+turnKey), headline).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 			})
 			if toggleBtn.Clicked() {
 				c.mu.Lock()
@@ -1565,6 +1595,11 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 					localScroll = true
 				}
 			}
+			if !expanded && toolCount > 0 && toolSummary != "" {
+				ui.Box(cUI.Key("ai-process-summary-"+turnKey)).FillWidth().Padding(0, theme.Space4, 0, theme.Space24+theme.Space2).Children(func() {
+					ui.Text(cUI, toolSummary).FontSize(theme.FontMeta).TextColor(pal.TextSecondary.Alpha(0.75)).FillWidth().SingleLine().Ellipsis("…")
+				})
+			}
 		}
 
 		if expanded {
@@ -1574,12 +1609,34 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 			stepsWrap.Children(func() {
 				ui.Column(cUI).FillWidth().Gap(4).Children(func() {
 					listLen := len(steps)
-					if streaming {
+					if processLive {
 						// 实时步骤已在顶部单独显示，列表只放已完成的步骤。
 						listLen--
 					}
+					toolIdx := 0
 					for i := 0; i < listLen; i++ {
 						st := steps[i]
+						if st.Kind == model.ToolKindThink {
+							thinkBox := ui.Column(cUI.Key(fmt.Sprintf("ai-process-think-%s-%d", turnKey, i))).FillWidth().
+								Padding(theme.Space2, theme.Space8, theme.Space2, theme.Space12).Gap(theme.Space2).
+								BorderWidth(0, 0, 0, 2).BorderColor(pal.Hairline)
+							thinkBox.Children(func() {
+								if strings.TrimSpace(st.Title) != "" {
+									ui.Text(cUI, st.Title).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
+								}
+								detail := strings.TrimSpace(st.Detail)
+								if p := plainInline(st.Detail, nil, false); p != "" {
+									detail = p
+								}
+								if detail != "" {
+									ui.Text(cUI, detail).FontSize(theme.FontMeta).LineHeight(1.45).TextColor(pal.TextSecondary.Alpha(0.8))
+								}
+							})
+							continue
+						}
+
+						curToolIdx := toolIdx
+						toolIdx++
 						// 按步骤 ID 记展开状态：流式中新步骤插在实时行之前，按下标会串位。
 						stepKey := fmt.Sprintf("%s#%d", turnKey, i)
 						if st.ID != "" {
@@ -1589,7 +1646,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 						detailOpen := c.expandedStepDetails[stepKey]
 						c.mu.RUnlock()
 
-						chipID := fmt.Sprintf("ai-process-tool-chip-%d", i)
+						chipID := fmt.Sprintf("ai-process-tool-chip-%d", curToolIdx)
 						row := ui.ButtonBase(cUI.Key(chipID + "-" + turnKey)).FillWidth().MinHeight(28).PaddingX(6).Gap(8).
 							AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(st.Title).
 							Transition(probeSafeTransition(bui.CascadeItemTransition(i, false)))
@@ -1663,7 +1720,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 						}
 
 						if detailOpen {
-							detID := fmt.Sprintf("ai-process-tool-detail-%d", i)
+							detID := fmt.Sprintf("ai-process-tool-detail-%d", curToolIdx)
 							detBox := ui.Column(cUI.Key(detID+"-"+turnKey)).FillWidth().Padding(4, 12).
 								BorderWidth(0, 0, 0, 2).BorderColor(pal.Hairline)
 							bui.Probe(detBox, detID)
@@ -1690,7 +1747,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 			})
 		}
 
-		if len(notes) > 0 && (expanded || streaming) {
+		if len(notes) > 0 && (expanded || processLive) {
 			ui.Row(cUI).FillWidth().Padding(2, 4, 0, 4).Gap(6).Wrap().Children(func() {
 				for i, n := range notes {
 					if i >= 6 {
@@ -2861,7 +2918,8 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 		sel = &cp
 	}
 	epoch := c.composerEpoch
-	busy := c.isConvStreamingLocked(c.currentID) || c.hasPendingQuestionLocked()
+	streaming := c.isConvStreamingLocked(c.currentID)
+	busy := streaming || c.hasPendingQuestionLocked()
 	hasConv := c.currentID != 0
 	backend := c.selectedBackendLocked()
 	provider := resolveProviderExecutionConfig(c.providerCfg)
@@ -2907,6 +2965,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 			shellBorder = pal.BtnBorder
 		}
 		shell.Border(1, shellBorder)
+		applyComposerStreamingRim(shell, pal, streaming)
 		var chipOrActionPressed bool
 		shell.Children(func() {
 			if dragOver {
