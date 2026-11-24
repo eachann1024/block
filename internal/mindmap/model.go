@@ -2,6 +2,7 @@ package mindmap
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
@@ -408,7 +409,7 @@ func SerializeSubtreeMarkdown(n *Node) string {
 		return ""
 	}
 	if len(n.Children) == 0 && n.Task == nil && strings.TrimSpace(n.Link) == "" {
-		return strings.ReplaceAll(strings.TrimSpace(n.Text), "\n", " ")
+		return encodeNodeLineBreaks(n.Text)
 	}
 	var b strings.Builder
 	var writeNode func(cur *Node, depth int)
@@ -506,8 +507,27 @@ func ParseClipboardNodes(src string) []*Node {
 	return virtualRoot.Children
 }
 
+var brTagRe = regexp.MustCompile(`(?i)<br\s*/?>`)
+
+func normalizeNodeText(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.TrimSpace(s)
+}
+
+func encodeNodeLineBreaks(s string) string {
+	return strings.ReplaceAll(normalizeNodeText(s), "\n", "<br>")
+}
+
+func decodeNodeLineBreaks(s string) string {
+	if !strings.Contains(s, "<") {
+		return s
+	}
+	return brTagRe.ReplaceAllString(s, "\n")
+}
+
 func formatNodeText(n *Node) string {
-	text := strings.ReplaceAll(strings.TrimSpace(n.Text), "\n", " ")
+	text := encodeNodeLineBreaks(n.Text)
 	if text == "" {
 		text = "新节点"
 	}
@@ -654,7 +674,7 @@ func parseTaskPrefix(s string) (*bool, string) {
 func parseInlineLink(s string) (text, link string) {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "[") || !strings.HasSuffix(s, ")") {
-		return s, ""
+		return normalizeNodeText(decodeNodeLineBreaks(s)), ""
 	}
 	// Find matching unescaped "]("
 	closeIdx := -1
@@ -669,13 +689,13 @@ func parseInlineLink(s string) (text, link string) {
 		}
 	}
 	if closeIdx <= 1 {
-		return s, ""
+		return normalizeNodeText(decodeNodeLineBreaks(s)), ""
 	}
 	rawText := s[1:closeIdx]
 	rawLink := s[closeIdx+2 : len(s)-1]
 	rawText = strings.ReplaceAll(rawText, `\]`, "]")
 	rawLink = strings.ReplaceAll(rawLink, `\)`, ")")
-	return strings.TrimSpace(rawText), strings.TrimSpace(rawLink)
+	return normalizeNodeText(decodeNodeLineBreaks(rawText)), strings.TrimSpace(rawLink)
 }
 
 // --- Tree Snapshot & Fold State Preservation ---
