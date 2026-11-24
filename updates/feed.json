@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T12:49:33.443Z",
-  "latest_version": "1.0.931",
-  "latest_tag": "v1.0.931",
+  "updated_at": "2026-11-24T13:32:24.200Z",
+  "latest_version": "1.0.932",
+  "latest_tag": "v1.0.932",
   "releases": [
+    {
+      "version": "1.0.932",
+      "tag": "v1.0.932",
+      "published_at": "2026-11-24T13:32:23Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.932",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "AI 对话：对话、后台响应和页面上下文现在按笔记本隔离。",
+          "AI 对话：切换笔记本时，AI 控制器现在会同步响应。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "AI Chat: AI conversations, background responses, and page context are now scoped to each notebook.",
+          "AI Chat: The AI controller now responds to notebook switches."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-macos-arm64.dmg",
+          "size": 15893903,
+          "sha256": "9410355138cb1e9c2804c23d7952d20f5347a6feb5ffadfb93c55faf473b460e"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-macos-x64.dmg",
+          "size": 17505532,
+          "sha256": "538a1ad5d4d71609e8272aad022419d9f3aeaed1503a1a6e72282a4a4f7344ae"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-windows-x64-setup.exe",
+          "size": 13276131,
+          "sha256": "9582294399ca6582236e0f161c4be3e93898935b858905604fe9cafce76abfda"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-linux-x64.deb",
+          "size": 10778158,
+          "sha256": "6e3d3a4fef8b2edb1ff533558536f8a9755bf0a43faf5ecdfb580f9e89fa1f29"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.932/block-linux-x64.AppImage",
+          "size": 23808504,
+          "sha256": "31b9fef455bb99ff5be5c8d9fc8d5667bc7eeb02aaf91e29b59c57bad0a43eec"
+        }
+      ]
+    },
     {
       "version": "1.0.931",
       "tag": "v1.0.931",
@@ -36,38 +94,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.931/block-macos-arm64.dmg",
-          "size": 15874215,
-          "sha256": "fedf2bae4261fb75c833065b994777077aed1f4126eec12a358cb7688e1b31b4"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.931/block-macos-x64.dmg",
-          "size": 17476960,
-          "sha256": "fbfb186b89b4a191c1287994015cbf9779ddb13dd044008f2fffafa7b5fb5a64"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.931/block-windows-x64-setup.exe",
-          "size": 13256162,
-          "sha256": "cbf49173897ab0e9f590f54dc62fd13158ce67b66ba37f8daba2a61a11630f31"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.931/block-linux-x64.deb",
-          "size": 10762542,
-          "sha256": "5bad5b47776589e92e377b95b1d60f5fc2eda19246413ccc9ca5c5e77f1b7698"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.931/block-linux-x64.AppImage",
-          "size": 23804408,
-          "sha256": "fbcb6158101f7e18efa1cba2d96fd910983fee7b8e54225b51d0b3416ee15353"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.930",
@@ -1617,31 +1644,6 @@
         "fixes": [
           "Disable native DevTools so Cmd+Shift+C copies file path."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.882",
-      "tag": "v1.0.882",
-      "published_at": "2026-11-21T06:02:33Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.882",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "优化了界面细节与日常编辑操作的顺滑度。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "Brand scene: redraw minimal density at 10fps to save power."
-        ],
-        "fixes": [],
         "other": []
       },
       "assets": []
