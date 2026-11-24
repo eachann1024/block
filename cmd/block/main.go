@@ -11,6 +11,7 @@ import (
 
 	"block/internal/app"
 	"block/internal/files"
+	"block/internal/installer"
 	"block/internal/modals"
 	"block/internal/model"
 	"block/internal/plugins"
@@ -56,8 +57,12 @@ func main() {
 	flag.BoolVar(&syncUserLinuxFileAssocFlg, "sync-user-linux-file-associations", false, "Sync current non-root user's protected Linux Open-With associations and exit")
 	flag.BoolVar(&requireDesktopSessionFlg, "require-desktop-session", false, "With --sync-user-linux-file-associations, skip silently when XDG_CURRENT_DESKTOP is unset")
 	flag.BoolVar(&printLinuxHelperIDFlg, "print-linux-helper-id", false, "Print this installation's Linux helper desktop ID and exit")
+	installerUIFlag := flag.Bool("installer-ui", false, "Show the Windows setup window (started by the setup executable)")
 	flag.Parse()
 
+	if *installerUIFlag {
+		os.Exit(installer.Run())
+	}
 	if versionFlag {
 		fmt.Println(updater.CurrentVersion())
 		return
