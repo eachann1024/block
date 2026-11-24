@@ -544,18 +544,19 @@ func TestCodePreviewTableImageHandlesAndBatchPlanDiff(t *testing.T) {
 	}
 	s.SetActivePlan(plan)
 	tt.Frame()
-	if _, ok := appUi.TargetBounds("plan-diff-card"); !ok {
-		t.Fatalf("expected plan-diff-card probe")
+	if _, ok := appUi.TargetBounds("plan-hunk-0"); !ok {
+		t.Fatalf("expected plan-hunk-0 probe")
 	}
-	// Uncheck "Line C" (changed line index 2: 0 is -Line B, 1 is +Line B2, 2 is +Line C)
-	clickProbe(t, tt, "plan-diff-line-0-2")
-	clickProbe(t, tt, "plan-accept")
+	if !strings.Contains(s.Markdown(), "Line B") || strings.Contains(s.Markdown(), "Line C") {
+		t.Fatalf("pending plan must not change the note, got %q", s.Markdown())
+	}
+	s.acceptActivePlan()
 	if s.ActivePlan() != nil {
-		t.Fatalf("expected activePlan cleared after plan-accept")
+		t.Fatalf("expected activePlan cleared after accept")
 	}
 	md := s.Markdown()
-	if !strings.Contains(md, "Line B2") || strings.Contains(md, "Line C") {
-		t.Fatalf("expected selective diff applied, got %q", md)
+	if !strings.Contains(md, "Line B2") || !strings.Contains(md, "Line C") {
+		t.Fatalf("expected whole plan applied, got %q", md)
 	}
 
 	// Check font sizes >= 14 across theme constants used
