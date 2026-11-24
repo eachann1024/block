@@ -514,14 +514,12 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 					sw := ui.ButtonBase(c.Key("icon-tint-"+string(t))).
 						Size(iconPickerSwatch+4, iconPickerSwatch+4).Shrink(0).Center().Radius(theme.RadiusPill).
 						Cursor(ui.CursorPointer).FocusRing(false).
-						Selected(selected).Label(theme.IconTintLabel(t))
+						Label(theme.IconTintLabel(t))
 					hov := sw.Hovered()
 					// Keep the button surface clear; the selected state is drawn by the ring only.
 					blockui.AnimateSurfaceColors(sw, ui.Transparent, ui.Transparent, false)
 					dotSize := iconPickerSwatch
-					if selected {
-						dotSize = iconPickerSwatch - 6
-					} else if hov {
+					if hov && !selected {
 						dotSize = iconPickerSwatch + 2
 					}
 					blockui.RichTooltip(c, sw, blockui.TooltipSpec{
@@ -529,15 +527,13 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 						Rows:      []blockui.TooltipRow{{Trigger: theme.IconTintLabel(t)}},
 					})
 					sw.Children(func() {
-						if selected {
-							// Thin hue ring, clear gap, smaller solid dot.
-							ui.Box(c).Size(iconPickerSwatch+2, iconPickerSwatch+2).Radius(theme.RadiusPill).
-								Border(1.5, hue).Center().Children(func() {
-								ui.Box(c).Size(dotSize, dotSize).Radius(theme.RadiusPill).Background(hue)
+						// Selected: same solid dot with a small check, no ring or halo.
+						ui.Box(c).Size(dotSize, dotSize).Radius(theme.RadiusPill).Background(hue).Center().
+							Children(func() {
+								if selected {
+									icons.Draw(c, icons.Check, 11, pal.MonoIconColors(pal.AccentText))
+								}
 							})
-							return
-						}
-						ui.Box(c).Size(dotSize, dotSize).Radius(theme.RadiusPill).Background(hue)
 					})
 					blockui.Probe(sw, "icon-tint:"+string(t))
 					if sw.Clicked() {
