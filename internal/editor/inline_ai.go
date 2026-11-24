@@ -590,17 +590,11 @@ func (s *Session) precedingContext(beforeIdx int) string {
 	if s.doc == nil || beforeIdx <= 0 || beforeIdx > len(s.doc.Blocks) {
 		return ""
 	}
-	start := max(beforeIdx-8, 0)
 	var blocks []model.Block
-	for i := start; i < beforeIdx; i++ {
+	for i := 0; i < beforeIdx; i++ {
 		blocks = append(blocks, s.doc.Blocks[i].Clone())
 	}
-	raw := strings.TrimSpace(s.serializeBlocks(blocks))
-	runes := []rune(raw)
-	if len(runes) <= 1200 {
-		return raw
-	}
-	return string(runes[len(runes)-1200:])
+	return strings.TrimSpace(s.serializeBlocks(blocks))
 }
 
 func (s *Session) OpenInlineAIOnSelection() {
@@ -868,13 +862,9 @@ func (s *Session) aiRun(instruction, restoreInput string, refineExisting bool) {
 	if ai == nil || !s.checkInlineAITarget() {
 		return
 	}
-	if len(ai.Original)+len(ai.Draft)+len(instruction) > 256*1024 {
-		ai.Error = theme.Tr("选区或提示过长，请缩小范围。", "Shorten the selection or instruction.")
-		return
-	}
 	s.cancelInlineAI()
 	cancel := &atomic.Bool{}
-	runCtx, cancelCtx := context.WithTimeout(context.Background(), 60*time.Second)
+	runCtx, cancelCtx := context.WithCancel(context.Background())
 	ai.Cancel = cancel
 	ai.CancelCtx = cancelCtx
 	ai.Serial++
