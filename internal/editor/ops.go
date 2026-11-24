@@ -5571,8 +5571,8 @@ func (s *Session) executeBlockCmd(svc ui.Services, idx int, mode blockMenuMode, 
 	case cmdMindMapFullscreen:
 		if b.Kind == model.BlockCode && codepreview.CanonicalLanguage(b.Language) == "mindmap" {
 			st := s.mindMapState(b.ID)
-			st.Fullscreen = true
-			st.AutoFitPending = true
+			st.SetEditorBounds(s.editorRect)
+			st.EnterFullscreen(s.mindMapCallbacks(nil, b.ID, s.readOnly))
 		}
 		return
 	case cmdMindMapExport:
