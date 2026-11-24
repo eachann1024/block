@@ -1847,8 +1847,10 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					},
 				)
 				items = append(items, blockui.MenuItemSpec{Separator: true})
+				hasPluginItems := false
 				for _, pm := range p.PluginContextMenu {
 					if (targetDir && pm.OnFolder) || (!targetDir && pm.OnNote) {
+						hasPluginItems = true
 						pmItem := pm
 						spec := blockui.MenuItemSpec{
 							ID:    "tree-plugin:" + pmItem.PluginID + "/" + pmItem.ID,
@@ -1868,6 +1870,9 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						}
 						items = append(items, spec)
 					}
+				}
+				if hasPluginItems {
+					items = append(items, blockui.MenuItemSpec{Separator: true})
 				}
 				items = append(items,
 					blockui.MenuItemSpec{
@@ -2022,7 +2027,7 @@ func blankTreeMenuItems(p SidebarProps) []blockui.MenuItemSpec {
 		{Separator: true},
 		{
 			ID:    "blank-reveal",
-			Label: theme.Tr("在访达显示", "Reveal in File Manager"),
+			Label: revealFileLabel(),
 			Icon:  &icReveal,
 			OnClick: func() {
 				p.State.ClosePopups()
