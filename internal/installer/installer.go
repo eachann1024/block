@@ -15,7 +15,6 @@ import (
 
 	"block/assets"
 	"block/internal/icons"
-	"block/internal/model"
 	"block/internal/theme"
 	bui "block/internal/ui"
 	"block/internal/updater"
@@ -75,6 +74,7 @@ type setup struct {
 	started  time.Time
 	picking  bool
 	icon     ui.ImageSource
+	tr       stringsTable
 }
 
 // Run shows the setup window and blocks until it closes. It returns the process
@@ -88,9 +88,14 @@ func Run() int {
 		allUsers: os.Getenv(EnvAllUsers) == "1",
 		previews: map[string]bool{},
 	}
+	var previewLang string
 	for _, part := range strings.Split(os.Getenv(EnvPreview), ",") {
 		if part = strings.TrimSpace(part); part != "" {
 			s.preview = true
+			if after, ok := strings.CutPrefix(part, "lang="); ok {
+				previewLang = strings.TrimSpace(after)
+				continue
+			}
 			s.previews[part] = true
 		}
 	}
@@ -105,13 +110,11 @@ func Run() int {
 			s.icon = img
 		}
 	}
-	if systemPrefersEnglish() {
-		theme.SetLanguage(model.LangEn)
-	} else {
-		theme.SetLanguage(model.LangZh)
-	}
+	s.tr = resolveStrings(previewLang)
+	theme.SetLanguage(s.tr.appLang)
 
-	mygo.App.SetName("Block Setup")
+	mygo.App.SetLanguages("en", "zh-Hans", "zh-Hant", "ja")
+	mygo.App.SetName(s.tr.title)
 	if s.previews["dark"] {
 		mygo.Theme.SetSource(mygo.ThemeDark)
 	}
@@ -131,7 +134,7 @@ func Run() int {
 
 func (s *setup) open() {
 	win := mygo.NewWindow(mygo.WindowOptions{
-		Title:             theme.Tr("安装 Block", "Block Setup"),
+		Title:             s.tr.title,
 		Width:             windowWidth,
 		Height:            windowHeight,
 		Hidden:            s.previews["hidden"],
@@ -163,7 +166,7 @@ func (s *setup) open() {
 	case s.previews["done"]:
 		s.setStage(stageDone, "")
 	case s.previews["error"]:
-		s.setStage(stageError, theme.Tr("请先关闭正在运行的 Block，再重试。", "Close the running Block, then try again."))
+		s.setStage(stageError, s.tr.errAppRunning)
 	default:
 		if s.update {
 			s.startInstall()
@@ -235,7 +238,7 @@ func (s *setup) startInstall() {
 	go func() {
 		err := install(setupExe, dir, allUsers, preview)
 		if err != nil {
-			s.setStage(stageError, installErrorText(err))
+			s.setStage(stageError, s.installErrorText(err))
 			return
 		}
 		// Let the bar visibly finish before the stage switches.
@@ -280,16 +283,16 @@ var (
 	errElevationCanceled = errors.New("administrator elevation was canceled")
 )
 
-func installErrorText(err error) string {
+func (s *setup) installErrorText(err error) string {
 	switch {
 	case errors.Is(err, errAppRunning):
-		return theme.Tr("请先关闭正在运行的 Block，再重试。", "Close the running Block, then try again.")
+		return s.tr.errAppRunning
 	case errors.Is(err, errInvalidDir):
-		return theme.Tr("这个位置无法安装，请换一个文件夹。", "Block can't be installed here. Choose another folder.")
+		return s.tr.errInvalidDir
 	case errors.Is(err, errElevationCanceled):
-		return theme.Tr("已取消管理员授权，可重试或更改位置。", "Administrator permission was canceled. Try again or change location.")
+		return s.tr.errElevationCanceled
 	default:
-		return theme.Tr("安装没有完成，请重试。", "Setup didn't finish. Try again.")
+		return s.tr.errGeneric
 	}
 }
 
@@ -365,9 +368,9 @@ func (s *setup) chooseDir() {
 		}()
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent:            win,
-			Title:             theme.Tr("选择安装位置", "Choose Install Location"),
+			Title:             s.tr.chooseDirTitle,
 			DefaultPath:       existingAncestor(current),
-			ButtonLabel:       theme.Tr("选择", "Select"),
+			ButtonLabel:       s.tr.selectBtn,
 			Directory:         true,
 			CreateDirectories: true,
 		})
@@ -411,13 +414,13 @@ func (s *setup) render(c *ui.Context) {
 		ui.Row(c).FillWidth().Height(titlebarH).Shrink(0).AlignItems(ui.Center).PaddingX(theme.Space6).Children(func() {
 			ui.Box(c).Fill().DragWindow()
 			minBtn := bui.IconButton(c, icons.Minus, bui.IconButtonOptions{
-				ID: "setup-minimize", Label: theme.Tr("最小化", "Minimize"), Variant: bui.IconPlain,
+				ID: "setup-minimize", Label: s.tr.minimize, Variant: bui.IconPlain,
 			})
 			if minBtn.Clicked() {
 				s.minimizeWindow()
 			}
 			closeBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
-				ID: "setup-close", Label: theme.Tr("关闭", "Close"), Variant: bui.IconPlain, Disabled: busy,
+				ID: "setup-close", Label: s.tr.close, Variant: bui.IconPlain, Disabled: busy,
 			})
 			if closeBtn.Clicked() {
 				s.closeWindow()
@@ -449,7 +452,7 @@ func (s *setup) render(c *ui.Context) {
 				TextColor(pal.TextSecondary).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 			change := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 				ID:          "setup-change-dir",
-				Label:       theme.Tr("更改位置", "Change Location"),
+				Label:       s.tr.changeLocation,
 				Style:       bui.ButtonGhost,
 				Height:      theme.HeightChrome,
 				PaddingX:    theme.Space8,
@@ -489,7 +492,7 @@ func (s *setup) renderAction(c *ui.Context, snap snapshot) {
 	switch snap.stage {
 	case stageReady:
 		btn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-			ID: "setup-install", Label: theme.Tr("安装", "Install"), Style: bui.ButtonPrimary,
+			ID: "setup-install", Label: s.tr.install, Style: bui.ButtonPrimary,
 			MinWidth: 120, Height: theme.HeightControl,
 		})
 		if btn.Clicked() {
@@ -506,9 +509,9 @@ func (s *setup) renderAction(c *ui.Context, snap snapshot) {
 			p.Fill(ui.Rect{X: r.X, Y: r.Y, W: r.W * pct, H: r.H}, pal.Accent, r.H/2)
 			p.AnimationFrameRate(60)
 		})
-		label := theme.Tr("正在安装…", "Installing…")
+		label := s.tr.installing
 		if snap.update {
-			label = theme.Tr("正在更新…", "Updating…")
+			label = s.tr.updating
 		}
 		ui.Box(c).Size(1, theme.Space10).Shrink(0)
 		ui.Text(c, label).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
@@ -516,7 +519,7 @@ func (s *setup) renderAction(c *ui.Context, snap snapshot) {
 		ui.Box(c).Size(1, theme.Space4).Shrink(0)
 	case stageDone:
 		btn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-			ID: "setup-open", Label: theme.Tr("打开 Block", "Open Block"), Style: bui.ButtonPrimary,
+			ID: "setup-open", Label: s.tr.openBlock, Style: bui.ButtonPrimary,
 			MinWidth: 120, Height: theme.HeightControl,
 		})
 		if btn.Clicked() {
@@ -529,7 +532,7 @@ func (s *setup) renderAction(c *ui.Context, snap snapshot) {
 		ui.Text(c, snap.errText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 			TextColor(pal.Danger).SingleLine().Ellipsis("…")
 		ui.Box(c).Size(1, theme.Space8).Shrink(0)
-		btn := bui.BtnRetry(c, "setup-retry", bui.PresetOptions{MinWidth: 120, Height: theme.HeightControl})
+		btn := bui.BtnRetry(c, "setup-retry", bui.PresetOptions{Label: s.tr.retry, MinWidth: 120, Height: theme.HeightControl})
 		if btn.Clicked() {
 			s.startInstall()
 		}

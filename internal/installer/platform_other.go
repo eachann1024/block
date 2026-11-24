@@ -5,9 +5,6 @@ package installer
 import (
 	"errors"
 	"path/filepath"
-
-	"block/internal/model"
-	"block/internal/theme"
 )
 
 // Setup only ships on Windows; elsewhere the window exists for design preview
@@ -24,5 +21,3 @@ func runSilentSetup(string, string, bool) error {
 }
 
 func launchInstalledApp(string) error { return nil }
-
-func systemPrefersEnglish() bool { return theme.SystemLanguage() == model.LangEn }
