@@ -384,6 +384,10 @@ func (s *Supervisor) RunMenubarCommand(pluginID, itemID, commandID, entryPayload
 	}
 	cc := CommandContext{Source: CommandSourceMenubar, MenubarItem: itemID, Payload: entryPayload}
 	if clip != nil {
+		if !m.HasPermission(PermClipboardRead) {
+			s.menubarFeedback(pluginID, LocalizedText{Zh: "插件未获得读取剪贴板权限", En: "Plugin lacks clipboard read permission"}.Resolve(s.Locale()), "error", "")
+			return
+		}
 		drop := it.Drop
 		if drop == nil {
 			drop = &MenubarDrop{Accept: []string{MenubarAcceptFiles, MenubarAcceptImage, MenubarAcceptText}}

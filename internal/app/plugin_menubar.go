@@ -285,6 +285,15 @@ func (m *pluginMenubar) runEntry(pluginID, itemID string, e plugins.ResolvedMenu
 	}
 	var clip *plugins.MenubarPayload
 	if e.Input == "clipboard" {
+		sup := m.h.w.Plugins()
+		if sup == nil || !sup.PluginHasPermission(pluginID, plugins.PermClipboardRead) {
+			if sup != nil {
+				m.run(pluginID, func(sup *plugins.Supervisor) {
+					sup.RunMenubarCommand(pluginID, itemID, e.Command, e.Payload, &plugins.MenubarPayload{})
+				})
+			}
+			return
+		}
 		p := readMenubarClipboard()
 		clip = &p
 	}
@@ -302,7 +311,18 @@ func (h *pluginHostUI) MenubarFeedback(req plugins.ToastRequest, copyText string
 			h.menubar.setBusy(req.PluginID, false)
 		}
 		if copyText != "" && mygo.App.IsReady() {
-			if err := mygo.Clipboard.Write(transfer.TextData(copyText)); err != nil {
+			allowed := req.PluginID == ""
+			if !allowed {
+				if sup := h.w.Plugins(); sup != nil {
+					allowed = sup.PluginHasPermission(req.PluginID, plugins.PermClipboardWrite)
+				}
+			}
+			if !allowed {
+				req.Message = theme.Tr("插件未获得写入剪贴板权限", "Plugin lacks clipboard write permission")
+				req.Body = ""
+				req.Tone = "error"
+				req.Action = nil
+			} else if err := mygo.Clipboard.Write(transfer.TextData(copyText)); err != nil {
 				req.Message = theme.Tr("无法写入剪贴板", "Could not write to the clipboard")
 				req.Body = ""
 				req.Tone = "error"
