@@ -5202,8 +5202,8 @@ func allSlashItems() []blockMenuItem {
 		{Kind: cmdTurnQuote, Label: theme.Tr("引用", "Quote"), Keywords: "quote blockquote yinyong 引用", Hint: ">"},
 		{Kind: cmdCallout, Label: theme.Tr("标注", "Callout"), Keywords: "callout note tip warning alert biaozhu 标注 提示", Hint: "[!note]"},
 		{Separator: true},
-		{Kind: cmdCodeMermaid, Label: theme.Tr("Mermaid 图表", "Mermaid Diagram"), Keywords: "mermaid diagram flow chart tubiao liuchengtu 图表 流程图", Hint: "```mermaid"},
 		{Kind: cmdCodeMindMap, Label: theme.Tr("思维导图", "Mind Map"), Keywords: "mindmap mind map siweidaotu naotu daotu 思维导图 脑图 导图", Hint: "```mindmap"},
+		{Kind: cmdCodeMermaid, Label: theme.Tr("Mermaid 图表", "Mermaid Diagram"), Keywords: "mermaid diagram flow chart tubiao liuchengtu 图表 流程图", Hint: "```mermaid"},
 		{Kind: cmdCodeMath, Label: theme.Tr("数学公式", "Math Formula"), Keywords: "math latex formula shuxue gongshi 数学公式", Hint: "$$"},
 	}
 }
