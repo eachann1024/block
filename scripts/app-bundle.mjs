@@ -216,14 +216,20 @@ function sanitizeLdflagValue(raw, name) {
 
 export function resolveFeedbackBuildConfig(root = repoRoot) {
   const local = readLocalBuildEnv(root);
-  const endpoint = sanitizeLdflagValue(
-    process.env.BLOCK_FEEDBACK_URL ?? local.BLOCK_FEEDBACK_URL ?? "",
-    "BLOCK_FEEDBACK_URL",
-  );
-  const clientToken = sanitizeLdflagValue(
-    process.env.BLOCK_FEEDBACK_CLIENT_TOKEN ?? local.BLOCK_FEEDBACK_CLIENT_TOKEN ?? "",
+  const pick = (envVal, localVal, name) => {
+    const fromEnv = sanitizeLdflagValue(envVal, name);
+    if (fromEnv) return fromEnv;
+    return sanitizeLdflagValue(localVal, name);
+  };
+  const endpoint = pick(process.env.BLOCK_FEEDBACK_URL, local.BLOCK_FEEDBACK_URL, "BLOCK_FEEDBACK_URL");
+  const clientToken = pick(
+    process.env.BLOCK_FEEDBACK_CLIENT_TOKEN,
+    local.BLOCK_FEEDBACK_CLIENT_TOKEN,
     "BLOCK_FEEDBACK_CLIENT_TOKEN",
   );
+  if (process.env.BLOCK_REQUIRE_FEEDBACK_URL === "1" && !endpoint) {
+    throw new Error("BLOCK_FEEDBACK_URL is required when BLOCK_REQUIRE_FEEDBACK_URL=1");
+  }
   return { endpoint, clientToken };
 }
 
