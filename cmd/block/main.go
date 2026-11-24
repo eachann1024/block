@@ -29,6 +29,9 @@ func main() {
 	if maybeRunMacOpenRelay() {
 		return
 	}
+	if files.MaybeRunDarwinPickerHelper() {
+		return
+	}
 	theme.ConfigureDefaultFontSmoothing()
 
 	var (
@@ -572,12 +575,14 @@ func main() {
 		if sup := ws.Plugins(); sup != nil {
 			sup.ShutdownAll()
 		}
+		files.ShutdownFileDialogs()
 		plugins.WaitFileAssociationSyncTimeout(800 * time.Millisecond)
 	})
 
 	mygo.App.OnQuitCanceled(func() {
 		isQuitting = false
 		modals.SetAppQuitting(false)
+		files.ResumeFileDialogs()
 	})
 
 	mygo.App.WhenReady(func() {
@@ -600,6 +605,9 @@ func main() {
 		}
 		if !smokeFlag && !smokeOnceFlag && os.Getenv("MYGO_AUTOMATION") == "" {
 			ws.AI().PrewarmModelsAsync()
+			if !hiddenFlag {
+				files.PrewarmFileDialogs()
+			}
 		}
 		if launchStoreLink != "" {
 			handleDeepLink(launchStoreLink)
