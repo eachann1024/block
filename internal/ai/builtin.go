@@ -337,6 +337,44 @@ func orderedProviderEntries(cfg model.AIProviderConfig) []ProviderEntry {
 	return out
 }
 
+func findEnabledProviderEntry(cfg model.AIProviderConfig, id string) (ProviderEntry, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ProviderEntry{}, false
+	}
+	for _, e := range orderedProviderEntries(cfg) {
+		if e.ID == id && e.Enabled {
+			return e, true
+		}
+	}
+	return ProviderEntry{}, false
+}
+
+func latestEnabledProviderEntry(cfg model.AIProviderConfig) (ProviderEntry, bool) {
+	entries := orderedProviderEntries(cfg)
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Enabled {
+			return entries[i], true
+		}
+	}
+	return ProviderEntry{}, false
+}
+
+func formatProviderModelRef(providerID, modelID string) string {
+	providerID = strings.TrimSpace(providerID)
+	modelID = strings.TrimSpace(modelID)
+	if _, pure := splitProviderModelRef(modelID); pure != "" {
+		modelID = strings.TrimSpace(pure)
+	}
+	if modelID == "" {
+		return ""
+	}
+	if providerID == "" {
+		return modelID
+	}
+	return providerID + "::" + modelID
+}
+
 func splitProviderModelRef(modelRef string) (string, string) {
 	if idx := strings.Index(modelRef, "::"); idx > 0 {
 		return modelRef[:idx], modelRef[idx+2:]
@@ -434,17 +472,21 @@ func (c *Controller) annotationBuiltinConfigLocked() (model.AIProviderConfig, er
 		targetProv = provFromModel
 		rawModel = pureModel
 	}
-	if targetProv != "" && targetProv != cfg.Provider {
-		prof, ok := cfg.Providers[targetProv]
+	entry, ok := findEnabledProviderEntry(cfg, targetProv)
+	if !ok {
+		entry, ok = latestEnabledProviderEntry(cfg)
 		if !ok {
 			return cfg, errors.New(theme.Tr("标注使用的供应商尚未配置", "The annotation provider is not configured"))
 		}
-		cfg.Provider = targetProv
-		cfg.Protocol = prof.Protocol
-		cfg.BaseURL = prof.BaseURL
-		cfg.APIKey = prof.APIKey
-		cfg = normalizeProviderConfig(cfg)
+		if targetProv != entry.ID {
+			_, rawModel = splitProviderModelRef(entry.Model)
+		}
 	}
+	cfg.Provider = entry.ID
+	cfg.Protocol = entry.Protocol
+	cfg.BaseURL = entry.BaseURL
+	cfg.APIKey = entry.APIKey
+	cfg = normalizeProviderConfig(cfg)
 	cfg.Model = strings.TrimSpace(rawModel)
 	return cfg, nil
 }
@@ -627,12 +669,16 @@ func listBuiltinModels(ctx context.Context, cfg model.AIProviderConfig) ([]strin
 	}
 	var payload struct {
 		Data []struct {
-			ID string `json:"id"`
+			ID      string `json:"id"`
+			Created int64  `json:"created"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, err
 	}
+	sort.SliceStable(payload.Data, func(i, j int) bool {
+		return payload.Data[i].Created > payload.Data[j].Created
+	})
 	ids := make([]string, 0, len(payload.Data))
 	for _, item := range payload.Data {
 		if strings.TrimSpace(item.ID) != "" {

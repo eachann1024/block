@@ -327,15 +327,18 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 		State:   BackendStateReady,
 		Version: "Block",
 	}
-	ctrl.loadAllFromDisk()
+	needAnnotRefresh := ctrl.loadAllFromDisk()
 	ctrl.settingsExpandedProv = ctrl.providerCfg.Provider
 	ctrl.syncSettingsFieldsLocked()
 	ctrl.loadBuiltinSkillsLocked()
 	ctrl.messagesList.FollowEnd = true
+	if ctrl.providerCfg.Enabled && !ctrl.mockResponder && needAnnotRefresh != "" {
+		ctrl.refreshAnnotationModelsAsync(needAnnotRefresh)
+	}
 	return ctrl
 }
 
-func (c *Controller) loadAllFromDisk() {
+func (c *Controller) loadAllFromDisk() model.BackendKind {
 	cfg, err := loadProviderConfig(c.dataDir)
 	c.providerCfg = normalizeProviderConfig(cfg)
 	c.providerError = err
@@ -381,10 +384,10 @@ func (c *Controller) loadAllFromDisk() {
 		c.applyNotebookStateLocked(legacyTop, "")
 	}
 	c.ensureValidSelectionLocked()
-	c.loadOrSeedAnnotationConfigLocked()
+	return c.loadOrSeedAnnotationConfigLocked()
 }
 
-func (c *Controller) loadOrSeedAnnotationConfigLocked() {
+func (c *Controller) loadOrSeedAnnotationConfigLocked() model.BackendKind {
 	var cfg model.AnnotationConfig
 	if c.readJSONFile("ai-annotations.json", &cfg) && cfg.Backend != "" {
 		if cfg.Thinking == "" {
@@ -392,13 +395,27 @@ func (c *Controller) loadOrSeedAnnotationConfigLocked() {
 		}
 		c.annotCfg = cfg
 		c.annotMenuBackend = cfg.Backend
-		return
+		_, needRefresh := c.ensureValidAnnotationConfigLocked()
+		return needRefresh
 	}
 	sel := c.selectedBackendLocked()
 	mdl := c.backendModelLocked(sel)
-	prov := c.providerCfg.Provider
-	if prov == "" {
-		prov = "deepseek"
+	prov := ""
+	if sel == model.BackendBuiltin {
+		if entry, ok := latestEnabledProviderEntry(c.providerCfg); ok {
+			prov = entry.ID
+			if mdl == "" {
+				mdl = entry.Model
+			}
+			if mdl != "" {
+				mdl = formatProviderModelRef(entry.ID, mdl)
+			}
+		} else {
+			prov = c.providerCfg.Provider
+			if prov == "" {
+				prov = "deepseek"
+			}
+		}
 	}
 	c.annotCfg = model.AnnotationConfig{
 		Backend:  sel,
@@ -408,6 +425,131 @@ func (c *Controller) loadOrSeedAnnotationConfigLocked() {
 	}
 	c.annotMenuBackend = sel
 	_ = c.writeJSONFile("ai-annotations.json", c.annotCfg)
+	_, needRefresh := c.ensureValidAnnotationConfigLocked()
+	return needRefresh
+}
+
+func (c *Controller) pickBuiltinAnnotationModelLocked(entry ProviderEntry) (string, bool) {
+	normPrimary := normalizeProviderConfig(c.providerCfg).Provider
+	cached := c.backendModels[model.BackendBuiltin]
+	var firstPure string
+	matchedEntryModel := false
+	_, pureEntryModel := splitProviderModelRef(strings.TrimSpace(entry.Model))
+	for _, opt := range cached {
+		optProv, optPure := splitProviderModelRef(opt.Value)
+		if optProv == "" {
+			optProv = normPrimary
+		}
+		if optProv != entry.ID || strings.TrimSpace(optPure) == "" {
+			continue
+		}
+		if firstPure == "" {
+			firstPure = optPure
+		}
+		if pureEntryModel != "" && optPure == pureEntryModel {
+			matchedEntryModel = true
+		}
+	}
+	if pureEntryModel != "" {
+		if firstPure == "" || matchedEntryModel {
+			return formatProviderModelRef(entry.ID, pureEntryModel), false
+		}
+		return formatProviderModelRef(entry.ID, firstPure), false
+	}
+	if firstPure != "" {
+		return formatProviderModelRef(entry.ID, firstPure), false
+	}
+	return "", true
+}
+
+func (c *Controller) ensureValidAnnotationConfigLocked() (changed bool, needRefreshKind model.BackendKind) {
+	next := c.annotCfg
+	if next.Thinking == "" {
+		next.Thinking = "high"
+	}
+
+	targetBackend := next.Backend
+	backendChanged := false
+	if targetBackend == "" || !c.isBackendAvailableLocked(targetBackend) {
+		targetBackend = c.latestAvailableBackendLocked()
+		backendChanged = true
+	}
+
+	if targetBackend == model.BackendBuiltin {
+		targetProv := ""
+		if !backendChanged {
+			provFromModel, _ := splitProviderModelRef(strings.TrimSpace(next.Model))
+			targetProv = strings.TrimSpace(next.Provider)
+			if provFromModel != "" {
+				targetProv = provFromModel
+			}
+		}
+		entry, ok := findEnabledProviderEntry(c.providerCfg, targetProv)
+		if backendChanged || !ok {
+			entry, ok = latestEnabledProviderEntry(c.providerCfg)
+			if !ok {
+				for _, k := range model.AllBackends {
+					if k != model.BackendBuiltin && c.isBackendAvailableLocked(k) {
+						targetBackend = k
+						backendChanged = true
+						break
+					}
+				}
+				if targetBackend == model.BackendBuiltin {
+					next.Backend = model.BackendBuiltin
+					next.Provider = ""
+					next.Model = ""
+				}
+			} else {
+				next.Backend = model.BackendBuiltin
+				next.Provider = entry.ID
+				mdl, needRef := c.pickBuiltinAnnotationModelLocked(entry)
+				next.Model = mdl
+				if needRef {
+					needRefreshKind = model.BackendBuiltin
+				}
+			}
+		} else {
+			next.Backend = model.BackendBuiltin
+			next.Provider = entry.ID
+			if strings.TrimSpace(next.Model) == "" {
+				mdl, needRef := c.pickBuiltinAnnotationModelLocked(entry)
+				next.Model = mdl
+				if needRef {
+					needRefreshKind = model.BackendBuiltin
+				}
+			} else {
+				_, pure := splitProviderModelRef(strings.TrimSpace(next.Model))
+				next.Model = formatProviderModelRef(entry.ID, pure)
+			}
+		}
+	}
+
+	if targetBackend != model.BackendBuiltin {
+		next.Backend = targetBackend
+		next.Provider = ""
+		if backendChanged || strings.TrimSpace(next.Model) == "" {
+			mdl := strings.TrimSpace(c.backendModelLocked(targetBackend))
+			if mdl == "" {
+				if opts := c.backendModels[targetBackend]; len(opts) > 0 {
+					mdl = opts[0].Value
+				}
+			}
+			if mdl == "" {
+				needRefreshKind = targetBackend
+			}
+			next.Model = mdl
+		}
+	}
+
+	if next != c.annotCfg {
+		changed = true
+		_ = c.saveAnnotationConfigLocked(next)
+	}
+	if c.annotMenuBackend == "" || !c.isBackendAvailableLocked(c.annotMenuBackend) || changed {
+		c.annotMenuBackend = c.annotCfg.Backend
+	}
+	return changed, needRefreshKind
 }
 
 func (c *Controller) saveAnnotationConfigLocked(cfg model.AnnotationConfig) error {
@@ -1099,6 +1241,7 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		}
 	}
 	c.invalidateModelCacheLocked(model.BackendBuiltin)
+	_, needAnnotRefresh := c.ensureValidAnnotationConfigLocked()
 	shouldPrewarm := enabledChanged && norm.Enabled && !c.mockResponder
 	shouldRefresh := !shouldPrewarm && norm.Enabled && (c.panelProbedOnce || c.settingsProbedOnce) && !c.mockResponder
 	c.mu.Unlock()
@@ -1109,6 +1252,8 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.PrewarmModelsAsync()
 	} else if shouldRefresh {
 		c.refreshModelsAsync(model.BackendBuiltin)
+	} else if needAnnotRefresh != "" && norm.Enabled && !c.mockResponder {
+		c.refreshAnnotationModelsAsync(needAnnotRefresh)
 	}
 	c.requestRedraw()
 	return nil
@@ -1292,24 +1437,14 @@ func (c *Controller) SetProviderEntryEnabled(id string, on bool) error {
 	}
 
 	updated := c.ProviderConfig()
-	afterEntries := orderedProviderEntries(updated)
-	anyEnabled := false
-	var firstEnabled *ProviderEntry
-	for i := range afterEntries {
-		if afterEntries[i].Enabled {
-			anyEnabled = true
-			if firstEnabled == nil {
-				firstEnabled = &afterEntries[i]
-			}
-		}
-	}
+	latestEnabled, hasLatest := latestEnabledProviderEntry(updated)
 	if on {
 		_ = c.ActivateProviderEntry(id)
 		_ = c.SetBackendEnabled(model.BackendBuiltin, true)
-	} else if !anyEnabled {
+	} else if !hasLatest {
 		_ = c.SetBackendEnabled(model.BackendBuiltin, false)
-	} else if updated.Provider == id && firstEnabled != nil {
-		_ = c.ActivateProviderEntry(firstEnabled.ID)
+	} else if updated.Provider == id {
+		_ = c.ActivateProviderEntry(latestEnabled.ID)
 	}
 	return nil
 }
@@ -1334,10 +1469,10 @@ func (c *Controller) RemoveProviderEntry(id string) error {
 		}
 	}
 	if cfg.Provider == id && len(remaining) > 0 {
-		pick := remaining[0]
-		for _, r := range remaining {
-			if r.Enabled {
-				pick = r
+		pick := remaining[len(remaining)-1]
+		for i := len(remaining) - 1; i >= 0; i-- {
+			if remaining[i].Enabled {
+				pick = remaining[i]
 				break
 			}
 		}
@@ -1444,6 +1579,7 @@ func (c *Controller) SetBackendEnabled(kind model.BackendKind, on bool) error {
 	opt.Enabled = &val
 	c.backendsCfg.Adapters[string(kind)] = opt
 	c.ensureValidSelectionLocked()
+	_, needAnnotRefresh := c.ensureValidAnnotationConfigLocked()
 	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
 		c.backendsCfg = prev
 		c.mu.Unlock()
@@ -1451,9 +1587,13 @@ func (c *Controller) SetBackendEnabled(kind model.BackendKind, on bool) error {
 	}
 	_, hasOv := c.statusOverrides[kind]
 	shouldRefresh := on && c.providerCfg.Enabled && !c.mockResponder && !hasOv && (c.panelProbedOnce || c.settingsProbedOnce)
+	canRefreshAnnot := needAnnotRefresh != "" && c.providerCfg.Enabled && !c.mockResponder && (!shouldRefresh || needAnnotRefresh != kind)
 	c.mu.Unlock()
 	if shouldRefresh {
 		c.refreshModelsAsync(kind)
+	}
+	if canRefreshAnnot {
+		c.refreshAnnotationModelsAsync(needAnnotRefresh)
 	}
 	c.requestRedraw()
 	return nil
@@ -1499,6 +1639,7 @@ func (c *Controller) AddAgentEntry(kind model.BackendKind, displayName, binaryPa
 			c.mu.Lock()
 			c.backendStatuses[kind] = st
 			c.ensureValidSelectionLocked()
+			_, _ = c.ensureValidAnnotationConfigLocked()
 			c.mu.Unlock()
 			c.refreshModelsAsync(kind)
 			c.requestRedraw()
@@ -1555,8 +1696,13 @@ func (c *Controller) RemoveAgentEntry(kind model.BackendKind) error {
 	}
 	c.resetAgentProbeStateLocked(kind)
 	c.ensureValidSelectionLocked()
+	_, needAnnotRefresh := c.ensureValidAnnotationConfigLocked()
 	err := c.writeJSONFile("ai-backends.json", c.backendsCfg)
+	canRefreshAnnot := needAnnotRefresh != "" && c.providerCfg.Enabled && !c.mockResponder
 	c.mu.Unlock()
+	if err == nil && canRefreshAnnot {
+		c.refreshAnnotationModelsAsync(needAnnotRefresh)
+	}
 	c.requestRedraw()
 	return err
 }
