@@ -25,11 +25,6 @@ Name "Block"
 OutFile "${OUTFILE}"
 InstallDir "$LOCALAPPDATA\Programs\Block"
 RequestExecutionLevel user
-VIProductVersion "${VERSION}.0"
-VIAddVersionKey "ProductName" "Block"
-VIAddVersionKey "FileVersion" "${VERSION}"
-VIAddVersionKey "ProductVersion" "${VERSION}"
-VIAddVersionKey "FileDescription" "Block installer"
 
 Var BLOCK_NORM_DIR
 Var BLOCK_SCOPE_ID
@@ -420,7 +415,27 @@ Var BLOCK_IS_ADMIN
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
+; English stays first as the fallback; NSIS automatically selects the table
+; matching the user's Windows display language for both setup and uninstaller.
 !insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_LANGUAGE "TradChinese"
+!insertmacro MUI_LANGUAGE "Japanese"
+!insertmacro MUI_LANGUAGE "Korean"
+!insertmacro MUI_LANGUAGE "French"
+!insertmacro MUI_LANGUAGE "German"
+!insertmacro MUI_LANGUAGE "Spanish"
+!insertmacro MUI_LANGUAGE "SpanishInternational"
+!insertmacro MUI_LANGUAGE "Portuguese"
+!insertmacro MUI_LANGUAGE "PortugueseBR"
+!insertmacro MUI_LANGUAGE "Russian"
+!insertmacro MUI_LANGUAGE "Italian"
+
+VIProductVersion "${VERSION}.0"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "Block"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${VERSION}"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "${VERSION}"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "Block installer"
 
 ; Block defaults to a per-user install in %LOCALAPPDATA%\Programs\Block so
 ; in-app updates run seamlessly with no installer window and no UAC prompt.
