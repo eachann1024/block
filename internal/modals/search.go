@@ -1010,16 +1010,16 @@ func renderSearchHeaderView(
 			var in ui.Element
 			ui.Box(c.Key("search-input-wrap")).Grow(1).MinWidth(0).Height(30).Clip().Children(func() {
 				in = ui.TextInputBase(c.Key("search-input"), query).
-					FillWidth().Height(30).Padding(0).
+					FillWidth().Height(30).Padding(0, 0, 0, theme.Space2).
 					Label(theme.Tr("搜索", "Search")).
 					FontSize(theme.FontEditor).FixedLineHeight(theme.LineTitle).
-					TextColor(pal.Text).CaretColor(pal.Accent).
+					TextColor(pal.Text).CaretColor(pal.Accent).CaretWidth(2).
 					Bind(inputHandle).AutoFocus()
 				internalui.Probe(in, "search-input")
 
 				if *query == "" && !in.Composing() {
 					phRow := ui.Row(c.Key("search-placeholder")).
-						Absolute().Top(0).Bottom(0).Left(2).Right(0).
+						Absolute().Top(0).Bottom(0).Left(theme.Space2).Right(0).
 						AlignItems(ui.Center).Gap(theme.Space4).IgnoreInput(true)
 					phRow.Children(func() {
 						ui.Text(c, ph.prefix).
