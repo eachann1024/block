@@ -813,19 +813,6 @@ func FontEpoch() uint64 {
 	return fontEpochAtomic.Load()
 }
 
-func SystemLanguage() model.LanguageMode {
-	for _, env := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
-		v := strings.ToLower(os.Getenv(env))
-		if strings.HasPrefix(v, "zh") {
-			return model.LangZh
-		}
-		if strings.HasPrefix(v, "en") {
-			return model.LangEn
-		}
-	}
-	return model.LangZh
-}
-
 func Language() model.LanguageMode {
 	switch langAtomic.Load() {
 	case 1:
