@@ -5297,7 +5297,8 @@ func allHandleMenuItems(idx, count int, hasFrontmatter bool, b *model.Block) []b
 		case model.BlockDivider, model.BlockRawHTML:
 			return appendCommonHandleItems(nil, idx, count, hasFrontmatter)
 		case model.BlockCode:
-			if codepreview.CanonicalLanguage(b.Language) == "mindmap" {
+			canon := codepreview.CanonicalLanguage(b.Language)
+			if canon == "mindmap" {
 				items := []blockMenuItem{
 					{Kind: cmdMindMapToggleLayout, Label: theme.Tr("切换布局（右展/平衡）", "Toggle Layout")},
 					{Kind: cmdMindMapFullscreen, Label: theme.Tr("全屏查看", "Fullscreen")},
@@ -5305,6 +5306,9 @@ func allHandleMenuItems(idx, count int, hasFrontmatter bool, b *model.Block) []b
 					{Separator: true},
 				}
 				return appendCommonHandleItems(items, idx, count, hasFrontmatter)
+			}
+			if codepreview.IsPreviewLanguage(canon) || strings.Contains(b.Code, "\n") {
+				return appendCommonHandleItems(nil, idx, count, hasFrontmatter)
 			}
 		}
 	}
