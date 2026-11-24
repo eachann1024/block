@@ -39,10 +39,9 @@ type shellExecuteInfoW struct {
 }
 
 var (
-	procGetUserDefaultUILanguage = syscall.NewLazyDLL("kernel32.dll").NewProc("GetUserDefaultUILanguage")
-	shell32DLL                   = syscall.NewLazyDLL("shell32.dll")
-	procIsUserAnAdmin            = shell32DLL.NewProc("IsUserAnAdmin")
-	procShellExecuteExW          = shell32DLL.NewProc("ShellExecuteExW")
+	shell32DLL          = syscall.NewLazyDLL("shell32.dll")
+	procIsUserAnAdmin   = shell32DLL.NewProc("IsUserAnAdmin")
+	procShellExecuteExW = shell32DLL.NewProc("ShellExecuteExW")
 )
 
 func defaultInstallDir() string {
@@ -256,11 +255,4 @@ func launchInstalledApp(exe string) error {
 		explorer = "explorer.exe"
 	}
 	return exec.Command(explorer, exe).Start()
-}
-
-// systemPrefersEnglish is false only for a Chinese Windows display language
-// (primary language ID 0x04).
-func systemPrefersEnglish() bool {
-	lang, _, _ := procGetUserDefaultUILanguage.Call()
-	return lang&0x3ff != 0x04
 }
