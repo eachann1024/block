@@ -1,10 +1,72 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T13:47:56.086Z",
-  "latest_version": "1.0.933",
-  "latest_tag": "v1.0.933",
+  "updated_at": "2026-11-24T14:15:56.399Z",
+  "latest_version": "1.0.934",
+  "latest_tag": "v1.0.934",
   "releases": [
+    {
+      "version": "1.0.934",
+      "tag": "v1.0.934",
+      "published_at": "2026-11-24T14:15:55Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.934",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "AI 对话：当前服务商不可用时，应用会切换到最新可用的服务商和模型。",
+          "编辑器：预览和多行代码块中不再显示无效的文本轮次项。",
+          "侧边栏：统一了「显示文件」标签，并将插件上下文菜单项分开展示。",
+          "页面菜单：移除了描述不准确的「复制为 Markdown」操作。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "AI Chat: When a provider is unavailable, the app now falls back to the latest available provider and model.",
+          "Editor: Invalid text turn items are hidden in previews and multiline code blocks.",
+          "Sidebar: The reveal file label is consistent, and plugin context items are shown separately.",
+          "Page Menu: Inaccurate copy as Markdown actions have been removed."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-macos-arm64.dmg",
+          "size": 15884161,
+          "sha256": "0597e869f7d0bb6781173e775d090db7def75d277b8024b425c8896e5decaae6"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-macos-x64.dmg",
+          "size": 17514593,
+          "sha256": "75c1c6f12befb28f17c71e7df28b1d83410e37c0b704b07cdfe11a3eff8e6145"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-windows-x64-setup.exe",
+          "size": 13287474,
+          "sha256": "772c3c9930fe58bad9ab5660dbb6078f462cf3f6e32d2d473dfcd4bb432761af"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-linux-x64.deb",
+          "size": 10783062,
+          "sha256": "53298829eaaff4a8f52dbd169e2782e66e5a2f9e797d9f75063d2670b3ebd106"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-linux-x64.AppImage",
+          "size": 23820792,
+          "sha256": "f76c11302c437d18a03456412e2a15bf858d75a0d6a1e7f4382dbac062b62091"
+        }
+      ]
+    },
     {
       "version": "1.0.933",
       "tag": "v1.0.933",
@@ -32,38 +94,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-macos-arm64.dmg",
-          "size": 15879299,
-          "sha256": "e2f05b5920ee7a917405563f3234d093ac4cbf89df6ff9286a5c35176c8a07f9"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-macos-x64.dmg",
-          "size": 17512532,
-          "sha256": "c5f011772ddfcbc88bbff73314033405cc1730fc29c5296cd5f5aa174dbd89c4"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-windows-x64-setup.exe",
-          "size": 13285053,
-          "sha256": "8d8e16931bb043399bd39c6d16efe729522eb5b066c159e95db4994e1ac25e20"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-linux-x64.deb",
-          "size": 10779446,
-          "sha256": "a93372a36e46fb7b4c2dd032dd2ef68f20215862ac7eab96802caba1dc873283"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.933/block-linux-x64.AppImage",
-          "size": 23824888,
-          "sha256": "52606b92b380f5971994ce11beeac96d13f0f1fb0d633d24fb3b0c1c1a7d7a28"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.932",
@@ -1618,33 +1649,6 @@
         "highlights": "",
         "new": [
           "Simplify categories to six note-friendly tabs."
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.884",
-      "tag": "v1.0.884",
-      "published_at": "2026-11-21T06:23:49Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.884",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "新增了一项提升日常记录与编辑效率的实用功能。",
-          "新增了一项提升日常记录与编辑效率的实用功能。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Ship Go Modules and Property List grammars built in.",
-          "Highlight ~40 languages in code blocks via MyGo lexers."
         ],
         "improvements": [],
         "fixes": [],
