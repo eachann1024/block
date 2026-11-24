@@ -1313,7 +1313,7 @@ func renderSidebarToggleButton(c *ui.Context, p TitlebarProps) {
 		nudgeX = sidebarCueArrowNudge(elapsedMs, nudgeStart, nudgeDur)
 	}
 
-	iconColors := pal.MonoIconColors(pal.TextSecondary)
+	iconColors := pal.DuoIconColors(pal.TextSecondary)
 	switch {
 	case pillP >= 0.01 || p.SidebarFloating:
 		iconColors = pal.DuoIconColors(pal.Accent)

@@ -369,11 +369,8 @@ func renderPluginOverflowMenu(c *ui.Context, p TitlebarProps, scrim ui.Element, 
 						sel := ui.ButtonBase(c.Key(selID)).Grow(1).MinWidth(0).FillHeight().Gap(theme.Space8).
 							AlignItems(ui.Center).Justify(ui.Start).Cursor(ui.CursorPointer).Label(label)
 						sel.Children(func() {
-							ic := pal.MonoIconColors(pal.MenuIcon)
-							if b.Active || rowHover || kbActive {
-								ic = pal.DuoIconColors(pal.MenuIcon)
-							}
-							pluginui.DrawDuoSpec(c, b.Icon, theme.IconRow, ic)
+							ic := pal.DuoIconColors(pal.MenuIcon)
+							pluginui.DrawDuoSpecAnimated(c, b.Icon, theme.IconRow, ic, b.Active || rowHover || kbActive)
 							ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 								TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 							badge := strings.TrimSpace(b.Badge)
@@ -390,7 +387,7 @@ func renderPluginOverflowMenu(c *ui.Context, p TitlebarProps, scrim ui.Element, 
 								}
 							}
 							if b.Active {
-								icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text), rowHover || kbActive)
+								icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MinimalIconColors(pal.Text), rowHover || kbActive)
 							}
 						})
 						blockui.Probe(sel, selID)

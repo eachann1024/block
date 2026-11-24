@@ -686,10 +686,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					if p.ActiveNotebook != "" {
 						blockui.MonogramBadge(c, nbTitle)
 					} else {
-						ic := pal.MonoIconColors(pal.Text)
-						if p.State.SwitcherOpen {
-							ic = pal.DuoIconColors(pal.Text)
-						}
+						ic := pal.DuoIconColors(pal.Text)
 						icons.DrawAnimated(c, icons.FolderOpen, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen)
 					}
 					ui.Text(c, nbTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -706,7 +703,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						chevWrap.Rotate(chevDeg)
 					}
 					chevWrap.Children(func() {
-						icons.Draw(c, icons.ChevronUp, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+						icons.DrawAnimated(c, icons.ChevronUp, theme.IconInline, pal.DuoIconColors(pal.TextSecondary), swHovered || swPressed || p.State.SwitcherOpen)
 					})
 				})
 				blockui.Probe(sw, "notebook-switcher")
@@ -777,17 +774,17 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 		sBG := ui.Transparent
 		sBD := ui.Transparent
 		sFG := mutedFG
-		sIcon := pal.MonoIconColors(mutedFG)
+		sIcon := pal.DuoIconColors(mutedFG)
 		switch {
 		case p.SearchOpen:
 			sBG = pal.Selected
 			sBD = pal.SelectedBorder
 			sFG = pal.Text
-			sIcon = pal.DuoIconColors(pal.Text)
+			sIcon = pal.LitDuoIconColors(pal.Text)
 		case sHov || sPress:
 			sBG = hoverBG
 			sFG = pal.Text
-			sIcon = pal.MonoIconColors(pal.Text)
+			sIcon = pal.DuoIconColors(pal.Text)
 		}
 		blockui.AnimateSurfaceColors(searchBtn, sBG, sBD, true)
 		blockui.TactileCard(searchBtn, sHov, sPress, p.SearchOpen, false)
@@ -885,14 +882,14 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		box.Children(func() {
 			rel := sidebarRelPath(p.ActiveNotebook, entry.Path)
 			if customIcon, ok := p.FileIcons[rel]; ok {
-				pluginui.DrawFileIcon(c, customIcon.Ref, customIcon.Spec, theme.IconRow,
-					pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), pal.Accent, false))
+				pluginui.DrawFileIconAnimated(c, customIcon.Ref, customIcon.Spec, theme.IconRow,
+					pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), pal.Accent, false), true)
 			} else {
 				glyph := icons.FileIconOrDefault(filepath.Base(entry.Path))
 				if entry.IsDir {
 					glyph = icons.FolderIcon(filepath.Base(entry.Path), r.Expanded)
 				}
-				icons.Draw(c, glyph, theme.IconRow, pal.DuoIconColors(pal.Accent))
+				icons.DrawAnimated(c, glyph, theme.IconRow, pal.DuoIconColors(pal.Accent), true)
 			}
 			c.Key("tree-rename-input")
 			inp := ui.TextInput(c, &p.State.RenameBuffer).Grow(1).FontSize(theme.FontBody).TextColor(pal.Text).
@@ -1041,13 +1038,14 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	var iconRect ui.Rect
 
 	drawLeadingIcon := func(lineHot, accentHot bool) {
+		iconLit := highlighted || hovered || menuTarget || accentHot
+		lineCol := pal.TextSecondary
+		if lineHot {
+			lineCol = pal.Text
+		}
 		if hasCustomIcon {
-			lineCol := pal.TextSecondary
-			if lineHot {
-				lineCol = pal.Text
-			}
-			ic := pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), lineCol, accentHot)
-			pluginui.DrawFileIcon(c, customIcon.Ref, customIcon.Spec, theme.IconRow, ic)
+			ic := pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), lineCol, false)
+			pluginui.DrawFileIconAnimated(c, customIcon.Ref, customIcon.Spec, theme.IconRow, ic, iconLit)
 			return
 		}
 		var glyph icons.Icon
@@ -1056,15 +1054,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		} else {
 			glyph = icons.FileIconOrDefault(filepath.Base(entry.Path))
 		}
-		var ic theme.IconColors
-		if accentHot {
-			ic = theme.IconColors{Line: pal.Text, Fill: pal.IconFill, Accent: pal.Accent}
-		} else if lineHot {
-			ic = pal.DuoIconColors(pal.Text)
-		} else {
-			ic = pal.MonoIconColors(pal.TextSecondary)
-		}
-		icons.DrawAnimated(c, glyph, theme.IconRow, ic, hovered || menuTarget || accentHot)
+		icons.DrawAnimated(c, glyph, theme.IconRow, pal.DuoIconColors(lineCol), iconLit)
 	}
 
 	btn.Children(func() {
@@ -1079,7 +1069,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 				chevBox.Rotate(chevDeg)
 			}
 			chevBox.Children(func() {
-				icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+				icons.DrawAnimated(c, icons.TbChevronRight, theme.IconInline, pal.DuoIconColors(pal.TextSecondary), hovered || highlighted || menuTarget)
 			})
 		}
 		if pickerEnabled {
@@ -1470,24 +1460,21 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									p.State.NBDragGate.Attach(sel, nb, nbDragItem{Path: nb, Index: ix}, blockui.DefaultDragThreshold)
 								}
 								sel.Children(func() {
-									ic := pal.MonoIconColors(pal.MenuIcon)
+									ic := pal.DuoIconColors(pal.MenuIcon)
 									actIco := checked || confirming || rowHover || kbActive
-									if actIco {
-										ic = pal.DuoIconColors(pal.MenuIcon)
-									}
 									nameColor := pal.Text
 									if missing {
-										ic = pal.MonoIconColors(pal.TextSecondary)
+										ic = pal.DuoIconColors(pal.TextSecondary)
 										nameColor = pal.TextSecondary
 									}
-									icons.DrawAnimated(c, icons.Folder, theme.IconRow, ic, rowHover || kbActive)
+									icons.DrawAnimated(c, icons.Folder, theme.IconRow, ic, actIco)
 									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(nameColor).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 									if missing && !confirming && !rowHover {
 										ui.Text(c, theme.Tr("已移动或删除", "Moved or deleted")).FontSize(theme.FontSmall).TextColor(pal.Warning).Shrink(0).SingleLine()
 									}
 									if checked && !confirming && !(rowHover && p.OnForgetNotebook != nil) {
 										ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().Children(func() {
-											icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text), rowHover || kbActive)
+											icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MinimalIconColors(pal.Text), rowHover || kbActive)
 										})
 									}
 								})
@@ -1852,11 +1839,7 @@ func renderTreeFileBadges(c *ui.Context, badges []plugins.ResolvedFileBadge, pal
 			case "danger":
 				toneCol = pal.Danger
 			}
-			ic := theme.IconColors{
-				Line:   toneCol,
-				Fill:   toneCol.Alpha(0.22),
-				Accent: toneCol,
-			}
+			ic := pal.TintedIconColors(toneCol)
 			chip := ui.Row(c.Key("tree-badge-" + badge.PluginID + "-" + badge.BadgeID)).
 				Gap(theme.Space2).AlignItems(ui.Center).Shrink(0)
 			if badge.Tooltip != "" {
