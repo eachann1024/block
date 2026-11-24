@@ -335,14 +335,14 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		blockui.RichTooltip(c, pill, blockui.TooltipSpec{Rows: rows})
 	}
 	pill.ObserveInput(func(ev ui.InputEvent) {
-		if ev.Kind == ui.InputPointerDown && ev.Button == 2 && !p.Busy && p.MenuState != nil {
+		if ev.Kind == ui.InputPointerDown && ev.Button == 2 && p.MenuState != nil {
 			p.MenuState.MiddleClosePath = path
 		}
 	})
 
 	isDropTarget := false
 	dropAfter := false
-	if !p.Busy && p.OnReorderTab != nil {
+	if p.OnReorderTab != nil {
 		if dragged, over := ui.DragOver[tabDragItem](pill); over && dragged.Path != "" && dragged.Path != path {
 			b := pill.Bounds()
 			px, _, hasPos := pill.PointerPosition()
@@ -395,14 +395,10 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 	closeHover, closeClicked := false, false
 	closeBtn := func() {
 		c.Key("tab-close:" + path)
-		cursor := ui.CursorPointer
-		if p.Busy {
-			cursor = ui.CursorDefault
-		}
 		cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(theme.RadiusXS).
-			Cursor(cursor).Disabled(p.Busy).Label(fmt.Sprintf(theme.Tr("关闭标签页「%s」", "Close Tab %s"), label))
-		closeHover = !p.Busy && cb.Hovered()
-		closePress := !p.Busy && cb.Pressed()
+			Cursor(ui.CursorPointer).Label(fmt.Sprintf(theme.Tr("关闭标签页「%s」", "Close Tab %s"), label))
+		closeHover = cb.Hovered()
+		closePress := cb.Pressed()
 		ic := pal.DuoIconColors(pal.TextSecondary)
 		cbBG := ui.Transparent
 		if active {
@@ -427,14 +423,10 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 
 	var sel ui.Element
 	pill.Children(func() {
-		tabCursor := ui.CursorPointer
-		if p.Busy {
-			tabCursor = ui.CursorDefault
-		}
 		sel = ui.ButtonBase(c.Key("tab-select:"+path)).Grow(1).MinWidth(0).FillHeight().Padding(0, 0, 0, theme.Space10).Gap(theme.Space6).
-			AlignItems(ui.Center).Justify(ui.Start).Cursor(tabCursor).Disabled(p.Busy).DimDisabled(false).
+			AlignItems(ui.Center).Justify(ui.Start).Cursor(ui.CursorPointer).
 			FocusRing(false).Role(ui.RoleTab).AccessSelected(active).Label(a11yLabel)
-		if !p.Busy && p.OnReorderTab != nil {
+		if p.OnReorderTab != nil {
 			var gate *blockui.DragGate
 			if p.MenuState != nil {
 				gate = &p.MenuState.TabDragGate
@@ -492,14 +484,14 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 	midTriggered := middleClosePath == path || (p.MenuState == nil && pressing && btn == 2)
 	rightClicked := sel.RightClicked() || pill.RightClicked()
 	switch {
-	case (closeClicked || midTriggered) && !p.Busy:
+	case closeClicked || midTriggered:
 		if p.MenuState != nil {
 			p.MenuState.Close()
 		}
 		if p.OnCloseTab != nil {
 			p.OnCloseTab(path)
 		}
-	case rightClicked && !p.Busy && p.MenuState != nil:
+	case rightClicked && p.MenuState != nil:
 		b := pill.Bounds()
 		tx, ty := b.X+8, b.Y+b.H+4
 		if px, py, ok := pill.PointerPosition(); ok {
@@ -512,7 +504,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		p.MenuState.TabMenuX = tx
 		p.MenuState.TabMenuY = ty
 		p.MenuState.MenuTrigger = &p.MenuState.TabCtxTrigger
-	case ((pressing && btn == 0) || sel.Clicked()) && !closeHover && !active && !p.Busy && !sel.Dragging():
+	case ((pressing && btn == 0) || sel.Clicked()) && !closeHover && !active && !sel.Dragging():
 		if p.MenuState != nil {
 			p.MenuState.Close()
 		}

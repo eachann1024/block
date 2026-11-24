@@ -289,7 +289,6 @@ type SidebarProps struct {
 
 	SettingsOpen bool
 	SearchOpen   bool
-	Busy         bool
 
 	SortMode        model.TreeSortMode
 	HideNonMarkdown bool
@@ -957,11 +956,11 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 			Radius:      theme.RadiusSM,
 			Tooltip:     theme.Tr("新建文件夹", "New Folder"),
 			Shortcut:    blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewFolder, "cmd-shift-n")),
-			Disabled:    p.Busy || p.ActiveNotebook == "",
+			Disabled:    p.ActiveNotebook == "",
 			ChromeHover: !p.FloatingCard,
 			RestColor:   mutedFG,
 		})
-		if folderBtn.Clicked() && !p.Busy && p.ActiveNotebook != "" && p.OnNewFolder != nil {
+		if folderBtn.Clicked() && p.ActiveNotebook != "" && p.OnNewFolder != nil {
 			p.OnNewFolder()
 		}
 
@@ -972,11 +971,11 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 			Radius:      theme.RadiusSM,
 			Tooltip:     theme.Tr("新建页面", "New Page"),
 			Shortcut:    blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n")),
-			Disabled:    p.Busy || p.ActiveNotebook == "",
+			Disabled:    p.ActiveNotebook == "",
 			ChromeHover: !p.FloatingCard,
 			RestColor:   mutedFG,
 		})
-		if noteBtn.Clicked() && !p.Busy && p.ActiveNotebook != "" && p.OnNewNote != nil {
+		if noteBtn.Clicked() && p.ActiveNotebook != "" && p.OnNewNote != nil {
 			p.OnNewNote()
 		}
 	})

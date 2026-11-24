@@ -1832,9 +1832,6 @@ func (w *Workspace) OpenFromSearch(hit model.SearchHit) error {
 	}
 	clean := filepath.Clean(hit.Path)
 	w.modals.CloseSearch()
-	if w.isBusy() {
-		return nil
-	}
 	w.mu.RLock()
 	curFolder := w.state.Folder
 	notebooks := append([]string(nil), w.state.Notebooks...)
@@ -2626,7 +2623,7 @@ func (w *Workspace) focusLoadedTabPos(clean string, forceNewTab bool, recordNav 
 		prevClean := filepath.Clean(prevActive)
 		inFlight := w.pluginInsertInFlight[prevActive] > 0 || w.pluginInsertInFlight[prevClean] > 0
 		lastDiskMD, hasLastDisk := w.lastDiskMarkdown[prevClean]
-		if s := w.sessions[prevActive]; s != nil && !inFlight && !s.Dirty() && (!hasLastDisk || s.Markdown() == lastDiskMD) {
+		if s := w.sessions[prevActive]; s != nil && !inFlight && !s.Dirty() && !s.IsBusy() && (!hasLastDisk || s.Markdown() == lastDiskMD) {
 			evictedSess = s
 			delete(w.sessions, prevActive)
 			delete(w.tabBindings, prevClean)
@@ -3951,9 +3948,6 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 
 // ReorderTab moves srcPath before (after==false) or after (after==true) targetPath and persists state.json.
 func (w *Workspace) ReorderTab(srcPath, targetPath string, after bool) bool {
-	if w.isBusy() {
-		return false
-	}
 	cleanSrc := filepath.Clean(srcPath)
 	cleanDst := filepath.Clean(targetPath)
 	w.mu.Lock()
@@ -3974,9 +3968,6 @@ func (w *Workspace) ReorderTab(srcPath, targetPath string, after bool) bool {
 
 // CloseTab flushes dirty changes on path, pushes it to ClosedTabs, and closes the tab.
 func (w *Workspace) CloseTab(path string) {
-	if w.isBusy() {
-		return
-	}
 	clean := filepath.Clean(path)
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
@@ -4060,9 +4051,6 @@ func (w *Workspace) CloseActiveTab() {
 
 // ReopenClosedTab pops the most recently closed tab (`Cmd+Shift+T`) and restores it at its prior index.
 func (w *Workspace) ReopenClosedTab() bool {
-	if w.isBusy() {
-		return false
-	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
@@ -4111,9 +4099,6 @@ func (w *Workspace) ReopenClosedTab() bool {
 
 // CloseOtherTabs closes every open tab except keepPath.
 func (w *Workspace) CloseOtherTabs(keepPath string) {
-	if w.isBusy() {
-		return
-	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
@@ -4172,9 +4157,6 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 
 // CloseTabsToRight closes every open tab strictly to the right of pivotPath.
 func (w *Workspace) CloseTabsToRight(pivotPath string) {
-	if w.isBusy() {
-		return
-	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
@@ -4243,9 +4225,6 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 
 // CloseAllTabs closes all open tabs.
 func (w *Workspace) CloseAllTabs() {
-	if w.isBusy() {
-		return
-	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
@@ -4286,9 +4265,6 @@ func (w *Workspace) StepTab(delta int) {
 	if w.modals != nil && w.modals.IsSettingsOpen() {
 		return
 	}
-	if w.isBusy() {
-		return
-	}
 	w.mu.RLock()
 	next := w.tabOps.Cycle(w.state.OpenTabs, w.state.ActiveTab, delta)
 	w.mu.RUnlock()
@@ -4299,9 +4275,6 @@ func (w *Workspace) StepTab(delta int) {
 
 // SelectTabOneBased selects tab 1..9 (`Cmd+9` selects the last tab).
 func (w *Workspace) SelectTabOneBased(num int) {
-	if w.isBusy() {
-		return
-	}
 	w.mu.RLock()
 	next := w.tabOps.SelectOneBased(w.state.OpenTabs, num)
 	w.mu.RUnlock()
@@ -4310,26 +4283,9 @@ func (w *Workspace) SelectTabOneBased(num int) {
 	}
 }
 
-func (w *Workspace) isBusy() bool {
-	if w.ai != nil && w.ai.IsStreaming() {
-		return true
-	}
-	w.mu.RLock()
-	active := w.state.ActiveTab
-	sess := w.sessions[active]
-	w.mu.RUnlock()
-	if sess != nil && sess.IsBusy() {
-		return true
-	}
-	return false
-}
-
 // NavigateBack navigates backward in note history (`Cmd+[`).
 func (w *Workspace) NavigateBack() {
 	if w.modals != nil && w.modals.IsSettingsOpen() {
-		return
-	}
-	if w.isBusy() {
 		return
 	}
 	for {
@@ -4347,9 +4303,6 @@ func (w *Workspace) NavigateBack() {
 // NavigateForward navigates forward in note history (`Cmd+]`).
 func (w *Workspace) NavigateForward() {
 	if w.modals != nil && w.modals.IsSettingsOpen() {
-		return
-	}
-	if w.isBusy() {
 		return
 	}
 	for {
@@ -5918,7 +5871,6 @@ func (w *Workspace) Render(c *ui.Context) {
 				CanFormatJSON:   activeSurf != nil && activeSurf.CanFormatJSON(),
 				CanBack:         w.nav.CanBack(),
 				CanForward:      w.nav.CanForward(),
-				Busy:            w.isBusy(),
 				AnnotDrafts:     annDrafts,
 				AnnotGenerating: annGenerating,
 				AnnotHasAny:     annHasAny,
@@ -6805,7 +6757,6 @@ func (w *Workspace) renderSidebarColumn(
 		ActiveNote:        activeNote,
 		SettingsOpen:      w.modals.IsSettingsOpen(),
 		SearchOpen:        w.modals.IsSearchOpen(),
-		Busy:              w.isBusy(),
 		SortMode:          stSnap.TreeSort,
 		HideNonMarkdown:   hideNonMD,
 		HideAssets:        hideAssets,
