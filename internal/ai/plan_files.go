@@ -20,7 +20,7 @@ type planFileChange struct {
 }
 
 func planFileChanges(plan *model.BatchPlan, undo bool) ([]planFileChange, error) {
-	if plan == nil || len(plan.Ops) == 0 || len(plan.Ops) > maxPlanPages {
+	if plan == nil || len(plan.Ops) == 0 {
 		return nil, errors.New(theme.Tr("无效的 AI 修改计划", "Invalid AI edit plan"))
 	}
 	var changes []planFileChange
@@ -31,7 +31,7 @@ func planFileChanges(plan *model.BatchPlan, undo bool) ([]planFileChange, error)
 			return nil, err
 		}
 		expected, ok := plan.Expected[op.Page]
-		if !ok || expected != op.Old || seen[name] || len(op.New) > maxToolNoteBytes ||
+		if !ok || expected != op.Old || seen[name] ||
 			(op.Kind != model.PlanOpReplace && op.Kind != model.PlanOpCreateNote) {
 			return nil, errors.New(theme.Tr("计划缺少可验证的原文", "The plan is missing verifiable original text"))
 		}

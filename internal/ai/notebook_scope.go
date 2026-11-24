@@ -9,20 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"unicode/utf8"
 
 	"block/internal/files"
 	"block/internal/model"
 	"block/internal/theme"
-)
-
-const (
-	maxToolNoteBytes   = 256 * 1024
-	maxNotebookEntries = 2048
-	maxToolPages       = 200
-	maxTurnTools       = 32
-	maxToolArgsBytes   = 2 * 1024 * 1024
 )
 
 type notebookScope struct {
@@ -48,11 +39,10 @@ type assistantTurn struct {
 	historyEnd       int
 	questionIndex    int
 	nextStep         int
-	toolCalls        atomic.Uint32
 }
 
 func (turn *assistantTurn) allowTool() bool {
-	return turn.ctx.Err() == nil && turn.toolCalls.Add(1) <= maxTurnTools
+	return turn.ctx.Err() == nil
 }
 
 func normalizeNotebookRoot(root string) string {
@@ -297,9 +287,6 @@ func readNotebookNote(ctx context.Context, root *os.Root, name string) (string, 
 	if err != nil {
 		return "", err
 	}
-	if info.Size() > maxToolNoteBytes {
-		return "", errors.New(theme.Tr("笔记超过 AI 读取上限（256 KiB）", "The note exceeds the AI read limit (256 KiB)"))
-	}
 	f, err := openNoteForRead(root, name)
 	if err != nil {
 		return "", err
@@ -309,43 +296,41 @@ func readNotebookNote(ctx context.Context, root *os.Root, name string) (string, 
 	if err != nil || !actual.Mode().IsRegular() || !os.SameFile(info, actual) {
 		return "", errors.New(theme.Tr("笔记在读取时已变化", "The note changed while it was being read"))
 	}
-	data, err := io.ReadAll(io.LimitReader(f, maxToolNoteBytes+1))
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return "", err
 	}
-	if len(data) > maxToolNoteBytes || !utf8.Valid(data) {
-		return "", errors.New(theme.Tr("笔记超过读取上限或不是 UTF-8", "The note exceeds the read limit or is not UTF-8"))
+	if !utf8.Valid(data) {
+		return "", errors.New(theme.Tr("笔记不是有效的 UTF-8 文本", "The note is not valid UTF-8 text"))
 	}
 	return string(data), ctx.Err()
 }
 
-func notebookPages(ctx context.Context, root *os.Root) (pages []string, limited bool) {
-	// Read directories in small batches. WalkDir would read and sort a whole directory first.
-	remaining := maxNotebookEntries
-	var visit func(string, int)
-	visit = func(dir string, depth int) {
-		if depth > 32 || remaining == 0 || len(pages) >= maxToolPages || ctx.Err() != nil {
-			limited = true
+func notebookPages(ctx context.Context, root *os.Root) []string {
+	var pages []string
+	var visit func(string)
+	visit = func(dir string) {
+		if ctx.Err() != nil {
 			return
 		}
 		d, err := openNoteForRead(root, dir)
 		if err != nil {
 			return
 		}
-		defer d.Close()
-		for remaining > 0 && len(pages) < maxToolPages && ctx.Err() == nil {
-			entries, err := d.ReadDir(min(remaining, 32))
+		var subdirs []string
+		for ctx.Err() == nil {
+			entries, err := d.ReadDir(64)
 			for _, entry := range entries {
-				if remaining == 0 || len(pages) >= maxToolPages || ctx.Err() != nil {
-					break
+				if ctx.Err() != nil {
+					_ = d.Close()
+					return
 				}
-				remaining--
 				if strings.HasPrefix(entry.Name(), ".") {
 					continue
 				}
 				path := filepath.Join(dir, entry.Name())
-				if entry.IsDir() {
-					visit(path, depth+1)
+				if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
+					subdirs = append(subdirs, path)
 				} else if files.IsMarkdown(path) && entry.Type().IsRegular() {
 					if _, err := inspectNote(root, path); err == nil {
 						pages = append(pages, path)
@@ -353,13 +338,16 @@ func notebookPages(ctx context.Context, root *os.Root) (pages []string, limited 
 				}
 			}
 			if err != nil {
-				return
+				break
 			}
 		}
-		limited = true
+		_ = d.Close()
+		for _, sub := range subdirs {
+			visit(sub)
+		}
 	}
-	visit(".", 0)
-	return pages, limited
+	visit(".")
+	return pages
 }
 
 func snapshotNotebookNote(ctx context.Context, root *os.Root, name string) (string, bool, error) {

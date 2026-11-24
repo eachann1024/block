@@ -199,8 +199,6 @@ func validateRelativePagePath(page string) error {
 	return nil
 }
 
-const maxPlanPages = 12
-
 func (c *Controller) buildMockPlan(args map[string]any, root string) (string, *model.BatchPlan, []model.SourceNote) {
 	scope := captureNotebook(c.host)
 	if scope.root == "" || root == "" {
@@ -219,8 +217,8 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 		return marshalJSON(map[string]any{"error": message}), nil, nil
 	}
 	rawOps, _ := args["operations"].([]any)
-	if len(rawOps) == 0 || len(rawOps) > 32 {
-		return fail(theme.Tr("每份计划须有 1–32 个操作", "Each plan needs 1–32 operations"))
+	if len(rawOps) == 0 {
+		return fail(theme.Tr("每份计划至少需要 1 个操作", "Each plan needs at least 1 operation"))
 	}
 	var ops []model.PlanOp
 	byPage := make(map[string]int)
@@ -256,9 +254,6 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 		page = displayPageID(name)
 		idx, found := byPage[name]
 		if !found {
-			if len(ops) >= maxPlanPages {
-				return fail(theme.Tr("每份计划最多修改 12 篇笔记", "A plan can change at most 12 notes"))
-			}
 			before, exists, err := snapshotNotebookNote(ctx, root, name)
 			if err != nil || exists == (kind == "create") {
 				return fail(theme.Tr("笔记无法用于该操作，请核对原文及目标是否存在", "This note cannot be used. Check the original text and that the target exists."))
@@ -303,16 +298,9 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 			if !all {
 				count = 1
 			}
-			// Check the size before Replace can allocate the expanded document.
-			if int64(len(op.New))+int64(count)*int64(len(newText)-len(oldText)) > maxToolNoteBytes {
-				return fail(theme.Tr("计划内容超过 AI 写入上限", "Plan content exceeds the AI write limit"))
-			}
 			op.New = strings.Replace(op.New, oldText, newText, count)
 		default:
 			return fail(theme.Tr("暂不支持该计划操作", "This plan operation is not supported"))
-		}
-		if len(op.New) > maxToolNoteBytes {
-			return fail(theme.Tr("计划内容超过 AI 写入上限", "Plan content exceeds the AI write limit"))
 		}
 	}
 	for _, op := range ops {
@@ -325,7 +313,7 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 		summary, _ = args["title"].(string)
 	}
 	plan := &model.BatchPlan{
-		ID: fmt.Sprintf("plan-%d", time.Now().UnixNano()), Summary: truncateRunes(summary, 300),
+		ID: fmt.Sprintf("plan-%d", time.Now().UnixNano()), Summary: strings.TrimSpace(summary),
 		Root: scope.root, Ops: ops, Expected: expected, Status: "pending",
 	}
 	return marshalJSON(map[string]any{
@@ -403,12 +391,6 @@ func (c *Controller) previewPlan(ctx context.Context, plan *model.BatchPlan) {
 	c.mu.RLock()
 	host := c.host
 	c.mu.RUnlock()
-	for _, op := range plan.Ops {
-		// The editor's per-line preview has a quadratic diff. Large plans stay reviewable in chat.
-		if int64(strings.Count(op.Old, "\n")+2)*int64(strings.Count(op.New, "\n")+2) > 4_000_000 {
-			return
-		}
-	}
 	if previewHost, ok := host.(interface {
 		PreviewBatchPlanContext(context.Context, *model.BatchPlan) error
 	}); ok {
