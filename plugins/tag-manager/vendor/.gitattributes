@@ -1,0 +1,2 @@
+# Keep upstream PyYAML sources byte-for-byte and collapse them in PR diffs.
+yaml/*.py linguist-vendored whitespace=-trailing-space

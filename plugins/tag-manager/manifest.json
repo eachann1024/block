@@ -1,0 +1,129 @@
+{
+  "app": "blockmd",
+  "schema_version": 1,
+  "id": "block-tag-manager",
+  "category": "organize",
+  "name": {
+    "zh": "标签管理",
+    "en": "Tag Manager"
+  },
+  "version": "1.0.0",
+  "author": "itjun",
+  "summary": {
+    "zh": "浏览笔记本标签，管理当前笔记的 YAML 标签。",
+    "en": "Browse notebook tags and edit the current note’s YAML tags."
+  },
+  "entry": {
+    "command": [
+      "python3",
+      "-B",
+      "-u",
+      "main.py"
+    ]
+  },
+  "permissions": [
+    "notes:read",
+    "notes:write",
+    "events:note_saved",
+    "ui:commands",
+    "ui:titlebar",
+    "ui:panels"
+  ],
+  "icon": {
+    "view_box": "0 0 24 24",
+    "stroke_paths": [
+      "M3 4h8l10 10-7 7L3 10Z",
+      "M7.5 7.5h.01"
+    ]
+  },
+  "contributes": {
+    "panels": [
+      {
+        "id": "tags",
+        "title": {
+          "zh": "标签管理",
+          "en": "Tag Manager"
+        },
+        "icon": {
+          "view_box": "0 0 24 24",
+          "stroke_paths": [
+            "M3 4h8l10 10-7 7L3 10Z",
+            "M7.5 7.5h.01"
+          ]
+        }
+      }
+    ],
+    "titlebar_buttons": [
+      {
+        "id": "tags",
+        "panel": "tags",
+        "tooltip": {
+          "zh": "标签管理",
+          "en": "Tag Manager"
+        },
+        "icon": {
+          "view_box": "0 0 24 24",
+          "stroke_paths": [
+            "M3 4h8l10 10-7 7L3 10Z",
+            "M7.5 7.5h.01"
+          ]
+        }
+      }
+    ],
+    "commands": [
+      {
+        "id": "show",
+        "title": {
+          "zh": "显示标签面板",
+          "en": "Show Tags Panel"
+        }
+      }
+    ],
+    "page_menu": [
+      {
+        "id": "show",
+        "command": "show",
+        "title": {
+          "zh": "显示标签面板",
+          "en": "Show Tags Panel"
+        },
+        "icon": {
+          "view_box": "0 0 24 24",
+          "stroke_paths": [
+            "M3 4h8l10 10-7 7L3 10Z",
+            "M7.5 7.5h.01"
+          ]
+        }
+      }
+    ]
+  },
+  "permission_reasons": {
+    "notes:read": {
+      "zh": "读取当前笔记属性，并按标签列出笔记。",
+      "en": "Read note properties and list notes by tag."
+    },
+    "notes:write": {
+      "zh": "仅在你修改当前笔记标签时写回 YAML。",
+      "en": "Write the current note when you change its YAML tags."
+    },
+    "events:note_saved": {
+      "zh": "笔记保存后刷新标签和使用次数。",
+      "en": "Refresh tags and counts after a note is saved."
+    },
+    "ui:commands": {
+      "zh": "从页面菜单打开标签面板。",
+      "en": "Open the tags panel from the page menu."
+    },
+    "ui:titlebar": {
+      "zh": "在窗口顶栏显示标签按钮。",
+      "en": "Add a tag button to the title bar."
+    },
+    "ui:panels": {
+      "zh": "在右侧面板列出、筛选和编辑标签。",
+      "en": "List, filter and edit tags in the right panel."
+    }
+  },
+  "surfaces": [
+    "settings_page"
+  ]
+}
