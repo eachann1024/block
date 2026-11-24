@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T05:23:25.406Z",
-  "latest_version": "1.0.922",
-  "latest_tag": "v1.0.922",
+  "updated_at": "2026-11-24T05:42:35.172Z",
+  "latest_version": "1.0.923",
+  "latest_tag": "v1.0.923",
   "releases": [
+    {
+      "version": "1.0.923",
+      "tag": "v1.0.923",
+      "published_at": "2026-11-24T05:42:34Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.923",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "菜单栏：执行菜单栏命令时，图标旁现在会即时显示运行状态与执行结果。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "菜单栏：修复了 macOS 下向菜单栏图标拖拽内容时未能正常接收拖拽事件的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Menu Bar: Command execution status and results are now displayed in real time next to the menu bar icon."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Menu Bar: The menu bar icon now reliably receives drag-and-drop events on macOS."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-macos-arm64.dmg",
+          "size": 15535504,
+          "sha256": "4b1fbbce35893703d6628b45a6a34cda82709817597d81512750adfa00f74140"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-macos-x64.dmg",
+          "size": 17112348,
+          "sha256": "31da2154b4933a899fe5491a79a33cabd8e4435672e55eeb75ea82e3423a1116"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-windows-x64-setup.exe",
+          "size": 12501875,
+          "sha256": "863091cddce6d7e8b5fc12a243605b03770f263b5e82eec586fcfac931710970"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-linux-x64.deb",
+          "size": 11042716,
+          "sha256": "53b63a6259bddcd9a4b6cd536ed30fa8b570fee3d6b5e9b9d429777a4dd40e0e"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-linux-x64.AppImage",
+          "size": 24021496,
+          "sha256": "6c85e82c02c5222a560588d8c941c1d39df03b5621a85576a4927ee9b5019d7a"
+        }
+      ]
+    },
     {
       "version": "1.0.922",
       "tag": "v1.0.922",
@@ -30,38 +90,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.922/block-macos-arm64.dmg",
-          "size": 15534082,
-          "sha256": "58b06d27758a5f2b1e743d8de99d1c3bdc5738f4b0579d8758a9d03581f1e936"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.922/block-macos-x64.dmg",
-          "size": 17108635,
-          "sha256": "1672bbdab35b5d71ddaa17939df511bedb57e1d4851b8b3ae4df5b4dfd72f6b4"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.922/block-windows-x64-setup.exe",
-          "size": 12500280,
-          "sha256": "9ab42c5ea810955d95a8f64a58a39ec35ae7354d90afdf1d28838c0946869a6f"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.922/block-linux-x64.deb",
-          "size": 11041562,
-          "sha256": "d81521cab97b8a484f5315c74cb7225845d0361ac3e1a60a914994dd347eb444"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.922/block-linux-x64.AppImage",
-          "size": 24017400,
-          "sha256": "f96053cdc2e2f5cbe10ead47de9d5a2e885b6a769be86af5fa8321bb83828e8e"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.921",
@@ -1424,31 +1453,6 @@
         "new": [
           "Add folder checklist lets users add notebooks with a plus button.",
           "Register plugin-picked folders as notebooks without switching."
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.873",
-      "tag": "v1.0.873",
-      "published_at": "2026-11-21T03:45:34Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.873",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "新增了一项提升日常记录与编辑效率的实用功能。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Tick block-sync scheduled sync."
         ],
         "improvements": [],
         "fixes": [],
