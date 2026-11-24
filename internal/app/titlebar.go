@@ -200,7 +200,6 @@ type TitlebarProps struct {
 
 	CanBack    bool
 	CanForward bool
-	Busy       bool
 
 	ShortcutSidebar    string
 	SidebarFloating    bool
@@ -382,10 +381,10 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 						IconSize:    16,
 						Tooltip:     theme.Tr("后退", "Back"),
 						Shortcut:    blockui.FormatShortcutDisplay("cmd-["),
-						Disabled:    p.Busy || !p.CanBack,
+						Disabled:    !p.CanBack,
 						ChromeHover: true,
 					})
-					if backBtn.Clicked() && !p.Busy && p.CanBack && p.OnBack != nil {
+					if backBtn.Clicked() && p.CanBack && p.OnBack != nil {
 						p.OnBack()
 					}
 					fwdBtn := blockui.IconButton(c, icons.ArrowRight, blockui.IconButtonOptions{
@@ -394,10 +393,10 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 						IconSize:    16,
 						Tooltip:     theme.Tr("前进", "Forward"),
 						Shortcut:    blockui.FormatShortcutDisplay("cmd-]"),
-						Disabled:    p.Busy || !p.CanForward,
+						Disabled:    !p.CanForward,
 						ChromeHover: true,
 					})
-					if fwdBtn.Clicked() && !p.Busy && p.CanForward && p.OnForward != nil {
+					if fwdBtn.Clicked() && p.CanForward && p.OnForward != nil {
 						p.OnForward()
 					}
 				})
@@ -453,10 +452,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					IconSize:    16,
 					Tooltip:     theme.Tr("新建标签页", "New Tab"),
 					Shortcut:    blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewTab, "cmd-t")),
-					Disabled:    p.Busy,
 					ChromeHover: true,
 				})
-				if newTabBtn.Clicked() && !p.Busy && p.OnNewNote != nil {
+				if newTabBtn.Clicked() && p.OnNewNote != nil {
 					p.OnNewNote()
 				}
 			}
