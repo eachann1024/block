@@ -451,8 +451,13 @@ func SetFindShortcut(spec string) {
 	findShortcut.Store(spec)
 }
 
+// FindShortcut returns the active find chord shared by note and source editors.
+func FindShortcut() string {
+	return findShortcut.Load().(string)
+}
+
 func (s *Session) isFindShortcut(mods ui.Modifiers, key ui.Key) bool {
-	m, k, ok := appUi.ParseShortcut(findShortcut.Load().(string))
+	m, k, ok := appUi.ParseShortcut(FindShortcut())
 	return ok && m == mods && k == key
 }
 
@@ -473,8 +478,26 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if s.previewMedia != nil {
 		return
 	}
-	if mods, key, ok := appUi.ParseShortcut(findShortcut.Load().(string)); ok && c.Shortcut(mods, key) {
+	if appUi.MatchShortcut(c, FindShortcut()) {
 		s.ToggleFind()
+	}
+	if appUi.MatchShortcut(c, appUi.FindReplaceShortcut()) {
+		s.OpenFindReplace()
+	}
+	if s.findOpen {
+		if theme.IsMacOS() {
+			if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyG) {
+				s.FindPrev()
+			} else if c.Shortcut(ui.Cmd, ui.KeyG) {
+				s.FindNext()
+			}
+		} else {
+			if c.Shortcut(ui.Shift, ui.KeyF3) {
+				s.FindPrev()
+			} else if c.Shortcut(0, ui.KeyF3) {
+				s.FindNext()
+			}
+		}
 	}
 	if !annotInputFocused && c.Shortcut(0, ui.KeyEscape) {
 		if s.dragBlockID != 0 {
@@ -894,8 +917,12 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 								}
 								appUi.AnimateSurfaceColors(delBtn, delBG, pal.Danger.Alpha(0.4), true)
 								appUi.TactileButton(delBtn, delHovered, delPressed, false)
+								delKeyHint := theme.Tr("再按 ⌫ 或点击", "Press ⌫ or click")
+								if !theme.IsMacOS() {
+									delKeyHint = theme.Tr("再按 Backspace 或点击", "Press Backspace or click")
+								}
 								appUi.TooltipTrigger(c, delBtn,
-									theme.Tr("再按 ⌫ 或点击", "Press ⌫ or click"),
+									delKeyHint,
 									theme.Tr("删除首行", "to delete first line"),
 									true,
 								)

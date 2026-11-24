@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"block/internal/app"
+	"block/internal/editor"
 	"block/internal/files"
 	"block/internal/installer"
 	"block/internal/modals"
@@ -214,6 +215,20 @@ func main() {
 			win.Close()
 		}
 	}
+	ws.OnQuitApp = func() {
+		mygo.App.Quit()
+	}
+
+	findInActiveView := func(replace bool) {
+		if ws.SearchWindow().IsFocused() {
+			return
+		}
+		if ws.QuickNote().IsFocused() {
+			ws.QuickNote().OpenFind(replace)
+			return
+		}
+		ws.TriggerFind(replace)
+	}
 
 	menuActions := app.MenuActions{
 		OnAbout: func() {
@@ -229,9 +244,7 @@ func main() {
 		OnPerformance: func() {
 			ws.Modals().OpenPerformance()
 		},
-		OnSettings: func() {
-			ws.OpenSettings("ai")
-		},
+		OnSettings: ws.ToggleSettings,
 		OnNewNote: func() {
 			_, _ = ws.CreateNewNote()
 		},
@@ -240,6 +253,16 @@ func main() {
 		},
 		OnNewTab: func() {
 			_, _ = ws.CreateNewNote()
+		},
+		OnOpenFolder: func() {
+			ws.ChooseNotebookDialog()
+		},
+		OnSave: func() {
+			if ws.QuickNote().IsFocused() {
+				_ = ws.QuickNote().Flush()
+				return
+			}
+			ws.SaveActiveDocument()
 		},
 		OnQuickNote: func() {
 			ws.QuickNote().Toggle()
@@ -271,16 +294,10 @@ func main() {
 		OnReopenTab: func() {
 			ws.ReopenClosedTab()
 		},
-		OnFind: func() {
-			if ws.QuickNote().IsFocused() {
-				ws.QuickNote().OpenFind()
-				return
-			}
-			if sess := ws.ActiveSession(); sess != nil {
-				sess.ToggleFind()
-				ws.RequestRedraw()
-			}
-		},
+		OnFind:             func() { findInActiveView(false) },
+		OnFindReplace:      func() { findInActiveView(true) },
+		OnCommandPalette:   ws.ToggleCommandPalette,
+		OnToggleFullScreen: ws.ToggleFullScreen,
 		OnToggleSidebar: func() {
 			ws.ToggleSidebar(0)
 		},
@@ -298,11 +315,7 @@ func main() {
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
 				return
 			}
-			if sess := ws.ActiveSession(); sess != nil && sess.HandleMindMapZoom(0) {
-				ws.RequestRedraw()
-				return
-			}
-			ws.ResetZoomPct()
+			ws.HandleZoomShortcut(0)
 		},
 		OnZoomIn: func() {
 			if ws.Modals().IsRecordingShortcut() {
@@ -315,11 +328,7 @@ func main() {
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
 				return
 			}
-			if sess := ws.ActiveSession(); sess != nil && sess.HandleMindMapZoom(1) {
-				ws.RequestRedraw()
-				return
-			}
-			ws.StepZoomPct(app.MainZoomStepPct)
+			ws.HandleZoomShortcut(1)
 		},
 		OnZoomOut: func() {
 			if ws.Modals().IsRecordingShortcut() {
@@ -332,11 +341,7 @@ func main() {
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
 				return
 			}
-			if sess := ws.ActiveSession(); sess != nil && sess.HandleMindMapZoom(-1) {
-				ws.RequestRedraw()
-				return
-			}
-			ws.StepZoomPct(-app.MainZoomStepPct)
+			ws.HandleZoomShortcut(-1)
 		},
 		OnNextTab: func() { ws.StepTab(1) },
 		OnPrevTab: func() { ws.StepTab(-1) },
@@ -363,6 +368,7 @@ func main() {
 	}
 
 	syncMenu := func(cur model.AppState) {
+		editor.SetFindShortcut(modals.EffectiveShortcut(cur, "find"))
 		actions := menuActions
 		if !ws.AI().Enabled() {
 			actions.OnToggleAIPanel = nil

@@ -985,13 +985,18 @@ func (q *QuickNoteController) Session() *editor.Session {
 	return q.sessions[q.activeSlot]
 }
 
-// OpenFind toggles the in-note find bar inside the active Quick Note slot.
-func (q *QuickNoteController) OpenFind() {
+// OpenFind triggers find or find-and-replace in the active Quick Note slot.
+func (q *QuickNoteController) OpenFind(replace bool) {
 	q.mu.Lock()
 	sess := q.sessions[q.activeSlot]
 	win := q.win
 	q.mu.Unlock()
-	if sess != nil {
+	if sess == nil {
+		return
+	}
+	if replace {
+		sess.OpenFindReplace()
+	} else {
 		sess.ToggleFind()
 	}
 	if win != nil {
@@ -1574,7 +1579,13 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 	sess := q.sessions[activeSlot]
 	q.mu.Unlock()
 
-	if c.Shortcut(ui.Cmd, ui.KeyW) {
+	if !theme.IsMacOS() && c.Shortcut(ui.Ctrl, ui.KeyQ) {
+		if mygo.App.IsReady() {
+			mygo.App.Quit()
+		}
+		return
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyW) || (!theme.IsMacOS() && c.Shortcut(ui.Ctrl, ui.KeyF4)) {
 		q.Hide()
 		return
 	}
@@ -1617,7 +1628,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 	zoom := q.currentZoom()
 	if c.Shortcut(ui.Cmd, ui.KeyEqual) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEqual) {
 		zoom = q.StepZoom(quickStepZoomPct)
-	} else if c.Shortcut(ui.Cmd, ui.KeyMinus) {
+	} else if c.Shortcut(ui.Cmd, ui.KeyMinus) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyMinus) {
 		zoom = q.StepZoom(-quickStepZoomPct)
 	} else if c.Shortcut(ui.Cmd, ui.Key0) {
 		zoom = q.ResetZoom()

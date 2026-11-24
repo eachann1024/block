@@ -107,6 +107,8 @@ type Workspace struct {
 	OnRevealMainWindow func()
 	// OnCloseMainWindow closes the main workspace window (hiding to background on macOS).
 	OnCloseMainWindow func()
+	// OnQuitApp requests full application exit (used by non-macOS Ctrl+Q fallback).
+	OnQuitApp func()
 
 	watchCancel         context.CancelFunc
 	persistWindowBounds bool
@@ -2888,6 +2890,19 @@ func (w *Workspace) OpenPluginStoreSource(source string) {
 	}
 }
 
+// ToggleSettings opens or closes preferences from the menu and keyboard.
+func (w *Workspace) ToggleSettings() {
+	if w.modals.IsRecordingShortcut() {
+		return
+	}
+	if w.modals.IsSettingsOpen() {
+		w.modals.CloseSettings()
+		w.RequestRedraw()
+		return
+	}
+	w.OpenSettings("ai")
+}
+
 func (w *Workspace) OpenSettings(tab string) {
 	wasOpen := w.modals.IsSettingsOpen()
 	w.tabMenu.Close()
@@ -5151,6 +5166,84 @@ func (w *Workspace) isAIPanelVisible(vpW float32) bool {
 	return layout.ChatDocked || w.edgeFloat.RightOpen()
 }
 
+// TriggerFind opens find (or find-and-replace) in the active document view:
+// Markdown source view -> external source/SVG TabSurface -> Markdown block editor.
+func (w *Workspace) TriggerFind(replace bool) bool {
+	if w.modals.IsSettingsOpen() || w.modals.HasActiveModal() || w.hasActivePluginModal() ||
+		w.palette.IsOpen() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() || w.sidebarUI.RenamingPath != "" {
+		return false
+	}
+	var handled bool
+	if activeTab := w.ActiveNotePath(); w.noteSourceActive(activeTab) {
+		handled = w.openNoteSourceFind()
+	} else if surf := w.ActiveSurface(); surf != nil {
+		handled = surf.OpenFind(replace)
+	} else if sess := w.ActiveSession(); sess != nil && !sess.IsLightboxOpen() && !sess.HasMindMapFullscreen() {
+		if replace {
+			sess.OpenFindReplace()
+		} else {
+			sess.ToggleFind()
+		}
+		handled = true
+	}
+	if handled {
+		w.RequestRedraw()
+	}
+	return handled
+}
+
+// ToggleCommandPalette toggles the command palette modal, dismissing transient popups first.
+func (w *Workspace) ToggleCommandPalette() {
+	if w.palette.IsOpen() {
+		w.palette.Close()
+		w.RequestRedraw()
+		return
+	}
+	if w.modals.IsSettingsOpen() || w.modals.HasActiveModal() || w.hasActivePluginModal() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() {
+		return
+	}
+	w.tabMenu.Close()
+	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
+	w.palette.Open()
+	w.RequestRedraw()
+}
+
+// SaveActiveDocument flushes dirty sessions and triggers the tarot save flash when active.
+func (w *Workspace) SaveActiveDocument() {
+	_ = w.FlushDirtySessions()
+	if theme.IsTarotMode() && w.tarot != nil {
+		w.tarot.TriggerSaveFlash()
+	}
+}
+
+// ToggleFullScreen toggles native full-screen mode on the main window.
+func (w *Workspace) ToggleFullScreen() {
+	if win := w.Window(); win != nil {
+		win.ToggleFullScreen()
+	}
+}
+
+// HandleZoomShortcut routes zoom shortcuts to the active mind map, image/SVG preview, or UI zoom.
+func (w *Workspace) HandleZoomShortcut(delta int) {
+	if sess := w.ActiveSession(); sess != nil && sess.HandleMindMapZoom(delta) {
+		w.RequestRedraw()
+		return
+	}
+	if surf := w.ActiveSurface(); surf != nil && surf.HandlePreviewZoom(delta) {
+		w.RequestRedraw()
+		return
+	}
+	switch {
+	case delta > 0:
+		w.StepZoomPct(MainZoomStepPct)
+	case delta < 0:
+		w.StepZoomPct(-MainZoomStepPct)
+	default:
+		w.ResetZoomPct()
+	}
+}
+
 func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 	if w.pluginsUI != nil && w.pluginsUI.IsStoreLightboxOpen() {
 		return
@@ -5183,7 +5276,7 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 	}
 
 	if w.modals.IsSearchOpen() {
-		if matchRaw("cmd-w") {
+		if matchRaw("cmd-w") || (!theme.IsMacOS() && c.Shortcut(ui.Ctrl, ui.KeyF4)) {
 			w.modals.CloseSearch()
 			return
 		}
@@ -5208,6 +5301,18 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		return
 	}
 
+	if !theme.IsMacOS() && c.Shortcut(0, ui.KeyF11) {
+		if !c.ShortcutRepeated() {
+			w.ToggleFullScreen()
+		}
+		return
+	}
+	if !theme.IsMacOS() && c.Shortcut(ui.Ctrl, ui.KeyQ) {
+		if w.OnQuitApp != nil {
+			w.OnQuitApp()
+		}
+		return
+	}
 	if matchAction("global_summon") {
 		if modals.MarkSearchTriggered() {
 			w.modals.OpenSearch(true)
@@ -5222,11 +5327,9 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.modals.OpenSearch(false)
 		return
 	}
-	if matchRaw("cmd-,") {
-		if w.modals.IsSettingsOpen() {
-			w.modals.CloseSettings()
-		} else {
-			w.OpenSettings("ai")
+	if matchRaw(blockui.SettingsShortcut) {
+		if !c.ShortcutRepeated() {
+			w.ToggleSettings()
 		}
 		return
 	}
@@ -5241,24 +5344,17 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.modals.ClosePerformance()
 		return
 	}
-	if w.palette.IsOpen() {
-		if matchRaw(blockui.DefaultCommandPaletteShortcut) {
-			w.palette.Close()
-		}
-		return
-	}
-	if w.modals.HasActiveModal() || w.hasActivePluginModal() {
+	if w.palette.IsOpen() || w.modals.HasActiveModal() || w.hasActivePluginModal() {
 		return
 	}
 	if theme.IsTarotMode() && w.tarot != nil && w.tarot.Room() != tarot.RoomWriting && c.Shortcut(0, ui.KeyEscape) {
 		w.tarot.BackToWriting()
 		return
 	}
-	if matchRaw(blockui.DefaultCommandPaletteShortcut) {
-		w.tabMenu.Close()
-		w.sidebarUI.ClosePopups()
-		w.edgeFloat.DismissAll(w)
-		w.palette.Open()
+	if matchRaw(blockui.DefaultCommandPaletteShortcut) || (!theme.IsMacOS() && c.Shortcut(0, ui.KeyF1)) {
+		if !c.ShortcutRepeated() {
+			w.ToggleCommandPalette()
+		}
 		return
 	}
 	if matchAction("performance") {
@@ -5285,13 +5381,27 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		_, _ = w.CreateNewFolder()
 		return
 	}
-	if matchRaw("cmd-w") {
+	if matchRaw("cmd-o") {
+		w.ChooseNotebookDialog()
+		return
+	}
+	if matchRaw("cmd-w") || (!theme.IsMacOS() && c.Shortcut(ui.Ctrl, ui.KeyF4)) {
 		w.CloseActiveTab()
 		return
 	}
 	if matchRaw("cmd-shift-t") {
 		w.ReopenClosedTab()
 		return
+	}
+	if w.sidebarUI.RenamingPath == "" {
+		if matchAction("find") {
+			w.TriggerFind(false)
+			return
+		}
+		if matchRaw(blockui.FindReplaceShortcut()) {
+			w.TriggerFind(true)
+			return
+		}
 	}
 	if matchAction("export_image") {
 		w.OpenExportStage()
@@ -5302,10 +5412,7 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		return
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyS) {
-		w.FlushDirtySessions()
-		if theme.IsTarotMode() && w.tarot != nil {
-			w.tarot.TriggerSaveFlash()
-		}
+		w.SaveActiveDocument()
 		return
 	}
 	if c.Shortcut(ui.Ctrl, ui.KeyTab) || c.Shortcut(ui.Ctrl, ui.KeyPageDown) ||
@@ -5377,7 +5484,7 @@ func (w *Workspace) handlePluginCommandShortcuts(c *ui.Context) {
 func isTextInputReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
 	if mods == ui.Cmd {
 		switch key {
-		case ui.KeyA, ui.KeyC, ui.KeyV, ui.KeyX, ui.KeyZ,
+		case ui.KeyA, ui.KeyC, ui.KeyV, ui.KeyX, ui.KeyY, ui.KeyZ,
 			ui.KeyBackspace, ui.KeyDelete, ui.KeyLeft, ui.KeyRight, ui.KeyUp, ui.KeyDown:
 			return true
 		}
@@ -5420,15 +5527,15 @@ func (w *Workspace) handleEditorZoomShortcuts(c *ui.Context) bool {
 		return false
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyEqual) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEqual) {
-		w.StepZoomPct(MainZoomStepPct)
+		w.HandleZoomShortcut(1)
 		return true
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyMinus) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyMinus) {
-		w.StepZoomPct(-MainZoomStepPct)
+		w.HandleZoomShortcut(-1)
 		return true
 	}
 	if c.Shortcut(ui.Cmd, ui.Key0) {
-		w.ResetZoomPct()
+		w.HandleZoomShortcut(0)
 		return true
 	}
 	return false

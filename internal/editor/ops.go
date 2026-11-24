@@ -5236,7 +5236,7 @@ func turnCmdForKind(kind model.BlockKind) (blockCmdKind, bool) {
 }
 
 func appendCommonHandleItems(items []blockMenuItem, idx, count int, hasFrontmatter bool) []blockMenuItem {
-	items = append(items, blockMenuItem{Kind: cmdDuplicate, Label: theme.Tr("复制块", "Duplicate"), Hint: "⌘D"})
+	items = append(items, blockMenuItem{Kind: cmdDuplicate, Label: theme.Tr("复制块", "Duplicate"), Hint: formatShortcutDisplay("⌘D", "Ctrl+D")})
 	minMoveIdx := 0
 	if hasFrontmatter {
 		minMoveIdx = 1
@@ -5248,7 +5248,7 @@ func appendCommonHandleItems(items []blockMenuItem, idx, count int, hasFrontmatt
 		items = append(items, blockMenuItem{Kind: cmdMoveDown, Label: theme.Tr("下移", "Move Down")})
 	}
 	items = append(items, blockMenuItem{Separator: true})
-	items = append(items, blockMenuItem{Kind: cmdDelete, Label: theme.Tr("删除", "Delete"), Hint: "⌫", Danger: true})
+	items = append(items, blockMenuItem{Kind: cmdDelete, Label: theme.Tr("删除", "Delete"), Hint: formatShortcutDisplay("⌫", "Del"), Danger: true})
 	return items
 }
 
@@ -5256,7 +5256,7 @@ func appendCommonHandleItems(items []blockMenuItem, idx, count int, hasFrontmatt
 func allHandleMenuItems(idx, count int, hasFrontmatter bool, b *model.Block) []blockMenuItem {
 	if hasFrontmatter && idx == 0 {
 		return []blockMenuItem{
-			{Kind: cmdDelete, Label: theme.Tr("删除", "Delete"), Hint: "⌫", Danger: true},
+			{Kind: cmdDelete, Label: theme.Tr("删除", "Delete"), Hint: formatShortcutDisplay("⌫", "Del"), Danger: true},
 		}
 	}
 	if b != nil {
@@ -5300,16 +5300,16 @@ func allHandleMenuItems(idx, count int, hasFrontmatter bool, b *model.Block) []b
 	}
 
 	items := []blockMenuItem{
-		{Kind: cmdTurnParagraph, Label: theme.Tr("正文", "Text"), Keywords: "text paragraph", Hint: "⌘⌥0"},
-		{Kind: cmdTurnH1, Label: theme.Tr("一级标题", "Heading 1"), Hint: "⌘⌥1"},
-		{Kind: cmdTurnH2, Label: theme.Tr("二级标题", "Heading 2"), Hint: "⌘⌥2"},
-		{Kind: cmdTurnH3, Label: theme.Tr("三级标题", "Heading 3"), Hint: "⌘⌥3"},
-		{Kind: cmdTurnBullet, Label: theme.Tr("无序列表", "Bulleted list"), Hint: "⌘⌥5"},
-		{Kind: cmdTurnNumbered, Label: theme.Tr("有序列表", "Numbered list"), Hint: "⌘⌥6"},
-		{Kind: cmdTurnTodo, Label: theme.Tr("待办清单", "Checklist"), Hint: "⌘⌥4"},
-		{Kind: cmdTurnQuote, Label: theme.Tr("引用", "Quote"), Hint: "⌘⌥9"},
+		{Kind: cmdTurnParagraph, Label: theme.Tr("正文", "Text"), Keywords: "text paragraph", Hint: formatShortcutDisplay("⌘⌥0", "Ctrl+Alt+0")},
+		{Kind: cmdTurnH1, Label: theme.Tr("一级标题", "Heading 1"), Hint: formatShortcutDisplay("⌘⌥1", "Ctrl+Alt+1")},
+		{Kind: cmdTurnH2, Label: theme.Tr("二级标题", "Heading 2"), Hint: formatShortcutDisplay("⌘⌥2", "Ctrl+Alt+2")},
+		{Kind: cmdTurnH3, Label: theme.Tr("三级标题", "Heading 3"), Hint: formatShortcutDisplay("⌘⌥3", "Ctrl+Alt+3")},
+		{Kind: cmdTurnBullet, Label: theme.Tr("无序列表", "Bulleted list"), Hint: formatShortcutDisplay("⌘⌥5", "Ctrl+Alt+5")},
+		{Kind: cmdTurnNumbered, Label: theme.Tr("有序列表", "Numbered list"), Hint: formatShortcutDisplay("⌘⌥6", "Ctrl+Alt+6")},
+		{Kind: cmdTurnTodo, Label: theme.Tr("待办清单", "Checklist"), Hint: formatShortcutDisplay("⌘⌥4", "Ctrl+Alt+4")},
+		{Kind: cmdTurnQuote, Label: theme.Tr("引用", "Quote"), Hint: formatShortcutDisplay("⌘⌥9", "Ctrl+Alt+9")},
 		{Kind: cmdCallout, Label: theme.Tr("标注", "Callout")},
-		{Kind: cmdCode, Label: theme.Tr("代码块", "Code Block"), Hint: "⌘⌥8"},
+		{Kind: cmdCode, Label: theme.Tr("代码块", "Code Block"), Hint: formatShortcutDisplay("⌘⌥8", "Ctrl+Alt+8")},
 		{Separator: true},
 	}
 	if b != nil {
@@ -5739,6 +5739,19 @@ func (s *Session) OpenFind() {
 		s.findQuery = seed
 	}
 	s.recomputeFind(true)
+}
+
+// OpenFindReplace shows the floating find bar with the replace row expanded.
+func (s *Session) OpenFindReplace() {
+	s.OpenFind()
+	if s.readOnly {
+		return
+	}
+	s.findReplaceOpen = true
+	if s.findQuery != "" {
+		s.findReplaceFocusPending = true
+		s.findFocusPending = false
+	}
 }
 
 func (s *Session) CloseFind() {

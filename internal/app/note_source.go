@@ -22,6 +22,13 @@ func (w *Workspace) noteSourceActive(tab string) bool {
 	return tab != "" && w.noteSource.st != nil && w.noteSource.tab == tab
 }
 
+func (w *Workspace) openNoteSourceFind() bool {
+	if w.noteSource.st == nil {
+		return false
+	}
+	return w.noteSource.st.Run(codeed.Find)
+}
+
 func (w *Workspace) toggleNoteSource(tab string, sess *editor.Session) {
 	if w.noteSourceActive(tab) || sess == nil {
 		w.noteSource = noteSourceView{}
@@ -51,6 +58,7 @@ func (w *Workspace) renderNoteSource(c *ui.Context) {
 	st.LineHeight = 1.54
 	st.SoftWrap = true
 	st.Theme = sourceEditorTheme(pal)
+	st.Bindings = sourceFindBindings(st.Bindings)
 
 	c.Key("note-source:" + w.noteSource.tab)
 	outer := ui.Column(c).Fill().Background(pal.Paper)

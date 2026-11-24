@@ -68,7 +68,7 @@ var shortcutActionSpecs = []shortcutActionSpec{
 	{action: "global_summon", buttonID: "settings-rec-search", def: defaultSearchShortcut, zh: "全局唤出", en: "Global Summon"},
 	{action: "quick_note", buttonID: "settings-rec-quick", def: defaultQuickShortcut, zh: "速记小窗", en: "Quick Note"},
 	{action: "search", buttonID: "settings-rec-inapp-search", def: "cmd-k", zh: "搜索笔记", en: "Search Notes"},
-	{action: "find", buttonID: "settings-keycap-find", def: "cmd-f", zh: "当前笔记查找", en: "Find in Note"},
+	{action: "find", buttonID: "settings-keycap-find", def: "cmd-f", zh: "页内查找", en: "Find in Page"},
 	{action: "new_note", buttonID: "settings-rec-new-note", def: "cmd-n", zh: "新建笔记", en: "New Note"},
 	{action: "toggle_sidebar", buttonID: "settings-rec-sidebar", def: "alt-b", zh: "显示或隐藏侧栏", en: "Toggle Sidebar"},
 	{action: "toggle_ai", buttonID: "settings-rec-ai", def: "cmd-j", zh: "AI Agent 面板", en: "AI Agent Panel"},
@@ -2383,7 +2383,7 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 				internalui.SettingsRow(c, theme.Tr("搜索笔记", "Search Notes"), func() {
 					m.shortcutRecorderTray(c, "settings-keycap-search", "search", EffectiveShortcut(st, "search"))
 				})
-				internalui.SettingsRow(c, theme.Tr("当前笔记查找", "Find in Note"), func() {
+				internalui.SettingsRow(c, theme.Tr("页内查找", "Find in Page"), func() {
 					m.shortcutRecorderTray(c, "settings-keycap-find", "find", EffectiveShortcut(st, "find"))
 				})
 				internalui.SettingsRow(c, theme.Tr("新建笔记", "New Note"), func() {
@@ -2399,6 +2399,9 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 				}
 				internalui.SettingsRow(c, theme.Tr("导出与生成图片", "Export & Image"), func() {
 					m.shortcutRecorderTray(c, "settings-keycap-export", "export_image", EffectiveShortcut(st, "export_image"))
+				})
+				internalui.SettingsRow(c, theme.Tr("偏好设置", "Settings"), func() {
+					internalui.ShortcutKeycap(c, internalui.SettingsShortcut)
 				})
 			})
 		}
@@ -2587,7 +2590,7 @@ func hotkeyParts(spec string) []string {
 	tokens := strings.Split(norm, "-")
 	keyTok := tokens[len(tokens)-1]
 	modToks := tokens[:len(tokens)-1]
-	var ctrl, alt, shift, cmd bool
+	var ctrl, alt, shift, cmd, win bool
 	for _, m := range modToks {
 		switch m {
 		case "ctrl":
@@ -2598,6 +2601,8 @@ func hotkeyParts(spec string) []string {
 			shift = true
 		case "cmd":
 			cmd = true
+		case "win":
+			win = true
 		}
 	}
 
@@ -2620,9 +2625,31 @@ func hotkeyParts(spec string) []string {
 	case "bracketright":
 		keyLabel = "]"
 	case "backspace":
-		keyLabel = "⌫"
+		if theme.IsMacOS() {
+			keyLabel = "⌫"
+		} else {
+			keyLabel = "Backspace"
+		}
+	case "delete":
+		keyLabel = "Del"
 	case "enter":
-		keyLabel = "↩"
+		if theme.IsMacOS() {
+			keyLabel = "↩"
+		} else {
+			keyLabel = "Enter"
+		}
+	case "escape":
+		keyLabel = "Esc"
+	case "tab":
+		keyLabel = "Tab"
+	case "left":
+		keyLabel = "←"
+	case "right":
+		keyLabel = "→"
+	case "up":
+		keyLabel = "↑"
+	case "down":
+		keyLabel = "↓"
 	case "\\", ";", "'", "`":
 		keyLabel = keyTok
 	}
@@ -2642,16 +2669,16 @@ func hotkeyParts(spec string) []string {
 			out = append(out, "⌘")
 		}
 	} else {
-		if ctrl {
+		if ctrl || cmd {
 			out = append(out, "Ctrl")
-		}
-		if shift {
-			out = append(out, "Shift")
 		}
 		if alt {
 			out = append(out, "Alt")
 		}
-		if cmd {
+		if shift {
+			out = append(out, "Shift")
+		}
+		if win {
 			if runtime.GOOS == "windows" {
 				out = append(out, "Win")
 			} else {
@@ -2754,11 +2781,10 @@ func (m *Manager) applyRecordedShortcut(action, spec string) {
 	m.recordingShortcut = ""
 	m.justRecordedPasses = 4
 	normNew := normalizeShortcutSpec(spec)
-	if IsPluginCommandShortcutAction(action) {
-		if mods, key, ok := internalui.ParseShortcut(spec); ok && internalui.IsHostReservedShortcut(mods, key) {
-			m.shortcutConflictNotice = theme.Tr("该快捷键为系统保留，请选择其他组合", "This shortcut is reserved by Block")
-			return
-		}
+	if mods, key, ok := internalui.ParseShortcut(spec); ok &&
+		(internalui.IsFixedAppShortcut(mods, key) || (IsPluginCommandShortcutAction(action) && internalui.IsHostReservedShortcut(mods, key))) {
+		m.shortcutConflictNotice = theme.Tr("该快捷键为系统保留，请选择其他组合", "This shortcut is reserved by Block")
+		return
 	}
 	var conflictMsg string
 	var pluginCmds []PluginCommandShortcut
@@ -2854,8 +2880,9 @@ func normalizeShortcutSpec(spec string) string {
 	if s == "" {
 		return ""
 	}
+	trailingMinus := strings.HasSuffix(s, "--") || strings.HasSuffix(s, "+-")
 	s = strings.ReplaceAll(s, "+", "-")
-	var ctrl, alt, shift, cmd bool
+	var ctrl, alt, shift, cmd, win bool
 	var keyPart string
 	for _, p := range strings.Split(s, "-") {
 		switch p {
@@ -2863,6 +2890,8 @@ func normalizeShortcutSpec(spec string) string {
 			continue
 		case "cmd", "cmdorctrl", "meta", "super", "command", "secondary":
 			cmd = true
+		case "win":
+			win = true
 		case "ctrl", "control":
 			ctrl = true
 		case "alt", "opt", "option":
@@ -2895,12 +2924,31 @@ func normalizeShortcutSpec(spec string) string {
 			keyPart = "enter"
 		case "esc", "escape":
 			keyPart = "escape"
+		case "del", "delete":
+			keyPart = "delete"
+		case "arrowleft", "left":
+			keyPart = "left"
+		case "arrowright", "right":
+			keyPart = "right"
+		case "arrowup", "up":
+			keyPart = "up"
+		case "arrowdown", "down":
+			keyPart = "down"
 		default:
 			keyPart = p
 		}
 	}
+	if trailingMinus && keyPart == "" {
+		keyPart = "minus"
+	}
 	if keyPart == "" {
 		return ""
+	}
+	if theme.IsMacOS() && win {
+		cmd, win = true, false
+	}
+	if !theme.IsMacOS() && ctrl {
+		cmd, ctrl = true, false
 	}
 	var parts []string
 	if ctrl {
@@ -2914,6 +2962,9 @@ func normalizeShortcutSpec(spec string) string {
 	}
 	if cmd {
 		parts = append(parts, "cmd")
+	}
+	if win {
+		parts = append(parts, "win")
 	}
 	parts = append(parts, keyPart)
 	return strings.Join(parts, "-")
@@ -2939,7 +2990,7 @@ func inputEventToShortcutSpec(ev ui.InputEvent) (string, bool) {
 		return "", false
 	}
 	var parts []string
-	if ev.Mods&ui.Ctrl != 0 {
+	if theme.IsMacOS() && ev.Mods&ui.Ctrl != 0 {
 		parts = append(parts, "ctrl")
 	}
 	if ev.Mods&ui.Alt != 0 {
@@ -2948,8 +2999,11 @@ func inputEventToShortcutSpec(ev ui.InputEvent) (string, bool) {
 	if ev.Mods&ui.Shift != 0 {
 		parts = append(parts, "shift")
 	}
-	if ev.Mods&ui.Super != 0 {
+	if ev.Mods&ui.Cmd != 0 {
 		parts = append(parts, "cmd")
+	}
+	if !theme.IsMacOS() && ev.Mods&ui.Super != 0 {
+		parts = append(parts, "win")
 	}
 	parts = append(parts, keyPart)
 	return strings.Join(parts, "-"), true
@@ -2965,6 +3019,16 @@ func shortcutKeyName(k ui.Key) string {
 		return "enter"
 	case ui.KeyBackspace:
 		return "backspace"
+	case ui.KeyDelete:
+		return "delete"
+	case ui.KeyLeft:
+		return "left"
+	case ui.KeyRight:
+		return "right"
+	case ui.KeyUp:
+		return "up"
+	case ui.KeyDown:
+		return "down"
 	case ui.KeyComma:
 		return "comma"
 	case ui.KeyPeriod:
