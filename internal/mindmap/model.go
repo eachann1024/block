@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"block/internal/theme"
 )
 
 // LayoutMode selects the branch expansion geometry.
@@ -32,6 +34,59 @@ const (
 	HeightStandard HeightMode = "standard"
 	HeightTall     HeightMode = "tall"
 )
+
+// LinkKind classifies a node's link target.
+type LinkKind uint8
+
+const (
+	LinkNone LinkKind = iota
+	LinkLocal
+	LinkWeb
+)
+
+// ClassifyLink classifies raw into LinkNone, LinkWeb (http/https/mailto), or LinkLocal.
+func ClassifyLink(raw string) LinkKind {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return LinkNone
+	}
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "mailto:") {
+		return LinkWeb
+	}
+	return LinkLocal
+}
+
+// LinkStatus describes the resolved visual state of a node's link.
+type LinkStatus uint8
+
+const (
+	LinkStatusNone LinkStatus = iota
+	LinkStatusValid
+	LinkStatusExternal
+	LinkStatusBroken
+)
+
+// ExportTheme chooses the palette used when exporting raster/PDF snapshots.
+type ExportTheme string
+
+const (
+	ExportThemeAuto  ExportTheme = "auto"
+	ExportThemeLight ExportTheme = "light"
+	ExportThemeDark  ExportTheme = "dark"
+)
+
+// ResolveExportPalette maps an ExportTheme to a concrete Ocean Paper palette.
+func ResolveExportPalette(mode ExportTheme) theme.Palette {
+	switch mode {
+	case ExportThemeLight:
+		return theme.OceanLight
+	case ExportThemeDark:
+		return theme.OceanDark
+	default:
+		return theme.Ocean()
+	}
+}
 
 // Config controls native mindmap rendering, synced from the block-mindmap plugin.
 type Config struct {
@@ -225,6 +280,195 @@ func (n *Node) CountStats() (nodes, tasks, links int) {
 	}
 	walk(n)
 	return
+}
+
+// CountTaskStats returns the total number of task nodes and completed tasks in the subtree.
+func (n *Node) CountTaskStats() (total, done int) {
+	if n == nil {
+		return 0, 0
+	}
+	var walk func(x *Node)
+	walk = func(x *Node) {
+		if x.Task != nil {
+			total++
+			if *x.Task {
+				done++
+			}
+		}
+		for _, ch := range x.Children {
+			walk(ch)
+		}
+	}
+	walk(n)
+	return
+}
+
+// ExpandAncestors unfolds every collapsed ancestor above n so n becomes visible.
+func ExpandAncestors(n *Node) {
+	if n == nil {
+		return
+	}
+	for p := n.Parent; p != nil; p = p.Parent {
+		p.Folded = false
+	}
+}
+
+// NextUndoneTask finds the next unchecked task node in DFS order after afterID,
+// wrapping around to the first unchecked task if needed.
+func NextUndoneTask(root *Node, afterID int) *Node {
+	if root == nil {
+		return nil
+	}
+	var undone []*Node
+	var walk func(x *Node)
+	walk = func(x *Node) {
+		if x.Task != nil && !*x.Task {
+			undone = append(undone, x)
+		}
+		for _, ch := range x.Children {
+			walk(ch)
+		}
+	}
+	walk(root)
+	if len(undone) == 0 {
+		return nil
+	}
+	if afterID != 0 {
+		for i, u := range undone {
+			if u.ID == afterID {
+				return undone[(i+1)%len(undone)]
+			}
+		}
+	}
+	return undone[0]
+}
+
+// FindMatches returns all nodes whose Text or Link matches query (case-insensitive) in DFS order.
+func FindMatches(root *Node, query string) []*Node {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if root == nil || q == "" {
+		return nil
+	}
+	var hits []*Node
+	var walk func(x *Node)
+	walk = func(x *Node) {
+		if strings.Contains(strings.ToLower(x.Text), q) || strings.Contains(strings.ToLower(x.Link), q) {
+			hits = append(hits, x)
+		}
+		for _, ch := range x.Children {
+			walk(ch)
+		}
+	}
+	walk(root)
+	return hits
+}
+
+// SourceIssue describes a syntax warning detected in mindmap Markdown source.
+type SourceIssue struct {
+	Line    int
+	Message string
+}
+
+// CheckSourceSyntax inspects raw mindmap Markdown source for common authoring mistakes
+// such as missing root topic, unclosed Markdown links, or malformed task markers.
+func CheckSourceSyntax(src string) []SourceIssue {
+	norm := strings.ReplaceAll(strings.ReplaceAll(src, "\r\n", "\n"), "\r", "\n")
+	if inner, ok := extractFencedMindMap(norm); ok {
+		norm = inner
+	}
+	lines := strings.Split(norm, "\n")
+	var issues []SourceIssue
+	hasContent := false
+	hasRootHeading := false
+	rootResolved := false
+	emptyRootReported := false
+
+	for idx, raw := range lines {
+		lineNo := idx + 1
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		hasContent = true
+		content := trimmed
+		if lvl, text, ok := parseHeadingLine(trimmed); ok {
+			if !rootResolved {
+				rootResolved = true
+				_, restText := parseTaskPrefix(text)
+				rootTitle, _ := parseInlineLink(restText)
+				if strings.TrimSpace(rootTitle) == "" {
+					emptyRootReported = true
+					issues = append(issues, SourceIssue{
+						Line:    lineNo,
+						Message: theme.Tr("中心主题标题为空，请在 # 后输入主题文字", "Central topic title is empty; add text after '#'"),
+					})
+				}
+			}
+			if lvl == 1 {
+				hasRootHeading = true
+			}
+			content = text
+		} else if _, item, ok := parseListLine(raw); ok {
+			if !rootResolved {
+				rootResolved = true
+			}
+			content = item
+			// Detect malformed task prefixes like "[] foo" or "[?] foo".
+			if strings.HasPrefix(content, "[]") && (len(content) == 2 || content[2] == ' ' || content[2] == '\t') {
+				issues = append(issues, SourceIssue{
+					Line:    lineNo,
+					Message: theme.Tr("任务语法缺少空格，应写为 [ ]", "Task checkbox needs a space: use [ ]"),
+				})
+			} else if len(content) >= 4 && content[0] == '[' && content[2] == ']' && (content[3] == ' ' || content[3] == '\t') {
+				ch := content[1]
+				if ch != ' ' && ch != 'x' && ch != 'X' {
+					issues = append(issues, SourceIssue{
+						Line:    lineNo,
+						Message: theme.Tr("无效任务标记，仅支持 [ ] 或 [x]", "Invalid task marker; use [ ] or [x]"),
+					})
+				}
+			}
+			_, content = parseTaskPrefix(content)
+		} else if !rootResolved {
+			rootResolved = true
+		}
+
+		// Detect unclosed Markdown link syntax like "[标题](路径" or "[标题](".
+		cTrim := strings.TrimSpace(content)
+		if strings.HasPrefix(cTrim, "[") {
+			if sep := strings.Index(cTrim, "]("); sep > 0 {
+				if !strings.HasSuffix(cTrim, ")") {
+					issues = append(issues, SourceIssue{
+						Line:    lineNo,
+						Message: theme.Tr("链接缺少闭合括号 )", "Unclosed link parenthesis ')'"),
+					})
+				} else if strings.TrimSpace(cTrim[sep+2:len(cTrim)-1]) == "" {
+					issues = append(issues, SourceIssue{
+						Line:    lineNo,
+						Message: theme.Tr("链接目标为空", "Link target is empty"),
+					})
+				}
+			} else if !strings.Contains(cTrim, "]") {
+				issues = append(issues, SourceIssue{
+					Line:    lineNo,
+					Message: theme.Tr("方括号 [ 未闭合", "Unclosed bracket '['"),
+				})
+			}
+		}
+	}
+
+	if !hasContent {
+		issues = append(issues, SourceIssue{
+			Line:    1,
+			Message: theme.Tr("内容为空，缺少中心主题（如 # 中心主题）", "Source is empty; add a root topic like # Central Topic"),
+		})
+	} else if !hasRootHeading && !emptyRootReported {
+		issues = append(issues, SourceIssue{
+			Line:    1,
+			Message: theme.Tr("建议第一行使用 # 标题 作为中心主题", "Tip: start with '# Topic' as the central root"),
+		})
+	}
+	return issues
 }
 
 // IsOpen reports whether node n has visible children.
