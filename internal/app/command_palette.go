@@ -186,26 +186,15 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 			BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
 			Children(func() {
 				icons.Draw(c, icons.FindSearch, theme.IconRow, pal.DuoIconColors(pal.TextSecondary))
-				ui.Box(c.Key("command-palette-input-wrap")).Grow(1).MinWidth(0).Height(30).Clip().Children(func() {
-					in = ui.TextInputBase(c.Key("command-palette-input"), &p.query).
-						FillWidth().Height(30).Padding(0).
-						Label(theme.Tr("命令面板", "Command Palette")).
-						FontSize(theme.FontEditor).FixedLineHeight(theme.LineTitle).
-						TextColor(pal.Text).CaretColor(pal.Accent).
-						Bind(&p.inputHandle).AutoFocus()
-					blockui.Probe(in, "command-palette-input")
-
-					if p.query == "" && !in.Composing() {
-						ui.Row(c.Key("command-palette-placeholder")).
-							Absolute().Top(0).Bottom(0).Left(theme.Space2).Right(0).
-							AlignItems(ui.Center).IgnoreInput(true).
-							Children(func() {
-								ui.Text(c, theme.Tr("输入命令名称…", "Type a command…")).
-									FontSize(theme.FontEditor).FixedLineHeight(theme.LineTitle).
-									TextColor(pal.Placeholder).SingleLine()
-							})
-					}
-				})
+				in = ui.TextInputBase(c.Key("command-palette-input"), &p.query).
+					Grow(1).MinWidth(0).Height(30).Padding(0).
+					Label(theme.Tr("命令面板", "Command Palette")).
+					Placeholder(theme.Tr("输入命令名称…", "Type a command…")).
+					PlaceholderColor(pal.Placeholder).
+					FontSize(theme.FontEditor).FixedLineHeight(theme.LineTitle).
+					TextColor(pal.Text).CaretColor(pal.Accent).CaretWidth(2).
+					Bind(&p.inputHandle).AutoFocus()
+				blockui.Probe(in, "command-palette-input")
 			})
 
 		if in.Valid() {

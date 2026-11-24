@@ -7014,7 +7014,7 @@ func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState, allowAutoF
 			FillWidth().Padding(0).Label(theme.Tr("新笔记标题", "New note title")).
 			Placeholder(theme.Tr("未命名", "Untitled")).PlaceholderColor(pal.ListBullet).
 			FontSize(theme.FontDisplay).FixedLineHeight(theme.LineDisplay).FontWeight(theme.WeightTitle).
-			TextColor(pal.Text).CaretColor(pal.Accent)
+			TextColor(pal.Text).CaretColor(pal.Accent).CaretWidth(2)
 		if allowAutoFocus {
 			in.AutoFocus()
 		}
