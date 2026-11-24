@@ -819,7 +819,7 @@ func renderStoreDetailRepoLink(c *ui.Context, repo string) {
 	}
 	bui.AnimateSurfaceColors(link, bg, ui.Transparent, false)
 	link.Children(func() {
-		icons.DrawAnimated(c, icons.TbLink, theme.IconInline, pal.MonoIconColors(pal.Link), link.Hovered() || link.Pressed())
+		icons.DrawAnimated(c, icons.TbLink, theme.IconInline, pal.TintedIconColors(pal.Link), link.Hovered() || link.Pressed())
 		ui.Text(c, repo).FontSize(theme.FontSmall).FixedLineHeight(theme.LineBody).TextColor(pal.Link).
 			SingleLine().Ellipsis("…").MinWidth(0)
 	})

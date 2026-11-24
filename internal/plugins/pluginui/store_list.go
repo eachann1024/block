@@ -114,7 +114,7 @@ func renderStoreRow(
 		}
 		ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
 			Radius(theme.RadiusLG).Background(iconBG).Border(1, iconBorder).Children(func() {
-			DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, iconColors)
+			DrawDuoSpecAnimated(c, entry.Icon, theme.StoreIconGlyphSize, iconColors, hovered || pressed)
 		})
 		ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
@@ -158,7 +158,7 @@ func renderStoreRowMeta(c *ui.Context, card storeCard, locale string, fadeBG ui.
 			FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 		dot()
 		ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
-			icons.Draw(c, icons.Download, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+			icons.Draw(c, icons.Download, theme.IconMicro, pal.DuoIconColors(pal.TextSecondary))
 			ui.Text(c, formatDownloadCount(card.downloads)).Font("monospace").FontSize(theme.FontMeta).
 				FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
 		})

@@ -31,7 +31,7 @@ type PluginNavEntry struct {
 	StatusDot bool
 	Starting  bool
 	HasError  bool
-	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors)
+	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors, active bool)
 }
 
 // PluginCommandShortcut describes one enabled plugin command whose shortcut

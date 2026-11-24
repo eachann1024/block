@@ -680,7 +680,7 @@ func renderItem(
 						bui.WrappedTooltip(c, pathBox, path)
 					}
 					pathBox.Children(func() {
-						icCol := pal.MonoIconColors(pal.TextSecondary)
+						icCol := pal.DuoIconColors(pal.TextSecondary)
 						displayPath := theme.Tr("未选择文件夹", "No folder selected")
 						if len(item.AcceptExtensions) > 0 {
 							displayPath = theme.Tr("未选择文件夹或归档", "No folder or archive selected")
@@ -1084,7 +1084,7 @@ func renderRowIcon(c *ui.Context, ic *plugins.UIIcon) {
 		return
 	}
 	pal := theme.Ocean()
-	DrawUIIcon(c, *ic, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+	DrawUIIcon(c, *ic, theme.IconRow, pal.DuoIconColors(pal.TextSecondary))
 }
 
 // renderIconSettingsRow is bui.SettingsRow with an optional leading icon.
@@ -1107,7 +1107,7 @@ func renderIconSettingsRow(c *ui.Context, ic *plugins.UIIcon, label string, cont
 // renderIconStrip draws a titlebar-like bar of right-aligned icons in their visible order.
 func renderIconStrip(c *ui.Context, item plugins.UIItem) {
 	pal := theme.Ocean()
-	colors := pal.MonoIconColors(pal.TextSecondary)
+	colors := pal.DuoIconColors(pal.TextSecondary)
 	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightLarge).Padding(theme.Space4, theme.Space8).
 		Radius(theme.RadiusMD).Background(pal.Sidebar).Border(1, pal.Hairline).
 		AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
@@ -1320,7 +1320,7 @@ func renderLogTimeline(
 						expanded = bindings.IsCardExpanded(spanStateKey, true)
 					}
 					ui.Column(c).Grow(1).MinWidth(0).PaddingY(theme.Space6).Children(func() {
-						card := ui.Column(c.Key(rowKey+"-span")).FillWidth().MinWidth(0).
+						card := ui.Column(c.Key(rowKey + "-span")).FillWidth().MinWidth(0).
 							Radius(theme.RadiusMD).Background(spanBG)
 						card.Children(func() {
 							var hdr ui.Element
@@ -1360,7 +1360,8 @@ func renderLogTimeline(
 									if expanded {
 										chev = icons.ChevronUp
 									}
-									icons.Draw(c, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+									hdrActive := hdr.Hovered() || hdr.Pressed()
+									icons.DrawAnimated(c, chev, theme.IconInline, pal.HoverIconColors(hdrActive), hdrActive)
 								}
 							})
 							if hasDetails && hdr.Clicked() && bindings != nil && bindings.ToggleCardExpanded != nil {
@@ -2476,7 +2477,7 @@ func renderChecklistItem(
 					bui.AnimateSurfaceColors(box, boxBG, boxBD, true)
 					box.Children(func() {
 						if checked {
-							icons.DrawAnimated(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.AccentText), hovered || pressed)
+							icons.DrawAnimated(c, icons.Check, theme.IconMicro, pal.MinimalIconColors(pal.AccentText), hovered || pressed)
 						}
 					})
 

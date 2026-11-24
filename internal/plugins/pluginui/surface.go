@@ -155,14 +155,15 @@ func (c *Controller) RenderSettingsSections(ctx *ui.Context, tab string, onSelec
 				var trail func()
 				if onSelectTab != nil {
 					trail = func() {
-						jump := ui.ButtonBase(ctx.Key("plugin-sec-jump-" + s.PluginID + "-" + s.ID)).
+						jump := ui.ButtonBase(ctx.Key("plugin-sec-jump-"+s.PluginID+"-"+s.ID)).
 							Padding(theme.Space2, theme.Space6).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
 							Label(theme.Tr("前往插件设置", "Open plugin settings"))
 						if jump.Hovered() {
 							jump.Background(pal.Hover)
 						}
 						jump.Children(func() {
-							icons.Draw(ctx, icons.TbChevronRight, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+							jumpActive := jump.Hovered() || jump.Pressed()
+							icons.DrawAnimated(ctx, icons.TbChevronRight, theme.IconMicro, pal.HoverIconColors(jumpActive), jumpActive)
 						})
 						if jump.Clicked() {
 							onSelectTab(modals.TabPluginPrefix + s.PluginID)
@@ -202,8 +203,8 @@ func (c *Controller) RenderSidebarSections(ctx *ui.Context) {
 					Radius(theme.RadiusLG).Background(pal.Paper).Border(1, pal.Hairline)
 				bui.Probe(card, key)
 				card.Children(func() {
-					headerRow := func() {
-						DrawDuoSpec(ctx, s.Icon, theme.IconRow, pal.DuoIconColors(pal.Text))
+					headerRow := func(hdrActive bool) {
+						DrawDuoSpecAnimated(ctx, s.Icon, theme.IconRow, pal.DuoIconColors(pal.Text), hdrActive)
 						ui.Text(ctx, s.Title).
 							FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 							FontWeight(theme.WeightTitle).TextColor(pal.Text).
@@ -213,7 +214,7 @@ func (c *Controller) RenderSidebarSections(ctx *ui.Context) {
 							if expanded {
 								chev = icons.ChevronDown
 							}
-							icons.Draw(ctx, chev, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+							icons.DrawAnimated(ctx, chev, theme.IconMicro, pal.HoverIconColors(hdrActive), hdrActive)
 						}
 					}
 					if s.Collapsible {
@@ -227,14 +228,15 @@ func (c *Controller) RenderSidebarSections(ctx *ui.Context) {
 							bg = pal.Hover
 						}
 						bui.AnimateSurfaceColors(hdr, bg, ui.Transparent, false)
-						hdr.Children(headerRow)
+						hdrActive := hdr.Hovered() || hdr.Pressed()
+						hdr.Children(func() { headerRow(hdrActive) })
 						if hdr.Clicked() && bindings != nil && bindings.ToggleCardExpanded != nil {
 							bindings.ToggleCardExpanded("__sidebar_sec__:"+s.ID, s.DefaultCollapsed)
 						}
 					} else {
 						ui.Row(ctx.Key(key+"-hdr")).FillWidth().Height(theme.HeightControl).
 							Padding(0, theme.Space8).Gap(theme.Space8).AlignItems(ui.Center).
-							Children(headerRow)
+							Children(func() { headerRow(false) })
 					}
 					if expanded {
 						c.renderSurface(ctx, s.PluginID, s.Surface, s.Title)

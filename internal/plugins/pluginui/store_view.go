@@ -434,11 +434,11 @@ func renderStoreCardAction(
 		return actionHandled, actionHovered
 	}
 	if card.isInstalled {
-		ui.Row(c.Key("app-store-installed-"+entry.ID)).
+		ui.Row(c.Key("app-store-installed-" + entry.ID)).
 			MinWidth(theme.StoreCardActionWidth).Height(theme.HeightCompact).
 			PaddingX(theme.Space6).Gap(theme.Space4).Radius(theme.RadiusMD).
 			Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Children(func() {
-			icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+			icons.Draw(c, icons.Check, theme.IconMicro, pal.MinimalIconColors(pal.TextSecondary))
 			ui.Text(c, theme.Tr("已安装", "Installed")).FontSize(theme.FontSmall).
 				FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).
 				TextColor(pal.TextSecondary).SingleLine()
@@ -570,20 +570,20 @@ func buildStoreEntries(catalog *plugins.StoreIndex, installed []plugins.Installe
 		}
 		seen[id] = true
 		all = append(all, plugins.StoreAppEntry{
-			App:            inst.Manifest.App,
-			ID:             id,
-			Category:       inst.Manifest.EffectiveCategory(),
-			Name:           inst.Manifest.Name,
-			Version:        inst.Manifest.Version,
-			Beta:           inst.Manifest.Beta,
-			Author:         inst.Manifest.Author,
-			Repo:           inst.Manifest.Repo,
+			App:               inst.Manifest.App,
+			ID:                id,
+			Category:          inst.Manifest.EffectiveCategory(),
+			Name:              inst.Manifest.Name,
+			Version:           inst.Manifest.Version,
+			Beta:              inst.Manifest.Beta,
+			Author:            inst.Manifest.Author,
+			Repo:              inst.Manifest.Repo,
 			Summary:           inst.Manifest.Summary,
 			Permissions:       inst.Manifest.Permissions,
 			PermissionReasons: plugins.ClonePermissionReasons(inst.Manifest.PermissionReasons),
 			Surfaces:          inst.Manifest.Surfaces,
-			FileExtensions: inst.Manifest.DisplayFileExtensions(),
-			Icon:           inst.Manifest.Icon,
+			FileExtensions:    inst.Manifest.DisplayFileExtensions(),
+			Icon:              inst.Manifest.Icon,
 		})
 	}
 	return all

@@ -64,7 +64,7 @@ func (c *Controller) RenderTitlebarLeading(ctx *ui.Context, tab string, _ func(n
 			}
 			bui.AnimateSurfaceColors(backBtn, bg, ui.Transparent, false)
 			backBtn.Children(func() {
-				icons.Draw(ctx, icons.ChevronLeft, theme.IconInline, pal.MonoIconColors(fg))
+				icons.DrawAnimated(ctx, icons.ChevronLeft, theme.IconInline, pal.HoverIconColors(hov || prs), hov || prs)
 				ui.Text(ctx, theme.Tr("应用商店", "App Store")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 					TextColor(fg).SingleLine()
 			})
@@ -96,7 +96,7 @@ func (c *Controller) RenderTitlebarLeading(ctx *ui.Context, tab string, _ func(n
 		title = inst.Manifest.Name.Resolve(c.sup.Locale())
 		isBeta = inst.Manifest.Beta
 	}
-	row := ui.Row(ctx.Key("plugin-tb-crumb-"+pluginID)).Fill().MinWidth(0).AlignItems(ui.Center).Gap(theme.Space6).PaddingX(theme.Space6).DragWindow()
+	row := ui.Row(ctx.Key("plugin-tb-crumb-" + pluginID)).Fill().MinWidth(0).AlignItems(ui.Center).Gap(theme.Space6).PaddingX(theme.Space6).DragWindow()
 	row.Children(func() {
 		ui.Text(ctx, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 		ui.Text(ctx, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
@@ -136,7 +136,7 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 		return
 	}
 	busy := installingID == entry.ID
-	ui.Row(ctx.Key("store-detail-tb-actions-"+entry.ID)).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
+	ui.Row(ctx.Key("store-detail-tb-actions-" + entry.ID)).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
 		if !isInstalled {
 			lbl := theme.Tr("安装", "Install")
 			if busy {
@@ -190,11 +190,11 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 		if installedApp.Manifest.HasSettingsPage() {
 			slidersIc := icons.Sliders
 			openBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
-				ID:       "app-store-detail-open",
-				Label:    theme.Tr("打开设置", "Open Settings"),
-				Leading:  &slidersIc,
-				Style:    bui.ButtonPrimary,
-				Height:   theme.HeightCompact,
+				ID:      "app-store-detail-open",
+				Label:   theme.Tr("打开设置", "Open Settings"),
+				Leading: &slidersIc,
+				Style:   bui.ButtonPrimary,
+				Height:  theme.HeightCompact,
 			})
 			if openBtn.Clicked() && onSelectTab != nil {
 				c.CloseTitlebarOverlays()
@@ -265,7 +265,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 	vpW, _ := ctx.Size()
 	narrowTitlebar := vpW > 0 && vpW < 860
 
-	ui.Row(ctx.Key("plugin-tb-controls-"+pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
+	ui.Row(ctx.Key("plugin-tb-controls-" + pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 		hasLeadingContent := false
 
 		// ② Status slot: strictly 1 item following priority:
@@ -278,7 +278,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			// Progress is integrated directly into the running primary action control.
 		case starting:
 			hasLeadingContent = true
-			ui.Row(ctx.Key("plugin-tb-starting-"+pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
+			ui.Row(ctx.Key("plugin-tb-starting-" + pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 				ui.Spinner(ctx).FontSize(theme.IconInline).TextColor(pal.Accent).Label(theme.Tr("启动中", "Starting"))
 				ui.Text(ctx, theme.Tr("启动中…", "Starting…")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 					TextColor(pal.TextSecondary).SingleLine()
@@ -310,7 +310,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 		switch {
 		case uninstBusy:
 			hasLeadingContent = true
-			ui.Row(ctx.Key("plugin-tb-uninstalling-"+pluginID)).Height(theme.HeightChrome).PaddingX(theme.Space8).
+			ui.Row(ctx.Key("plugin-tb-uninstalling-" + pluginID)).Height(theme.HeightChrome).PaddingX(theme.Space8).
 				Gap(theme.Space6).Radius(theme.RadiusSM).Background(pal.DangerSurface).
 				AlignItems(ui.Center).Shrink(0).Children(func() {
 				ui.Spinner(ctx).FontSize(theme.IconInline).TextColor(pal.Danger).Label(theme.Tr("卸载中", "Uninstalling"))
@@ -417,7 +417,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 func (c *Controller) renderTitlebarErrorPill(ctx *ui.Context, pluginID, label, detail string) {
 	pal := theme.Ocean()
 	open := c.titlebarErrOpen && c.titlebarErrPluginID == pluginID
-	btn := ui.ButtonBase(ctx.Key("plugin-tb-error-"+pluginID)).Height(theme.HeightChrome).
+	btn := ui.ButtonBase(ctx.Key("plugin-tb-error-" + pluginID)).Height(theme.HeightChrome).
 		PaddingX(theme.Space8).Gap(theme.Space6).AlignItems(ui.Center).
 		Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Shrink(0).Label(label)
 	hov := btn.Hovered()
@@ -492,7 +492,7 @@ func (c *Controller) renderTitlebarPendingStatus(ctx *ui.Context, pluginID strin
 	if pluginID == "block-sync" {
 		suffix = theme.Tr(" 项待同步", " pending sync")
 	}
-	ui.Row(ctx.Key("plugin-tb-pending-"+pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
+	ui.Row(ctx.Key("plugin-tb-pending-" + pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 		ui.Box(ctx).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).
 			Radius(theme.RadiusPill).Background(pal.Accent).Shrink(0)
 		ui.Row(ctx).Gap(0).AlignItems(ui.Center).Children(func() {
@@ -559,7 +559,7 @@ func renderTitlebarGhostAction(ctx *ui.Context, opts titlebarGhostActionOpts) ui
 	}
 	btn.Children(func() {
 		if opts.Leading != nil {
-			icons.DrawAnimated(ctx, *opts.Leading, theme.IconInline, pal.MonoIconColors(fg), hov || prs)
+			icons.DrawAnimated(ctx, *opts.Leading, theme.IconInline, pal.DuoIconColors(fg), hov || prs)
 		}
 		ui.Text(ctx, opts.Label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 			FontWeight(theme.WeightControl).TextColor(fg).MaxWidth(150).SingleLine().Ellipsis("…")
@@ -839,7 +839,7 @@ func (c *Controller) renderTitlebarErrorPopover(ctx *ui.Context, tab string, _ f
 	maxH := bui.MaxHeightForSpec(spec, vpW, vpH, 320)
 	ox, oy := bui.ResolveOrigin(spec, popW, min(float32(200), maxH), vpW, vpH)
 
-	card := bui.PopoverSurface(ui.Column(ctx.Key("plugin-tb-err-popover-"+pluginID)).
+	card := bui.PopoverSurface(ui.Column(ctx.Key("plugin-tb-err-popover-" + pluginID)).
 		Absolute().Left(ox).Top(oy).Width(popW).MaxHeight(maxH).Padding(theme.Space16).Gap(theme.Space10).
 		Role(ui.RoleDialog))
 	bui.Probe(card, "plugin-tb-err-popover-"+pluginID)
@@ -1335,13 +1335,13 @@ func (c *Controller) openInstalledPluginReadme(inst plugins.InstalledApp) {
 		return
 	}
 	synthetic := plugins.StoreAppEntry{
-		ID:          inst.Manifest.ID,
-		Category:    inst.Manifest.EffectiveCategory(),
-		Name:        inst.Manifest.Name,
-		Summary:     inst.Manifest.Summary,
-		Version:     inst.Manifest.Version,
-		Author:      inst.Manifest.Author,
-		Repo:        inst.Manifest.Repo,
+		ID:                inst.Manifest.ID,
+		Category:          inst.Manifest.EffectiveCategory(),
+		Name:              inst.Manifest.Name,
+		Summary:           inst.Manifest.Summary,
+		Version:           inst.Manifest.Version,
+		Author:            inst.Manifest.Author,
+		Repo:              inst.Manifest.Repo,
 		Beta:              inst.Manifest.Beta,
 		Permissions:       inst.Manifest.Permissions,
 		PermissionReasons: plugins.ClonePermissionReasons(inst.Manifest.PermissionReasons),
