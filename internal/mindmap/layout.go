@@ -17,6 +17,8 @@ const (
 	layoutRootH       float32 = 40
 	layoutPrimaryH    float32 = 30
 	layoutLeafH       float32 = 24
+	layoutRootLineH   float32 = 21
+	layoutBranchLineH float32 = 18
 	layoutLeafGap     float32 = 3
 	layoutTaskBox     float32 = 13
 	layoutTaskGap     float32 = 5
@@ -91,9 +93,13 @@ func validMeasurer(tm TextMeasurer) TextMeasurer {
 	return tm
 }
 
-// MeasureCache caches estimated or measured node widths so repeated pan/zoom frames are O(1).
+type nodeSize struct {
+	w, h float32
+}
+
+// MeasureCache caches estimated or measured node sizes so repeated pan/zoom frames are O(1).
 type MeasureCache struct {
-	widths       map[measureKey]float32
+	sizes        map[measureKey]nodeSize
 	overrideID   int
 	overrideText string
 }
@@ -108,7 +114,7 @@ func (mc *MeasureCache) SetTextOverride(nodeID int, text string) {
 	mc.overrideText = text
 }
 
-// ClearTextOverride removes any active inline editing width override.
+// ClearTextOverride removes any active inline editing size override.
 func (mc *MeasureCache) ClearTextOverride() {
 	if mc == nil {
 		return
@@ -125,29 +131,53 @@ type measureKey struct {
 
 // MeasureNodeWidth returns the horizontal DIP width of node n, caching by (text, depth, hasTask).
 func (mc *MeasureCache) MeasureNodeWidth(n *Node, tm TextMeasurer) float32 {
+	w, _ := mc.MeasureNodeSize(n, tm)
+	return w
+}
+
+// MeasureNodeSize returns the DIP (width, height) of node n, supporting multi-line text.
+func (mc *MeasureCache) MeasureNodeSize(n *Node, tm TextMeasurer) (float32, float32) {
 	tm = validMeasurer(tm)
 	text := n.Text
 	if mc != nil && mc.overrideID != 0 && n.ID == mc.overrideID {
 		text = mc.overrideText
 	}
 	if mc == nil {
-		return estimateNodeWidthText(text, n.Depth, n.Task != nil, tm)
+		return estimateNodeSizeText(text, n.Depth, n.Task != nil, tm)
 	}
-	if mc.widths == nil {
-		mc.widths = make(map[measureKey]float32, 64)
+	if mc.sizes == nil {
+		mc.sizes = make(map[measureKey]nodeSize, 64)
 	}
 	k := measureKey{text: text, depth: min(n.Depth, 2), hasTask: n.Task != nil}
-	if w, ok := mc.widths[k]; ok {
-		return w
+	if sz, ok := mc.sizes[k]; ok {
+		return sz.w, sz.h
 	}
-	if len(mc.widths) > 8192 {
-		clear(mc.widths)
+	if len(mc.sizes) > 8192 {
+		clear(mc.sizes)
 	}
-	w := estimateNodeWidthText(text, n.Depth, n.Task != nil, tm)
+	w, h := estimateNodeSizeText(text, n.Depth, n.Task != nil, tm)
 	if tm != nil {
-		mc.widths[k] = w
+		mc.sizes[k] = nodeSize{w: w, h: h}
 	}
-	return w
+	return w, h
+}
+
+func nodeBaseHeight(depth int) float32 {
+	switch depth {
+	case 0:
+		return layoutRootH
+	case 1:
+		return layoutPrimaryH
+	default:
+		return layoutLeafH
+	}
+}
+
+func nodeLineHeight(depth int) float32 {
+	if depth == 0 {
+		return layoutRootLineH
+	}
+	return layoutBranchLineH
 }
 
 func nodeFontSize(depth int) float32 {
@@ -168,32 +198,41 @@ func nodeFontWeight(depth int) int {
 	}
 }
 
-func estimateNodeWidthText(text string, depth int, hasTask bool, tm TextMeasurer) float32 {
-	if text == "" {
-		text = " "
-	}
-	var textW float32
-	if tm != nil {
-		sz := nodeFontSize(depth)
-		wt := nodeFontWeight(depth)
-		textW, _ = tm.MeasureText(0, ui.Span{Text: text, Size: sz, Weight: wt})
-	} else {
-		// Fast deterministic fallback when measuring outside a TextMeasurer (e.g. hit-tests or tests).
-		sz := nodeFontSize(depth)
-		var units float32
-		for _, r := range text {
-			switch {
-			case unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) || (r >= 0xFF00 && r <= 0xFFEF):
-				units += 1.02
-			case r == ' ':
-				units += 0.34
-			case unicode.IsUpper(r):
-				units += 0.68
-			default:
-				units += 0.56
-			}
+func fallbackLineWidth(line string, sz float32) float32 {
+	var units float32
+	for _, r := range line {
+		switch {
+		case unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) || (r >= 0xFF00 && r <= 0xFFEF):
+			units += 1.02
+		case r == ' ':
+			units += 0.34
+		case unicode.IsUpper(r):
+			units += 0.68
+		default:
+			units += 0.56
 		}
-		textW = units * sz
+	}
+	return units * sz
+}
+
+func estimateNodeSizeText(text string, depth int, hasTask bool, tm TextMeasurer) (float32, float32) {
+	lines := strings.Split(text, "\n")
+	sz := nodeFontSize(depth)
+	wt := nodeFontWeight(depth)
+	var textW float32
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		var lw float32
+		if tm != nil {
+			lw, _ = tm.MeasureText(0, ui.Span{Text: line, Size: sz, Weight: wt})
+		} else {
+			lw = fallbackLineWidth(line, sz)
+		}
+		if lw > textW {
+			textW = lw
+		}
 	}
 	var padX float32
 	switch depth {
@@ -213,7 +252,9 @@ func estimateNodeWidthText(text string, depth int, hasTask bool, tm TextMeasurer
 	} else if depth == 1 {
 		minW = 54
 	}
-	return max(float32(math.Ceil(float64(textW+padX))), minW)
+	w := max(float32(math.Ceil(float64(textW+padX))), minW)
+	h := nodeBaseHeight(depth) + float32(max(len(lines)-1, 0))*nodeLineHeight(depth)
+	return w, h
 }
 
 // ComputeLayout performs an O(N) MindNode-style tree layout and returns the world bounding box.
@@ -229,15 +270,7 @@ func ComputeLayout(root *Node, mode LayoutMode, tm TextMeasurer, mc *MeasureCach
 		n.Parent = parent
 		n.Depth = depth
 		n.Branch = branch
-		switch depth {
-		case 0:
-			n.H = layoutRootH
-		case 1:
-			n.H = layoutPrimaryH
-		default:
-			n.H = layoutLeafH
-		}
-		n.W = mc.MeasureNodeWidth(n, tm)
+		n.W, n.H = mc.MeasureNodeSize(n, tm)
 		for i, ch := range n.Children {
 			b := branch
 			if depth == 0 {
@@ -352,7 +385,7 @@ func ComputeLayout(root *Node, mode LayoutMode, tm TextMeasurer, mc *MeasureCach
 			bounds.MaxX = max(bounds.MaxX, bx+layoutFoldRadius+2)
 			by := n.Y
 			if n.Depth > 1 {
-				by = n.Y + layoutLeafH/2
+				by = n.Y + n.H/2
 			}
 			bounds.MinY = min(bounds.MinY, by-layoutFoldRadius-2)
 			bounds.MaxY = max(bounds.MaxY, by+layoutFoldRadius+2)
@@ -408,7 +441,7 @@ func HitTest(root *Node, wx, wy float32) HitResult {
 			}
 			by := n.Y
 			if n.Depth > 1 {
-				by = n.Y + layoutLeafH/2
+				by = n.Y + n.H/2
 			}
 			dx, dy := wx-bx, wy-by
 			r := layoutFoldRadius + 4
@@ -424,7 +457,7 @@ func HitTest(root *Node, wx, wy float32) HitResult {
 		if wx >= n.X-2 && wx <= n.X+n.W+2 && wy >= top && wy <= bot {
 			if n.Task != nil {
 				tx := nodeContentLeft(n)
-				ty := nodeTextCenterY(n)
+				ty := nodeFirstLineCenterY(n)
 				if wx >= tx-3 && wx <= tx+layoutTaskBox+4 && wy >= ty-layoutTaskBox/2-3 && wy <= ty+layoutTaskBox/2+3 {
 					hit = HitResult{Kind: HitCheckbox, Node: n}
 					return true
@@ -516,6 +549,12 @@ func nodeTextCenterY(n *Node) float32 {
 	return n.Y
 }
 
+func nodeFirstLineCenterY(n *Node) float32 {
+	lineH := nodeLineHeight(n.Depth)
+	textBlockH := max(n.H-(nodeBaseHeight(n.Depth)-lineH), lineH)
+	return nodeTextCenterY(n) - textBlockH*0.5 + lineH*0.5
+}
+
 // PaintOptions configures how PaintScene renders a mind map onto a ui.Painter.
 type PaintOptions struct {
 	SelectedID int
@@ -589,7 +628,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				}
 				py := par.Y
 				if par.Depth > 1 {
-					py = par.Y + layoutLeafH/2
+					py = par.Y + par.H/2
 				}
 				nx := n.X + n.W
 				if d > 0 {
@@ -597,7 +636,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				}
 				ny := n.Y
 				if n.Depth > 1 {
-					ny = n.Y + layoutLeafH/2
+					ny = n.Y + n.H/2
 				}
 
 				edgeMinX := min(px, min(n.X, n.X+n.W))
@@ -674,7 +713,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				}
 				by := n.Y
 				if n.Depth > 1 {
-					by = n.Y + layoutLeafH/2
+					by = n.Y + n.H/2
 				}
 				if max(startX, bx) >= visMinX && min(startX, bx) <= visMaxX && by >= visMinY && by <= visMaxY {
 					bc := branches[0]
@@ -714,9 +753,10 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 
 				pad := float32(3) * scale
 				ringR := ui.Rect{X: sx - pad, Y: sy - pad, W: sw + pad*2, H: sh + pad*2}
+				rootRad := min(sh*0.5, layoutRootH*0.5*scale)
 				ringRad := theme.RadiusLG * scale
 				if n.Depth == 0 {
-					ringRad = ringR.H * 0.5
+					ringRad = rootRad + pad
 				}
 
 				leafR := ui.Rect{X: sx, Y: sy, W: sw, H: max((n.H-layoutLeafGap)*scale, 1)}
@@ -731,11 +771,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						if pal.Dark {
 							haloAlpha = 0.30
 						}
-						p.Fill(haloR, pal.Accent.Alpha(haloAlpha), haloR.H*0.5)
-						p.Fill(rect, pal.Text, sh*0.5)
-						p.Stroke(rect, pal.Accent, sh*0.5, max(1.5*scale, 1.2))
+						p.Fill(haloR, pal.Accent.Alpha(haloAlpha), rootRad+haloW)
+						p.Fill(rect, pal.Text, rootRad)
+						p.Stroke(rect, pal.Accent, rootRad, max(1.5*scale, 1.2))
 					} else {
-						p.Fill(rect, pal.Text, sh*0.5)
+						p.Fill(rect, pal.Text, rootRad)
 					}
 				case 1:
 					rad := theme.RadiusMD * scale
@@ -828,8 +868,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				tx := nodeContentLeft(n)
 				ty := nodeTextCenterY(n)
 				if n.Task != nil {
+					cbCenterY := nodeFirstLineCenterY(n)
 					cbX := wxToScreen(tx)
-					cbY := wyToScreen(ty - layoutTaskBox/2)
+					cbY := wyToScreen(cbCenterY - layoutTaskBox/2)
 					cbS := layoutTaskBox * scale
 					cbR := ui.Rect{X: cbX, Y: cbY, W: cbS, H: cbS}
 					cbRad := float32(3.5) * scale
@@ -881,18 +922,28 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						if n.Depth > 1 && isSelected {
 							wt = theme.WeightControl
 						}
-						sp := ui.Span{
-							Text:   n.Text,
-							Size:   fontSize,
-							Weight: wt,
-							Color:  txtColor,
+						lines := strings.Split(n.Text, "\n")
+						lineH := nodeLineHeight(n.Depth) * scale
+						totalH := float32(len(lines)) * lineH
+						textTop := wyToScreen(ty) - totalH*0.5
+						for i, line := range lines {
+							if line == "" {
+								continue
+							}
+							sp := ui.Span{
+								Text:   line,
+								Size:   fontSize,
+								Weight: wt,
+								Color:  txtColor,
+							}
+							tw, th := p.MeasureText(0, sp)
+							drawX := wxToScreen(tx)
+							if n.Task == nil {
+								drawX = sx + (sw-tw)*0.5
+							}
+							lineCenterY := textTop + (float32(i)+0.5)*lineH
+							p.RichText(drawX, lineCenterY-th*0.5, 0, sp)
 						}
-						tw, th := p.MeasureText(0, sp)
-						drawX := wxToScreen(tx)
-						if n.Task == nil {
-							drawX = sx + (sw-tw)*0.5
-						}
-						p.RichText(drawX, wyToScreen(ty)-th*0.5, 0, sp)
 					}
 				}
 
@@ -921,7 +972,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				}
 				by := n.Y
 				if n.Depth > 1 {
-					by = n.Y + layoutLeafH/2
+					by = n.Y + n.H/2
 				}
 				if bx+layoutFoldRadius >= visMinX && bx-layoutFoldRadius <= visMaxX && by+layoutFoldRadius >= visMinY && by-layoutFoldRadius <= visMaxY {
 					bc := branches[0]
@@ -977,7 +1028,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 			}
 
 			// Floating ghost pill following pointer.
-			label := strings.TrimSpace(draggedNode.Text)
+			label := strings.ReplaceAll(strings.TrimSpace(draggedNode.Text), "\n", " ")
 			if label == "" {
 				label = " "
 			}
