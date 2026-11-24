@@ -12,6 +12,6 @@ func configureDetachedProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
 
-func launchWindowsElevatedInstaller(_ string) error {
+func launchWindowsUpdater(_ string) error {
 	return errors.New("windows installer launch is not supported on this platform")
 }
