@@ -87,22 +87,65 @@ func launchWindowsUpdater(exePath string) error {
 // windowsUpdaterPlan builds silent NSIS parameters (/S /UPDATE [/ALLUSERS]
 // [/D=<dir>]) and reports whether UAC elevation is required. NSIS reads /D=
 // verbatim to the end of the command line, so /D= stays last and unquoted.
+// Scope is determined from the executable path and Uninstall registry before
+// checking uninstall.exe, so a machine-wide install (e.g. Program Files) with a
+// missing uninstall.exe still requests elevation and updates in place.
 func windowsUpdaterPlan() (params string, needUAC bool) {
 	exe, err := os.Executable()
 	if err != nil || strings.TrimSpace(exe) == "" {
+		if def := defaultWindowsUserInstallDir(); def != "" {
+			return "/S /UPDATE /D=" + def, false
+		}
 		return "/S /UPDATE", false
 	}
 	dir := cleanWinDir(filepath.Dir(exe))
-	if _, err := os.Stat(filepath.Join(dir, "uninstall.exe")); err != nil {
-		// Standalone/portable binary without an installer record: install
-		// silently into the default per-user directory without UAC.
-		return "/S /UPDATE", false
-	}
-	machine := isWindowsMachineInstalledDir(dir) || isWindowsUnderProgramFiles(dir) || !canWriteWindowsDir(dir)
-	if machine {
+	if isWindowsMachineInstalledDir(dir) || isWindowsUnderProgramFiles(dir) {
 		return "/S /UPDATE /ALLUSERS /D=" + dir, !isWindowsAdmin()
 	}
-	return "/S /UPDATE /D=" + dir, false
+	_, hasUninstErr := os.Stat(filepath.Join(dir, "uninstall.exe"))
+	if hasUninstErr == nil || isWindowsUserInstalledDir(dir) {
+		if !canWriteWindowsDir(dir) {
+			return "/S /UPDATE /D=" + dir, !isWindowsAdmin()
+		}
+		return "/S /UPDATE /D=" + dir, false
+	}
+	// Truly standalone/portable binary with no install record and outside
+	// Program Files: pass the default per-user directory explicitly so NSIS
+	// never redirects into an unrelated machine-wide install without UAC.
+	if def := defaultWindowsUserInstallDir(); def != "" {
+		return "/S /UPDATE /D=" + def, false
+	}
+	return "/S /UPDATE", false
+}
+
+func defaultWindowsUserInstallDir() string {
+	localAppData := strings.TrimSpace(os.Getenv("LOCALAPPDATA"))
+	if localAppData == "" {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+	}
+	if localAppData == "" {
+		return ""
+	}
+	return cleanWinDir(filepath.Join(localAppData, "Programs", "Block"))
+}
+
+// consumeLastUpdateError reads and clears any error message recorded by a
+// previous failed silent /UPDATE run so the restarted app can surface why the
+// update did not complete.
+func consumeLastUpdateError() string {
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Block`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return ""
+	}
+	defer k.Close()
+	val, _, err := k.GetStringValue("LastUpdateError")
+	if err != nil {
+		return ""
+	}
+	_ = k.DeleteValue("LastUpdateError")
+	return strings.TrimSpace(val)
 }
 
 func cleanWinDir(dir string) string {
@@ -142,6 +185,36 @@ func isWindowsUnderDir(dir, base string) bool {
 func isWindowsUnderProgramFiles(dir string) bool {
 	for _, env := range []string{"ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"} {
 		if isWindowsUnderDir(dir, os.Getenv(env)) {
+			return true
+		}
+	}
+	return false
+}
+
+// isWindowsUserInstalledDir checks HKCU uninstall entries to detect an
+// existing per-user installation even if uninstall.exe is missing.
+func isWindowsUserInstalledDir(dir string) bool {
+	normDir := strings.ToLower(cleanWinDir(dir))
+	if normDir == "" {
+		return false
+	}
+	uninstKey, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return false
+	}
+	names, _ := uninstKey.ReadSubKeyNames(-1)
+	uninstKey.Close()
+	for _, name := range names {
+		if name != "Block" && !strings.HasPrefix(name, "Block-") {
+			continue
+		}
+		k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Uninstall\`+name, registry.QUERY_VALUE)
+		if err != nil {
+			continue
+		}
+		loc, _, locErr := k.GetStringValue("InstallLocation")
+		k.Close()
+		if locErr == nil && strings.ToLower(cleanWinDir(loc)) == normDir {
 			return true
 		}
 	}

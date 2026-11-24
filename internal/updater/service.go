@@ -150,6 +150,11 @@ func NewService(cfg Config) *Service {
 	if os.Getenv("BLOCK_MOCK_UPDATE") == "1" {
 		s.installMockUpdate()
 	}
+	if lastErr := consumeLastUpdateError(); lastErr != "" {
+		s.status = StatusError
+		s.errorMsg = lastErr
+		logError("update.previous_install_failed", "reason", lastErr)
+	}
 	return s
 }
 

@@ -15,3 +15,7 @@ func configureDetachedProcess(cmd *exec.Cmd) {
 func launchWindowsUpdater(_ string) error {
 	return errors.New("windows installer launch is not supported on this platform")
 }
+
+func consumeLastUpdateError() string {
+	return ""
+}
