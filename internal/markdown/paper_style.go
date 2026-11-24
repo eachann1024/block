@@ -7,11 +7,13 @@ import "github.com/egoist/mygo/ui"
 // Each field's zero value is the plain look the legacy Ocean export uses, so a
 // spec without a Style renders as before.
 type PaperStyle struct {
-	Substrate []SubstrateLayer
-	Ornaments []Ornament
-	Meta      MetaStyle
-	Title     TitleStyle
-	Heading   HeadingStyle
+	Substrate  []SubstrateLayer
+	Ornaments  []Ornament
+	Meta       MetaStyle
+	Title      TitleStyle
+	NoTitleBar NoTitleBarStyle
+	Lead       LeadStyle
+	Heading    HeadingStyle
 	Sub       SubHeadStyle
 	Inline    InlineStyle
 	Quote     QuoteStyle
@@ -62,18 +64,20 @@ const (
 	OrnamentStamp                             // Text tilted by Angle, right edge X from the page's, at Y
 	OrnamentSeal                              // ring of diameter W holding Text over Text2, tilted by Angle
 	OrnamentTape                              // washi strip W×H centred X from the page centre, at Y
+	OrnamentRegMarks                          // corner print registration crosshairs (+) at top-left and top-right
 )
 
 type Ornament struct {
-	Kind          OrnamentKind
-	Color, Color2 ui.Color
-	X, Y, W, H    float32
-	Angle         float32
-	Text, Text2   string // templates, see expandTemplate
-	Family        string
-	Size          float32
-	Italic        bool
-	Track         float32 // em
+	Kind              OrnamentKind
+	Color, Color2     ui.Color
+	X, Y, W, H        float32
+	Angle             float32
+	Text, Text2       string // templates, see expandTemplate
+	Family            string
+	Size              float32
+	Italic            bool
+	Track             float32 // em
+	BottomWhenNoTitle bool    // relocate to bottom-right when showTitle is false instead of hiding
 }
 
 // MetaRule frames the meta line.
@@ -128,7 +132,10 @@ type TitleStyle struct {
 	Leading  float32 // 0 = 1.3
 	Center   bool
 	Prefix   string // e.g. "# "
-	MaxLines int    // shrink the title until it fits; 0 = no limit
+	TopRule  bool   // hairline above the title (Press)
+	TopTick  ui.Color
+	Moon     bool // crescent icon aligned before the title (Night)
+	MaxLines int  // shrink the title until it fits; 0 = no limit
 	MinSize  float32
 	// RuleWidth is the rule / wave length as a fraction of the measure (0 = full).
 	RuleWidth float32
@@ -138,6 +145,35 @@ type TitleStyle struct {
 	Glow      ui.Color
 	// Accent styles the title's last word (Poster block, Neon glowing word).
 	Accent *TitleAccent
+}
+
+// NoTitleBarKind draws a restrained geometric header skeleton when ShowTitle is false.
+type NoTitleBarKind uint8
+
+const (
+	NoTitleBarNone       NoTitleBarKind = iota
+	NoTitleBarDiamond                   // hairline — ◆ — hairline (Mono, Ink)
+	NoTitleBarOverprint                 // offset two-ink bars (Riso)
+	NoTitleBarDoubleRule                // 3px + 1px newspaper double rule (Press)
+	NoTitleBarSplitBar                  // bold 4:1 two-tone bar (Poster)
+	NoTitleBarRing                      // small ring + hairline (Kraft)
+	NoTitleBarGradient                  // subtle gradient edge along the card top (Neon)
+	NoTitleBarTickRule                  // short accent tick + hairline (Film)
+	NoTitleBarMoonRule                  // crescent icon + subtle hairline (Night)
+)
+
+type NoTitleBarStyle struct {
+	Kind     NoTitleBarKind
+	Color    ui.Color
+	Color2   ui.Color
+	Centered bool
+}
+
+// LeadStyle styles a short single-line paragraph immediately preceding a list.
+type LeadStyle struct {
+	Color  ui.Color
+	Family string
+	Weight int
 }
 
 type TitleAccent struct {
@@ -496,7 +532,7 @@ const (
 )
 
 type FooterStyle struct {
-	Left, Center, Right string // templates; all empty = "Block" / date
+	Left, Center, Right string // templates; all empty = "cooool.top" / date
 	Rule                FooterRule
 	RuleColor           ui.Color // 0 = Divider
 	Family              string

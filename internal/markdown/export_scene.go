@@ -30,16 +30,31 @@ type metaScene struct {
 }
 
 type titleScene struct {
-	present   bool
-	x, y, w   float32
-	h         float32
-	fontSize  float32
-	layout    *ui.TextLayout
-	color     ui.Color
-	mark      TitleMark
-	ruleWidth float32
-	ruleThick float32
-	ruleCol   ui.Color
+	present      bool
+	x, y, w      float32
+	textX, textY float32
+	h            float32
+	bottomY      float32
+	fontSize     float32
+	layout       *ui.TextLayout
+	color        ui.Color
+	mark         TitleMark
+	topRule      bool
+	topTick      ui.Color
+	moon         bool
+	ruleWidth    float32
+	ruleThick    float32
+	ruleCol      ui.Color
+}
+
+type noTitleBarScene struct {
+	present  bool
+	kind     NoTitleBarKind
+	x, y, w  float32
+	h        float32
+	color    ui.Color
+	color2   ui.Color
+	centered bool
 }
 
 type footerScene struct {
@@ -57,9 +72,10 @@ type footerScene struct {
 }
 
 type ornamentScene struct {
-	spec     Ornament
-	textLay  *ui.TextLayout
-	text2Lay *ui.TextLayout
+	spec      Ornament
+	textLay   *ui.TextLayout
+	text2Lay  *ui.TextLayout
+	relocated bool
 }
 
 type paintedBlock struct {
@@ -169,12 +185,15 @@ type exportScene struct {
 	contentWidth  float32
 	pal           PaperThemeSpec
 	legacy        bool
+	showTitle     bool
+	bodyBottom    float32
 	cardRect      ui.Rect
 	cardLabelLay  *ui.TextLayout
 	sections      []ui.Rect
 	ornaments     []ornamentScene
 	meta          metaScene
 	title         titleScene
+	noTitleBar    noTitleBarScene
 	blocks        []paintedBlock
 	footer        footerScene
 }
@@ -350,9 +369,10 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 	bodyBlocks := projectExportPreviews(exportBodyBlocks(doc.Blocks, title, showTitle))
 
 	sc := exportScene{
-		width:  pageW,
-		pal:    pal,
-		legacy: legacy,
+		width:     pageW,
+		pal:       pal,
+		legacy:    legacy,
+		showTitle: showTitle,
 	}
 
 	st := layoutCounters{imagePixels: maxExportImagePixels}
@@ -367,28 +387,17 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 		sc.marginLeft = padLeft
 		sc.contentWidth = contentW
 
-		y := pal.PadTop
-		// Partition bodyBlocks into runs delimited by H2 headings.
-		var runs [][]model.Block
-		var intro []model.Block
-		idx := 0
-		for idx < len(bodyBlocks) && bodyBlocks[idx].Kind != model.BlockHeading2 {
-			intro = append(intro, bodyBlocks[idx])
-			idx++
-		}
-		hasIntroCard := showTitle || len(intro) > 0 || len(bodyBlocks) == 0
-		for idx < len(bodyBlocks) {
-			start := idx
-			idx++
-			for idx < len(bodyBlocks) && bodyBlocks[idx].Kind != model.BlockHeading2 {
-				idx++
-			}
-			runs = append(runs, bodyBlocks[start:idx])
-		}
+		y := effectivePadTop(pal, legacy, showTitle)
+		intro, runs := partitionSectionCards(bodyBlocks, showTitle)
+		hasIntroCard := showTitle || len(intro) > 0 || (len(bodyBlocks) == 0 && len(runs) == 0)
 
 		if hasIntroCard {
 			cardTop := y
-			y += sec.PadY
+			cardPadY := sec.PadY
+			if showTitle && len(intro) == 0 {
+				cardPadY = minFloat32(sec.PadY, 24)
+			}
+			y += cardPadY
 			if showTitle {
 				if ms, adv := buildMetaScene(pal, vars, padLeft, y, contentW); ms.present {
 					sc.meta = ms
@@ -399,13 +408,13 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 				if len(intro) > 0 {
 					y += adv
 				} else {
-					y += ts.h + 4
+					y = ts.bottomY
 				}
 			}
 			if len(intro) > 0 {
 				y = appendSceneBlocks(ctx, &sc, intro, notePath, padLeft, y, contentW, pal, legacy, &st, false)
 			}
-			y += sec.PadY
+			y += cardPadY
 			sc.sections = append(sc.sections, ui.Rect{X: cardX, Y: cardTop, W: cardW, H: y - cardTop})
 		}
 
@@ -416,12 +425,14 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 			if len(sc.sections) > 0 {
 				y += sec.Gap
 			}
+			st.num = listNumbering{}
 			cardTop := y
 			y += sec.PadY
 			y = appendSceneBlocks(ctx, &sc, run, notePath, padLeft, y, contentW, pal, legacy, &st, true)
 			y += sec.PadY
 			sc.sections = append(sc.sections, ui.Rect{X: cardX, Y: cardTop, W: cardW, H: y - cardTop})
 		}
+		sc.bodyBottom = y
 
 		if showFooter {
 			gap := orF(pal.Style.Footer.Gap, 24)
@@ -449,15 +460,19 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 			}
 		}
 		cardTop := y
-		y = cardTop + pal.PadTop
+		y = cardTop + effectivePadTop(pal, legacy, showTitle)
 		if showTitle {
 			ts, adv := buildTitleScene(pal, legacy, title, padLeft, y, contentW)
 			sc.title = ts
+			y += adv
+		} else if nb, adv := buildNoTitleBarScene(pal, legacy, padLeft, y, contentW); nb.present {
+			sc.noTitleBar = nb
 			y += adv
 		}
 		if len(bodyBlocks) > 0 {
 			y = appendSceneBlocks(ctx, &sc, bodyBlocks, notePath, padLeft, y, contentW, pal, legacy, &st, false)
 		}
+		sc.bodyBottom = y
 		cardBottom := y + pal.PadBottom
 		sc.cardRect = ui.Rect{X: inset, Y: cardTop, W: outerW, H: maxFloat32(cardBottom-cardTop, 80)}
 		y = cardTop + sc.cardRect.H
@@ -472,7 +487,11 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 		sc.height = maxFloat32(y+inset, 160)
 
 	default:
-		padTop, padRight, padBottom, padLeft := pal.Margins()
+		_, padRight, padBottom, padLeft := pal.Margins()
+		padTop := effectivePadTop(pal, legacy, showTitle)
+		if pal.Card != nil {
+			padTop += pal.Card.top()
+		}
 		contentW := pageW - padLeft - padRight
 		sc.marginLeft = padLeft
 		sc.contentWidth = contentW
@@ -488,10 +507,15 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 			ts, adv := buildTitleScene(pal, legacy, title, padLeft, y, contentW)
 			sc.title = ts
 			y += adv
+		} else if nb, adv := buildNoTitleBarScene(pal, legacy, padLeft, y, contentW); nb.present {
+			sc.noTitleBar = nb
+			y += adv
 		}
 		if len(bodyBlocks) > 0 {
 			y = appendSceneBlocks(ctx, &sc, bodyBlocks, notePath, padLeft, y, contentW, pal, legacy, &st, false)
 		}
+		sc.bodyBottom = y
+		y += relocatedOrnamentClearance(pal, legacy, showTitle)
 		if showFooter {
 			gap := float32(28)
 			if !legacy {
@@ -529,13 +553,77 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 	return sc
 }
 
+func relocatedOrnamentClearance(pal PaperThemeSpec, legacy, showTitle bool) float32 {
+	if legacy || showTitle {
+		return 0
+	}
+	var extra float32
+	for _, o := range pal.Style.Ornaments {
+		if !o.BottomWhenNoTitle {
+			continue
+		}
+		switch o.Kind {
+		case OrnamentSeal:
+			extra = maxFloat32(extra, 68)
+		case OrnamentStamp:
+			extra = maxFloat32(extra, 32)
+		}
+	}
+	return extra
+}
+
+func buildNoTitleBarScene(pal PaperThemeSpec, legacy bool, x, y, w float32) (noTitleBarScene, float32) {
+	nb := pal.Style.NoTitleBar
+	if legacy || nb.Kind == NoTitleBarNone {
+		return noTitleBarScene{}, 0
+	}
+	out := noTitleBarScene{
+		present:  true,
+		kind:     nb.Kind,
+		x:        x,
+		y:        y,
+		w:        w,
+		color:    orC(nb.Color, pal.Accent),
+		color2:   orC(nb.Color2, pal.Divider),
+		centered: nb.Centered,
+	}
+	switch nb.Kind {
+	case NoTitleBarGradient:
+		return out, 0
+	case NoTitleBarDiamond:
+		out.h = 12
+		return out, 34
+	case NoTitleBarOverprint:
+		out.h = 10
+		return out, 32
+	case NoTitleBarDoubleRule:
+		out.h = 7
+		return out, 30
+	case NoTitleBarSplitBar:
+		out.h = 6
+		return out, 30
+	case NoTitleBarRing:
+		out.h = 10
+		return out, 30
+	case NoTitleBarTickRule:
+		out.h = 4
+		return out, 28
+	case NoTitleBarMoonRule:
+		out.h = 16
+		return out, 34
+	default:
+		return noTitleBarScene{}, 0
+	}
+}
+
 func buildOrnaments(pal PaperThemeSpec, vars templateVars, pageH float32, showTitle bool) []ornamentScene {
 	out := make([]ornamentScene, 0, len(pal.Style.Ornaments))
 	for _, o := range pal.Style.Ornaments {
-		if !showTitle && (o.Kind == OrnamentStamp || o.Kind == OrnamentSeal) {
+		if !showTitle && (o.Kind == OrnamentStamp || o.Kind == OrnamentSeal) && !o.BottomWhenNoTitle {
 			continue
 		}
-		os := ornamentScene{spec: o}
+		relocated := !showTitle && o.BottomWhenNoTitle && (o.Kind == OrnamentStamp || o.Kind == OrnamentSeal)
+		os := ornamentScene{spec: o, relocated: relocated}
 		fam := orS(o.Family, pal.BodyFamily)
 		sz := orF(o.Size, 12)
 		switch o.Kind {
@@ -551,6 +639,9 @@ func buildOrnaments(pal PaperThemeSpec, vars templateVars, pageH float32, showTi
 			}}, f, ui.TextShape{Width: maxFloat32(pageH-o.Y, 400)})
 		case OrnamentStamp:
 			txt := vars.expand(o.Text)
+			if relocated {
+				sz = maxFloat32(sz-2, 16)
+			}
 			f := ui.Font{Family: fam, Size: sz, Italic: o.Italic, LineHeight: 1.2}
 			os.textLay = ui.ShapeRichTextWith([]ui.Span{{
 				Text:          txt,
@@ -562,7 +653,13 @@ func buildOrnaments(pal PaperThemeSpec, vars templateVars, pageH float32, showTi
 		case OrnamentSeal:
 			t1 := vars.expand(o.Text)
 			t2 := vars.expand(o.Text2)
+			sealW := orF(o.W, 88)
 			s1 := orF(o.Size, 16)
+			if relocated {
+				sealW = minFloat32(sealW, 76)
+				s1 = maxFloat32(s1-2, 14)
+			}
+			os.spec.W = sealW
 			f1 := ui.Font{Family: fam, Size: s1, Weight: 600, LineHeight: 1.1}
 			os.textLay = ui.ShapeRichTextWith([]ui.Span{{
 				Text:          t1,
@@ -570,7 +667,7 @@ func buildOrnaments(pal PaperThemeSpec, vars templateVars, pageH float32, showTi
 				Size:          s1,
 				Weight:        600,
 				LetterSpacing: 0.08 * s1,
-			}}, f1, ui.TextShape{Width: o.W, Align: ui.Center})
+			}}, f1, ui.TextShape{Width: sealW, Align: ui.Center})
 			if t2 != "" {
 				f2 := ui.Font{Family: fontMono, Size: 9, LineHeight: 1.1}
 				os.text2Lay = ui.ShapeRichTextWith([]ui.Span{{
@@ -578,7 +675,7 @@ func buildOrnaments(pal PaperThemeSpec, vars templateVars, pageH float32, showTi
 					Font:          fontMono,
 					Size:          9,
 					LetterSpacing: 0.9,
-				}}, f2, ui.TextShape{Width: o.W, Align: ui.Center})
+				}}, f2, ui.TextShape{Width: sealW, Align: ui.Center})
 			}
 		}
 		out = append(out, os)
@@ -702,12 +799,27 @@ func buildTitleScene(pal PaperThemeSpec, legacy bool, title string, x, y, w floa
 		align = ui.Center
 	}
 
+	textX := x
+	textW := w
+	textY := y
+	if !legacy {
+		if ts.TopRule {
+			textY += 18
+		} else if ts.TopTick.A > 0 {
+			textY += 16
+		}
+		if ts.Moon {
+			textX += 34
+			textW = maxFloat32(w-34, 80)
+		}
+	}
+
 	minSz := orF(ts.MinSize, 36)
 	var tLay *ui.TextLayout
 	for {
 		spans := buildTitleSpans(pal, legacy, title, fam, sz, weight)
 		tFont := ui.Font{Family: fam, Size: sz, Weight: weight, LineHeight: lead}
-		tLay = ui.ShapeRichTextWith(spans, tFont, ui.TextShape{Width: w, Align: align})
+		tLay = ui.ShapeRichTextWith(spans, tFont, ui.TextShape{Width: textW, Align: align})
 		if legacy || ts.MaxLines <= 0 || len(tLay.Lines()) <= ts.MaxLines || sz <= minSz {
 			break
 		}
@@ -720,17 +832,23 @@ func buildTitleScene(pal PaperThemeSpec, legacy bool, title string, x, y, w floa
 		x:         x,
 		y:         y,
 		w:         w,
+		textX:     textX,
+		textY:     textY,
 		h:         th,
 		fontSize:  sz,
 		layout:    tLay,
 		color:     pal.Title,
 		mark:      pal.Mark,
+		topRule:   !legacy && ts.TopRule,
+		topTick:   ts.TopTick,
+		moon:      !legacy && ts.Moon,
 		ruleWidth: ts.RuleWidth,
 		ruleThick: ts.RuleThick,
 		ruleCol:   ts.RuleColor,
 	}
 
 	if legacy {
+		out.bottomY = textY + th + 16
 		return out, th + 14 + 24
 	}
 	markH := float32(0)
@@ -751,8 +869,9 @@ func buildTitleScene(pal PaperThemeSpec, legacy bool, title string, x, y, w floa
 		markH = 44
 		defGap = 52
 	}
+	out.bottomY = textY + th + markH
 	gap := orF(ts.Gap, defGap)
-	return out, th + markH + gap
+	return out, (out.bottomY - y) + gap
 }
 
 func buildTitleSpans(pal PaperThemeSpec, legacy bool, title, fam string, sz float32, weight int) []ui.Span {
@@ -1049,11 +1168,27 @@ func appendSceneBlocks(
 				y += 14
 				continue
 			}
-			font := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
+			lead := !legacy && (pal.Style.Lead.Weight > 0 || pal.Style.Lead.Color.A > 0 || pal.Style.Lead.Family != "") && isLeadParagraph(blocks, i)
+			pFam := pal.BodyFamily
+			pWeight := 0
+			pCol := pal.Text
+			pJustify := !legacy && pal.Style.Justify
+			pGap := float32(10)
+			if lead {
+				if i > 0 {
+					y += 10
+				}
+				pFam = orS(pal.Style.Lead.Family, pal.BodyFamily)
+				pWeight = orI(pal.Style.Lead.Weight, 600)
+				pCol = orC(pal.Style.Lead.Color, pal.Title)
+				pJustify = false
+				pGap = 6
+			}
+			font := ui.Font{Family: pFam, Size: pal.BodySize, Weight: pWeight, LineHeight: pal.Leading}
 			spans := toUISpansWith(b.Spans, pal, legacy, spanStyleOpts{
-				family: pal.BodyFamily, size: pal.BodySize, defaultFG: pal.Text,
+				family: pFam, size: pal.BodySize, weight: pWeight, defaultFG: pCol,
 			})
-			shape := ui.TextShape{Width: avail, Justify: !legacy && pal.Style.Justify}
+			shape := ui.TextShape{Width: avail, Justify: pJustify}
 			lay := ui.ShapeRichTextWith(spans, font, shape)
 			_, th := lay.Size()
 			sc.blocks = append(sc.blocks, paintedBlock{
@@ -1065,9 +1200,9 @@ func appendSceneBlocks(
 				textX:     bx,
 				textY:     y,
 				layout:    lay,
-				textColor: pal.Text,
+				textColor: pCol,
 			})
-			lastGap = 10
+			lastGap = pGap
 			y += th + lastGap
 		}
 		if len(sc.blocks) > blockStart {

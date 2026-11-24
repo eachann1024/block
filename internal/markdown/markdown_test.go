@@ -543,7 +543,7 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 			t.Fatalf("theme %s invalid PNG %dx%d err=%v", th, cfg.Width, cfg.Height, err)
 		}
 
-		// HTML: defaults ShowTitle=true, Watermark=true ("Block"), table link preserves theme color, no extra theme badge
+		// HTML: defaults ShowTitle=true, Watermark=true ("cooool.top"), table link preserves theme color, no extra theme badge
 		htmlBytes, err := ExportDocument(doc, notePath, model.ExportHTML, prefs)
 		if err != nil {
 			t.Fatalf("theme %s ExportHTML failed: %v", th, err)
@@ -553,8 +553,8 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 		if !strings.Contains(htmlStr, "自定义标题") {
 			t.Fatalf("theme %s HTML missing custom Title", th)
 		}
-		if !strings.Contains(htmlStr, `<footer class="doc-footer"`) || !strings.Contains(strings.ToUpper(htmlStr), "BLOCK") {
-			t.Fatalf("theme %s HTML missing default Block watermark", th)
+		if !strings.Contains(htmlStr, `<footer class="doc-footer"`) || !strings.Contains(strings.ToLower(htmlStr), "cooool.top") {
+			t.Fatalf("theme %s HTML missing default cooool.top watermark", th)
 		}
 		if !strings.Contains(htmlStr, "table a,th a,td a{color:"+linkCSS) {
 			t.Fatalf("theme %s HTML missing themed table link CSS color %s", th, linkCSS)
@@ -597,8 +597,8 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 				docXML = b.String()
 			}
 		}
-		if !strings.Contains(docXML, "自定义标题") || !strings.Contains(strings.ToUpper(docXML), "BLOCK") {
-			t.Fatalf("theme %s DOCX missing title or Block watermark", th)
+		if !strings.Contains(docXML, "自定义标题") || !strings.Contains(strings.ToLower(docXML), "cooool.top") {
+			t.Fatalf("theme %s DOCX missing title or cooool.top watermark", th)
 		}
 	}
 
