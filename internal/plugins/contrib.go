@@ -953,6 +953,44 @@ func normalizeEditorBackgroundState(mode, contrast string) EditorBackgroundState
 	return EditorBackgroundState{Mode: mode, Contrast: contrast}
 }
 
+// MindMapState describes the native mind map renderer configuration controlled
+// via host.ui.mindmap_state and host.ui.set_mindmap.
+type MindMapState struct {
+	Layout    string `json:"layout"`     // "right" | "both"
+	Height    string `json:"height"`     // "compact" | "standard" | "tall"
+	ShowHints bool   `json:"show_hints"` // bottom shortcut hint bar visibility
+}
+
+func defaultMindMapState() MindMapState {
+	return MindMapState{
+		Layout:    "right",
+		Height:    "standard",
+		ShowHints: true,
+	}
+}
+
+func normalizeMindMapState(layout, height string, showHints bool) MindMapState {
+	switch strings.ToLower(strings.TrimSpace(layout)) {
+	case "both":
+		layout = "both"
+	default:
+		layout = "right"
+	}
+	switch strings.ToLower(strings.TrimSpace(height)) {
+	case "compact":
+		height = "compact"
+	case "tall":
+		height = "tall"
+	default:
+		height = "standard"
+	}
+	return MindMapState{
+		Layout:    layout,
+		Height:    height,
+		ShowHints: showHints,
+	}
+}
+
 // EditorBackdropState stores a plugin's active custom vector backdrop configuration
 // controlled via host.ui.backdrop and host.ui.set_backdrop.
 type EditorBackdropState struct {
@@ -1132,6 +1170,7 @@ type contribRegistry struct {
 	hidden     map[string]bool                                                 // legacy global titlebar slot id -> hidden
 	hiddenBy   map[string]map[string]bool                                      // plugin id -> hidden titlebar slot ids
 	editorBG   map[string]EditorBackgroundState                                // plugin id -> editor background
+	mindMapBy  map[string]MindMapState                                         // plugin id -> native mind map prefs
 	backdropBy      map[string]EditorBackdropState                                  // plugin id -> custom vector backdrop
 	fileBadges      map[string]map[string]map[string]map[string]FileBadgeEntry      // pluginID -> notebookRoot -> badgeID -> relPath -> entry
 	fileIcons       map[string]map[string]map[string]FileIconEntry                  // pluginID -> notebookRoot -> relPath -> entry
@@ -1158,6 +1197,7 @@ type contribFile struct {
 	TitlebarHidden    []string                                                 `json:"titlebar_hidden,omitempty"`
 	TitlebarHiddenBy  map[string][]string                                      `json:"titlebar_hidden_by,omitempty"`
 	EditorBackgrounds map[string]EditorBackgroundState                         `json:"editor_backgrounds,omitempty"`
+	MindMaps          map[string]MindMapState                                  `json:"mindmaps,omitempty"`
 	EditorBackdrops   map[string]EditorBackdropState                           `json:"editor_backdrops,omitempty"`
 	FileBadges        map[string]map[string]map[string]map[string]FileBadgeEntry `json:"file_badges,omitempty"`
 	FileIcons         map[string]map[string]map[string]FileIconEntry           `json:"file_icons,omitempty"`
@@ -1171,6 +1211,7 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 		hidden:     map[string]bool{},
 		hiddenBy:   map[string]map[string]bool{},
 		editorBG:   map[string]EditorBackgroundState{},
+		mindMapBy:  map[string]MindMapState{},
 		backdropBy:      map[string]EditorBackdropState{},
 		fileBadges:      map[string]map[string]map[string]map[string]FileBadgeEntry{},
 		fileIcons:       map[string]map[string]map[string]FileIconEntry{},
@@ -1210,6 +1251,11 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 				for pluginID, bg := range f.EditorBackgrounds {
 					if strings.TrimSpace(pluginID) != "" {
 						r.editorBG[pluginID] = normalizeEditorBackgroundState(bg.Mode, bg.Contrast)
+					}
+				}
+				for pluginID, mm := range f.MindMaps {
+					if strings.TrimSpace(pluginID) != "" {
+						r.mindMapBy[pluginID] = normalizeMindMapState(mm.Layout, mm.Height, mm.ShowHints)
 					}
 				}
 				for pluginID, bd := range f.EditorBackdrops {
@@ -1375,6 +1421,13 @@ func (r *contribRegistry) saveLocked() {
 			bgs[pluginID] = normalizeEditorBackgroundState(bg.Mode, bg.Contrast)
 		}
 	}
+	var mindMaps map[string]MindMapState
+	if len(r.mindMapBy) > 0 {
+		mindMaps = make(map[string]MindMapState, len(r.mindMapBy))
+		for pluginID, mm := range r.mindMapBy {
+			mindMaps[pluginID] = normalizeMindMapState(mm.Layout, mm.Height, mm.ShowHints)
+		}
+	}
 	var backdrops map[string]EditorBackdropState
 	if len(r.backdropBy) > 0 {
 		backdrops = make(map[string]EditorBackdropState, len(r.backdropBy))
@@ -1478,6 +1531,7 @@ func (r *contribRegistry) saveLocked() {
 		TitlebarHidden:    ids,
 		TitlebarHiddenBy:  hiddenBy,
 		EditorBackgrounds: bgs,
+		MindMaps:          mindMaps,
 		EditorBackdrops:   backdrops,
 		FileBadges:        fileBadges,
 		FileIcons:         fileIcons,
@@ -1547,6 +1601,10 @@ func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool
 	}
 	if _, ok := r.editorBG[pluginID]; ok {
 		delete(r.editorBG, pluginID)
+		changed = true
+	}
+	if _, ok := r.mindMapBy[pluginID]; ok {
+		delete(r.mindMapBy, pluginID)
 		changed = true
 	}
 	if _, ok := r.backdropBy[pluginID]; ok {
@@ -1838,6 +1896,45 @@ func (s *Supervisor) EditorBackground() EditorBackgroundState {
 		}
 	}
 	return EditorBackgroundState{Mode: "off", Contrast: "standard"}
+}
+
+const mindMapPluginID = "block-mindmap"
+
+// MindMapState returns the active native mind map configuration and whether
+// the mind map plugin is currently enabled.
+func (s *Supervisor) MindMapState() (MindMapState, bool) {
+	def := defaultMindMapState()
+	if s == nil || s.contrib == nil {
+		return def, false
+	}
+	s.mu.RLock()
+	enabledIDs := make([]string, 0, len(s.installed))
+	mindMapEnabled := false
+	for _, a := range s.installed {
+		if !a.Enabled {
+			continue
+		}
+		enabledIDs = append(enabledIDs, a.Manifest.ID)
+		if a.Manifest.ID == mindMapPluginID {
+			mindMapEnabled = true
+		}
+	}
+	s.mu.RUnlock()
+
+	s.contrib.mu.RLock()
+	defer s.contrib.mu.RUnlock()
+	if mindMapEnabled {
+		if st, ok := s.contrib.mindMapBy[mindMapPluginID]; ok {
+			return normalizeMindMapState(st.Layout, st.Height, st.ShowHints), true
+		}
+		return def, true
+	}
+	for _, id := range enabledIDs {
+		if st, ok := s.contrib.mindMapBy[id]; ok {
+			return normalizeMindMapState(st.Layout, st.Height, st.ShowHints), true
+		}
+	}
+	return def, false
 }
 
 // TitlebarSlots lists built-in and plugin titlebar slots with hidden state.
@@ -3007,6 +3104,61 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		s.contrib.mu.Lock()
 		if prev, ok := s.contrib.editorBG[m.ID]; !ok || prev != st {
 			s.contrib.editorBG[m.ID] = st
+			s.contrib.saveLocked()
+		}
+		s.contrib.mu.Unlock()
+		s.mu.RUnlock()
+		return st, nil, true
+
+	case "host.ui.mindmap_state":
+		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
+			return nil, missingPerm(PermUISettings), true
+		}
+		s.contrib.mu.RLock()
+		st, ok := s.contrib.mindMapBy[m.ID]
+		s.contrib.mu.RUnlock()
+		if !ok {
+			st = defaultMindMapState()
+		}
+		return normalizeMindMapState(st.Layout, st.Height, st.ShowHints), nil, true
+
+	case "host.ui.set_mindmap":
+		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
+			return nil, missingPerm(PermUISettings), true
+		}
+		var p struct {
+			Layout    string `json:"layout"`
+			Height    string `json:"height"`
+			ShowHints *bool  `json:"show_hints"`
+		}
+		if e := decode(&p); e != nil {
+			return nil, e, true
+		}
+		s.mu.RLock()
+		if !s.isRuntimeActiveLocked(m.ID, rt) {
+			s.mu.RUnlock()
+			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
+		}
+		s.contrib.mu.Lock()
+		cur, ok := s.contrib.mindMapBy[m.ID]
+		if !ok {
+			cur = defaultMindMapState()
+		}
+		layout := cur.Layout
+		if strings.TrimSpace(p.Layout) != "" {
+			layout = p.Layout
+		}
+		height := cur.Height
+		if strings.TrimSpace(p.Height) != "" {
+			height = p.Height
+		}
+		showHints := cur.ShowHints
+		if p.ShowHints != nil {
+			showHints = *p.ShowHints
+		}
+		st := normalizeMindMapState(layout, height, showHints)
+		if !ok || cur != st {
+			s.contrib.mindMapBy[m.ID] = st
 			s.contrib.saveLocked()
 		}
 		s.contrib.mu.Unlock()

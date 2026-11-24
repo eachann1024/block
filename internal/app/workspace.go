@@ -19,6 +19,7 @@ import (
 	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/markdown"
+	"block/internal/mindmap"
 	"block/internal/modals"
 	"block/internal/model"
 	"block/internal/plugins"
@@ -5153,7 +5154,7 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 	if w.pluginsUI != nil && w.pluginsUI.IsStoreLightboxOpen() {
 		return
 	}
-	if sess := w.ActiveSession(); sess != nil && sess.IsLightboxOpen() {
+	if sess := w.ActiveSession(); sess != nil && (sess.IsLightboxOpen() || sess.HasMindMapFullscreen()) {
 		return
 	}
 	if w.ai != nil && w.ai.IsLightboxOpen() {
@@ -6108,6 +6109,14 @@ func (w *Workspace) Render(c *ui.Context) {
 									activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 									activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
 									activeSess.SetBackground(w.pluginEditorBackground())
+									activeSess.SetMindMapConfig(w.pluginMindMapConfig())
+									activeSess.SetNotifyFunc(func(msg, tone string) {
+										w.notifyBanner(plugins.ToastRequest{
+											PluginID: "block-mindmap",
+											Message:  msg,
+											Tone:     tone,
+										})
+									})
 									activeSess.Render(c, effMainW, false)
 									if w.pluginUI != nil {
 										w.pluginUI.setEditorFocus(activeTab, activeSess.HasFocus(c))
@@ -6273,6 +6282,35 @@ func (w *Workspace) pluginEditorBackground() editor.BackgroundStyle {
 		}
 	}
 	return style
+}
+
+func (w *Workspace) pluginMindMapConfig() mindmap.Config {
+	cfg := mindmap.DefaultConfig()
+	cfg.Enabled = true
+	sup := w.Plugins()
+	if sup == nil {
+		return cfg
+	}
+	st, ok := sup.MindMapState()
+	if !ok {
+		return cfg
+	}
+	switch st.Layout {
+	case "both":
+		cfg.DefaultLayout = mindmap.LayoutBoth
+	default:
+		cfg.DefaultLayout = mindmap.LayoutRight
+	}
+	switch st.Height {
+	case "compact":
+		cfg.Height = mindmap.HeightCompact
+	case "tall":
+		cfg.Height = mindmap.HeightTall
+	default:
+		cfg.Height = mindmap.HeightStandard
+	}
+	cfg.ShowHints = st.ShowHints
+	return cfg
 }
 
 func (w *Workspace) pluginSidebarFileBadges(activeNB string) map[string][]plugins.ResolvedFileBadge {
