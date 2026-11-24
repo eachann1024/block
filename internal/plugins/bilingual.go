@@ -231,8 +231,8 @@ func validateBilingualReadmeImages(pluginDir, zhText, enText string) error {
 		if err := validateLocalReadmeImageFile(pluginDir, "README.en.md", rel, true); err != nil {
 			return err
 		}
-		if _, shared := zhSet[rel]; shared {
-			return fmt.Errorf("README.md and README.en.md share the same local image %q; provide separate Chinese and English image/SVG assets", rel)
+		if _, shared := zhSet[rel]; shared && !strings.EqualFold(filepath.Ext(filepath.Clean(rel)), ".svg") {
+			return fmt.Errorf("README.md and README.en.md share the same local image %q; provide separate Chinese and English bitmap assets", rel)
 		}
 	}
 	return nil
