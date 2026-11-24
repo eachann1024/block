@@ -207,12 +207,19 @@ func (m *readmeMedia) copyMedia(svc ui.Services, src string, isVideo bool) bool 
 }
 
 func (m *readmeMedia) decodeAnimation(data []byte) *ui.VideoPlayer {
-	pixels := gifAnimationPixels(data)
-	if pixels == 0 {
+	var pixels int64
+	var makeDecoder func() (ui.VideoDecoder, error)
+	if dec, svgPixels, ok := newSVGAnimationDecoder(data); ok {
+		pixels = svgPixels
+		makeDecoder = func() (ui.VideoDecoder, error) { return dec, nil }
+	} else if gifPixels := gifAnimationPixels(data); gifPixels > 0 {
+		pixels = gifPixels
+		makeDecoder = func() (ui.VideoDecoder, error) { return ui.NewGIFDecoder(data) }
+	} else {
 		return nil
 	}
 	if m.pixels.Add(pixels) <= 3*readmePixelLimit {
-		if decoder, err := ui.NewGIFDecoder(data); err == nil {
+		if decoder, err := makeDecoder(); err == nil {
 			if player, err := ui.NewVideoPlayer(decoder); err == nil {
 				return player.SetLoop(true)
 			}
