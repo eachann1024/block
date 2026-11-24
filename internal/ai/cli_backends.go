@@ -1525,7 +1525,8 @@ func (c *Controller) startExternalTurn(turn *assistantTurn, kind model.BackendKi
 func cliTurnPrompt(messages []model.ChatMessage, userIndex int) string {
 	var entries []string
 	remaining := 16_000
-	for i := userIndex - 1; i >= 0 && remaining > 0 && len(entries) < 16; i-- {
+	truncatedHistory := false
+	for i := userIndex - 1; i >= 0; i-- {
 		m := messages[i]
 		if m.Role != "user" && m.Role != "assistant" {
 			continue
@@ -1537,7 +1538,16 @@ func cliTurnPrompt(messages []model.ChatMessage, userIndex int) string {
 		if strings.TrimSpace(raw) == "" {
 			continue
 		}
+		if remaining <= 0 || len(entries) >= 16 {
+			truncatedHistory = true
+			break
+		}
+		rawRunes := utf8.RuneCountInString(raw)
 		text := truncateRunes(raw, remaining)
+		if rawRunes > remaining {
+			truncatedHistory = true
+			text += "\n... (history entry truncated)"
+		}
 		remaining -= utf8.RuneCountInString(text)
 		entries = append(entries, m.Role+": "+text)
 	}
@@ -1548,6 +1558,9 @@ func cliTurnPrompt(messages []model.ChatMessage, userIndex int) string {
 	}
 	var prompt strings.Builder
 	prompt.WriteString("Previous chat messages:\n")
+	if truncatedHistory {
+		prompt.WriteString("(Earlier conversation history truncated)\n")
+	}
 	for i := len(entries) - 1; i >= 0; i-- {
 		prompt.WriteString(entries[i])
 		prompt.WriteString("\n")

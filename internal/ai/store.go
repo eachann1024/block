@@ -923,7 +923,7 @@ func (c *Controller) SetEditorSelection(sel *EditorSelection) {
 		return
 	}
 	cp := *sel
-	cp.Markdown = truncateRunes(cp.Markdown, 12000)
+	cp.Markdown = truncateRunes(cp.Markdown, 12001)
 	id := cp.identity()
 
 	c.mu.Lock()
@@ -1915,7 +1915,12 @@ func (c *Controller) SendPrompt(text string) {
 			return
 		}
 		shownBuf.WriteString("@" + page + " ")
-		ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 引用文件：%s（pageId: %s）\n\n%s", "\n\n# Referenced file: %s (pageId: %s)\n\n%s"), page, page, truncateRunes(md, 12000)))
+		refText := truncateRunesWithNotice(
+			md,
+			12000,
+			theme.Tr("\n\n（以上引用内容已截断，请调用 readPage 配合 startLine/lineCount 分段读取剩余内容。）", "\n\n(Referenced content truncated; call readPage with startLine/lineCount to read the rest.)"),
+		)
+		ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 引用文件：%s（pageId: %s）\n\n%s", "\n\n# Referenced file: %s (pageId: %s)\n\n%s"), page, page, refText))
 	}
 	if sel != nil {
 		page, err := notePageID(scope.root, sel.NotePath)
@@ -1954,14 +1959,28 @@ func (c *Controller) SendPrompt(text string) {
 		} else {
 			lineLabel = fmt.Sprintf(theme.Tr("第 %d–%d 段", "paragraphs %d–%d"), sel.StartLine, sel.EndLine)
 		}
-		ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 用户选中的内容（来自 %s，%s）\n\n%s", "\n\n# User selection (from %s, %s)\n\n%s"), noteName, lineLabel, truncateRunes(sel.Markdown, 12000)))
+		selText := truncateRunesWithNotice(
+			sel.Markdown,
+			12000,
+			theme.Tr("\n\n（以上选中内容已截断，如需全文请调用 readPage 配合 startLine/lineCount 读取。）", "\n\n(Selected content truncated; call readPage with startLine/lineCount if you need the full text.)"),
+		)
+		ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 用户选中的内容（来自 %s，%s）\n\n%s", "\n\n# User selection (from %s, %s)\n\n%s"), noteName, lineLabel, selText))
 	}
 	for _, sk := range skills {
 		shownBuf.WriteString("/")
 		shownBuf.WriteString(sk)
 		shownBuf.WriteByte(' ')
-		if spec, ok := c.findSkillLocked(sk); ok && spec.Content != "" && ctxBuf.Len() < 192*1024 {
-			ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 用户调用的 Skill：%s\n\n%s", "\n\n# Skill the user called: %s\n\n%s"), sk, truncateRunes(spec.Content, 12000)))
+		if spec, ok := c.findSkillLocked(sk); ok && spec.Content != "" {
+			if ctxBuf.Len() < 192*1024 {
+				skillText := truncateRunesWithNotice(
+					spec.Content,
+					12000,
+					theme.Tr("\n\n（以上 Skill 内容已截断。）", "\n\n(Skill content truncated.)"),
+				)
+				ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 用户调用的 Skill：%s\n\n%s", "\n\n# Skill the user called: %s\n\n%s"), sk, skillText))
+			} else {
+				ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 用户调用的 Skill：%s\n\n（上下文已达大小上限，该 Skill 正文未注入。）", "\n\n# Skill the user called: %s\n\n(Context size limit reached; skill body omitted.)"), sk))
+			}
 		}
 	}
 
@@ -2507,6 +2526,17 @@ func truncateRunes(s string, maxRunes int) string {
 		return s
 	}
 	return string(runes[:maxRunes])
+}
+
+func truncateRunesWithNotice(s string, maxRunes int, notice string) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + notice
 }
 
 func slicesEqual(a, b []string) bool {
