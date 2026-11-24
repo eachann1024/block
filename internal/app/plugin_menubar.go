@@ -6,6 +6,7 @@ import (
 	"html"
 	"image/color"
 	"image/png"
+	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -35,9 +36,21 @@ type menubarTray struct {
 	item     plugins.ResolvedMenubarItem
 	offClick func()
 	detach   func()
+	// busy and flash are host feedback drawn over the plugin's title, so a
+	// click or drop always shows a reaction on the icon itself, even when
+	// system notifications are off.
+	busyUntil  time.Time
+	flash      string
+	flashTip   string
+	flashUntil time.Time
 }
 
-const menubarPollInterval = 400 * time.Millisecond
+const (
+	menubarPollInterval = 400 * time.Millisecond
+	menubarBusyTimeout  = 35 * time.Second // command timeout plus a margin
+	menubarFlashFor     = 4 * time.Second
+	menubarFlashRunes   = 14
+)
 
 func (h *pluginHostUI) startMenubar() {
 	h.menubar = &pluginMenubar{h: h, trays: map[string]*menubarTray{}, names: map[string]string{}}
@@ -112,31 +125,103 @@ func (m *pluginMenubar) create(it plugins.ResolvedMenubarItem) *menubarTray {
 	pluginID, itemID := it.PluginID, it.ID
 	mt := &menubarTray{tray: tray}
 	mt.detach = attachMenubarDrop(sentinel, it.Drop, func(p plugins.MenubarPayload) {
-		if sup := m.h.w.Plugins(); sup != nil {
-			sup.DeliverMenubarDrop(pluginID, itemID, p)
-		}
+		mygo.RunOnMain(func() {
+			m.run(pluginID, func(sup *plugins.Supervisor) {
+				if !sup.DeliverMenubarDrop(pluginID, itemID, p) {
+					mygo.RunOnMain(func() { m.setBusy(pluginID, false) })
+				}
+			})
+		})
 	})
 	return mt
 }
 
 func (m *pluginMenubar) update(mt *menubarTray, it plugins.ResolvedMenubarItem) {
 	mt.item = it
-	mt.tray.SetToolTip(it.Tooltip)
-	mt.tray.SetTitle(it.Title)
+	m.paint(mt)
 	menu := m.buildMenu(it)
 	mt.tray.SetMenu(menu)
 	switch {
 	case menu == nil && it.Command != "" && mt.offClick == nil:
 		mt.offClick = mt.tray.OnClick(func() {
 			cur := mt.item
-			if sup := m.h.w.Plugins(); sup != nil && cur.Command != "" {
-				go sup.RunMenubarCommand(cur.PluginID, cur.ID, cur.Command, "", nil)
+			if cur.Command != "" {
+				m.run(cur.PluginID, func(sup *plugins.Supervisor) {
+					sup.RunMenubarCommand(cur.PluginID, cur.ID, cur.Command, "", nil)
+				})
 			}
 		})
 	case menu != nil && mt.offClick != nil:
 		mt.offClick()
 		mt.offClick = nil
 	}
+}
+
+// paint draws the title and tooltip: host feedback first, then the plugin's.
+func (m *pluginMenubar) paint(mt *menubarTray) {
+	now := time.Now()
+	title, tip := mt.item.Title, mt.item.Tooltip
+	switch {
+	case now.Before(mt.busyUntil):
+		title = "…"
+	case now.Before(mt.flashUntil):
+		title, tip = mt.flash, mt.flashTip
+	}
+	mt.tray.SetToolTip(tip)
+	mt.tray.SetTitle(title)
+}
+
+// setBusy marks the plugin's icons as running a command. Main thread only.
+func (m *pluginMenubar) setBusy(pluginID string, busy bool) {
+	for _, mt := range m.trays {
+		if mt.item.PluginID != pluginID {
+			continue
+		}
+		mt.busyUntil = time.Time{}
+		if busy {
+			mt.busyUntil = time.Now().Add(menubarBusyTimeout)
+			m.repaintAfter(mt, menubarBusyTimeout)
+		}
+		m.paint(mt)
+	}
+}
+
+// showResult flashes a command's message next to the plugin's icons. Main
+// thread only.
+func (m *pluginMenubar) showResult(pluginID, message string) {
+	short := []rune(strings.TrimSpace(strings.ReplaceAll(message, "\n", " ")))
+	if len(short) > menubarFlashRunes {
+		short = append(short[:menubarFlashRunes-1], '…')
+	}
+	for _, mt := range m.trays {
+		if mt.item.PluginID != pluginID {
+			continue
+		}
+		mt.flash, mt.flashTip = string(short), message
+		mt.flashUntil = time.Now().Add(menubarFlashFor)
+		m.repaintAfter(mt, menubarFlashFor)
+		m.paint(mt)
+	}
+}
+
+func (m *pluginMenubar) repaintAfter(mt *menubarTray, d time.Duration) {
+	time.AfterFunc(d+50*time.Millisecond, func() {
+		mygo.RunOnMain(func() {
+			if m.trays[mt.item.PluginID+"/"+mt.item.ID] == mt {
+				m.paint(mt)
+			}
+		})
+	})
+}
+
+// run starts a menu bar command with the icon showing that it is busy.
+func (m *pluginMenubar) run(pluginID string, start func(sup *plugins.Supervisor)) {
+	sup := m.h.w.Plugins()
+	if sup == nil {
+		return
+	}
+	m.setBusy(pluginID, true)
+	go start(sup)
 }
 
 func (m *pluginMenubar) destroy(mt *menubarTray) {
@@ -195,8 +280,7 @@ func (m *pluginMenubar) buildMenu(it plugins.ResolvedMenubarItem) *mygo.Menu {
 // runEntry runs on the main thread, where the clipboard is read for an
 // entry with input "clipboard".
 func (m *pluginMenubar) runEntry(pluginID, itemID string, e plugins.ResolvedMenubarEntry) {
-	sup := m.h.w.Plugins()
-	if sup == nil || e.Command == "" {
+	if e.Command == "" {
 		return
 	}
 	var clip *plugins.MenubarPayload
@@ -204,7 +288,9 @@ func (m *pluginMenubar) runEntry(pluginID, itemID string, e plugins.ResolvedMenu
 		p := readMenubarClipboard()
 		clip = &p
 	}
-	go sup.RunMenubarCommand(pluginID, itemID, e.Command, e.Payload, clip)
+	m.run(pluginID, func(sup *plugins.Supervisor) {
+		sup.RunMenubarCommand(pluginID, itemID, e.Command, e.Payload, clip)
+	})
 }
 
 // MenubarFeedback reports a menu bar command's result: copyText goes to the
@@ -212,6 +298,9 @@ func (m *pluginMenubar) runEntry(pluginID, itemID string, e plugins.ResolvedMenu
 // a system notification while it is not.
 func (h *pluginHostUI) MenubarFeedback(req plugins.ToastRequest, copyText string) {
 	h.onMain(func() {
+		if h.menubar != nil {
+			h.menubar.setBusy(req.PluginID, false)
+		}
 		if copyText != "" && mygo.App.IsReady() {
 			if err := mygo.Clipboard.Write(transfer.TextData(copyText)); err != nil {
 				req.Message = theme.Tr("无法写入剪贴板", "Could not write to the clipboard")
@@ -222,6 +311,9 @@ func (h *pluginHostUI) MenubarFeedback(req plugins.ToastRequest, copyText string
 		}
 		if strings.TrimSpace(req.Message) == "" {
 			return
+		}
+		if h.menubar != nil {
+			h.menubar.showResult(req.PluginID, req.Message)
 		}
 		win := h.w.Window()
 		if !mygo.App.IsReady() || (mygo.App.IsActive() && win != nil && win.IsFocused()) {
@@ -237,7 +329,11 @@ func (h *pluginHostUI) MenubarFeedback(req plugins.ToastRequest, copyText string
 			body += "\n" + strings.TrimSpace(req.Body)
 		}
 		n := mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body, Silent: req.Tone != "error"})
-		go func() { _ = n.Show() }()
+		go func() {
+			if err := n.Show(); err != nil {
+				log.Printf("menubar: notification not shown: %v", err)
+			}
+		}()
 	})
 }
 

@@ -2324,6 +2324,9 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 				}
 			}
 			report(truncateRunes(res.Status, 160), truncateRunes(res.Body, 1000), tone, res.CopyText, ic, act)
+		} else if fromMenubar {
+			// No message, but the menu bar icon still waits to leave its busy state.
+			report("", "", "", "", nil, nil)
 		}
 		s.notifyRedraw()
 	}()
