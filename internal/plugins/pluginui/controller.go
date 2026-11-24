@@ -194,8 +194,8 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 		{
 			TabID: modals.TabAppStore,
 			Title: theme.Tr("应用商店", "App Store"),
-			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
-				DrawDuoSpec(ctx, storeSpec, size, colors)
+			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors, active bool) {
+				DrawDuoSpecAnimated(ctx, storeSpec, size, colors, active)
 			},
 		},
 	}
@@ -219,8 +219,8 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 			Starting:  starting,
 			StatusDot: app.Enabled,
 			HasError:  hasErr,
-			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
-				DrawDuoSpec(ctx, app.Manifest.Icon, size, colors)
+			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors, active bool) {
+				DrawDuoSpecAnimated(ctx, app.Manifest.Icon, size, colors, active)
 			},
 		})
 	}
@@ -383,7 +383,7 @@ func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins
 	}
 	version := strings.TrimSpace(inst.Manifest.Version)
 
-	ui.Column(ctx.Key("plugin-dormant-wrap-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
+	ui.Column(ctx.Key("plugin-dormant-wrap-" + inst.Manifest.ID)).FillWidth().MinWidth(0).
 		Gap(theme.SettingsSectionGap).Transition(bui.SurfaceStageTransition()).Children(func() {
 		if !inst.Enabled {
 			appName := strings.TrimSpace(inst.Manifest.Name.Resolve(locale))
@@ -396,7 +396,7 @@ func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins
 				Radius(theme.RadiusXL).Background(pal.WarningSurface).Border(1, pal.Warning).Children(func() {
 				ui.Box(ctx).Width(theme.HeightLarge).Height(theme.HeightLarge).Shrink(0).
 					Radius(theme.RadiusLG).Background(pal.Card).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-					icons.Draw(ctx, icons.PauseCircle, theme.IconRow, theme.IconColors{Line: pal.Warning})
+					icons.Draw(ctx, icons.PauseCircle, theme.IconRow, pal.TintedIconColors(pal.Warning))
 				})
 				ui.Column(ctx).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 					ui.Text(ctx, bannerTitle).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).

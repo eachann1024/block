@@ -488,7 +488,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 					internalui.AnimateSurfaceColors(backRow, backBG, ui.Transparent, false)
 					internalui.TactileCard(backRow, backHov, backPress, false, false)
 					backRow.Children(func() {
-						icons.DrawAnimated(c, icons.ArrowLeft, 16, pal.MonoIconColors(backFG), backHov || backPress)
+						icons.DrawAnimated(c, icons.ArrowLeft, 16, pal.DuoIconColors(backFG), backHov || backPress)
 						ui.Text(c, theme.Tr("返回", "Back")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(backFG).SingleLine()
 					})
 					internalui.Probe(backRow, "settings-sidebar-back")
@@ -514,14 +514,11 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 					}
 					internalui.TactileCard(btn, hovered, pressed, active, false)
 					btn.Children(func() {
-						ic := pal.MonoIconColors(pal.TextSecondary)
-						if active {
-							ic = pal.DuoIconColors(pal.Text)
-						} else if hovered || pressed {
+						ic := pal.DuoIconColors(pal.TextSecondary)
+						if active || hovered || pressed {
 							ic = pal.DuoIconColors(pal.Text)
 						}
-						// Selected rows stay still: only the tint changes; motion is a hover cue on idle rows.
-						icons.DrawAnimated(c, spec.icon, theme.IconRow, ic, !active && (hovered || pressed))
+						icons.DrawAnimated(c, spec.icon, theme.IconRow, ic, active || hovered || pressed)
 						col := pal.TextSecondary
 						weight := theme.WeightRegular
 						if active {
@@ -602,19 +599,21 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 							isPlugin := strings.HasPrefix(ent.TabID, TabPluginPrefix)
 							disabled := isPlugin && !ent.StatusDot
 							btn.Children(func() {
-								ic := pal.MonoIconColors(pal.TextSecondary)
+								lit := ent.Lit || active || hovered || pressed
+								ic := pal.DuoIconColors(pal.TextSecondary)
 								if disabled && !active && !hovered && !pressed {
-									ic = pal.MonoIconColors(pal.Placeholder)
-								} else if ent.Lit || active || hovered || pressed {
+									ic = pal.DuoIconColors(pal.Placeholder)
+									lit = false
+								} else if lit {
 									ic = pal.DuoIconColors(pal.Text)
 								}
 								if ent.DrawIcon != nil {
 									if disabled {
 										ui.Box(c).Shrink(0).Opacity(theme.DisabledOpacity).Children(func() {
-											ent.DrawIcon(c, theme.IconRow, ic)
+											ent.DrawIcon(c, theme.IconRow, ic, lit)
 										})
 									} else {
-										ent.DrawIcon(c, theme.IconRow, ic)
+										ent.DrawIcon(c, theme.IconRow, ic, lit)
 									}
 								}
 								col := pal.TextSecondary
@@ -1382,7 +1381,7 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 		if open {
 			glyph = icons.ChevronUp
 		}
-		ic := pal.MonoIconColors(pal.TextSecondary)
+		ic := pal.DuoIconColors(pal.TextSecondary)
 		if open || hovered || pressed {
 			ic = pal.DuoIconColors(pal.Text)
 		}
@@ -1769,7 +1768,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 			ui.Row(c.Key("font-picker-search-bar")).FillWidth().Padding(theme.Space2, theme.Space8, theme.Space6, theme.Space8).Gap(theme.Space8).
 				AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(pal.MenuSeparator).
 				Children(func() {
-					icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+					icons.Draw(c, icons.FindSearch, theme.IconRow, pal.DuoIconColors(pal.TextSecondary))
 					in := ui.TextInput(c.Key("font-picker-search"), &m.fontQuery).
 						Placeholder(theme.Tr("搜索字体", "Search fonts")).
 						PlaceholderColor(pal.Placeholder).
@@ -1904,7 +1903,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 								ui.Text(c, suffix).FontSize(theme.FontBody).TextColor(pal.MenuMuted).SingleLine().Shrink(0)
 							})
 							if defSelected {
-								icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Accent), defSelected || defHov || defPressed)
+								icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MinimalIconColors(pal.Accent), defSelected || defHov || defPressed)
 							}
 						})
 						if defRow.Clicked() {
@@ -1935,7 +1934,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 						}
 						internalui.HighlightedText(c, f.Name, marks, theme.FontBody, 0, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
 						if selected {
-							icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Accent), selected || hovered || pressed)
+							icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MinimalIconColors(pal.Accent), selected || hovered || pressed)
 						}
 					})
 					if row.Clicked() {
@@ -2137,7 +2136,7 @@ func folderAddButton(c *ui.Context, id, label string, rect *ui.Rect) bool {
 		}
 	})
 	btn.Children(func() {
-		icons.DrawAnimated(c, icons.Plus, theme.IconMicro, pal.MonoIconColors(pal.Accent), hov)
+		icons.DrawAnimated(c, icons.Plus, theme.IconMicro, pal.DuoIconColors(pal.Accent), hov)
 		ui.Text(c, theme.Tr("添加", "Add")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
 	})
 	return btn.Clicked()

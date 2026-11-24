@@ -56,6 +56,55 @@ func DrawDuoSpec(c *ui.Context, spec plugins.DuoIconSpec, size float32, colors t
 	})
 }
 
+// DrawDuoSpecAnimated renders a plugin DuoIconSpec whose geometry stays fixed while
+// its fill and accent layers transition smoothly on hover/active.
+func DrawDuoSpecAnimated(c *ui.Context, spec plugins.DuoIconSpec, size float32, colors theme.IconColors, active bool) {
+	if size <= 0 {
+		return
+	}
+	root := ui.Box(c).Size(size, size).Shrink(0)
+	fillTarget, lineTarget, accTarget := colors.Fill, colors.Line, colors.Accent
+	fillAnim, lineAnim, accAnim := icons.IconFadeOut, icons.IconFadeOut, icons.IconFadeOut
+	if active && colors.Lit {
+		fillTarget = colors.LitFill
+		accTarget = colors.LitAccent
+		fillAnim = icons.IconLitFill
+		accAnim = icons.IconLitAccent
+	}
+	var fillCol, lineCol, accCol ui.Color
+	if len(spec.FillPaths) > 0 {
+		fillCol = root.AnimateColor("pIcoFill", fillTarget, fillAnim)
+	}
+	if len(spec.StrokePaths) > 0 {
+		lineCol = root.AnimateColor("pIcoLine", lineTarget, lineAnim)
+	}
+	if len(spec.AccentPaths) > 0 || len(spec.AccentFillPaths) > 0 {
+		accCol = root.AnimateColor("pIcoAcc", accTarget, accAnim)
+	}
+	root.Children(func() {
+		if fillCol.A > 0 && len(spec.FillPaths) > 0 {
+			if fill := cachedLayerSVG("fill", spec.FillPaths); fill != nil {
+				ui.Icon(c, fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(fillCol)
+			}
+		}
+		if lineCol.A > 0 && len(spec.StrokePaths) > 0 {
+			if line := cachedLayerSVG("stroke", spec.StrokePaths); line != nil {
+				ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(lineCol)
+			}
+		}
+		if accCol.A > 0 && len(spec.AccentPaths) > 0 {
+			if acc := cachedLayerSVG("accent", spec.AccentPaths); acc != nil {
+				ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
+			}
+		}
+		if accCol.A > 0 && len(spec.AccentFillPaths) > 0 {
+			if af := cachedLayerSVG("fill", spec.AccentFillPaths); af != nil {
+				ui.Icon(c, af).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
+			}
+		}
+	})
+}
+
 // DrawFileIcon renders a resolved custom file icon (either a host built-in ref
 // or an inline DuoIconSpec) at the given size and colors.
 func DrawFileIcon(c *ui.Context, ref string, spec plugins.DuoIconSpec, size float32, colors theme.IconColors) {
@@ -64,6 +113,15 @@ func DrawFileIcon(c *ui.Context, ref string, spec plugins.DuoIconSpec, size floa
 		return
 	}
 	DrawDuoSpec(c, spec, size, colors)
+}
+
+// DrawFileIconAnimated renders a resolved custom file icon with staggered color lighting.
+func DrawFileIconAnimated(c *ui.Context, ref string, spec plugins.DuoIconSpec, size float32, colors theme.IconColors, active bool) {
+	if ref != "" {
+		icons.DrawAnimated(c, icons.Icon(ref), size, colors, active)
+		return
+	}
+	DrawDuoSpecAnimated(c, spec, size, colors, active)
 }
 
 // DrawUIIcon renders a plugin UI icon: a host built-in glyph by name, or an inline vector.
@@ -81,6 +139,23 @@ func DrawUIIcon(c *ui.Context, ic plugins.UIIcon, size float32, colors theme.Ico
 		return
 	}
 	DrawDuoSpec(c, ic.Spec(), size, colors)
+}
+
+// DrawUIIconAnimated renders a plugin UI icon with staggered color lighting on hover/active.
+func DrawUIIconAnimated(c *ui.Context, ic plugins.UIIcon, size float32, colors theme.IconColors, active bool) {
+	if ic.Chip != "" || ic.Dot {
+		ui.Box(c).Size(size, size).Shrink(0).Center().Children(func() {
+			if ic.Dot {
+				drawChipDot(c)
+			}
+		})
+		return
+	}
+	if ic.Name != "" {
+		icons.DrawAnimated(c, icons.Icon(ic.Name), size, colors, active)
+		return
+	}
+	DrawDuoSpecAnimated(c, ic.Spec(), size, colors, active)
 }
 
 func drawChipDot(c *ui.Context) {
