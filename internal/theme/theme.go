@@ -487,6 +487,28 @@ func (p Palette) IconTintSwatch(t IconTint) ui.Color {
 	return p.MenuMuted
 }
 
+// MindMapBranchColors returns the 6 Ocean Paper mind map branch colors for Light or Dark mode.
+func (p Palette) MindMapBranchColors() [6]ui.Color {
+	if p.Dark {
+		return [6]ui.Color{
+			ui.Hex("#779de8"),
+			ui.Hex("#4fb8cf"),
+			ui.Hex("#5cb883"),
+			ui.Hex("#dfae52"),
+			ui.Hex("#e8776c"),
+			ui.Hex("#a987e0"),
+		}
+	}
+	return [6]ui.Color{
+		ui.Hex("#547dd0"),
+		ui.Hex("#2f9fb8"),
+		ui.Hex("#3f9a62"),
+		ui.Hex("#c08a2f"),
+		ui.Hex("#d0574b"),
+		ui.Hex("#8a5fc0"),
+	}
+}
+
 // TintedDuoIconColors returns Scheme A two-tone icon colors for a custom file icon
 // with optional tint and interactive hover accent highlight.
 func (p Palette) TintedDuoIconColors(t IconTint, line ui.Color, accentHover bool) IconColors {
