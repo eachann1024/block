@@ -1004,20 +1004,27 @@ func appendStreamingProcess(baseSteps []model.ProcessStep, baseNotes []string, p
 			notes = append(notes, ref)
 		}
 	}
-	lbl := theme.Tr("思考中", "Thinking")
-	det := theme.Tr("等待模型响应…", "Waiting for model response…")
-	if strings.TrimSpace(partial) != "" {
-		lbl = theme.Tr("正在生成回答", "Generating answer")
-		det = latestStreamLine(partial)
+	if live, ok := streamingLiveStep(partial, len(steps) > 0); ok {
+		steps = append(steps, live)
 	}
-	steps = append(steps, model.ProcessStep{
-		ID:     "streaming",
-		Kind:   model.ToolKindThink,
-		Title:  lbl,
-		Detail: det,
-		Done:   false,
-	})
 	return steps, notes
+}
+
+// streamingLiveStep is the trailing step of a running turn: the answer being
+// written once text arrives, a waiting placeholder only before any step exists;
+// otherwise the newest real step already leads as the live one.
+func streamingLiveStep(partial string, haveSteps bool) (model.ProcessStep, bool) {
+	st := model.ProcessStep{ID: "streaming", Kind: model.ToolKindThink}
+	switch {
+	case strings.TrimSpace(partial) != "":
+		st.Title = theme.Tr("正在生成回答", "Generating answer")
+		st.Detail = latestStreamLine(partial)
+	case !haveSteps:
+		st.Title = theme.Tr("等待模型响应", "Waiting for model response")
+	default:
+		return st, false
+	}
+	return st, true
 }
 
 func (c *Controller) renderUserMessage(cUI *ui.Context, pal theme.Palette, convID uint64, idx int, text string, atts []model.Attachment, separate bool) {
@@ -1156,45 +1163,11 @@ func collectTurnProcess(turn []model.ChatMessage, streaming bool, partial string
 				addNote(st.FileRef)
 			}
 		}
-		lbl := theme.Tr("思考中", "Thinking")
-		det := theme.Tr("等待模型响应…", "Waiting for model response…")
-		if strings.TrimSpace(partial) != "" {
-			lbl = theme.Tr("正在生成回答", "Generating answer")
-			det = latestStreamLine(partial)
+		if live, ok := streamingLiveStep(partial, len(steps) > 0); ok {
+			steps = append(steps, live)
 		}
-		steps = append(steps, model.ProcessStep{
-			ID:     "streaming",
-			Kind:   model.ToolKindThink,
-			Title:  lbl,
-			Detail: det,
-			Done:   false,
-		})
 	}
 	return steps, notes
-}
-
-// processDisplayOrder lists step indexes to draw; while streaming the live step leads,
-// so it stays on the first row instead of being pushed down by finished steps.
-func processDisplayOrder(steps []model.ProcessStep, streaming bool) []int {
-	order := make([]int, 0, len(steps))
-	live := -1
-	if streaming {
-		for i := len(steps) - 1; i >= 0; i-- {
-			if steps[i].ID == "streaming" && !steps[i].Done {
-				live = i
-				break
-			}
-		}
-	}
-	if live >= 0 {
-		order = append(order, live)
-	}
-	for i := range steps {
-		if i != live {
-			order = append(order, i)
-		}
-	}
-	return order
 }
 
 // latestStreamLine is the newest non-empty line of a reply being written, as plain text.
@@ -1511,8 +1484,8 @@ func collectTurnSources(turn []model.ChatMessage) []model.SourceNote {
 
 func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, outcome string, steps []model.ProcessStep, notes []string, streaming bool) {
 	c.mu.RLock()
-	// 执行中始终展开步骤列表，结束后按用户的展开状态。
-	expanded := streaming || c.expandedProcess[turnKey]
+	// 执行中只显示最新一步和已完成步骤的图标轨迹，完整列表按用户点开状态展示。
+	expanded := c.expandedProcess[turnKey]
 	c.mu.RUnlock()
 
 	headline := fmt.Sprintf("%d 步执行完成", len(steps))
@@ -1526,15 +1499,17 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 	}
 
 	ais := pal.AISurface()
-	card := ui.Column(cUI.Key("ai-process-card-"+turnKey)).FillWidth().Padding(8, 10).Gap(6).
-		Radius(theme.RadiusMD).Background(ais.WellBG).Border(1, pal.Hairline).
+	// 无底无框：过程是正文的辅助信息，不能比回答更显眼。
+	card := ui.Column(cUI.Key("ai-process-card-" + turnKey)).FillWidth().Gap(6).
 		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
 	bui.Probe(card, "ai-process-card")
 	bui.RevealOnExpand(card, !streaming && expanded)
 
 	card.Children(func() {
+		if streaming {
+			c.renderProcessLive(cUI, pal, turnKey, steps, expanded)
+		}
 		if !streaming {
-			// 执行中只保留步骤列表：顶部标题与最后一步重复，直接省掉。
 			toggleBtn := ui.ButtonBase(cUI.Key("ai-process-toggle-" + turnKey)).FillWidth().MinHeight(28).
 				PaddingX(4).Gap(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(headline)
 			bui.Probe(toggleBtn, "ai-process-toggle")
@@ -1560,7 +1535,12 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 			bui.Probe(stepsWrap, "ai-process-steps")
 			stepsWrap.Children(func() {
 				ui.Column(cUI).FillWidth().Gap(4).Children(func() {
-					for _, i := range processDisplayOrder(steps, streaming) {
+					listLen := len(steps)
+					if streaming {
+						// 实时步骤已在顶部单独显示，列表只放已完成的步骤。
+						listLen--
+					}
+					for i := 0; i < listLen; i++ {
 						st := steps[i]
 						// 按步骤 ID 记展开状态：流式中新步骤插在实时行之前，按下标会串位。
 						stepKey := fmt.Sprintf("%s#%d", turnKey, i)
@@ -1588,15 +1568,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 						bui.Probe(row, chipID)
 
 						row.Children(func() {
-							iconGlyph := icons.ToolRead
-							switch st.Kind {
-							case model.ToolKindThink:
-								iconGlyph = icons.ToolThink
-							case model.ToolKindWrite:
-								iconGlyph = icons.ToolWrite
-							case model.ToolKindRun:
-								iconGlyph = icons.ToolRun
-							}
+							iconGlyph := processStepIcon(st.Kind)
 							if st.ID == "streaming" && !st.Done {
 								bui.SparkleLoader(cUI, 14, pal.TextSecondary, pal.Accent)
 							} else {
@@ -1669,22 +1641,107 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 					}
 				})
 			})
+		}
 
-			if len(notes) > 0 {
-				ui.Row(cUI).FillWidth().Padding(6, 4, 2, 4).Gap(6).Wrap().Children(func() {
-					for i, n := range notes {
-						if i >= 6 {
-							break
-						}
-						chip := ui.Box(cUI).Padding(3, 8).Radius(theme.RadiusSM).Background(ais.CapsuleBG).Border(1, ais.CapsuleBorder)
-						chip.Children(func() {
-							ui.Text(cUI, n+".md").FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
-						})
+		if len(notes) > 0 && (expanded || streaming) {
+			ui.Row(cUI).FillWidth().Padding(2, 4, 0, 4).Gap(6).Wrap().Children(func() {
+				for i, n := range notes {
+					if i >= 6 {
+						break
 					}
-				})
-			}
+					chip := ui.Box(cUI.Key("ai-process-note-"+turnKey+"-"+n)).Padding(3, 8).Transition(probeSafeTransition(bui.LiveTrailItemTransition())).Radius(theme.RadiusSM).Background(ais.CapsuleBG).Border(1, ais.CapsuleBorder)
+					chip.Children(func() {
+						ui.Text(cUI, n+".md").FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+					})
+				}
+			})
 		}
 	})
+}
+
+// renderProcessLive draws a running turn as scheme D: the newest step on one line,
+// its title swept by a shimmer and swapped with a short slide as steps arrive,
+// over a trail of icons for the steps already finished.
+func (c *Controller) renderProcessLive(cUI *ui.Context, pal theme.Palette, turnKey string, steps []model.ProcessStep, expanded bool) {
+	if len(steps) == 0 {
+		return
+	}
+	liveIdx := len(steps) - 1
+	live := steps[liveIdx]
+	liveID := live.ID
+	if liveID == "" {
+		liveID = fmt.Sprintf("#%d", liveIdx)
+	}
+
+	slot := ui.Box(cUI.Key("ai-process-live-" + turnKey)).FillWidth().Height(28).ClipY()
+	bui.Probe(slot, "ai-process-live")
+	slot.Children(func() {
+		// 按步骤身份换 key：新步骤进来时旧行上滑淡出、新行自下滑入；同一步内容增长不重播动画。
+		row := ui.Row(cUI.Key("ai-process-live-row-" + turnKey + "-" + liveID + "|" + live.Title)).FillWidth().Height(28).
+			PaddingX(6).Gap(8).AlignItems(ui.Center).
+			Transition(probeSafeTransition(bui.LiveStepSwapTransition()))
+		row.Children(func() {
+			if live.ID == "streaming" {
+				bui.SparkleLoader(cUI, 14, pal.TextSecondary, pal.Accent)
+			} else {
+				icons.DrawAnimated(cUI, processStepIcon(live.Kind), 14, pal.DuoIconColors(pal.TextSecondary), true)
+			}
+			bui.ShimmerText(cUI, live.Title, theme.FontBody, theme.WeightControl, pal.Text, pal.TextSecondary.Mix(pal.Paper, 0.55))
+			detail := strings.TrimSpace(live.Detail)
+			if p := plainInline(live.Detail, nil, false); live.ID != "streaming" && p != "" {
+				detail = p
+			}
+			if detail != "" {
+				ui.Text(cUI, detail).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			}
+		})
+	})
+
+	if liveIdx == 0 {
+		return
+	}
+	// 轨迹左侧与实时行标题对齐（行内边距 + 图标 + 间距，减去自身内边距）。
+	trail := ui.ButtonBase(cUI.Key("ai-process-trail-"+turnKey)).AlignSelf(ui.Start).Margin(0, 0, 0, 22).
+		PaddingX(6).MinHeight(22).Gap(6).AlignItems(ui.Center).
+		Wrap().Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
+		Label(fmt.Sprintf(theme.Tr("%d 个已完成步骤", "%d finished steps"), liveIdx))
+	bui.Probe(trail, "ai-process-trail")
+	hovered := trail.Hovered() || trail.Pressed() || expanded
+	trail.Children(func() {
+		for i := 0; i < liveIdx; i++ {
+			st := steps[i]
+			key := st.ID
+			if key == "" {
+				key = fmt.Sprintf("#%d", i)
+			}
+			ic := ui.Box(cUI.Key("ai-process-trail-"+turnKey+"-"+key)).Size(14, 14).Shrink(0).
+				Transition(probeSafeTransition(bui.LiveTrailItemTransition()))
+			if !hovered {
+				ic.Opacity(0.6)
+			}
+			ic.Children(func() {
+				icons.Draw(cUI, processStepIcon(st.Kind), 14, pal.DuoIconColors(pal.TextSecondary))
+			})
+			bui.Tooltip(cUI, ic, st.Title)
+		}
+	})
+	if trail.Clicked() {
+		c.mu.Lock()
+		c.expandedProcess[turnKey] = !c.expandedProcess[turnKey]
+		c.mu.Unlock()
+	}
+}
+
+func processStepIcon(kind model.ToolKind) icons.Icon {
+	switch kind {
+	case model.ToolKindThink:
+		return icons.ToolThink
+	case model.ToolKindWrite:
+		return icons.ToolWrite
+	case model.ToolKindRun:
+		return icons.ToolRun
+	}
+	return icons.ToolRead
 }
 
 func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnKey string, sources []model.SourceNote) {
