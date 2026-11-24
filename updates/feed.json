@@ -1,10 +1,72 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T14:15:56.399Z",
-  "latest_version": "1.0.934",
-  "latest_tag": "v1.0.934",
+  "updated_at": "2026-11-24T14:47:12.284Z",
+  "latest_version": "1.0.935",
+  "latest_tag": "v1.0.935",
   "releases": [
+    {
+      "version": "1.0.935",
+      "tag": "v1.0.935",
+      "published_at": "2026-11-24T14:47:11Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.935",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "AI 对话：移除了内置与命令行智能体的对话轮数、工具调用次数及上下文大小限制。",
+          "AI 对话：移除了附件数量、文件大小以及长文本截断的限制。",
+          "编辑器：移除了行内编辑、速记和批注中的 AI 使用限制。",
+          "AI 对话：优化了流式 Markdown 墨水渐显动效、处理过程摘要以及输入框 1 像素边框的视觉呈现。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "AI Chat: Limits on turn count, tool calls, and context size have been removed for built-in and CLI agents.",
+          "AI Chat: Limits on attachment count, file size, and text truncation have been removed.",
+          "Editor: AI usage limits have been removed for inline editing, quick notes, and annotations.",
+          "AI Chat: The streaming Markdown ink-reveal animation, process summary display, and 1px composer border have been polished."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-macos-arm64.dmg",
+          "size": 15885573,
+          "sha256": "79f5feedad823ea6bd1d9635ef214ec1018bbba2d578450ff5e224962fecedfa"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-macos-x64.dmg",
+          "size": 17520746,
+          "sha256": "afb120b85ad9900b3f5778466da8bf1fc479104c480d59524967d7260153a48a"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-windows-x64-setup.exe",
+          "size": 13289676,
+          "sha256": "c59b91b69f49c9b3cfa226389560f1302bcfd8227d2936f2d3838acaeeb867f3"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-linux-x64.deb",
+          "size": 10788166,
+          "sha256": "dbc945b5a376fb0c3e666d80ca9d4e878a9753975dd1c5fe64d1f1282ce3f58f"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-linux-x64.AppImage",
+          "size": 23828984,
+          "sha256": "57703876606c48adc1b234748c0cf511be0ccf32e6750684ea8a8cd58d4e2107"
+        }
+      ]
+    },
     {
       "version": "1.0.934",
       "tag": "v1.0.934",
@@ -34,38 +96,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-macos-arm64.dmg",
-          "size": 15884161,
-          "sha256": "0597e869f7d0bb6781173e775d090db7def75d277b8024b425c8896e5decaae6"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-macos-x64.dmg",
-          "size": 17514593,
-          "sha256": "75c1c6f12befb28f17c71e7df28b1d83410e37c0b704b07cdfe11a3eff8e6145"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-windows-x64-setup.exe",
-          "size": 13287474,
-          "sha256": "772c3c9930fe58bad9ab5660dbb6078f462cf3f6e32d2d473dfcd4bb432761af"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-linux-x64.deb",
-          "size": 10783062,
-          "sha256": "53298829eaaff4a8f52dbd169e2782e66e5a2f9e797d9f75063d2670b3ebd106"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.934/block-linux-x64.AppImage",
-          "size": 23820792,
-          "sha256": "f76c11302c437d18a03456412e2a15bf858d75a0d6a1e7f4382dbac062b62091"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.933",
@@ -1626,31 +1657,6 @@
         "improvements": [
           "The Copy File Path command is now available in tab and folder menus."
         ],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.885",
-      "tag": "v1.0.885",
-      "published_at": "2026-11-21T07:05:40Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.885",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "优化侧栏文件树、标签页与笔记本切换体验。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Simplify categories to six note-friendly tabs."
-        ],
-        "improvements": [],
         "fixes": [],
         "other": []
       },
