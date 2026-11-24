@@ -4,6 +4,7 @@ package updater
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
@@ -32,12 +33,16 @@ func launchWindowsElevatedInstaller(exePath string) error {
 	if err != nil {
 		return err
 	}
+	params, err := syscall.UTF16PtrFromString(windowsInstallerParams())
+	if err != nil {
+		return err
+	}
 	// SW_SHOWNORMAL = 1; ShellExecuteW returns > 32 on success.
 	ret, _, callErr := shellExecuteW.Call(
 		0,
 		uintptr(unsafe.Pointer(verb)),
 		uintptr(unsafe.Pointer(file)),
-		0,
+		uintptr(unsafe.Pointer(params)),
 		uintptr(unsafe.Pointer(dir)),
 		1,
 	)
@@ -48,4 +53,22 @@ func launchWindowsElevatedInstaller(exePath string) error {
 		return fmt.Errorf("failed to launch elevated installer (code %d)", ret)
 	}
 	return nil
+}
+
+// windowsInstallerParams tells setup it was started by the updater (/UPDATE:
+// skip the install prompt, reopen Block when done) and, when this process runs
+// from a setup-made installation, where that is (/D=), so an install outside
+// the default directory is updated in place. NSIS reads /D= verbatim to the end
+// of the command line, so it stays last and unquoted.
+func windowsInstallerParams() string {
+	params := "/UPDATE"
+	exe, err := os.Executable()
+	if err != nil {
+		return params
+	}
+	dir := filepath.Dir(exe)
+	if _, err := os.Stat(filepath.Join(dir, "uninstall.exe")); err != nil {
+		return params
+	}
+	return params + " /D=" + dir
 }
