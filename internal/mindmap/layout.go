@@ -17,6 +17,7 @@ const (
 	layoutRootH       float32 = 40
 	layoutPrimaryH    float32 = 30
 	layoutLeafH       float32 = 24
+	layoutLeafGap     float32 = 3
 	layoutTaskBox     float32 = 13
 	layoutTaskGap     float32 = 5
 	layoutFoldOffset  float32 = 13
@@ -154,7 +155,7 @@ func estimateNodeWidth(n *Node, p *ui.Painter) float32 {
 	case 1:
 		padX = 24
 	default:
-		padX = 12
+		padX = 16
 	}
 	if n.Task != nil {
 		padX += layoutTaskBox + layoutTaskGap
@@ -456,13 +457,13 @@ func nodeContentLeft(n *Node) float32 {
 	case 1:
 		return n.X + 12
 	default:
-		return n.X + 4
+		return n.X + 8
 	}
 }
 
 func nodeTextCenterY(n *Node) float32 {
 	if n.Depth > 1 {
-		return n.Y - 1
+		return n.Y - layoutLeafGap*0.5
 	}
 	return n.Y
 }
@@ -565,9 +566,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						wxToScreen(midX), wyToScreen(ny),
 						wxToScreen(nx), wyToScreen(ny),
 					)
-					// Skip the bottom underline segment on the selected leaf node so it
-					// cannot double up with or poke past the selection ring.
-					if n.Depth > 1 && n.ID != opt.SelectedID {
+					if n.Depth > 1 {
 						endX := n.X
 						if d > 0 {
 							endX = n.X + n.W
@@ -579,6 +578,13 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						sw = 2.2
 					}
 					p.StrokePath(&path, max(sw*scale, 1), col)
+					if n.Depth > 1 && n.ID == opt.SelectedID {
+						var selLine ui.Path
+						selLine.Cap(ui.RoundCap)
+						selLine.MoveTo(wxToScreen(n.X+0.5), wyToScreen(ny))
+						selLine.LineTo(wxToScreen(n.X+n.W-0.5), wyToScreen(ny))
+						p.StrokePath(&selLine, max(2.2*scale, 1.4), col)
+					}
 				}
 			}
 
@@ -625,14 +631,18 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				sh := n.H * scale
 				rect := ui.Rect{X: sx, Y: sy, W: sw, H: sh}
 
+				isSelected := n.ID == opt.SelectedID
+				isHovered := n.ID == opt.HoveredID && !isSelected && opt.DragNodeID == 0
+
 				pad := float32(3) * scale
 				ringR := ui.Rect{X: sx - pad, Y: sy - pad, W: sw + pad*2, H: sh + pad*2}
 				ringRad := theme.RadiusLG * scale
 				if n.Depth == 0 {
 					ringRad = ringR.H * 0.5
-				} else if n.Depth > 1 {
-					ringRad = theme.RadiusMD * scale
 				}
+
+				leafR := ui.Rect{X: sx, Y: sy, W: sw, H: max((n.H-layoutLeafGap)*scale, 1)}
+				leafRad := theme.RadiusSM * scale
 
 				switch n.Depth {
 				case 0:
@@ -641,28 +651,49 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					rad := theme.RadiusMD * scale
 					fillCol := col.Alpha(0.13)
 					strokeCol := col
-					if dimmed {
-						fillCol = col.Alpha(0.06)
-						strokeCol = col.Alpha(0.35)
+					strokeW := max(1.2*scale, 1)
+					if isSelected {
+						fillCol = pal.SelectionBG
+						strokeCol = pal.Accent
+						strokeW = max(1.5*scale, 1.2)
+						if dimmed {
+							fillCol = fillCol.Alpha(0.45)
+							strokeCol = strokeCol.Alpha(0.45)
+						}
+					} else {
+						if isHovered {
+							fillCol = col.Alpha(0.22)
+						}
+						if dimmed {
+							fillCol = col.Alpha(0.06)
+							strokeCol = col.Alpha(0.35)
+						}
 					}
 					p.Fill(rect, fillCol, rad)
-					p.Stroke(rect, strokeCol, rad, max(1.2*scale, 1))
+					p.Stroke(rect, strokeCol, rad, strokeW)
 				default:
-					if n.ID == opt.SelectedID {
-						// Occlude incoming/outgoing branch line tails beneath the selected leaf
-						// so only the selection border renders at the bottom.
-						p.Fill(ringR, bg, ringRad)
-					} else if n.ID == opt.HoveredID && opt.DragNodeID == 0 {
-						p.Fill(rect, pal.Hover, theme.RadiusSM*scale)
+					if isSelected {
+						selBG := pal.SelectionBG
+						if dimmed {
+							selBG = selBG.Alpha(0.45)
+						}
+						p.Fill(leafR, selBG, leafRad)
+					} else if isHovered {
+						hoverAlpha := float32(0.06)
+						if pal.Dark {
+							hoverAlpha = 0.08
+						}
+						p.Fill(leafR, pal.Text.Alpha(hoverAlpha), leafRad)
 					}
 				}
 
 				// Highlight drop-inside target beneath label so text stays sharp.
 				if opt.DragNodeID != 0 && n.ID == opt.DragTargetID && opt.DragPos == DropInside {
-					if n.Depth > 1 && n.ID != opt.SelectedID {
-						p.Fill(ringR, bg, ringRad)
+					if n.Depth > 1 {
+						p.Fill(leafR, pal.Accent.Alpha(0.14), leafRad)
+					} else {
+						p.Fill(ringR, pal.Accent.Alpha(0.14), ringRad)
 					}
-					p.Fill(ringR, pal.Accent.Alpha(0.14), ringRad)
 				}
 
 				if n.ID != opt.EditingID {
@@ -702,6 +733,8 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						txtColor = pal.Paper
 					} else if strings.TrimSpace(n.Link) != "" {
 						txtColor = pal.Accent
+					} else if isSelected && (n.Task == nil || !*n.Task) {
+						txtColor = pal.SelectionFG
 					}
 					if n.Task != nil && *n.Task {
 						txtColor = txtColor.Alpha(0.55)
@@ -715,19 +748,27 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						if fontSize < 2.5 {
 							fontSize = 2.5
 						}
+						wt := nodeFontWeight(n.Depth)
+						if n.Depth > 1 && isSelected {
+							wt = theme.WeightControl
+						}
 						sp := ui.Span{
 							Text:   n.Text,
 							Size:   fontSize,
-							Weight: nodeFontWeight(n.Depth),
+							Weight: wt,
 							Color:  txtColor,
 						}
-						_, th := p.MeasureText(0, sp)
-						p.RichText(wxToScreen(tx), wyToScreen(ty)-th*0.5, 0, sp)
+						tw, th := p.MeasureText(0, sp)
+						drawX := wxToScreen(tx)
+						if n.Task == nil {
+							drawX = sx + (sw-tw)*0.5
+						}
+						p.RichText(drawX, wyToScreen(ty)-th*0.5, 0, sp)
 					}
 				}
 
-				// Selection ring (3px outset, Accent stroke).
-				if n.ID == opt.SelectedID {
+				// Root node uses an outset selection pill ring; depth >= 1 uses soft selection tint.
+				if isSelected && n.Depth == 0 {
 					ringStroke := pal.Accent
 					if dimmed {
 						ringStroke = pal.Accent.Alpha(0.45)
@@ -735,7 +776,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					p.Stroke(ringR, ringStroke, ringRad, max(1.6*scale, 1.2))
 				}
 				if opt.DragNodeID != 0 && n.ID == opt.DragTargetID && opt.DragPos == DropInside {
-					p.Stroke(ringR, pal.Accent, ringRad, max(2*scale, 1.5))
+					if n.Depth > 1 {
+						p.Stroke(leafR, pal.Accent, leafRad, max(1.6*scale, 1.2))
+					} else {
+						p.Stroke(ringR, pal.Accent, ringRad, max(2*scale, 1.5))
+					}
 				}
 			}
 
