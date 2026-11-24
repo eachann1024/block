@@ -61,7 +61,7 @@ type Workspace struct {
 	lastDiskMarkdown     map[string]string // last markdown actually written to disk per clean path (catches mid-save undo)
 	headlessMainMu       sync.Mutex        // serializes headless editor render with pluginHostUI.onMainWait when !mygo.App.IsReady()
 	ghostTitle           string            // title typed on the no-note ghost page
-	noteSource           noteSourceView    // read-only Markdown source view of the active note
+	noteSource           noteSourceView    // editable Markdown source view of the active note
 
 	codec       *markdown.Codec
 	sessions    map[string]*editor.Session
@@ -961,6 +961,9 @@ func (w *Workspace) wireModalCallbacks() {
 		if active == "" {
 			return errors.New(theme.Tr("当前没有打开的笔记", "No active note to export"))
 		}
+		if w.noteSourceActive(active) {
+			w.syncNoteSourceBuffer()
+		}
 		sess := w.SessionFor(active)
 		if sess == nil {
 			return errors.New(theme.Tr("无法读取当前笔记", "Could not read active note"))
@@ -1612,6 +1615,9 @@ func (w *Workspace) installClassifiedTabPrepared(clean string, cf model.Classifi
 		if oldSess := w.sessions[clean]; oldSess != nil && oldSess != sess {
 			defer oldSess.Close()
 		}
+		if w.noteSourceActiveLocked(clean) {
+			w.noteSource = noteSourceView{}
+		}
 		delete(w.surfaces, clean)
 		w.sessions[clean] = sess
 		if verified != nil {
@@ -1651,6 +1657,9 @@ func (w *Workspace) installClassifiedTabPrepared(clean string, cf model.Classifi
 		delete(w.lastDiskMarkdown, clean)
 		defer oldSess.Close()
 	}
+	if w.noteSourceActiveLocked(clean) {
+		w.noteSource = noteSourceView{}
+	}
 	w.surfaces[clean] = surf
 	if verified != nil {
 		if w.tabBindings == nil {
@@ -1670,6 +1679,9 @@ func (w *Workspace) OpenExportStage() bool {
 	active := w.ActiveNotePath()
 	if active == "" {
 		return false
+	}
+	if w.noteSourceActive(active) {
+		w.syncNoteSourceBuffer()
 	}
 	sess := w.SessionFor(active)
 	if sess == nil {
@@ -1706,6 +1718,9 @@ func (w *Workspace) OpenPageHistory() bool {
 	active := w.ActiveNotePath()
 	if active == "" {
 		return false
+	}
+	if w.noteSourceActive(active) {
+		w.syncNoteSourceBuffer()
 	}
 	sess := w.SessionFor(active)
 	if sess == nil {
@@ -2008,9 +2023,11 @@ func (w *Workspace) applyPluginNoteWrite(absPath, content string, write func() (
 		absPath = w.openSessionPathLocked(absPath)
 		sess := w.sessions[absPath]
 		isVirtual := w.virtualPreview[absPath]
+		noteSrcActive := w.noteSourceActiveLocked(absPath)
+		noteSrcDirty := w.noteSourceDirtyLocked(absPath)
 		lastDiskMD, hasLastDisk := w.lastDiskMarkdown[filepath.Clean(absPath)]
 		w.mu.RUnlock()
-		if sess != nil && (isVirtual || sess.Dirty() || (hasLastDisk && sess.Markdown() != lastDiskMD)) {
+		if sess != nil && (isVirtual || sess.Dirty() || noteSrcDirty || (hasLastDisk && !noteSrcActive && sess.Markdown() != lastDiskMD)) {
 			return false, plugins.ErrNoteConflict
 		}
 		changed, err := write()
@@ -2055,9 +2072,11 @@ func (w *Workspace) applyPluginNoteTrash(absPath string, verify, trash func() er
 		sessPath := w.openSessionPathLocked(absPath)
 		sess := w.sessions[sessPath]
 		isVirtual := w.virtualPreview[sessPath]
+		noteSrcActive := w.noteSourceActiveLocked(sessPath)
+		noteSrcDirty := w.noteSourceDirtyLocked(sessPath)
 		lastDiskMD, hasLastDisk := w.lastDiskMarkdown[filepath.Clean(sessPath)]
 		w.mu.RUnlock()
-		if sess != nil && (isVirtual || sess.Dirty() || (hasLastDisk && sess.Markdown() != lastDiskMD)) {
+		if sess != nil && (isVirtual || sess.Dirty() || noteSrcDirty || (hasLastDisk && !noteSrcActive && sess.Markdown() != lastDiskMD)) {
 			return plugins.ErrNoteConflict
 		}
 		if err := verify(); err != nil {
@@ -2630,6 +2649,9 @@ func (w *Workspace) focusLoadedTabPos(clean string, forceNewTab bool, recordNav 
 			delete(w.virtualPreview, prevActive)
 			delete(w.lastSnapAt, prevActive)
 			delete(w.lastDiskMarkdown, prevClean)
+			if w.noteSourceActiveLocked(prevActive) {
+				w.noteSource = noteSourceView{}
+			}
 		}
 		if sf := w.surfaces[prevActive]; sf != nil && !sf.IsDirty() {
 			delete(w.surfaces, prevActive)
@@ -2875,6 +2897,9 @@ func (w *Workspace) RejectBatchPlan(planID string) error {
 		delete(w.virtualPreview, drop)
 		delete(w.sessions, drop)
 		delete(w.lastDiskMarkdown, filepath.Clean(drop))
+		if w.noteSourceActiveLocked(drop) {
+			w.noteSource = noteSourceView{}
+		}
 		w.state.OpenTabs, w.state.ActiveTab, _ = w.tabOps.CloseTab(w.state.OpenTabs, w.state.ActiveTab, drop)
 	}
 	active := w.state.ActiveTab
@@ -3069,6 +3094,7 @@ func (w *Workspace) SetNotebook(folder string) error {
 		w.virtualPreview = make(map[string]bool)
 		w.lastSnapAt = make(map[string]time.Time)
 		w.lastDiskMarkdown = make(map[string]string)
+		w.noteSource = noteSourceView{}
 		w.closed = NewClosedTabs()
 		w.nav = NewNavHistory()
 		w.historyToast = nil
@@ -3285,6 +3311,7 @@ func (w *Workspace) ForgetNotebook(root string) {
 			w.virtualPreview = make(map[string]bool)
 			w.lastSnapAt = make(map[string]time.Time)
 			w.lastDiskMarkdown = make(map[string]string)
+			w.noteSource = noteSourceView{}
 			w.closed = NewClosedTabs()
 			w.nav = NewNavHistory()
 			w.historyToast = nil
@@ -3777,6 +3804,12 @@ func (w *Workspace) rebaseRenamedPaths(from, to string) {
 		}
 	}
 	w.lastDiskMarkdown = nextDiskMD
+	if w.noteSource.st != nil && w.noteSource.tab != "" {
+		if next, ok := rebase(w.noteSource.tab); ok {
+			w.noteSource.tab = next
+			w.noteSource.st.Label = filepath.Base(next)
+		}
+	}
 
 	type renamedSessEntry struct {
 		path string
@@ -3890,6 +3923,9 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 			delete(w.tabBindings, k)
 		}
 	}
+	if w.noteSource.st != nil && matches(w.noteSource.tab) {
+		w.noteSource = noteSourceView{}
+	}
 	w.closed.RemoveUnder(cleanTarget)
 	w.nav.RemoveUnder(cleanTarget)
 
@@ -4001,6 +4037,9 @@ func (w *Workspace) CloseTab(path string) {
 	delete(w.surfaces, clean)
 	delete(w.tabBindings, clean)
 	delete(w.lastDiskMarkdown, clean)
+	if w.noteSource.st != nil && filepath.Clean(w.noteSource.tab) == clean {
+		w.noteSource = noteSourceView{}
+	}
 	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) == clean {
 		w.historyToast = nil
 	}
@@ -4128,6 +4167,9 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 		delete(w.lastSnapAt, p)
 		delete(w.lastDiskMarkdown, filepath.Clean(p))
 	}
+	if w.noteSource.st != nil && filepath.Clean(w.noteSource.tab) != clean {
+		w.noteSource = noteSourceView{}
+	}
 	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) != clean {
 		w.historyToast = nil
 	}
@@ -4196,6 +4238,9 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 		delete(w.lastSnapAt, p)
 		delete(w.lastDiskMarkdown, filepath.Clean(p))
 	}
+	if w.noteSource.st != nil && closedSet[filepath.Clean(w.noteSource.tab)] {
+		w.noteSource = noteSourceView{}
+	}
 	if w.historyToast != nil && closedSet[filepath.Clean(w.historyToast.NotePath)] {
 		w.historyToast = nil
 	}
@@ -4246,6 +4291,7 @@ func (w *Workspace) CloseAllTabs() {
 	w.tabBindings = make(map[string]model.VerifiedFileTarget)
 	w.lastSnapAt = make(map[string]time.Time)
 	w.lastDiskMarkdown = make(map[string]string)
+	w.noteSource = noteSourceView{}
 	w.historyToast = nil
 	if w.historyView != nil && w.historyView.Open {
 		w.historyView.Close()
@@ -4527,7 +4573,7 @@ func (w *Workspace) hasDirtyNonVirtualSession() bool {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	for p, sess := range w.sessions {
-		if sess.Dirty() && !w.virtualPreview[p] {
+		if sess != nil && (sess.Dirty() || w.noteSourceDirtyLocked(p)) && !w.virtualPreview[p] {
 			return true
 		}
 	}
@@ -4535,10 +4581,12 @@ func (w *Workspace) hasDirtyNonVirtualSession() bool {
 }
 
 type pendingSessionSave struct {
-	path string
-	sess *editor.Session
-	rev  uint64
-	md   string
+	path      string
+	sess      *editor.Session
+	rev       uint64
+	md        string
+	sessMD    string
+	hasSessMD bool
 }
 
 func (w *Workspace) markSelfWriteWindow(d time.Duration) {
@@ -4567,13 +4615,14 @@ func (w *Workspace) flushOrScheduleDirtySessions() {
 	}
 	w.autoSaveTimer = time.AfterFunc(workspaceAutoSaveDebounce, func() {
 		mygo.RunOnMain(func() {
+			w.syncNoteSourceBuffer()
 			w.mu.Lock()
 			w.autoSaveTimer = nil
 			w.saveGeneration++
 			generation := w.saveGeneration
 			var batch []pendingSessionSave
 			for p, sess := range w.sessions {
-				if sess != nil && sess.Dirty() && !w.virtualPreview[p] {
+				if sess != nil && (sess.Dirty() || w.noteSourceDirtyLocked(p)) && !w.virtualPreview[p] {
 					if w.pluginInsertInFlight[p] > 0 || w.pluginInsertInFlight[filepath.Clean(p)] > 0 {
 						if w.autoSaveDeferred == nil {
 							w.autoSaveDeferred = make(map[string]bool)
@@ -4581,11 +4630,18 @@ func (w *Workspace) flushOrScheduleDirtySessions() {
 						w.autoSaveDeferred[p] = true
 						continue
 					}
+					sessMD := sess.Markdown()
+					md := sessMD
+					if w.noteSourceActiveLocked(p) {
+						md = w.noteSource.text
+					}
 					batch = append(batch, pendingSessionSave{
-						path: p,
-						sess: sess,
-						rev:  sess.DocRev(),
-						md:   sess.Markdown(),
+						path:      p,
+						sess:      sess,
+						rev:       sess.DocRev(),
+						md:        md,
+						sessMD:    sessMD,
+						hasSessMD: true,
 					})
 				}
 			}
@@ -4723,15 +4779,21 @@ func (w *Workspace) runSessionSaves(generation uint64, batch []pendingSessionSav
 			if !live || latestSeq != d.seq {
 				continue
 			}
-			if d.item.sess.MarkSavedIfUnchanged(d.item.rev, d.item.md) {
+			savedSessMD := d.item.md
+			if d.item.hasSessMD {
+				savedSessMD = d.item.sessMD
+			}
+			if d.item.sess.MarkSavedIfUnchanged(d.item.rev, savedSessMD) {
+				w.markNoteSourceSaved(d.item.path, d.item.md)
 				anyMarked = true
 			} else {
 				// Session moved to a newer docRev while d.item.md was being written to disk
 				// (e.g. user pressed Undo back to BASE mid-write). Sync savedMarkdown with
 				// what is actually on disk so Dirty() never falsely reports clean, and
 				// trigger autosave to converge disk back to the current session text.
-				d.item.sess.SyncDiskSavedMarkdown(d.item.md)
-				if d.item.sess.Dirty() {
+				d.item.sess.SyncDiskSavedMarkdown(savedSessMD)
+				w.markNoteSourceSaved(d.item.path, d.item.md)
+				if d.item.sess.Dirty() || w.noteSourceDirty(d.item.path) {
 					needReschedule = true
 				}
 				anyMarked = true
@@ -4811,6 +4873,7 @@ func (w *Workspace) flushDirtySessions() error {
 }
 
 func (w *Workspace) flushDirtySessionsLocked() error {
+	w.syncNoteSourceBuffer()
 	w.mu.Lock()
 	w.saveGeneration++
 	if w.autoSaveTimer != nil {
@@ -4822,6 +4885,8 @@ func (w *Workspace) flushDirtySessionsLocked() error {
 		sess        *editor.Session
 		lastDiskMD  string
 		hasLastDisk bool
+		noteSource  bool
+		sourceDirty bool
 	}
 	candidates := make([]sessionCandidate, 0, len(w.sessions))
 	paths := make([]string, 0, len(w.sessions))
@@ -4841,6 +4906,8 @@ func (w *Workspace) flushDirtySessionsLocked() error {
 			sess:        sess,
 			lastDiskMD:  lastDiskMD,
 			hasLastDisk: hasLastDisk,
+			noteSource:  w.noteSourceActiveLocked(p),
+			sourceDirty: w.noteSourceDirtyLocked(p),
 		})
 	}
 	for path, surface := range w.surfaces {
@@ -4850,7 +4917,7 @@ func (w *Workspace) flushDirtySessionsLocked() error {
 	}
 	w.mu.Unlock()
 	for _, c := range candidates {
-		if c.sess.Dirty() || (c.hasLastDisk && c.sess.Markdown() != c.lastDiskMD) {
+		if c.sess.Dirty() || c.sourceDirty || (c.hasLastDisk && !c.noteSource && c.sess.Markdown() != c.lastDiskMD) {
 			paths = append(paths, c.path)
 		}
 	}
@@ -4873,6 +4940,9 @@ func (w *Workspace) flushSingleSession(path string) error {
 }
 
 func (w *Workspace) flushSingleSessionLocked(path string) error {
+	if w.noteSourceActive(path) {
+		w.syncNoteSourceBuffer()
+	}
 	clean := filepath.Clean(path)
 	w.mu.RLock()
 	source := w.surfaces[path]
@@ -4881,6 +4951,9 @@ func (w *Workspace) flushSingleSessionLocked(path string) error {
 	inFlight := w.pluginInsertInFlight[path] > 0 || w.pluginInsertInFlight[clean] > 0
 	lastSnap := w.lastSnapAt[path]
 	lastDiskMD, hasLastDisk := w.lastDiskMarkdown[clean]
+	noteSourceActive := w.noteSourceActiveLocked(path)
+	sourceText := w.noteSource.text
+	sourceDirty := w.noteSourceDirtyLocked(path)
 	w.mu.RUnlock()
 	if source != nil && source.IsDirty() {
 		return source.saveSource()
@@ -4892,13 +4965,21 @@ func (w *Workspace) flushSingleSessionLocked(path string) error {
 		return nil
 	}
 	md := sess.Markdown()
-	if !sess.Dirty() && (!hasLastDisk || md == lastDiskMD) {
+	if noteSourceActive {
+		md = sourceText
+		if !sess.Dirty() && !sourceDirty && (!hasLastDisk || md == lastDiskMD) {
+			return nil
+		}
+	} else if !sess.Dirty() && (!hasLastDisk || md == lastDiskMD) {
 		return nil
 	}
 	if err := w.saveSessionMarkdown(path, sess, md); err != nil {
 		return err
 	}
 	sess.MarkSaved()
+	if noteSourceActive {
+		w.markNoteSourceSaved(path, md)
+	}
 	files.ClearRecovery(path)
 	now := time.Now()
 	if now.Sub(lastSnap) >= 5*time.Second {
@@ -4923,15 +5004,24 @@ func (w *Workspace) flushSingleSessionNoRecovery(path string, expectedRev uint64
 	sess := w.sessions[path]
 	isVirtual := w.virtualPreview[path]
 	lastSnap := w.lastSnapAt[path]
+	useSource := w.noteSourceActiveLocked(path) && w.noteSource.docRev == expectedRev
+	sourceText := w.noteSource.text
+	sourceDirty := w.noteSourceDirtyLocked(path)
 	w.mu.RUnlock()
-	if sess == nil || !sess.Dirty() || isVirtual {
+	if sess == nil || (!sess.Dirty() && !(useSource && sourceDirty)) || isVirtual {
 		return nil
 	}
 	md := sess.Markdown()
+	if useSource {
+		md = sourceText
+	}
 	if err := w.saveSessionMarkdownOpts(path, sess, md, expectedRev, false); err != nil {
 		return err
 	}
 	sess.MarkSaved()
+	if useSource {
+		w.markNoteSourceSaved(path, md)
+	}
 	now := time.Now()
 	if now.Sub(lastSnap) >= 5*time.Second {
 		_, _ = files.RecordHistorySnapshot(path, md, theme.Tr("自动保存", "Auto-save"))
@@ -5145,7 +5235,7 @@ func (w *Workspace) TriggerFind(replace bool) bool {
 	}
 	var handled bool
 	if activeTab := w.ActiveNotePath(); w.noteSourceActive(activeTab) {
-		handled = w.openNoteSourceFind()
+		handled = w.openNoteSourceFind(replace)
 	} else if surf := w.ActiveSurface(); surf != nil {
 		handled = surf.OpenFind(replace)
 	} else if sess := w.ActiveSession(); sess != nil && !sess.IsLightboxOpen() && !sess.HasMindMapFullscreen() {
@@ -5477,6 +5567,24 @@ func copyMarkdownShortcutSpec() string {
 }
 
 func (w *Workspace) copyActiveMarkdown(svc ui.Services) {
+	active := w.ActiveNotePath()
+	if w.noteSourceActive(active) {
+		w.mu.RLock()
+		st := w.noteSource.st
+		w.mu.RUnlock()
+		txt := ""
+		if st != nil {
+			txt = st.SelectedText()
+		}
+		if txt == "" {
+			txt = w.noteSourceCurrentText()
+		}
+		if txt == "" {
+			return
+		}
+		svc.WriteClipboard(txt)
+		return
+	}
 	sess := w.ActiveSession()
 	if sess == nil {
 		return
@@ -5584,8 +5692,9 @@ func (w *Workspace) Render(c *ui.Context) {
 						defer w.bgSaveMu.Unlock()
 						w.mu.RLock()
 						currentSession := w.sessions[notePath]
+						sourceDirty := w.noteSourceDirtyLocked(notePath)
 						w.mu.RUnlock()
-						if currentSession != nil && currentSession.Dirty() {
+						if currentSession != nil && (currentSession.Dirty() || sourceDirty) {
 							w.historyView.ErrorMsg = theme.Tr("笔记已有新编辑，无法恢复", "The note has newer edits")
 							w.RequestRedraw()
 							return
@@ -5671,6 +5780,8 @@ func (w *Workspace) Render(c *ui.Context) {
 		if s := w.sessions[tp]; s != nil && s.Dirty() {
 			isDirty = true
 		} else if sf := w.surfaces[tp]; sf != nil && sf.IsDirty() {
+			isDirty = true
+		} else if w.noteSourceDirtyLocked(tp) {
 			isDirty = true
 		}
 		if isDirty {
@@ -6163,7 +6274,7 @@ func (w *Workspace) Render(c *ui.Context) {
 									func() {
 										w.bgSaveMu.Lock()
 										defer w.bgSaveMu.Unlock()
-										if sess := w.SessionFor(toast.NotePath); sess != nil && sess.Dirty() {
+										if sess := w.SessionFor(toast.NotePath); sess != nil && (sess.Dirty() || w.noteSourceDirty(toast.NotePath)) {
 											w.setNotice(theme.Tr("笔记已有新编辑，无法撤回恢复", "The note has newer edits"))
 											return
 										}
@@ -6212,7 +6323,7 @@ func (w *Workspace) Render(c *ui.Context) {
 									if w.pluginUI != nil {
 										w.pluginUI.setEditorFocus(activeTab, false)
 									}
-									w.renderNoteSource(c)
+									w.renderNoteSource(c, activeSess)
 								case activeSess != nil:
 									headlessLock := !mygo.App.IsReady()
 									if headlessLock {
