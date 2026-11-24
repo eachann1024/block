@@ -64,6 +64,17 @@ func readDarwinFileIdentity(path string) darwinFileIdentity {
 	}
 }
 
+// darwinBundleRootPath returns the ".app" bundle root containing the launched
+// executable, or "" if Block was not launched from a macOS app bundle.
+func darwinBundleRootPath() string {
+	for _, p := range []string{darwinStartupRawExecPath, darwinStartupExecPath} {
+		if idx := strings.LastIndex(p, ".app/Contents/MacOS/"); idx > 0 {
+			return p[:idx+4]
+		}
+	}
+	return ""
+}
+
 // darwinBundleIntact reports whether the running executable (and its app bundle
 // code signature, when bundled) still match what was launched. When a hot
 // in-place rebuild replaces Block.app on disk while an older process is still

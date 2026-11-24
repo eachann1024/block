@@ -61,9 +61,9 @@ func refocusWindow(win *mygo.Window) {
 }
 
 // OpenDialog opens a native file or directory picker without blocking the UI main thread.
-// On macOS, it uses the in-process AppKit NSOpenPanel sheet (fast, non-blocking) whenever
-// the running bundle is intact, and falls back to out-of-process osascript only if a hot
-// in-place bundle update replaced the app on disk while this process stayed running.
+// On macOS, it reuses a pre-warmed in-process AppKit NSOpenPanel sheet whenever the
+// running bundle is intact, uses a pre-warmed out-of-process helper if a hot in-place
+// bundle update replaced the app on disk, and falls back to osascript only as a last resort.
 // Concurrent calls while a picker is already open return (nil, nil) immediately.
 func OpenDialog(win *mygo.Window, opts mygo.OpenDialogOptions) ([]string, error) {
 	return OpenDialogGuarded(context.Background(), win, opts, nil)
@@ -88,20 +88,8 @@ func OpenDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.OpenDial
 		opts.DefaultPath = resolveExistingDir(opts.DefaultPath)
 	}
 
-	if runtime.GOOS == "darwin" && !darwinBundleIntact() {
-		if _, err := os.Stat("/usr/bin/osascript"); err == nil {
-			if allowed != nil && !allowed() {
-				return nil, context.Canceled
-			}
-			paths, osaErr := openDialogDarwinOsascript(ctx, opts)
-			if allowed == nil {
-				refocusWindow(win)
-			}
-			if osaErr == nil && !opts.Directory && !dialogPathsMatchExtensions(paths, opts.Filters) {
-				return nil, errors.New("selected file does not match the requested extensions")
-			}
-			return paths, osaErr
-		}
+	if runtime.GOOS == "darwin" {
+		return openDialogDarwin(ctx, win, opts, allowed)
 	}
 
 	opts.Parent = win
@@ -171,17 +159,8 @@ func SaveDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.SaveDial
 		win = mygo.FocusedWindow()
 	}
 
-	if runtime.GOOS == "darwin" && !darwinBundleIntact() {
-		if _, err := os.Stat("/usr/bin/osascript"); err == nil {
-			if allowed != nil && !allowed() {
-				return "", context.Canceled
-			}
-			chosen, osaErr := saveDialogDarwinOsascript(ctx, opts)
-			if allowed == nil {
-				refocusWindow(win)
-			}
-			return chosen, osaErr
-		}
+	if runtime.GOOS == "darwin" {
+		return saveDialogDarwin(ctx, win, opts, allowed)
 	}
 
 	opts.Parent = win
