@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T05:42:35.172Z",
-  "latest_version": "1.0.923",
-  "latest_tag": "v1.0.923",
+  "updated_at": "2026-11-24T06:04:44.414Z",
+  "latest_version": "1.0.924",
+  "latest_tag": "v1.0.924",
   "releases": [
+    {
+      "version": "1.0.924",
+      "tag": "v1.0.924",
+      "published_at": "2026-11-24T06:04:43Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.924",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件商店：插件暂存安装流程强化了包完整性与来源校验，并加固了权限确认弹窗。",
+          "插件接口：菜单栏扩展项现在严格执行剪贴板权限检查，并加固了提示通知中的交互操作。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugin Store: The staged plugin installation workflow now enforces stricter package integrity and provenance checks, and hardens the permission confirmation modal.",
+          "Plugin API: The app now enforces clipboard permissions for menu bar contributions and hardens interactive toast notification actions."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-macos-arm64.dmg",
+          "size": 15561422,
+          "sha256": "b0a9290aa17c49c55f29e64cb3c4f1112bcc26419519cc09a7cbd06fa7b9d1f1"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-macos-x64.dmg",
+          "size": 17141332,
+          "sha256": "ca793624c98a66604163d5a510ed4326f8e0b1189c4afaf5922eb2180f83cd4d"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-windows-x64-setup.exe",
+          "size": 12528395,
+          "sha256": "087cc3e016e4cbef257ea13ff0192f7ab9eca78357d5292a9bd6145a2b9dcdca"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-linux-x64.deb",
+          "size": 11064030,
+          "sha256": "d277a74b7131911395656b872ab106e14a44440ece95e920beb9c3d34791fe07"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-linux-x64.AppImage",
+          "size": 24041976,
+          "sha256": "791aca4a94669d2942700738d25ea02bbd8fa9c3d13030f9d667c590a2d7dde3"
+        }
+      ]
+    },
     {
       "version": "1.0.923",
       "tag": "v1.0.923",
@@ -32,38 +90,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-macos-arm64.dmg",
-          "size": 15535504,
-          "sha256": "4b1fbbce35893703d6628b45a6a34cda82709817597d81512750adfa00f74140"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-macos-x64.dmg",
-          "size": 17112348,
-          "sha256": "31da2154b4933a899fe5491a79a33cabd8e4435672e55eeb75ea82e3423a1116"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-windows-x64-setup.exe",
-          "size": 12501875,
-          "sha256": "863091cddce6d7e8b5fc12a243605b03770f263b5e82eec586fcfac931710970"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-linux-x64.deb",
-          "size": 11042716,
-          "sha256": "53b63a6259bddcd9a4b6cd536ed30fa8b570fee3d6b5e9b9d429777a4dd40e0e"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.923/block-linux-x64.AppImage",
-          "size": 24021496,
-          "sha256": "6c85e82c02c5222a560588d8c941c1d39df03b5621a85576a4927ee9b5019d7a"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.922",
@@ -1426,33 +1453,6 @@
         "new": [
           "Add row icons and icon strip to plugin UI.",
           "Expose real icons on titlebar slots."
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.874",
-      "tag": "v1.0.874",
-      "published_at": "2026-11-21T03:52:07Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.874",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "优化侧栏文件树、标签页与笔记本切换体验。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Add folder checklist lets users add notebooks with a plus button.",
-          "Register plugin-picked folders as notebooks without switching."
         ],
         "improvements": [],
         "fixes": [],
