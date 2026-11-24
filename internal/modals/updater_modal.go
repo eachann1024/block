@@ -441,6 +441,7 @@ func (m *Manager) renderUpdaterFooter(
 					var titleText string
 					if snap.Preparing {
 						titleText = updaterTr(showEn, "校验通过，正在解包准备更新…", "Verified, preparing update bundle…")
+						ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent).Label(titleText)
 					} else {
 						titleText = fmt.Sprintf("%s v%s · %d%%",
 							updaterTr(showEn, "正在下载", "Downloading"),
@@ -528,13 +529,18 @@ func (m *Manager) renderUpdaterFooter(
 	case updater.StatusInstalling:
 		ui.Row(c.Key("updater-footer-installing")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Grow(1).MinWidth(0).Children(func() {
-				icons.DrawAnimated(c, icons.UpdateTangle, theme.IconAction, pal.DuoIconColors(pal.Accent), true)
-				ui.Text(c, updaterTr(showEn, "正在保存笔记并重启 Block…", "Saving notes and restarting Block…")).
+				installingText := updaterTr(showEn, "正在保存笔记并重启 Block…", "Saving notes and restarting Block…")
+				ui.Spinner(c).FontSize(theme.IconAction).TextColor(pal.Accent).Label(installingText)
+				ui.Text(c, installingText).
 					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 					FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0)
 			})
-			refIc := icons.Refresh
-			internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "正在重启…", "Restarting…"), &refIc, internalui.ButtonPrimary, true)
+			internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+				ID:       "updater-submit",
+				Label:    updaterTr(showEn, "正在重启…", "Restarting…"),
+				Style:    internalui.ButtonPrimary,
+				Disabled: true,
+			})
 		})
 
 	case updater.StatusError:
