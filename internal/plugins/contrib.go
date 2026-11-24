@@ -1072,21 +1072,38 @@ type ToastAction struct {
 	Payload map[string]any `json:"payload,omitempty"`
 }
 
+// ToastActionBinding pins a plugin toast action to the plugin install instance
+// and notebook scope that created it, preventing stale clicks across plugin
+// updates, reloads, or notebook switches.
+type ToastActionBinding struct {
+	PluginVersion string
+	InstallEpoch  uint64
+	NotebookRoot  string
+	NotebookEpoch uint64
+}
+
+// ToastResult reports how the host accepted an in-app notification banner.
+type ToastResult struct {
+	Shown  bool // True when immediately visible on screen.
+	Queued bool // True when accepted into the backlog waiting for a visible slot.
+}
+
 // ToastRequest describes an in-app top-right notification banner.
 type ToastRequest struct {
-	PluginID string
-	Message  string
-	Body     string
-	Tone     string
-	Icon     *DuoIconSpec
-	Action   *ToastAction
-	OnAction func() // Host-internal action callback when PluginID == ""
+	PluginID      string
+	Message       string
+	Body          string
+	Tone          string
+	Icon          *DuoIconSpec
+	Action        *ToastAction
+	ActionBinding *ToastActionBinding
+	OnAction      func() // Host-internal action callback when PluginID == ""
 }
 
 // UIHost is implemented by the app so plugins can drive host UI. All methods
 // may be called from plugin goroutines and must be safe off the UI thread.
 type UIHost interface {
-	Toast(req ToastRequest) bool
+	Toast(req ToastRequest) ToastResult
 	OpenPluginSettings(pluginID string)
 	OpenDialog(pluginID, dialogID string, checkValid func() error) (string, error)
 	ActiveDialogToken(pluginID, dialogID string) string
@@ -2244,14 +2261,15 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 	// Menu bar commands usually run while Block is in the background, so
 	// their result goes to the menu bar host, which also copies copy_text.
 	fromMenubar := cc.Source == CommandSourceMenubar || cc.Source == CommandSourceMenubarDrop
-	report := func(msg, body, tone, copyText string, ic *DuoIconSpec, act *ToastAction) {
+	report := func(msg, body, tone, copyText string, ic *DuoIconSpec, act *ToastAction, binding *ToastActionBinding) {
 		req := ToastRequest{
-			PluginID: pluginID,
-			Message:  msg,
-			Body:     body,
-			Tone:     normalizeTone(tone),
-			Icon:     ic,
-			Action:   act,
+			PluginID:      pluginID,
+			Message:       msg,
+			Body:          body,
+			Tone:          normalizeTone(tone),
+			Icon:          ic,
+			Action:        act,
+			ActionBinding: binding,
 		}
 		if h, ok := s.cfg.UI.(MenubarFeedbackHost); ok && (fromMenubar || copyText != "") {
 			h.MenubarFeedback(req, copyText)
@@ -2264,17 +2282,17 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 		defer cancel()
 		unlock, err := s.lockPluginRPCContext(ctx, pluginID)
 		if err != nil {
-			report(err.Error(), "", "error", "", nil, nil)
+			report(err.Error(), "", "error", "", nil, nil, nil)
 			return
 		}
 		defer unlock()
 		if s.NotebookRoot() != nbRoot || s.notebookEpoch.Load() != notebookEpoch {
-			report(LocalizedText{Zh: "笔记本已切换，命令未执行", En: "Notebook changed; command not run"}.Resolve(s.Locale()), "", "warning", "", nil, nil)
+			report(LocalizedText{Zh: "笔记本已切换，命令未执行", En: "Notebook changed; command not run"}.Resolve(s.Locale()), "", "warning", "", nil, nil, nil)
 			return
 		}
 		rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 		if err != nil {
-			report(err.Error(), "", "error", "", nil, nil)
+			report(err.Error(), "", "error", "", nil, nil, nil)
 			return
 		}
 		if !rt.manifest.HasPermission(PermEditorRead) {
@@ -2307,39 +2325,119 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 			return rt.Command(cmdCtx, commandID, cc)
 		}()
 		if err != nil {
-			report(err.Error(), "", "error", "", nil, nil)
+			report(err.Error(), "", "error", "", nil, nil, nil)
 			return
 		}
 		if res != nil && (res.Status != "" || res.CopyText != "") {
 			tone := normalizeTone(res.Tone)
+			status := res.Status
+			body := res.Body
+			copyText := res.CopyText
+			if copyText != "" && !rt.manifest.HasPermission(PermClipboardWrite) {
+				copyText = ""
+				if strings.TrimSpace(status) == "" {
+					status = LocalizedText{Zh: "插件未获得写入剪贴板权限", En: "Plugin lacks clipboard write permission"}.Resolve(s.Locale())
+					tone = "error"
+				} else {
+					note := LocalizedText{Zh: "插件未获得写入剪贴板权限，结果未复制到剪贴板。", En: "Plugin lacks clipboard write permission; result was not copied."}.Resolve(s.Locale())
+					if strings.TrimSpace(body) != "" {
+						body = strings.TrimSpace(body) + "\n" + note
+					} else {
+						body = note
+					}
+					if tone != "error" {
+						tone = "warning"
+					}
+				}
+			}
 			var ic *DuoIconSpec
 			if res.ShowPluginIcon == nil || *res.ShowPluginIcon {
 				cp := rt.manifest.Icon
 				ic = &cp
 			}
 			var act *ToastAction
+			var binding *ToastActionBinding
 			if res.Action != nil {
 				if cleanAct, actErr := normalizeToastAction(res.Action); actErr == nil {
 					act = cleanAct
+					binding = s.captureToastActionBinding(pluginID, rt.manifest.Version, nbRoot, notebookEpoch)
 				}
 			}
-			report(truncateRunes(res.Status, 160), truncateRunes(res.Body, 1000), tone, res.CopyText, ic, act)
+			report(truncateRunes(status, 160), truncateRunes(body, 1000), tone, copyText, ic, act, binding)
 		} else if fromMenubar {
 			// No message, but the menu bar icon still waits to leave its busy state.
-			report("", "", "", "", nil, nil)
+			report("", "", "", "", nil, nil, nil)
 		}
 		s.notifyRedraw()
 	}()
 }
 
+func (s *Supervisor) captureToastActionBinding(pluginID, version, nbRoot string, nbEpoch uint64) *ToastActionBinding {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	instEpoch := s.installEpoch[pluginID]
+	s.mu.RUnlock()
+	return &ToastActionBinding{
+		PluginVersion: version,
+		InstallEpoch:  instEpoch,
+		NotebookRoot:  cleanNotebookKey(nbRoot),
+		NotebookEpoch: nbEpoch,
+	}
+}
+
+func (s *Supervisor) toastActionBindingValid(pluginID string, binding *ToastActionBinding) (ok bool, installedAndEnabled bool) {
+	if s == nil {
+		return false, false
+	}
+	s.mu.RLock()
+	var inst *InstalledApp
+	for i := range s.installed {
+		if s.installed[i].Manifest.ID == pluginID {
+			cp := s.installed[i]
+			inst = &cp
+			break
+		}
+	}
+	instEpoch := s.installEpoch[pluginID]
+	s.mu.RUnlock()
+	if inst == nil || !inst.Enabled {
+		return false, false
+	}
+	if binding == nil {
+		return true, true
+	}
+	if instEpoch != binding.InstallEpoch || inst.Manifest.Version != binding.PluginVersion {
+		return false, true
+	}
+	if s.notebookEpoch.Load() != binding.NotebookEpoch || cleanNotebookKey(s.NotebookRoot()) != binding.NotebookRoot {
+		return false, true
+	}
+	return true, true
+}
+
 // TriggerToastActionAsync invokes plugin.action with surface="toast" when the
 // user clicks the action button on a plugin's notification banner.
-func (s *Supervisor) TriggerToastActionAsync(pluginID, actionID string, payload map[string]any) {
+func (s *Supervisor) TriggerToastActionAsync(pluginID, actionID string, payload map[string]any, binding *ToastActionBinding) {
 	if s == nil || strings.TrimSpace(pluginID) == "" || strings.TrimSpace(actionID) == "" {
+		return
+	}
+	if valid, enabled := s.toastActionBindingValid(pluginID, binding); !valid {
+		if enabled {
+			s.NotifyHost(ToastRequest{
+				Message: LocalizedText{Zh: "该通知操作已过期", En: "This notification action has expired"}.Resolve(s.Locale()),
+				Tone:    "warning",
+			})
+		}
 		return
 	}
 	nbRoot := s.NotebookRoot()
 	notebookEpoch := s.notebookEpoch.Load()
+	if binding != nil {
+		nbRoot = binding.NotebookRoot
+		notebookEpoch = binding.NotebookEpoch
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -2349,12 +2447,25 @@ func (s *Supervisor) TriggerToastActionAsync(pluginID, actionID string, payload 
 			return
 		}
 		defer unlock()
-		if !s.IsPluginEnabled(pluginID) {
+		if valid, enabled := s.toastActionBindingValid(pluginID, binding); !valid {
+			if enabled {
+				s.NotifyHost(ToastRequest{
+					Message: LocalizedText{Zh: "该通知操作已过期", En: "This notification action has expired"}.Resolve(s.Locale()),
+					Tone:    "warning",
+				})
+			}
 			return
 		}
 		rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 		if err != nil {
 			s.toast(pluginID, err.Error(), "error", nil)
+			return
+		}
+		if binding != nil && rt.manifest.Version != binding.PluginVersion {
+			s.NotifyHost(ToastRequest{
+				Message: LocalizedText{Zh: "该通知操作已过期", En: "This notification action has expired"}.Resolve(s.Locale()),
+				Tone:    "warning",
+			})
 			return
 		}
 		rt.SetNotebookRoot(nbRoot)
@@ -2414,7 +2525,7 @@ func (s *Supervisor) EmitWorkspaceEvent(event string, data map[string]any) {
 	}
 }
 
-func (s *Supervisor) toast(pluginID, msg, tone string, icon *DuoIconSpec) bool {
+func (s *Supervisor) toast(pluginID, msg, tone string, icon *DuoIconSpec) ToastResult {
 	return s.toastReq(ToastRequest{
 		PluginID: pluginID,
 		Message:  msg,
@@ -2423,16 +2534,16 @@ func (s *Supervisor) toast(pluginID, msg, tone string, icon *DuoIconSpec) bool {
 	})
 }
 
-func (s *Supervisor) toastReq(req ToastRequest) bool {
+func (s *Supervisor) toastReq(req ToastRequest) ToastResult {
 	if s == nil || s.cfg.UI == nil || strings.TrimSpace(req.Message) == "" {
-		return false
+		return ToastResult{}
 	}
 	req.Tone = normalizeTone(req.Tone)
 	return s.cfg.UI.Toast(req)
 }
 
 // NotifyHost emits a host-originated global top-right notification banner.
-func (s *Supervisor) NotifyHost(req ToastRequest) bool {
+func (s *Supervisor) NotifyHost(req ToastRequest) ToastResult {
 	req.PluginID = ""
 	return s.toastReq(req)
 }
@@ -2671,22 +2782,45 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			ic = &cp
 		}
 		var act *ToastAction
+		var binding *ToastActionBinding
 		if p.Action != nil {
 			cleanAct, err := normalizeToastAction(p.Action)
 			if err != nil {
 				return nil, rpcErr(-32602, err.Error()), true
 			}
 			act = cleanAct
+			rtRoot := rt.notebookRoot()
+			if rtRoot == "" {
+				rtRoot = s.NotebookRoot()
+			}
+			ep := s.notebookEpoch.Load()
+			if rtRoot != "" && cleanNotebookKey(rtRoot) != cleanNotebookKey(s.NotebookRoot()) {
+				return nil, rpcErr(-32603, "plugin runtime scope is no longer active"), true
+			}
+			s.mu.RLock()
+			if !s.isRuntimeActiveLocked(m.ID, rt) || s.notebookEpoch.Load() != ep {
+				s.mu.RUnlock()
+				return nil, rpcErr(-32603, "plugin runtime scope is no longer active"), true
+			}
+			instEpoch := s.installEpoch[m.ID]
+			s.mu.RUnlock()
+			binding = &ToastActionBinding{
+				PluginVersion: m.Version,
+				InstallEpoch:  instEpoch,
+				NotebookRoot:  cleanNotebookKey(rtRoot),
+				NotebookEpoch: ep,
+			}
 		}
-		shown := s.toastReq(ToastRequest{
-			PluginID: m.ID,
-			Message:  truncateRunes(msg, 160),
-			Body:     truncateRunes(strings.TrimSpace(p.Body), 1000),
-			Tone:     normalizeTone(p.Tone),
-			Icon:     ic,
-			Action:   act,
+		res := s.toastReq(ToastRequest{
+			PluginID:      m.ID,
+			Message:       truncateRunes(msg, 160),
+			Body:          truncateRunes(strings.TrimSpace(p.Body), 1000),
+			Tone:          normalizeTone(p.Tone),
+			Icon:          ic,
+			Action:        act,
+			ActionBinding: binding,
 		})
-		return map[string]any{"ok": true, "shown": shown}, nil, true
+		return map[string]any{"ok": true, "shown": res.Shown, "queued": res.Queued}, nil, true
 
 	case "host.ui.open_settings":
 		if !m.HasSettingsPage() {

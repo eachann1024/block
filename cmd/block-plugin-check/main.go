@@ -41,6 +41,15 @@ func main() {
 	if redundant := m.RedundantPermissions(); len(redundant) > 0 {
 		fmt.Printf("[WARN] permissions: %v are now granted automatically and no longer need to be declared in manifest.json\n", redundant)
 	}
+	if m.Contributes != nil {
+		for _, item := range m.Contributes.MenubarItems {
+			for _, entry := range item.Menu {
+				if entry.Input == "clipboard" && !m.HasPermission(plugins.PermClipboardRead) {
+					fail("contributes.menubar_items %q menu %q uses input \"clipboard\" without declaring %q", item.ID, entry.ID, plugins.PermClipboardRead)
+				}
+			}
+		}
+	}
 
 	if m.Contributes != nil && len(m.Contributes.Languages) > 0 {
 		if err := plugins.ValidatePluginLanguages(pluginDir, m); err != nil {

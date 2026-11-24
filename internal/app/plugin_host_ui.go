@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,30 +25,38 @@ const (
 	pluginToastInfoDuration    = 4 * time.Second
 	pluginToastWarningDuration = 6 * time.Second
 	pluginToastMinResume       = 250 * time.Millisecond
-	pluginToastVisibleMax      = 3
+	pluginToastVisibleMax = 3
 	// pluginToastQueueMax bounds queued toasts so a chatty plugin cannot
 	// build an endless backlog while still allowing 4-tone showcase queues.
 	pluginToastQueueMax = 6
 	// pluginToastPerSourceMax bounds one plugin's share of the queue so it
 	// can never push out app notices (save failures etc.) or other plugins.
 	pluginToastPerSourceMax = 4
+	// pluginToastPersistentPerSourceMax caps how many non-expiring (error or
+	// action) banners a single plugin may keep on screen simultaneously.
+	pluginToastPersistentPerSourceMax = 1
+	// pluginToastPersistentPluginVisibleMax caps total non-expiring plugin
+	// banners on screen so at least one visible slot always remains available.
+	pluginToastPersistentPluginVisibleMax = pluginToastVisibleMax - 1
 )
 
 var errHostClosing = errors.New("host is shutting down")
 
 type pluginToast struct {
-	ID        uint64
-	PluginID  string
-	Message   string
-	Body      string
-	Tone      string
-	Icon      *plugins.DuoIconSpec
-	Action    *plugins.ToastAction
-	OnAction  func()
-	remaining time.Duration
-	startedAt time.Time
-	hovered   bool
-	timer     *time.Timer
+	ID            uint64
+	PluginID      string
+	Message       string
+	Body          string
+	Tone          string
+	Icon          *plugins.DuoIconSpec
+	Action        *plugins.ToastAction
+	ActionBinding *plugins.ToastActionBinding
+	actionKey     string
+	OnAction      func()
+	remaining     time.Duration
+	startedAt     time.Time
+	hovered       bool
+	timer         *time.Timer
 }
 
 type pluginDialogRef struct {
@@ -68,7 +77,8 @@ type pluginHostUI struct {
 	mu              sync.Mutex
 	nextToastID     uint64
 	nextDialogID    uint64
-	toasts          []pluginToast
+	visibleToastsQ  []pluginToast
+	queuedToasts    []pluginToast
 	activeDialog    *pluginDialogRef
 	activePanel     *pluginPanelRef
 	lastPanel       *pluginPanelRef
@@ -103,10 +113,16 @@ func newPluginHostUI(w *Workspace) *pluginHostUI {
 func (h *pluginHostUI) HostClosing() {
 	h.closingOnce.Do(func() { close(h.closing) })
 	h.mu.Lock()
-	for i := range h.toasts {
-		if h.toasts[i].timer != nil {
-			h.toasts[i].timer.Stop()
-			h.toasts[i].timer = nil
+	for i := range h.visibleToastsQ {
+		if h.visibleToastsQ[i].timer != nil {
+			h.visibleToastsQ[i].timer.Stop()
+			h.visibleToastsQ[i].timer = nil
+		}
+	}
+	for i := range h.queuedToasts {
+		if h.queuedToasts[i].timer != nil {
+			h.queuedToasts[i].timer.Stop()
+			h.queuedToasts[i].timer = nil
 		}
 	}
 	h.mu.Unlock()
@@ -193,22 +209,56 @@ func cloneToastAction(a *plugins.ToastAction) *plugins.ToastAction {
 	}
 	cp := &plugins.ToastAction{ID: id, Label: label}
 	if len(a.Payload) > 0 {
-		cp.Payload = make(map[string]any, len(a.Payload))
-		for k, v := range a.Payload {
-			cp.Payload[k] = v
+		if raw, err := json.Marshal(a.Payload); err == nil {
+			var cloned map[string]any
+			if json.Unmarshal(raw, &cloned) == nil {
+				cp.Payload = cloned
+			}
+		}
+		if cp.Payload == nil {
+			cp.Payload = make(map[string]any, len(a.Payload))
+			for k, v := range a.Payload {
+				cp.Payload[k] = v
+			}
 		}
 	}
 	return cp
 }
 
-func toastActionID(a *plugins.ToastAction) string {
-	if a == nil {
-		return ""
+func cloneToastActionBinding(b *plugins.ToastActionBinding) *plugins.ToastActionBinding {
+	if b == nil {
+		return nil
 	}
-	return a.ID
+	cp := *b
+	return &cp
 }
 
-func (h *pluginHostUI) Toast(req plugins.ToastRequest) bool {
+func buildToastActionKey(a *plugins.ToastAction, b *plugins.ToastActionBinding, hasHostCallback bool) string {
+	if a == nil && !hasHostCallback {
+		return ""
+	}
+	var sb strings.Builder
+	if hasHostCallback {
+		sb.WriteString("host:")
+	} else {
+		sb.WriteString("plugin:")
+	}
+	if a != nil {
+		if raw, err := json.Marshal(a); err == nil {
+			sb.Write(raw)
+		} else {
+			sb.WriteString(a.ID)
+			sb.WriteByte(':')
+			sb.WriteString(a.Label)
+		}
+	}
+	if b != nil {
+		fmt.Fprintf(&sb, "|v=%s|ie=%d|nb=%s|ne=%d", b.PluginVersion, b.InstallEpoch, b.NotebookRoot, b.NotebookEpoch)
+	}
+	return sb.String()
+}
+
+func (h *pluginHostUI) Toast(req plugins.ToastRequest) plugins.ToastResult {
 	return h.toastReq(req)
 }
 
@@ -225,15 +275,15 @@ func (h *pluginHostUI) OpenPluginSettings(pluginID string) {
 	})
 }
 
-func (h *pluginHostUI) toastReq(req plugins.ToastRequest) bool {
+func (h *pluginHostUI) toastReq(req plugins.ToastRequest) plugins.ToastResult {
 	select {
 	case <-h.closing:
-		return false
+		return plugins.ToastResult{}
 	default:
 	}
 	msg := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(req.Message, "\r\n", "\n"), "\r", "\n"))
 	if msg == "" {
-		return false
+		return plugins.ToastResult{}
 	}
 	body := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(req.Body, "\r\n", "\n"), "\r", "\n"))
 	normTone := normalizeToastTone(req.Tone)
@@ -243,81 +293,250 @@ func (h *pluginHostUI) toastReq(req plugins.ToastRequest) bool {
 		icCopy = &cp
 	}
 	actCopy := cloneToastAction(req.Action)
+	bindingCopy := cloneToastActionBinding(req.ActionBinding)
 	hasAction := actCopy != nil || req.OnAction != nil
 	dur := toastDurationFor(normTone, hasAction)
-	actID := toastActionID(actCopy)
+	actKey := buildToastActionKey(actCopy, bindingCopy, req.OnAction != nil)
 
 	h.mu.Lock()
-	for i := range h.toasts {
-		t := &h.toasts[i]
-		if t.PluginID == req.PluginID && t.Message == msg && t.Body == body && t.Tone == normTone && toastActionID(t.Action) == actID {
+	for i := range h.visibleToastsQ {
+		t := &h.visibleToastsQ[i]
+		if t.PluginID == req.PluginID && t.Message == msg && t.Body == body && t.Tone == normTone && t.actionKey == actKey {
 			if icCopy != nil {
 				t.Icon = icCopy
 			}
-			t.Action = actCopy
-			t.OnAction = req.OnAction
+			if req.OnAction != nil {
+				t.OnAction = req.OnAction
+			}
 			t.remaining = dur
-			if i < pluginToastVisibleMax {
-				if dur == 0 {
-					if t.timer != nil {
-						t.timer.Stop()
-						t.timer = nil
-					}
-				} else if !t.hovered {
-					h.startToastTimerLocked(i)
+			if dur == 0 {
+				if t.timer != nil {
+					t.timer.Stop()
+					t.timer = nil
 				}
+			} else if !t.hovered {
+				h.startVisibleToastTimerLocked(i)
 			}
 			h.mu.Unlock()
 			h.w.RequestRedraw()
-			return true
+			return plugins.ToastResult{Shown: true}
 		}
 	}
-	if req.PluginID != "" && h.countToastsLocked(req.PluginID) >= pluginToastPerSourceMax {
-		if !h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID == req.PluginID }) {
+	for i := range h.queuedToasts {
+		t := &h.queuedToasts[i]
+		if t.PluginID == req.PluginID && t.Message == msg && t.Body == body && t.Tone == normTone && t.actionKey == actKey {
+			if icCopy != nil {
+				t.Icon = icCopy
+			}
+			if req.OnAction != nil {
+				t.OnAction = req.OnAction
+			}
+			t.remaining = dur
+			if req.PluginID == "" {
+				promoted := h.queuedToasts[i]
+				h.queuedToasts = append(h.queuedToasts[:i], h.queuedToasts[i+1:]...)
+				shown := h.insertHostToastLocked(promoted)
+				h.mu.Unlock()
+				h.w.RequestRedraw()
+				return plugins.ToastResult{Shown: shown, Queued: !shown}
+			}
 			h.mu.Unlock()
-			return false
+			h.w.RequestRedraw()
+			return plugins.ToastResult{Queued: true}
 		}
 	}
-	if len(h.toasts) >= pluginToastQueueMax {
-		evicted := false
-		if req.PluginID != "" {
-			// A plugin may only displace its own queued backlog.
-			evicted = h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID == req.PluginID })
-		} else {
-			evicted = h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID != "" }) ||
+
+	if req.PluginID == "" {
+		if len(h.visibleToastsQ)+len(h.queuedToasts) >= pluginToastQueueMax {
+			evicted := h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID != "" }) ||
 				h.evictQueuedToastLocked(func(t pluginToast) bool { return t.Tone != "error" }) ||
 				h.evictQueuedToastLocked(func(pluginToast) bool { return true })
+			if !evicted && !h.hasVisiblePluginToastLocked() {
+				h.mu.Unlock()
+				return plugins.ToastResult{}
+			}
 		}
-		if !evicted {
+		h.nextToastID++
+		toast := pluginToast{
+			ID:            h.nextToastID,
+			PluginID:      "",
+			Message:       msg,
+			Body:          body,
+			Tone:          normTone,
+			Icon:          icCopy,
+			Action:        actCopy,
+			ActionBinding: nil,
+			actionKey:     actKey,
+			OnAction:      req.OnAction,
+			remaining:     dur,
+		}
+		shown := h.insertHostToastLocked(toast)
+		h.mu.Unlock()
+		h.w.RequestRedraw()
+		return plugins.ToastResult{Shown: shown, Queued: !shown}
+	}
+
+	if h.countToastsLocked(req.PluginID) >= pluginToastPerSourceMax {
+		if !h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID == req.PluginID }) {
 			h.mu.Unlock()
-			return false
+			return plugins.ToastResult{}
+		}
+	}
+	if len(h.visibleToastsQ)+len(h.queuedToasts) >= pluginToastQueueMax {
+		// A plugin may only displace its own queued backlog.
+		if !h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID == req.PluginID }) {
+			h.mu.Unlock()
+			return plugins.ToastResult{}
 		}
 	}
 	h.nextToastID++
-	id := h.nextToastID
-	h.toasts = append(h.toasts, pluginToast{
-		ID:        id,
-		PluginID:  req.PluginID,
-		Message:   msg,
-		Body:      body,
-		Tone:      normTone,
-		Icon:      icCopy,
-		Action:    actCopy,
-		OnAction:  req.OnAction,
-		remaining: dur,
-	})
-	idx := len(h.toasts) - 1
-	if idx < pluginToastVisibleMax && dur > 0 {
-		h.startToastTimerLocked(idx)
+	toast := pluginToast{
+		ID:            h.nextToastID,
+		PluginID:      req.PluginID,
+		Message:       msg,
+		Body:          body,
+		Tone:          normTone,
+		Icon:          icCopy,
+		Action:        actCopy,
+		ActionBinding: bindingCopy,
+		actionKey:     actKey,
+		OnAction:      nil,
+		remaining:     dur,
 	}
+	if h.canShowPluginToastLocked(toast) {
+		h.visibleToastsQ = append(h.visibleToastsQ, toast)
+		idx := len(h.visibleToastsQ) - 1
+		if dur > 0 {
+			h.startVisibleToastTimerLocked(idx)
+		}
+		h.mu.Unlock()
+		h.w.RequestRedraw()
+		return plugins.ToastResult{Shown: true}
+	}
+	h.queuedToasts = append(h.queuedToasts, toast)
 	h.mu.Unlock()
 	h.w.RequestRedraw()
+	return plugins.ToastResult{Queued: true}
+}
+
+func (h *pluginHostUI) hasVisiblePluginToastLocked() bool {
+	for _, t := range h.visibleToastsQ {
+		if t.PluginID != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *pluginHostUI) insertHostToastLocked(toast pluginToast) bool {
+	if len(h.visibleToastsQ) < pluginToastVisibleMax {
+		insertAt := 0
+		for insertAt < len(h.visibleToastsQ) && h.visibleToastsQ[insertAt].PluginID == "" {
+			insertAt++
+		}
+		h.visibleToastsQ = append(h.visibleToastsQ, pluginToast{})
+		copy(h.visibleToastsQ[insertAt+1:], h.visibleToastsQ[insertAt:])
+		h.visibleToastsQ[insertAt] = toast
+		if toast.remaining > 0 {
+			h.startVisibleToastTimerLocked(insertAt)
+		}
+		return true
+	}
+	// Preempt the last visible plugin toast back into the front of the queue so
+	// critical host notifications (e.g. permission review) are never starved.
+	demoteIdx := -1
+	for i := len(h.visibleToastsQ) - 1; i >= 0; i-- {
+		if h.visibleToastsQ[i].PluginID != "" {
+			demoteIdx = i
+			break
+		}
+	}
+	if demoteIdx >= 0 {
+		demoted := h.visibleToastsQ[demoteIdx]
+		if demoted.timer != nil {
+			demoted.timer.Stop()
+			demoted.timer = nil
+			if !demoted.startedAt.IsZero() && demoted.remaining > 0 {
+				elapsed := time.Since(demoted.startedAt)
+				demoted.remaining = max(demoted.remaining-elapsed, pluginToastMinResume)
+			}
+		}
+		demoted.hovered = false
+		demoted.startedAt = time.Time{}
+		h.visibleToastsQ = append(h.visibleToastsQ[:demoteIdx], h.visibleToastsQ[demoteIdx+1:]...)
+
+		insertAt := 0
+		for insertAt < len(h.visibleToastsQ) && h.visibleToastsQ[insertAt].PluginID == "" {
+			insertAt++
+		}
+		h.visibleToastsQ = append(h.visibleToastsQ, pluginToast{})
+		copy(h.visibleToastsQ[insertAt+1:], h.visibleToastsQ[insertAt:])
+		h.visibleToastsQ[insertAt] = toast
+		if toast.remaining > 0 {
+			h.startVisibleToastTimerLocked(insertAt)
+		}
+
+		// Place demoted plugin toast at the front of the plugin backlog (after queued host toasts).
+		qInsert := 0
+		for qInsert < len(h.queuedToasts) && h.queuedToasts[qInsert].PluginID == "" {
+			qInsert++
+		}
+		h.queuedToasts = append(h.queuedToasts, pluginToast{})
+		copy(h.queuedToasts[qInsert+1:], h.queuedToasts[qInsert:])
+		h.queuedToasts[qInsert] = demoted
+
+		for len(h.visibleToastsQ)+len(h.queuedToasts) > pluginToastQueueMax {
+			if !h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID != "" }) {
+				h.evictQueuedToastLocked(func(pluginToast) bool { return true })
+			}
+		}
+		return true
+	}
+
+	// All visible slots are already occupied by host notifications; queue ahead of plugin backlog.
+	qInsert := 0
+	for qInsert < len(h.queuedToasts) && h.queuedToasts[qInsert].PluginID == "" {
+		qInsert++
+	}
+	h.queuedToasts = append(h.queuedToasts, pluginToast{})
+	copy(h.queuedToasts[qInsert+1:], h.queuedToasts[qInsert:])
+	h.queuedToasts[qInsert] = toast
+	return false
+}
+
+func (h *pluginHostUI) canShowPluginToastLocked(t pluginToast) bool {
+	if len(h.visibleToastsQ) >= pluginToastVisibleMax {
+		return false
+	}
+	if t.remaining == 0 {
+		totalPersistentPlugins := 0
+		samePluginPersistent := 0
+		for _, v := range h.visibleToastsQ {
+			if v.PluginID != "" && v.remaining == 0 {
+				totalPersistentPlugins++
+				if v.PluginID == t.PluginID {
+					samePluginPersistent++
+				}
+			}
+		}
+		if samePluginPersistent >= pluginToastPersistentPerSourceMax {
+			return false
+		}
+		if totalPersistentPlugins >= pluginToastPersistentPluginVisibleMax {
+			return false
+		}
+	}
 	return true
 }
 
 func (h *pluginHostUI) countToastsLocked(pluginID string) int {
 	n := 0
-	for _, t := range h.toasts {
+	for _, t := range h.visibleToastsQ {
+		if t.PluginID == pluginID {
+			n++
+		}
+	}
+	for _, t := range h.queuedToasts {
 		if t.PluginID == pluginID {
 			n++
 		}
@@ -326,26 +545,26 @@ func (h *pluginHostUI) countToastsLocked(pluginID string) int {
 }
 
 // evictQueuedToastLocked drops the oldest queued (not yet visible) toast
-// matching keep; visible banners in [0, pluginToastVisibleMax) are never evicted.
+// matching keep; visible banners are never evicted by plugin pressure.
 func (h *pluginHostUI) evictQueuedToastLocked(match func(pluginToast) bool) bool {
-	for i := pluginToastVisibleMax; i < len(h.toasts); i++ {
-		if match(h.toasts[i]) {
-			if h.toasts[i].timer != nil {
-				h.toasts[i].timer.Stop()
-				h.toasts[i].timer = nil
+	for i := range h.queuedToasts {
+		if match(h.queuedToasts[i]) {
+			if h.queuedToasts[i].timer != nil {
+				h.queuedToasts[i].timer.Stop()
+				h.queuedToasts[i].timer = nil
 			}
-			h.toasts = append(h.toasts[:i], h.toasts[i+1:]...)
+			h.queuedToasts = append(h.queuedToasts[:i], h.queuedToasts[i+1:]...)
 			return true
 		}
 	}
 	return false
 }
 
-func (h *pluginHostUI) startToastTimerLocked(idx int) {
-	if idx < 0 || idx >= len(h.toasts) {
+func (h *pluginHostUI) startVisibleToastTimerLocked(idx int) {
+	if idx < 0 || idx >= len(h.visibleToastsQ) {
 		return
 	}
-	t := &h.toasts[idx]
+	t := &h.visibleToastsQ[idx]
 	if t.timer != nil {
 		t.timer.Stop()
 		t.timer = nil
@@ -370,17 +589,17 @@ func (h *pluginHostUI) expireToast(id uint64, tm *time.Timer) {
 	}
 	h.mu.Lock()
 	idx := -1
-	for i := range h.toasts {
-		if h.toasts[i].ID == id {
+	for i := range h.visibleToastsQ {
+		if h.visibleToastsQ[i].ID == id {
 			idx = i
 			break
 		}
 	}
-	if idx < 0 || h.toasts[idx].timer != tm || h.toasts[idx].hovered {
+	if idx < 0 || h.visibleToastsQ[idx].timer != tm || h.visibleToastsQ[idx].hovered {
 		h.mu.Unlock()
 		return
 	}
-	h.removeToastAtLocked(idx)
+	h.removeVisibleToastAtLocked(idx)
 	h.mu.Unlock()
 	h.w.RequestRedraw()
 }
@@ -389,8 +608,8 @@ func (h *pluginHostUI) setToastHovered(id uint64, hovered bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	idx := -1
-	for i := range h.toasts {
-		if h.toasts[i].ID == id {
+	for i := range h.visibleToastsQ {
+		if h.visibleToastsQ[i].ID == id {
 			idx = i
 			break
 		}
@@ -398,7 +617,7 @@ func (h *pluginHostUI) setToastHovered(id uint64, hovered bool) {
 	if idx < 0 {
 		return
 	}
-	t := &h.toasts[idx]
+	t := &h.visibleToastsQ[idx]
 	if t.hovered == hovered {
 		return
 	}
@@ -414,43 +633,92 @@ func (h *pluginHostUI) setToastHovered(id uint64, hovered bool) {
 		}
 		return
 	}
-	if idx < pluginToastVisibleMax && t.remaining > 0 {
-		h.startToastTimerLocked(idx)
+	if t.remaining > 0 {
+		h.startVisibleToastTimerLocked(idx)
 	}
 }
 
 func (h *pluginHostUI) finishToast(id uint64) {
-	h.mu.Lock()
-	idx := -1
-	for i := range h.toasts {
-		if h.toasts[i].ID == id {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		h.mu.Unlock()
-		return
-	}
-	h.removeToastAtLocked(idx)
-	h.mu.Unlock()
-	h.w.RequestRedraw()
+	_, _ = h.takeToast(id)
 }
 
-func (h *pluginHostUI) removeToastAtLocked(idx int) {
-	if idx < 0 || idx >= len(h.toasts) {
+func (h *pluginHostUI) takeToast(id uint64) (pluginToast, bool) {
+	h.mu.Lock()
+	for i := range h.visibleToastsQ {
+		if h.visibleToastsQ[i].ID == id {
+			taken := h.visibleToastsQ[i]
+			taken.timer = nil
+			h.removeVisibleToastAtLocked(i)
+			h.mu.Unlock()
+			h.w.RequestRedraw()
+			return taken, true
+		}
+	}
+	for i := range h.queuedToasts {
+		if h.queuedToasts[i].ID == id {
+			taken := h.queuedToasts[i]
+			if taken.timer != nil {
+				taken.timer.Stop()
+			}
+			taken.timer = nil
+			h.queuedToasts = append(h.queuedToasts[:i], h.queuedToasts[i+1:]...)
+			h.mu.Unlock()
+			h.w.RequestRedraw()
+			return taken, true
+		}
+	}
+	h.mu.Unlock()
+	return pluginToast{}, false
+}
+
+func (h *pluginHostUI) removeVisibleToastAtLocked(idx int) {
+	if idx < 0 || idx >= len(h.visibleToastsQ) {
 		return
 	}
-	if h.toasts[idx].timer != nil {
-		h.toasts[idx].timer.Stop()
-		h.toasts[idx].timer = nil
+	if h.visibleToastsQ[idx].timer != nil {
+		h.visibleToastsQ[idx].timer.Stop()
+		h.visibleToastsQ[idx].timer = nil
 	}
-	h.toasts[idx] = pluginToast{}
-	h.toasts = append(h.toasts[:idx], h.toasts[idx+1:]...)
-	limit := min(len(h.toasts), pluginToastVisibleMax)
-	for i := 0; i < limit; i++ {
-		if h.toasts[i].timer == nil && !h.toasts[i].hovered && h.toasts[i].remaining > 0 {
-			h.startToastTimerLocked(i)
+	h.visibleToastsQ[idx] = pluginToast{}
+	h.visibleToastsQ = append(h.visibleToastsQ[:idx], h.visibleToastsQ[idx+1:]...)
+	h.promoteQueuedLocked()
+}
+
+func (h *pluginHostUI) promoteQueuedLocked() {
+	// Promote queued host notifications first.
+	for len(h.visibleToastsQ) < pluginToastVisibleMax {
+		found := -1
+		for i := range h.queuedToasts {
+			if h.queuedToasts[i].PluginID == "" {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			break
+		}
+		next := h.queuedToasts[found]
+		h.queuedToasts = append(h.queuedToasts[:found], h.queuedToasts[found+1:]...)
+		h.insertHostToastLocked(next)
+	}
+	// Promote queued plugin notifications that satisfy persistent visibility caps.
+	for len(h.visibleToastsQ) < pluginToastVisibleMax {
+		found := -1
+		for i := range h.queuedToasts {
+			if h.queuedToasts[i].PluginID != "" && h.canShowPluginToastLocked(h.queuedToasts[i]) {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			break
+		}
+		next := h.queuedToasts[found]
+		h.queuedToasts = append(h.queuedToasts[:found], h.queuedToasts[found+1:]...)
+		h.visibleToastsQ = append(h.visibleToastsQ, next)
+		idx := len(h.visibleToastsQ) - 1
+		if next.remaining > 0 && !next.hovered {
+			h.startVisibleToastTimerLocked(idx)
 		}
 	}
 }
@@ -458,13 +726,13 @@ func (h *pluginHostUI) removeToastAtLocked(idx int) {
 func (h *pluginHostUI) visibleToasts() []pluginToast {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	n := min(len(h.toasts), pluginToastVisibleMax)
+	n := len(h.visibleToastsQ)
 	if n == 0 {
 		return nil
 	}
 	out := make([]pluginToast, n)
 	for i := 0; i < n; i++ {
-		cp := h.toasts[i]
+		cp := h.visibleToastsQ[i]
 		cp.timer = nil
 		out[i] = cp
 	}
@@ -662,12 +930,13 @@ func (h *pluginHostUI) renderToast(c *ui.Context) {
 									PaddingX:    theme.Space8,
 								})
 								if btn.Clicked() {
-									h.finishToast(t.ID)
-									if t.OnAction != nil {
-										t.OnAction()
-									} else if t.PluginID != "" && t.Action != nil {
-										if sup := h.w.Plugins(); sup != nil {
-											sup.TriggerToastActionAsync(t.PluginID, t.Action.ID, t.Action.Payload)
+									if taken, ok := h.takeToast(t.ID); ok {
+										if taken.OnAction != nil {
+											taken.OnAction()
+										} else if taken.PluginID != "" && taken.Action != nil {
+											if sup := h.w.Plugins(); sup != nil {
+												sup.TriggerToastActionAsync(taken.PluginID, taken.Action.ID, taken.Action.Payload, taken.ActionBinding)
+											}
 										}
 									}
 								}
