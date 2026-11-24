@@ -3446,7 +3446,8 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 	maxH := bui.MaxHeightForSpec(spec, winW, winH, max(winH-16, bui.MinScrollHeight))
 
 	// Light single-column deck: search and backend tabs share one header row,
-	// the model list hugs its content, thinking level sits in a quiet footer.
+	// the model list keeps a consistent default height across backends, and
+	// thinking level sits in a quiet footer.
 	panelPad := theme.Space4
 	headerH := float32(34)
 	tabSz, tabIco := theme.HeightChrome, float32(15)
@@ -3509,30 +3510,11 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 	lowQ := strings.TrimSpace(search)
 	filtered := filterDeckModels(lowQ)
 
-	// List height hugs the rows (plus group captions) up to maxRows.
-	listContentH := listPadY * 2
-	if len(filtered) == 0 {
-		listContentH += 36
-	} else {
-		lastGrp := ""
-		for idx, m := range filtered {
-			if grp := strings.TrimSpace(m.Group); grp != "" && grp != lastGrp {
-				lastGrp = grp
-				capTop := theme.Space6
-				if idx == 0 {
-					capTop = theme.Space2
-				}
-				listContentH += capTop + theme.LineMeta + theme.Space2 + listGap
-			}
-			listContentH += rowH
-			if idx > 0 {
-				listContentH += listGap
-			}
-		}
-	}
+	// Keep a consistent default height across backends (matching maxRows) so
+	// switching providers or filtering never shifts the header under the cursor.
 	listMaxH := listPadY*2 + float32(maxRows)*rowH + float32(maxRows-1)*listGap
 	overhead := panelPad*2 + headerH + footerH + 2
-	effectiveListH := min(min(listContentH, listMaxH), max(maxH-overhead, 64))
+	effectiveListH := min(listMaxH, max(maxH-overhead, 64))
 	popH := min(effectiveListH+overhead, maxH)
 	x, y := bui.ResolveOrigin(spec, popW, popH, winW, winH)
 
@@ -3668,11 +3650,25 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 									c.selectBackendLocked(k)
 									if changed {
 										c.deckSearch = ""
+										c.deckScroll.Y = 0
+										*deckCursor = -1
 									}
 									shouldRefresh := !c.mockResponder
 									c.mu.Unlock()
 									if shouldRefresh {
 										c.refreshModelsAsync(k)
+									}
+									if changed {
+										c.mu.RLock()
+										selected = c.selectedBackendLocked()
+										models = append([]ModelOption(nil), c.backendModels[selected]...)
+										mStatus = c.modelStatus[selected]
+										curModel = c.effectiveBackendModelLocked(selected)
+										curThinking = c.backendThinkingLocked(selected)
+										c.mu.RUnlock()
+										lowQ = ""
+										filtered = models
+										c.requestRedraw()
 									}
 								}
 							}
@@ -3716,12 +3712,14 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 				// 2. Model list: active row carries a leading check, no fill.
 				bui.Scroll(cUI.Key("ai-deck-models"), &c.deckScroll).
 					FillWidth().Height(effectiveListH).Padding(listPadY, 0).Gap(listGap).Children(func() {
+					if len(models) == 0 && mStatus == "loading" {
+						renderDeckModelSkeleton(cUI, pal, rowH, rowPX, listGap, min(maxRows, 6))
+						return
+					}
 					if len(filtered) == 0 {
 						msg := theme.Tr("暂无可选模型", "No models available")
 						if lowQ != "" {
 							msg = theme.Tr("无匹配模型", "No matching models")
-						} else if mStatus == "loading" {
-							msg = theme.Tr("正在获取模型…", "Loading models…")
 						} else if strings.HasPrefix(mStatus, "error:") {
 							msg = theme.Tr("无法获取模型", "Models unavailable")
 						}
@@ -3842,6 +3840,33 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 			c.mu.Lock()
 			c.deckOpen = false
 			c.mu.Unlock()
+		}
+	})
+}
+
+func renderDeckModelSkeleton(cUI *ui.Context, pal theme.Palette, rowH, rowPX, listGap float32, rows int) {
+	const skeletonPeriod = 1600 * time.Millisecond
+	alpha := float32(0.75)
+	if !cUI.Preferences().ReduceMotion {
+		phase := float64(time.Now().UnixNano()%int64(skeletonPeriod)) / float64(skeletonPeriod)
+		alpha = float32(0.45 + 0.45*(0.5+0.5*math.Cos(2*math.Pi*phase)))
+		cUI.Invalidate()
+	}
+	widths := []float32{56, 38, 48, 34, 52, 40, 30}
+	count := min(max(rows, 1), len(widths))
+	skel := ui.Column(cUI.Key("ai-deck-skeleton")).FillWidth().MinWidth(0).Gap(listGap).
+		Opacity(alpha).Role(ui.RoleStatus).Label(theme.Tr("正在获取模型…", "Loading models…"))
+	bui.Probe(skel, "ai-deck-skeleton")
+	skel.Children(func() {
+		for i := range count {
+			ui.Row(cUI.Key("ai-deck-skeleton-" + strconv.Itoa(i))).FillWidth().MinWidth(0).
+				Height(rowH).PaddingX(rowPX).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
+				ui.Box(cUI).Size(theme.IconInline, theme.IconInline).Shrink(0)
+				ui.Column(cUI).Grow(1).MinWidth(0).Children(func() {
+					ui.Box(cUI).WidthPercent(widths[i]).Height(theme.StoreSkeletonLineH).
+						Radius(theme.RadiusXS).Background(pal.Selected)
+				})
+			})
 		}
 	})
 }
