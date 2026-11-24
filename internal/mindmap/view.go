@@ -2485,15 +2485,23 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 				keys  []string
 				label string
 			}
+			k := func(mac, other string) string {
+				if theme.IsMacOS() {
+					return mac
+				}
+				return other
+			}
 			items := []hintItem{
 				{[]string{"Tab"}, theme.Tr("子节点", "Child")},
-				{[]string{"↵"}, theme.Tr("同级", "Sibling")},
-				{[]string{"⌥↑", "⌥↓"}, theme.Tr("移动", "Move")},
-				{[]string{"⌫"}, theme.Tr("删除", "Delete")},
+				{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("父节点", "Parent")},
+				{[]string{"↵", k("⇧↵", "Shift+↵")}, theme.Tr("同级", "Sibling")},
+				{[]string{k("⌥↑", "Alt+↑"), k("⌥↓", "Alt+↓")}, theme.Tr("移动", "Move")},
+				{[]string{k("⌥←", "Alt+←"), k("⌥→", "Alt+→")}, theme.Tr("升降级", "Level")},
+				{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("任务", "Task")},
 				{[]string{"Space"}, theme.Tr("折叠", "Fold")},
+				{[]string{"⌫"}, theme.Tr("删除", "Delete")},
 				{[]string{"F2"}, theme.Tr("改名", "Rename")},
-				{[]string{"⌘L"}, theme.Tr("链接", "Link")},
-				{[]string{"⌘Z"}, theme.Tr("撤销", "Undo")},
+				{[]string{k("⌘L", "Ctrl+L")}, theme.Tr("链接", "Link")},
 			}
 			for _, it := range items {
 				itemRow := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0)
