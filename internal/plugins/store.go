@@ -118,6 +118,15 @@ func RegisterBuiltinCatalogApp(entry StoreAppEntry, files fs.FS, subDir string) 
 
 func DefaultSeedIndex() *StoreIndex {
 	builtinMu.RLock()
+	fallback := embeddedFallbackIndex
+	builtinMu.RUnlock()
+	return withBuiltinApps(fallback)
+}
+
+// Attach only bundled packages to the selected catalog. The catalog keeps its
+// release timestamp so a later remote refresh can still replace it.
+func withBuiltinApps(catalog *StoreIndex) *StoreIndex {
+	builtinMu.RLock()
 	defer builtinMu.RUnlock()
 	seedApps := make([]StoreAppEntry, 0, len(builtinSeeds))
 	for _, s := range builtinSeeds {
@@ -132,33 +141,11 @@ func DefaultSeedIndex() *StoreIndex {
 		}
 		return seedApps[i].ID < seedApps[j].ID
 	})
-	var fallback *StoreIndex
-	if embeddedFallbackIndex != nil {
-		cp := *embeddedFallbackIndex
-		filtered := make([]StoreAppEntry, 0, len(embeddedFallbackIndex.Apps))
-		for _, a := range embeddedFallbackIndex.Apps {
-			if hiddenCatalogID(a.ID) {
-				continue
-			}
-			filtered = append(filtered, a)
-		}
-		cp.Apps = filtered
-		fallback = &cp
+	bundled := &StoreIndex{Apps: seedApps}
+	if catalog != nil {
+		bundled.UpdatedAt = catalog.UpdatedAt
 	}
-	if len(seedApps) == 0 && fallback != nil {
-		return fallback
-	}
-	builtinIdx := &StoreIndex{
-		App:           TargetApp,
-		SchemaVersion: CurrentSchemaVersion,
-		Topic:         PluginTopic,
-		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
-		Apps:          seedApps,
-	}
-	if fallback != nil {
-		return mergeStoreIndexes(fallback, builtinIdx)
-	}
-	return builtinIdx
+	return mergeStoreIndexes(bundled, catalog)
 }
 
 func readBuiltinSeedReadme(id string, en bool) (PluginReadme, bool) {
@@ -568,16 +555,7 @@ func (s *StoreManager) LoadCachedOrSeedCatalog() *StoreIndex {
 	if seed != nil && indexNewerThan(seed.UpdatedAt, parsed.UpdatedAt) {
 		return filterStoreIndex(seed)
 	}
-	if hasRegisteredBuiltinSeeds() {
-		return mergeStoreIndexes(parsed, seed)
-	}
-	return filterStoreIndex(parsed)
-}
-
-func hasRegisteredBuiltinSeeds() bool {
-	builtinMu.RLock()
-	defer builtinMu.RUnlock()
-	return len(builtinSeeds) > 0
+	return withBuiltinApps(parsed)
 }
 
 func indexNewerThan(a, b string) bool {
@@ -653,20 +631,14 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 			continue
 		}
 		_ = os.WriteFile(s.cacheIndexPath(), body, 0o644)
-		if hasRegisteredBuiltinSeeds() {
-			return mergeStoreIndexes(idx, DefaultSeedIndex()), nil
-		}
-		return filterStoreIndex(idx), nil
+		return withBuiltinApps(idx), nil
 	}
 	if bestRemote != nil {
 		if baseline != nil && indexNewerThan(baseline.UpdatedAt, bestRemote.UpdatedAt) {
 			return baseline, nil
 		}
 		_ = os.WriteFile(s.cacheIndexPath(), bestBody, 0o644)
-		if hasRegisteredBuiltinSeeds() {
-			return mergeStoreIndexes(bestRemote, DefaultSeedIndex()), nil
-		}
-		return filterStoreIndex(bestRemote), nil
+		return withBuiltinApps(bestRemote), nil
 	}
 	return baseline, lastErr
 }
