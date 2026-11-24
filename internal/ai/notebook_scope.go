@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -25,9 +26,11 @@ const (
 )
 
 type notebookScope struct {
-	root string
-	page string
-	info os.FileInfo
+	root         string
+	page         string
+	originPage   string
+	pageSwitched bool
+	info         os.FileInfo
 }
 
 type assistantTurn struct {
@@ -50,6 +53,17 @@ type assistantTurn struct {
 
 func (turn *assistantTurn) allowTool() bool {
 	return turn.ctx.Err() == nil && turn.toolCalls.Add(1) <= maxTurnTools
+}
+
+func normalizeNotebookRoot(root string) string {
+	trimmed := strings.TrimSpace(root)
+	if trimmed == "" {
+		return ""
+	}
+	if canonical, err := canonicalNotebook(trimmed); err == nil && canonical != "" {
+		return filepath.Clean(canonical)
+	}
+	return filepath.Clean(trimmed)
 }
 
 func canonicalNotebook(root string) (string, error) {
@@ -94,7 +108,14 @@ func captureNotebook(host model.WorkspaceHost) notebookScope {
 	if host == nil {
 		return notebookScope{}
 	}
-	root, err := AuthorizedNotebookRoot(host, host.ActiveNotebook())
+	return scopeForNotebook(host, host.ActiveNotebook())
+}
+
+func scopeForNotebook(host model.WorkspaceHost, rootPath string) notebookScope {
+	if host == nil || strings.TrimSpace(rootPath) == "" {
+		return notebookScope{}
+	}
+	root, err := AuthorizedNotebookRoot(host, rootPath)
 	if err != nil {
 		return notebookScope{}
 	}
@@ -114,6 +135,67 @@ func captureNotebook(host model.WorkspaceHost) notebookScope {
 		}
 	}
 	return notebookScope{root: root, page: page, info: info}
+}
+
+func conversationPageSwitched(conv *model.Conversation, currentPage string) bool {
+	if conv == nil {
+		return false
+	}
+	origin := strings.TrimSpace(conv.OriginPage)
+	if strings.TrimSpace(currentPage) != origin {
+		return true
+	}
+	for _, m := range conv.Messages {
+		if m.Role != "user" {
+			continue
+		}
+		if strings.TrimSpace(m.ActivePage) != origin {
+			return true
+		}
+	}
+	return false
+}
+
+func missingPageIDError(scope notebookScope) string {
+	if scope.pageSwitched {
+		return theme.Tr(
+			"会话中切换过打开页面，请明确指定 pageId，避免误改其他页面",
+			"The active page changed during this conversation; pass an explicit pageId to avoid editing the wrong note",
+		)
+	}
+	return theme.Tr(
+		"当前没有默认打开的页面，请明确指定 pageId",
+		"No default page is open; pass an explicit pageId",
+	)
+}
+
+func formatTurnContextBlock(scope notebookScope) string {
+	notebookName := "（无）"
+	if scope.root != "" {
+		notebookName = filepath.Base(scope.root)
+	}
+	originLabel := "（无当前打开页面）"
+	if scope.originPage != "" {
+		originLabel = scope.originPage
+	}
+	curLabel := "（无当前打开页面）"
+	if scope.page != "" {
+		curLabel = scope.page
+	}
+	if scope.pageSwitched || (scope.originPage != "" && scope.originPage != scope.page) {
+		return fmt.Sprintf("# 当前上下文\n\n- 当前笔记本：%s\n- 会话起点页：%s\n- 本条发送时打开的页面：%s",
+			notebookName, originLabel, curLabel)
+	}
+	return fmt.Sprintf("# 当前上下文\n\n- 当前笔记本：%s\n- 会话起点页 / 发送时打开的页面：%s",
+		notebookName, curLabel)
+}
+
+func formatHistoricalUserMessage(m model.ChatMessage) string {
+	text := userMessageModelText(m, false)
+	if m.ActivePage != "" {
+		return fmt.Sprintf("[发送时打开页面: %s]\n%s", m.ActivePage, text)
+	}
+	return text
 }
 
 func (scope notebookScope) open(host model.WorkspaceHost) (*os.Root, error) {

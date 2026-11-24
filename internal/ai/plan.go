@@ -235,13 +235,18 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 		}
 		kind, _ := item["type"].(string)
 		page, _ := item["pageId"].(string)
-		if page == "" {
-			page = scope.page
-		}
 		if kind == "create" {
 			page, _ = item["title"].(string)
 			if strings.TrimSpace(page) == "" {
 				page = theme.Tr("未命名", "Untitled")
+			}
+		} else {
+			page = strings.TrimSpace(page)
+			if page == "" {
+				if scope.pageSwitched || scope.page == "" {
+					return fail(missingPageIDError(scope))
+				}
+				page = scope.page
 			}
 		}
 		name, err := noteFilename(page)
@@ -617,7 +622,7 @@ func (c *Controller) applyReviewedPlan(convID uint64, msgIdx int, review *model.
 	c.mu.Lock()
 	c.planInFlight = ""
 	if err != nil {
-		c.turnError = err.Error()
+		c.setTurnErrorLocked(c.currentID, err.Error(), false)
 	} else {
 		if undo {
 			plan.Status = "undone"
@@ -628,7 +633,7 @@ func (c *Controller) applyReviewedPlan(convID uint64, msgIdx int, review *model.
 		if c.activePlan != nil && c.activePlan.Plan.ID == plan.ID {
 			c.clearActivePlanLocked()
 		}
-		c.turnError = ""
+		c.clearTurnErrorLocked(c.currentID)
 		c.persistChatsLocked()
 	}
 	c.mu.Unlock()
@@ -665,7 +670,7 @@ func (c *Controller) RetryPlan(planID string) error {
 		c.mu.Unlock()
 		return errors.New(theme.Tr("计划已失效", "The plan is no longer valid"))
 	}
-	if c.streaming {
+	if c.isConvStreamingLocked(c.currentID) {
 		c.mu.Unlock()
 		return errors.New(theme.Tr("AI 正在回复，请稍后重试", "AI is still replying. Try again shortly."))
 	}
@@ -893,9 +898,12 @@ func (c *Controller) SubmitQuestion(convID uint64, msgIdx int, skipped bool) {
 		return
 	}
 	qcard := conv.Messages[msgIdx].Question
-	turn := c.turn
+	var turn *assistantTurn
+	if st := c.runStateLocked(convID); st != nil {
+		turn = st.turn
+	}
 	if qcard == nil || qcard.Submitted || c.currentID != convID ||
-		(!c.mockResponder && (!c.currentTurnLocked(turn) || turn.questionIndex != msgIdx)) {
+		(!c.mockResponder && (!c.turnActiveLocked(turn) || turn.questionIndex != msgIdx)) {
 		c.mu.Unlock()
 		return
 	}
@@ -948,13 +956,13 @@ func (c *Controller) SubmitQuestion(convID uint64, msgIdx int, skipped bool) {
 	isMock := c.mockResponder
 	isBuiltin := conv.Backend == "" || conv.Backend == model.BackendBuiltin
 	if toolCallID != "" {
-		c.pushMessageLocked(model.ChatMessage{
+		c.pushMessageToConvLocked(convID, model.ChatMessage{
 			Role:       "tool",
 			Content:    payload,
 			ToolCallID: toolCallID,
 		})
 	} else {
-		c.pushMessageLocked(model.ChatMessage{
+		c.pushMessageToConvLocked(convID, model.ChatMessage{
 			Role:    "assistant",
 			Content: theme.Tr("已收到你的选择。", "Preferences recorded."),
 		})
@@ -963,7 +971,7 @@ func (c *Controller) SubmitQuestion(convID uint64, msgIdx int, skipped bool) {
 	if !isMock && isBuiltin && toolCallID != "" {
 		step = turn.nextStep
 		turn.questionIndex = -1
-		c.streaming = true
+		c.ensureRunStateLocked(convID).streaming = true
 		c.scrollToBottom = true
 		c.scrollToBottomForce = true
 	}

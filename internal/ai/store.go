@@ -102,6 +102,19 @@ type approvalUIState struct {
 	submitted bool
 }
 
+type convRunState struct {
+	streaming         bool
+	serial            uint64
+	turn              *assistantTurn
+	partialText       strings.Builder
+	partialThink      strings.Builder
+	partialSteps      []model.ProcessStep
+	sentDraft         *model.SentDraft
+	sentSelection     *EditorSelection
+	turnError         string
+	turnErrorSettings bool
+}
+
 // Controller manages AI assistant state, persistence, protocols, plans, and UI rendering.
 type Controller struct {
 	mu      sync.RWMutex
@@ -120,8 +133,10 @@ type Controller struct {
 	providerError error
 	backendsCfg   model.AIBackendsConfig
 
-	convs     []model.Conversation
-	currentID uint64
+	convs          []model.Conversation
+	currentID      uint64
+	activeNotebook string
+	notebookStates map[string]model.NotebookSessionState
 
 	draftText        string
 	draftRefs        []string
@@ -129,9 +144,7 @@ type Controller struct {
 	draftAttachments []model.Attachment
 	draftSelection   *EditorSelection
 	dismissedSel     *selectionIdentity
-	sentSelection    *EditorSelection
 	retryDraft       *model.SentDraft
-	sentDraft        *model.SentDraft
 	deferredDrafts   []model.SentDraft
 	tabDrafts        map[uint64]tabDraft
 
@@ -184,9 +197,8 @@ type Controller struct {
 	statusOverrides map[model.BackendKind]BackendStatus
 	panelProbedOnce bool
 
-	streaming             bool
+	runs                  map[uint64]*convRunState
 	streamSerial          uint64
-	turn                  *assistantTurn
 	streamRedrawLast      time.Time
 	streamRedrawTimer     *time.Timer
 	draftPersistTimer     *time.Timer
@@ -196,11 +208,6 @@ type Controller struct {
 	chatPersistDirty      bool
 	chatPersistSeq        uint64
 	chatPersistWrittenSeq uint64
-	partialText           strings.Builder
-	partialThink          strings.Builder
-	partialSteps          []model.ProcessStep
-	turnError             string
-	turnErrorSettings     bool
 
 	mockResponder        bool
 	mockApprovalFailOnce bool
@@ -294,7 +301,9 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 		host:                  host,
 		codec:                 codec,
 		panelWidth:            defaultPanelWidth,
+		notebookStates:        make(map[string]model.NotebookSessionState),
 		tabDrafts:             make(map[uint64]tabDraft),
+		runs:                  make(map[uint64]*convRunState),
 		backendStatuses:       make(map[model.BackendKind]BackendStatus),
 		backendModels:         make(map[model.BackendKind][]ModelOption),
 		modelStatus:           make(map[model.BackendKind]string),
@@ -331,20 +340,45 @@ func (c *Controller) loadAllFromDisk() {
 	c.providerCfg = normalizeProviderConfig(cfg)
 	c.providerError = err
 	c.backendsCfg = c.readBackendsFile()
+	c.activeNotebook = normalizeNotebookRoot(c.activeRootLocked())
 	c.convs = c.readChatsFile()
 	c.deferredDrafts = c.readFailedDraftsFile()
 
 	active := c.readActiveDraftFile()
-	if active.Conversation != nil && c.hasConvLocked(*active.Conversation) {
-		c.currentID = *active.Conversation
+	if c.inferLegacyConversationNotebooksLocked(active.ByNotebook) {
+		c.persistChatsLocked()
 	}
-	c.draftText = active.Text
-	c.draftRefs = append([]string(nil), active.Refs...)
-	c.draftSkills = append([]string(nil), active.Skills...)
-	c.draftAttachments = slices.Clone(active.Attachments)
-	if active.Retry != nil && active.Retry.Conversation == c.currentID && c.currentID != 0 {
-		cp := *active.Retry
-		c.retryDraft = &cp
+	c.notebookStates = make(map[string]model.NotebookSessionState)
+	for rawKey, st := range active.ByNotebook {
+		key := normalizeNotebookRoot(rawKey)
+		if key == "" {
+			continue
+		}
+		c.notebookStates[key] = c.sanitizeNotebookStateLocked(key, st)
+	}
+	legacyTop := model.NotebookSessionState{
+		Conversation: active.Conversation,
+		Text:         active.Text,
+		Refs:         append([]string(nil), active.Refs...),
+		Skills:       append([]string(nil), active.Skills...),
+		Attachments:  slices.Clone(active.Attachments),
+		Retry:        cloneSentDraft(active.Retry),
+	}
+	if active.Conversation != nil {
+		if conv := c.findConvLocked(*active.Conversation); conv != nil && conv.Notebook != "" {
+			if _, exists := c.notebookStates[conv.Notebook]; !exists {
+				c.notebookStates[conv.Notebook] = c.sanitizeNotebookStateLocked(conv.Notebook, legacyTop)
+			}
+		}
+	}
+	if c.activeNotebook != "" {
+		if st, ok := c.notebookStates[c.activeNotebook]; ok {
+			c.applyNotebookStateLocked(st, c.activeNotebook)
+		} else if active.Conversation == nil && len(active.ByNotebook) == 0 {
+			c.applyNotebookStateLocked(legacyTop, c.activeNotebook)
+		}
+	} else {
+		c.applyNotebookStateLocked(legacyTop, "")
 	}
 	c.ensureValidSelectionLocked()
 	c.loadOrSeedAnnotationConfigLocked()
@@ -586,18 +620,25 @@ func (c *Controller) persistActiveDraftLocked() {
 }
 
 func (c *Controller) writeActiveDraftLocked() {
-	var convPtr *uint64
-	if c.currentID != 0 {
-		id := c.currentID
-		convPtr = &id
+	curState := c.currentNotebookStateLocked()
+	if c.activeNotebook != "" {
+		c.notebookStates[c.activeNotebook] = curState
+	}
+	var byNotebook map[string]model.NotebookSessionState
+	if len(c.notebookStates) > 0 {
+		byNotebook = make(map[string]model.NotebookSessionState, len(c.notebookStates))
+		for k, st := range c.notebookStates {
+			byNotebook[k] = cloneNotebookSessionState(st)
+		}
 	}
 	draft := model.ActiveDraft{
-		Conversation: convPtr,
-		Text:         c.draftText,
-		Refs:         append([]string(nil), c.draftRefs...),
-		Skills:       append([]string(nil), c.draftSkills...),
-		Attachments:  c.draftAttachments,
-		Retry:        c.retryDraft,
+		Conversation: curState.Conversation,
+		Text:         curState.Text,
+		Refs:         append([]string(nil), curState.Refs...),
+		Skills:       append([]string(nil), curState.Skills...),
+		Attachments:  slices.Clone(curState.Attachments),
+		Retry:        cloneSentDraft(curState.Retry),
+		ByNotebook:   byNotebook,
 	}
 	_ = c.writeJSONFile("ai-active-draft.json", draft)
 }
@@ -1044,16 +1085,18 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.pendingClip = nil
 		c.pickerDismissed = true
 		c.draftSelection = nil
-		c.stopStreamingLocked()
+		c.stopAllStreamingLocked()
 	}
 	onEnabledChanged := c.onEnabledChanged
 	if c.settingsExpandedProv == "" {
 		c.settingsExpandedProv = norm.Provider
 	}
 	c.syncSettingsFieldsLocked()
-	if c.turnErrorSettings {
-		c.turnError = ""
-		c.turnErrorSettings = false
+	for _, st := range c.runs {
+		if st != nil && st.turnErrorSettings {
+			st.turnError = ""
+			st.turnErrorSettings = false
+		}
 	}
 	c.invalidateModelCacheLocked(model.BackendBuiltin)
 	shouldPrewarm := enabledChanged && norm.Enabled && !c.mockResponder
@@ -1615,9 +1658,9 @@ func (c *Controller) SetMockApprovalFailOnce(on bool) {
 func (c *Controller) NewConversation() {
 	c.mu.Lock()
 	c.saveTabDraftLocked()
-	c.stopStreamingLocked()
 	c.clearActivePlanLocked()
 	delete(c.tabDrafts, 0)
+	delete(c.runs, 0)
 	c.currentID = 0
 	c.scrollToBottom = false
 	c.scrollToBottomForce = false
@@ -1626,8 +1669,6 @@ func (c *Controller) NewConversation() {
 	c.draftSkills = nil
 	c.draftAttachments = nil
 	c.retryDraft = nil
-	c.turnError = ""
-	c.turnErrorSettings = false
 	c.historyOpen = false
 	c.lightboxOpen = false
 	c.pickIndex = 0
@@ -1642,7 +1683,7 @@ func (c *Controller) NewConversation() {
 // SelectConversation switches to conversation id while isolating per-conversation drafts.
 func (c *Controller) SelectConversation(id uint64) {
 	c.mu.Lock()
-	if id != 0 && !c.hasConvLocked(id) {
+	if id != 0 && !c.hasConvInActiveNotebookLocked(id) {
 		c.mu.Unlock()
 		return
 	}
@@ -1659,15 +1700,12 @@ func (c *Controller) SelectConversation(id uint64) {
 		return
 	}
 	c.saveTabDraftLocked()
-	c.stopStreamingLocked()
 	c.clearActivePlanLocked()
 	c.currentID = id
 	c.scrollToBottom = id != 0
 	c.scrollToBottomForce = id != 0
 	c.historyOpen = false
 	c.lightboxOpen = false
-	c.turnError = ""
-	c.turnErrorSettings = false
 	c.pickIndex = 0
 	c.pickerDismissed = false
 	td := c.tabDrafts[id]
@@ -1690,6 +1728,61 @@ func (c *Controller) SelectConversation(id uint64) {
 	c.requestRedraw()
 }
 
+// OnNotebookSwitched isolates and switches per-notebook conversation selection and drafts
+// without interrupting background streaming tasks in other notebooks.
+func (c *Controller) OnNotebookSwitched(newRoot string) {
+	nextRoot := normalizeNotebookRoot(newRoot)
+	c.mu.Lock()
+	if nextRoot == c.activeNotebook {
+		if c.currentID != 0 && !c.hasConvInActiveNotebookLocked(c.currentID) {
+			c.currentID = 0
+			c.persistActiveDraftLocked()
+		}
+		c.mu.Unlock()
+		return
+	}
+	c.saveTabDraftLocked()
+	if c.activeNotebook != "" {
+		c.notebookStates[c.activeNotebook] = c.currentNotebookStateLocked()
+	}
+	c.clearActivePlanLocked()
+	c.draftSelection = nil
+	c.dismissedSel = nil
+	c.historyOpen = false
+	c.lightboxOpen = false
+	c.pickerDismissed = false
+	c.pickIndex = 0
+	if !c.pickerInjected {
+		c.pickerFolder = ""
+		c.pickerFolders = nil
+		c.pickerPages = nil
+		c.pickerRoot = ""
+		c.pickerRefreshed = time.Time{}
+		c.pickerRootMtime = time.Time{}
+		c.pickerCache.valid = false
+	}
+
+	c.activeNotebook = nextRoot
+	if nextRoot != "" {
+		if st, ok := c.notebookStates[nextRoot]; ok {
+			c.applyNotebookStateLocked(st, nextRoot)
+		} else {
+			c.applyNotebookStateLocked(model.NotebookSessionState{}, nextRoot)
+		}
+	} else {
+		c.applyNotebookStateLocked(model.NotebookSessionState{}, "")
+	}
+	c.saveTabDraftLocked()
+	c.scrollToBottom = c.currentID != 0
+	c.scrollToBottomForce = c.currentID != 0
+	c.composerEpoch++
+	c.persistActiveDraftLocked()
+	linkedPlan := c.linkLatestPendingPlanLocked()
+	c.mu.Unlock()
+	c.previewPlanInEditor(linkedPlan)
+	c.requestRedraw()
+}
+
 func (c *Controller) saveTabDraftLocked() {
 	var retryCopy *model.SentDraft
 	if c.retryDraft != nil {
@@ -1705,13 +1798,15 @@ func (c *Controller) saveTabDraftLocked() {
 	}
 }
 
-// Conversations returns a snapshot slice of stored conversations.
+// Conversations returns a snapshot slice of stored conversations for the active notebook.
 func (c *Controller) Conversations() []model.Conversation {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	out := make([]model.Conversation, len(c.convs))
+	var out []model.Conversation
 	for i := range c.convs {
-		out[i] = cloneConversation(c.convs[i])
+		if c.convMatchesActiveNotebookLocked(c.convs[i]) {
+			out = append(out, cloneConversation(c.convs[i]))
+		}
 	}
 	return out
 }
@@ -1835,7 +1930,7 @@ func pathBaseSlash(p string) string {
 // SendPrompt submits text (or the current draft when text is empty) as a user prompt.
 func (c *Controller) SendPrompt(text string) {
 	c.mu.Lock()
-	if c.streaming || c.hasPendingQuestionLocked() || !c.providerCfg.Enabled {
+	if c.isConvStreamingLocked(c.currentID) || c.hasPendingQuestionLocked() || !c.providerCfg.Enabled {
 		c.mu.Unlock()
 		return
 	}
@@ -1854,15 +1949,14 @@ func (c *Controller) SendPrompt(text string) {
 	}
 	backend := c.selectedBackendLocked()
 	if !c.mockResponder && backend != model.BackendBuiltin && !supportsCLI(backend) {
-		c.turnError = theme.Tr("暂不支持此本机 Agent，请选择其他后端。", "This local agent is not supported. Select another backend.")
+		c.setTurnErrorLocked(c.currentID, theme.Tr("暂不支持此本机 Agent，请选择其他后端。", "This local agent is not supported. Select another backend."), false)
 		c.mu.Unlock()
 		c.requestRedraw()
 		return
 	}
 	if backend == model.BackendBuiltin && !c.mockResponder {
 		if msg, needSettings := validateProviderConfig(c.providerCfg); msg != "" {
-			c.turnError = msg
-			c.turnErrorSettings = needSettings
+			c.setTurnErrorLocked(c.currentID, msg, needSettings)
 			c.mu.Unlock()
 			c.requestRedraw()
 			return
@@ -1880,8 +1974,7 @@ func (c *Controller) SendPrompt(text string) {
 	nativeTools := supportsCLI(backend) && opt.AllowsNativeTools()
 	attachmentText, images, err := c.prepareAttachments(atts, backend == model.BackendBuiltin, nativeTools)
 	if err != nil {
-		c.turnError = err.Error()
-		c.turnErrorSettings = false
+		c.setTurnErrorLocked(c.currentID, err.Error(), false)
 		c.mu.Unlock()
 		c.requestRedraw()
 		return
@@ -1891,7 +1984,22 @@ func (c *Controller) SendPrompt(text string) {
 		cp := *c.draftSelection
 		sel = &cp
 	}
-	scope := captureNotebook(c.host)
+	existingConv := c.findConvLocked(c.currentID)
+	var scope notebookScope
+	if existingConv != nil && existingConv.Notebook != "" {
+		scope = scopeForNotebook(c.host, existingConv.Notebook)
+		scope.originPage = existingConv.OriginPage
+		scope.pageSwitched = conversationPageSwitched(existingConv, scope.page)
+	} else {
+		scope = captureNotebook(c.host)
+		if existingConv == nil {
+			scope.originPage = scope.page
+			scope.pageSwitched = false
+		} else {
+			scope.originPage = existingConv.OriginPage
+			scope.pageSwitched = conversationPageSwitched(existingConv, scope.page)
+		}
+	}
 	var ctxBuf strings.Builder
 	var shownBuf strings.Builder
 	notebook, _ := scope.open(c.host)
@@ -1902,14 +2010,14 @@ func (c *Controller) SendPrompt(text string) {
 		page := referencePageID(scope.root, ref)
 		filename, err := noteFilename(page)
 		if notebook == nil || err != nil || ctxBuf.Len() >= 96*1024 {
-			c.turnError = theme.Tr("请移除无法读取、超出上限或属于其他笔记本的附件。", "Remove unavailable, oversized, or out-of-notebook attachments.")
+			c.setTurnErrorLocked(c.currentID, theme.Tr("请移除无法读取、超出上限或属于其他笔记本的附件。", "Remove unavailable, oversized, or out-of-notebook attachments."), false)
 			c.mu.Unlock()
 			c.requestRedraw()
 			return
 		}
 		md, err := readNotebookNote(context.Background(), notebook, filename)
 		if err != nil {
-			c.turnError = theme.Tr("附件无法读取，请移除后重试。", "An attachment could not be read. Remove it and try again.")
+			c.setTurnErrorLocked(c.currentID, theme.Tr("附件无法读取，请移除后重试。", "An attachment could not be read. Remove it and try again."), false)
 			c.mu.Unlock()
 			c.requestRedraw()
 			return
@@ -1929,7 +2037,7 @@ func (c *Controller) SendPrompt(text string) {
 			_, err = inspectNote(notebook, name)
 		}
 		if err != nil || notebook == nil {
-			c.turnError = theme.Tr("选区不在当前授权笔记本内，请移除后重试。", "The selection is outside the authorized notebook. Remove it and try again.")
+			c.setTurnErrorLocked(c.currentID, theme.Tr("选区不在当前授权笔记本内，请移除后重试。", "The selection is outside the authorized notebook. Remove it and try again."), false)
 			c.mu.Unlock()
 			c.requestRedraw()
 			return
@@ -2000,39 +2108,59 @@ func (c *Controller) SendPrompt(text string) {
 		slicesEqual(c.retryDraft.Skills, skills) &&
 		slices.Equal(c.retryDraft.Attachments, atts) &&
 		sel == nil
-	c.sentSelection = sel
 
+	var sentDraft *model.SentDraft
 	if retryMatch {
 		cp := *c.retryDraft
-		c.sentDraft = &cp
+		sentDraft = &cp
 		conv := c.findConvLocked(c.currentID)
 		conv.Messages[cp.MessageIndex].Context = ctxBuf.String()
+		conv.Messages[cp.MessageIndex].ActivePage = scope.page
+		if conv.Notebook == "" && scope.root != "" {
+			conv.Notebook = normalizeNotebookRoot(scope.root)
+		}
+		c.persistChatsLocked()
 	} else {
+		isNewConv := c.currentID == 0
 		c.pushMessageLocked(model.ChatMessage{
 			Role:                "user",
 			Content:             content,
 			Context:             ctxBuf.String(),
 			Refs:                refs,
 			Skills:              skills,
+			ActivePage:          scope.page,
 			Attachments:         atts,
 			AttachmentsSeparate: true,
 		})
 		conv := c.findConvLocked(c.currentID)
-		if conv != nil && len(conv.Messages) > 0 {
-			c.sentDraft = &model.SentDraft{
-				Text:         original,
-				Refs:         refs,
-				Skills:       skills,
-				Attachments:  atts,
-				Conversation: conv.ID,
-				MessageIndex: len(conv.Messages) - 1,
+		if conv != nil {
+			changedScope := false
+			if isNewConv {
+				conv.Notebook = normalizeNotebookRoot(scope.root)
+				conv.OriginPage = scope.page
+				changedScope = true
+			} else if conv.Notebook == "" && scope.root != "" {
+				conv.Notebook = normalizeNotebookRoot(scope.root)
+				changedScope = true
+			}
+			if changedScope {
+				c.persistChatsLocked()
+			}
+			if len(conv.Messages) > 0 {
+				sentDraft = &model.SentDraft{
+					Text:         original,
+					Refs:         refs,
+					Skills:       skills,
+					Attachments:  atts,
+					Conversation: conv.ID,
+					MessageIndex: len(conv.Messages) - 1,
+				}
 			}
 		}
 	}
 
+	delete(c.runs, 0)
 	c.retryDraft = nil
-	c.turnError = ""
-	c.turnErrorSettings = false
 	c.draftText = ""
 	c.pickerDismissed = false
 	c.pickIndex = 0
@@ -2041,6 +2169,11 @@ func (c *Controller) SendPrompt(text string) {
 
 	isMock := c.mockResponder
 	convID := c.currentID
+	st := c.ensureRunStateLocked(convID)
+	st.sentDraft = sentDraft
+	st.sentSelection = sel
+	st.turnError = ""
+	st.turnErrorSettings = false
 	var turn *assistantTurn
 	if !isMock {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -2050,15 +2183,19 @@ func (c *Controller) SendPrompt(text string) {
 			ctx: ctx, cancel: cancel, notebookScope: scope, convID: convID, serial: c.streamSerial,
 			cfg: resolveProviderExecutionConfig(c.providerCfg), thinking: c.backendThinkingLocked(backend),
 			nativeTools: nativeTools, attachmentImages: images,
-			userIndex: c.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
+			userIndex: st.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
 		}
 		if backend != model.BackendBuiltin {
 			if cliPath, ok := resolveConfiguredCLIBinary(string(backend), opt.BinaryPath); ok {
 				turn.cliPath = cliPath
 			}
 		}
-		c.turn = turn
-		c.streaming = true
+		st.turn = turn
+		st.serial = turn.serial
+		st.streaming = true
+		st.partialText.Reset()
+		st.partialThink.Reset()
+		st.partialSteps = nil
 	}
 	// 新一轮开始：回到底部并持续跟随，直到用户主动上滑或展开查看旧内容。
 	c.scrollToBottom = true
@@ -2077,37 +2214,54 @@ func (c *Controller) SendPrompt(text string) {
 	}
 }
 
-// IsStreaming reports whether an AI response turn is currently in progress.
+// IsStreaming reports whether the active conversation has an AI response turn in progress.
 func (c *Controller) IsStreaming() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.streaming
+	return c.isConvStreamingLocked(c.currentID)
 }
 
-// StopStreaming cancels any in-flight AI response and preserves partial output.
+// StopStreaming cancels any in-flight AI response on the active conversation and preserves partial output.
 func (c *Controller) StopStreaming() {
 	c.mu.Lock()
-	c.stopStreamingLocked()
+	c.stopConvStreamingLocked(c.currentID)
 	c.mu.Unlock()
 	c.requestRedraw()
 }
 
-func (c *Controller) stopStreamingLocked() {
-	wasBusy := c.streaming || c.hasPendingQuestionLocked()
-	if wasBusy && c.currentID != 0 {
-		c.recordTurnOutcomeLocked("stopped")
+func (c *Controller) stopAllStreamingLocked() {
+	ids := make([]uint64, 0, len(c.runs))
+	for id := range c.runs {
+		ids = append(ids, id)
 	}
-	c.sentDraft = nil
-	c.finishTurnLocked()
-	c.streaming = false
-	c.streamSerial++
-	c.clearStreamRedrawLocked()
-	partial := c.partialText.String()
-	c.partialText.Reset()
-	c.partialThink.Reset()
-	c.partialSteps = nil
-	if strings.TrimSpace(partial) != "" {
-		c.pushMessageLocked(model.ChatMessage{
+	for _, id := range ids {
+		c.stopConvStreamingLocked(id)
+	}
+}
+
+func (c *Controller) stopConvStreamingLocked(convID uint64) {
+	st := c.runs[convID]
+	wasBusy := (st != nil && st.streaming) || c.hasPendingQuestionForConvLocked(convID)
+	if wasBusy && convID != 0 {
+		c.recordTurnOutcomeForConvLocked(convID, "stopped")
+	}
+	c.finishConvTurnLocked(convID)
+	if st == nil {
+		return
+	}
+	st.sentDraft = nil
+	st.sentSelection = nil
+	st.streaming = false
+	st.serial++
+	if convID == c.currentID {
+		c.clearStreamRedrawLocked()
+	}
+	partial := st.partialText.String()
+	st.partialText.Reset()
+	st.partialThink.Reset()
+	st.partialSteps = nil
+	if strings.TrimSpace(partial) != "" && convID != 0 {
+		c.pushMessageToConvLocked(convID, model.ChatMessage{
 			Role:    "assistant",
 			Content: partial,
 		})
@@ -2125,21 +2279,26 @@ func (c *Controller) pushMessageLocked(msg model.ChatMessage) {
 		}
 		title := conversationTitleFromMessage(msg)
 		conv := model.Conversation{
-			ID:      id,
-			Title:   title,
-			Backend: c.selectedBackendLocked(),
+			ID:       id,
+			Title:    title,
+			Notebook: c.activeNotebook,
+			Backend:  c.selectedBackendLocked(),
 		}
 		c.convs = append([]model.Conversation{conv}, c.convs...)
 		c.currentID = id
 	}
-	if conv := c.findConvLocked(c.currentID); conv != nil {
+	c.pushMessageToConvLocked(c.currentID, msg)
+}
+
+func (c *Controller) pushMessageToConvLocked(convID uint64, msg model.ChatMessage) {
+	if conv := c.findConvLocked(convID); conv != nil {
 		conv.Messages = append(conv.Messages, msg)
 	}
 	c.persistChatsLocked()
 }
 
-func (c *Controller) recordTurnOutcomeLocked(outcome string) {
-	conv := c.findConvLocked(c.currentID)
+func (c *Controller) recordTurnOutcomeForConvLocked(convID uint64, outcome string) {
+	conv := c.findConvLocked(convID)
 	if conv == nil {
 		return
 	}
@@ -2150,26 +2309,71 @@ func (c *Controller) recordTurnOutcomeLocked(outcome string) {
 	c.persistChatsLocked()
 }
 
-func (c *Controller) currentTurnLocked(turn *assistantTurn) bool {
-	return turn != nil && c.turn == turn && c.streamSerial == turn.serial &&
-		c.currentID == turn.convID && turn.ctx.Err() == nil && c.providerCfg.Enabled
+func (c *Controller) turnActiveLocked(turn *assistantTurn) bool {
+	if turn == nil || turn.ctx.Err() != nil || !c.providerCfg.Enabled {
+		return false
+	}
+	st := c.runs[turn.convID]
+	return st != nil && st.turn == turn && st.serial == turn.serial
 }
 
-func (c *Controller) finishTurnLocked() {
-	if c.turn != nil {
-		c.turn.cancel()
-		c.turn = nil
+func (c *Controller) finishConvTurnLocked(convID uint64) {
+	if st := c.runs[convID]; st != nil && st.turn != nil {
+		st.turn.cancel()
+		st.turn = nil
 	}
 }
 
+func (c *Controller) runStateLocked(convID uint64) *convRunState {
+	return c.runs[convID]
+}
+
+func (c *Controller) ensureRunStateLocked(convID uint64) *convRunState {
+	st := c.runs[convID]
+	if st == nil {
+		st = &convRunState{}
+		c.runs[convID] = st
+	}
+	return st
+}
+
+func (c *Controller) isConvStreamingLocked(convID uint64) bool {
+	st := c.runs[convID]
+	return st != nil && st.streaming
+}
+
+func (c *Controller) setTurnErrorLocked(convID uint64, msg string, settings bool) {
+	st := c.ensureRunStateLocked(convID)
+	st.turnError = msg
+	st.turnErrorSettings = settings
+}
+
+func (c *Controller) clearTurnErrorLocked(convID uint64) {
+	if st := c.runs[convID]; st != nil {
+		st.turnError = ""
+		st.turnErrorSettings = false
+	}
+}
+
+func (c *Controller) linkAndPreviewPlanLocked(convID uint64, msgIdx int) *model.BatchPlan {
+	if convID == 0 || convID != c.currentID || !c.hasConvInActiveNotebookLocked(convID) {
+		return nil
+	}
+	return c.linkPlanLocked(convID, msgIdx)
+}
+
 func (c *Controller) hasPendingQuestionLocked() bool {
-	if c.currentTurnLocked(c.turn) && c.turn.questionIndex >= 0 {
+	return c.hasPendingQuestionForConvLocked(c.currentID)
+}
+
+func (c *Controller) hasPendingQuestionForConvLocked(convID uint64) bool {
+	if st := c.runs[convID]; st != nil && c.turnActiveLocked(st.turn) && st.turn.questionIndex >= 0 {
 		return true
 	}
 	if !c.mockResponder {
 		return false
 	}
-	conv := c.findConvLocked(c.currentID)
+	conv := c.findConvLocked(convID)
 	if conv == nil {
 		return false
 	}
@@ -2205,13 +2409,15 @@ func (c *Controller) canRetryDraftLocked(draft *model.SentDraft) bool {
 	return false
 }
 
-func (c *Controller) restoreFailedDraftLocked() {
-	if c.sentDraft == nil {
+func (c *Controller) restoreFailedDraftForConvLocked(convID uint64) {
+	st := c.runs[convID]
+	if st == nil || st.sentDraft == nil {
 		return
 	}
-	draft := *c.sentDraft
-	c.sentDraft = nil
-	defer func() { c.sentSelection = nil }()
+	draft := *st.sentDraft
+	st.sentDraft = nil
+	sentSel := st.sentSelection
+	st.sentSelection = nil
 	conv := c.findConvLocked(draft.Conversation)
 	if c.currentID == draft.Conversation && c.composerDraftEmptyLocked() {
 		if conv != nil && draft.MessageIndex >= 0 && len(conv.Messages) == draft.MessageIndex+1 {
@@ -2225,8 +2431,8 @@ func (c *Controller) restoreFailedDraftLocked() {
 		c.draftRefs = append([]string(nil), draft.Refs...)
 		c.draftSkills = append([]string(nil), draft.Skills...)
 		c.draftAttachments = slices.Clone(draft.Attachments)
-		if c.sentSelection != nil && c.draftSelection == nil {
-			c.draftSelection = c.sentSelection
+		if sentSel != nil && c.draftSelection == nil {
+			c.draftSelection = sentSel
 			c.dismissedSel = nil
 		}
 		c.composerEpoch++
@@ -2236,6 +2442,181 @@ func (c *Controller) restoreFailedDraftLocked() {
 	}
 	c.deferredDrafts = append(c.deferredDrafts, draft)
 	c.persistFailedDraftsLocked()
+}
+
+func (c *Controller) convMatchesNotebookLocked(conv model.Conversation, notebookRoot string) bool {
+	return normalizeNotebookRoot(conv.Notebook) == normalizeNotebookRoot(notebookRoot)
+}
+
+func (c *Controller) convMatchesActiveNotebookLocked(conv model.Conversation) bool {
+	return c.convMatchesNotebookLocked(conv, c.activeNotebook)
+}
+
+func (c *Controller) hasConvInActiveNotebookLocked(id uint64) bool {
+	conv := c.findConvLocked(id)
+	return conv != nil && c.convMatchesActiveNotebookLocked(*conv)
+}
+
+func (c *Controller) currentNotebookStateLocked() model.NotebookSessionState {
+	var convPtr *uint64
+	if c.currentID != 0 {
+		id := c.currentID
+		convPtr = &id
+	}
+	return model.NotebookSessionState{
+		Conversation: convPtr,
+		Text:         c.draftText,
+		Refs:         append([]string(nil), c.draftRefs...),
+		Skills:       append([]string(nil), c.draftSkills...),
+		Attachments:  slices.Clone(c.draftAttachments),
+		Retry:        cloneSentDraft(c.retryDraft),
+	}
+}
+
+func (c *Controller) sanitizeNotebookStateLocked(root string, st model.NotebookSessionState) model.NotebookSessionState {
+	var convPtr *uint64
+	if st.Conversation != nil && *st.Conversation != 0 {
+		if conv := c.findConvLocked(*st.Conversation); conv != nil && c.convMatchesNotebookLocked(*conv, root) {
+			id := *st.Conversation
+			convPtr = &id
+		}
+	}
+	var retry *model.SentDraft
+	if st.Retry != nil && convPtr != nil && st.Retry.Conversation == *convPtr {
+		retry = cloneSentDraft(st.Retry)
+	}
+	return model.NotebookSessionState{
+		Conversation: convPtr,
+		Text:         st.Text,
+		Refs:         append([]string(nil), st.Refs...),
+		Skills:       append([]string(nil), st.Skills...),
+		Attachments:  slices.Clone(st.Attachments),
+		Retry:        retry,
+	}
+}
+
+func (c *Controller) applyNotebookStateLocked(st model.NotebookSessionState, root string) {
+	clean := c.sanitizeNotebookStateLocked(root, st)
+	if clean.Conversation != nil {
+		c.currentID = *clean.Conversation
+	} else {
+		c.currentID = 0
+	}
+	c.draftText = clean.Text
+	c.draftRefs = append([]string(nil), clean.Refs...)
+	c.draftSkills = append([]string(nil), clean.Skills...)
+	c.draftAttachments = slices.Clone(clean.Attachments)
+	c.retryDraft = cloneSentDraft(clean.Retry)
+}
+
+func (c *Controller) inferLegacyConversationNotebooksLocked(byNotebook map[string]model.NotebookSessionState) bool {
+	var known []string
+	seen := make(map[string]bool)
+	addKnown := func(raw string) {
+		norm := normalizeNotebookRoot(raw)
+		if norm != "" && !seen[norm] {
+			seen[norm] = true
+			known = append(known, norm)
+		}
+	}
+	if c.host != nil {
+		addKnown(c.host.ActiveNotebook())
+		for _, nb := range c.host.Notebooks() {
+			addKnown(nb)
+		}
+	}
+	for k := range byNotebook {
+		addKnown(k)
+	}
+	for i := range c.convs {
+		addKnown(c.convs[i].Notebook)
+	}
+
+	changed := false
+	for i := range c.convs {
+		conv := &c.convs[i]
+		if conv.Notebook != "" {
+			norm := normalizeNotebookRoot(conv.Notebook)
+			if norm != conv.Notebook {
+				conv.Notebook = norm
+				changed = true
+			}
+			addKnown(norm)
+			continue
+		}
+		if inferred := inferNotebookFromConversation(*conv, known); inferred != "" {
+			conv.Notebook = inferred
+			addKnown(inferred)
+			changed = true
+		}
+	}
+	return changed
+}
+
+func inferNotebookFromConversation(conv model.Conversation, known []string) string {
+	for _, m := range conv.Messages {
+		if m.Plan != nil && strings.TrimSpace(m.Plan.Root) != "" {
+			if norm := normalizeNotebookRoot(m.Plan.Root); norm != "" {
+				return norm
+			}
+		}
+	}
+	for _, m := range conv.Messages {
+		for _, s := range m.Sources {
+			for _, nb := range known {
+				if pathInsideNotebookRoot(nb, s.Path) {
+					return nb
+				}
+			}
+		}
+		for _, ref := range m.Refs {
+			for _, nb := range known {
+				if pathInsideNotebookRoot(nb, ref) {
+					return nb
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func pathInsideNotebookRoot(root, abs string) bool {
+	if root == "" || !filepath.IsAbs(abs) {
+		return false
+	}
+	normAbs := normalizeNotebookRoot(abs)
+	if rel, err := filepath.Rel(root, normAbs); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return true
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(abs))
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func cloneSentDraft(d *model.SentDraft) *model.SentDraft {
+	if d == nil {
+		return nil
+	}
+	cp := *d
+	cp.Refs = append([]string(nil), d.Refs...)
+	cp.Skills = append([]string(nil), d.Skills...)
+	cp.Attachments = slices.Clone(d.Attachments)
+	return &cp
+}
+
+func cloneNotebookSessionState(st model.NotebookSessionState) model.NotebookSessionState {
+	var convPtr *uint64
+	if st.Conversation != nil {
+		id := *st.Conversation
+		convPtr = &id
+	}
+	return model.NotebookSessionState{
+		Conversation: convPtr,
+		Text:         st.Text,
+		Refs:         append([]string(nil), st.Refs...),
+		Skills:       append([]string(nil), st.Skills...),
+		Attachments:  slices.Clone(st.Attachments),
+		Retry:        cloneSentDraft(st.Retry),
+	}
 }
 
 func (c *Controller) activeRootLocked() string {

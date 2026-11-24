@@ -222,7 +222,7 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 	panelBox := c.panelBox
 	convs := make([]model.Conversation, 0, len(c.convs))
 	for _, conv := range c.convs {
-		if len(conv.Messages) > 0 {
+		if len(conv.Messages) > 0 && c.convMatchesActiveNotebookLocked(conv) {
 			convs = append(convs, conv)
 		}
 	}
@@ -409,8 +409,10 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 
 func (c *Controller) deleteConversation(id uint64) {
 	c.mu.Lock()
+	c.finishConvTurnLocked(id)
+	delete(c.runs, id)
 	if c.currentID == id {
-		c.stopStreamingLocked()
+		c.clearStreamRedrawLocked()
 		c.clearActivePlanLocked()
 		c.currentID = 0
 		c.draftText = ""
@@ -831,7 +833,8 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 		c.streamCache.lastFullscreen = fullscreen
 		clear(turnHeights)
 	}
-	streaming := c.streaming
+	st := c.runStateLocked(c.currentID)
+	streaming := st != nil && st.streaming
 	now := cUI.Now()
 	if c.tarotWasStreaming && !streaming {
 		c.tarotGlintAt = now
@@ -843,10 +846,13 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 			tarotGlintProg = float32(el / 1.3)
 		}
 	}
-	partial := c.partialText.String()
+	partial := ""
 	var partialSteps []model.ProcessStep
-	if streaming && len(c.partialSteps) > 0 {
-		partialSteps = append([]model.ProcessStep(nil), c.partialSteps...)
+	if st != nil {
+		partial = st.partialText.String()
+		if streaming && len(st.partialSteps) > 0 {
+			partialSteps = append([]model.ProcessStep(nil), st.partialSteps...)
+		}
 	}
 	convID := c.currentID
 	if prevConvID != convID {
@@ -2243,8 +2249,13 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 
 func (c *Controller) renderTurnError(cUI *ui.Context, pal theme.Palette, fullscreen bool) {
 	c.mu.RLock()
-	errText := c.turnError
-	needSettings := c.turnErrorSettings
+	st := c.runStateLocked(c.currentID)
+	var errText string
+	var needSettings bool
+	if st != nil {
+		errText = st.turnError
+		needSettings = st.turnErrorSettings
+	}
 	c.mu.RUnlock()
 	if errText == "" {
 		return
@@ -2267,8 +2278,7 @@ func (c *Controller) renderTurnError(cUI *ui.Context, pal theme.Palette, fullscr
 				})
 				if closeErr.Clicked() {
 					c.mu.Lock()
-					c.turnError = ""
-					c.turnErrorSettings = false
+					c.clearTurnErrorLocked(c.currentID)
 					c.mu.Unlock()
 				}
 			})
@@ -2286,10 +2296,10 @@ func (c *Controller) renderTurnError(cUI *ui.Context, pal theme.Palette, fullscr
 
 func (c *Controller) renderDeferredDraftBanner(cUI *ui.Context, pal theme.Palette, fullscreen bool) {
 	c.mu.RLock()
-	canRestore := !c.streaming && c.composerDraftEmptyLocked()
+	canRestore := !c.isConvStreamingLocked(c.currentID) && c.composerDraftEmptyLocked()
 	hasDeferred := false
 	for _, d := range c.deferredDrafts {
-		if c.currentID == 0 || d.Conversation == c.currentID {
+		if d.Conversation == c.currentID || (c.currentID == 0 && c.hasConvInActiveNotebookLocked(d.Conversation)) {
 			hasDeferred = true
 			break
 		}
@@ -2319,13 +2329,13 @@ func (c *Controller) renderDeferredDraftBanner(cUI *ui.Context, pal theme.Palett
 
 func (c *Controller) restoreDeferredDraft() {
 	c.mu.Lock()
-	if c.streaming || !c.composerDraftEmptyLocked() {
+	if c.isConvStreamingLocked(c.currentID) || !c.composerDraftEmptyLocked() {
 		c.mu.Unlock()
 		return
 	}
 	idx := -1
 	for i, d := range c.deferredDrafts {
-		if c.currentID == 0 || d.Conversation == c.currentID {
+		if d.Conversation == c.currentID || (c.currentID == 0 && c.hasConvInActiveNotebookLocked(d.Conversation)) {
 			idx = i
 			break
 		}
@@ -2336,7 +2346,7 @@ func (c *Controller) restoreDeferredDraft() {
 	}
 	d := c.deferredDrafts[idx]
 	c.deferredDrafts = append(c.deferredDrafts[:idx], c.deferredDrafts[idx+1:]...)
-	if c.currentID == 0 && c.hasConvLocked(d.Conversation) {
+	if c.currentID == 0 && c.hasConvInActiveNotebookLocked(d.Conversation) {
 		c.currentID = d.Conversation
 	}
 	c.draftText = d.Text
@@ -2851,7 +2861,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 		sel = &cp
 	}
 	epoch := c.composerEpoch
-	busy := c.streaming || c.hasPendingQuestionLocked()
+	busy := c.isConvStreamingLocked(c.currentID) || c.hasPendingQuestionLocked()
 	hasConv := c.currentID != 0
 	backend := c.selectedBackendLocked()
 	provider := resolveProviderExecutionConfig(c.providerCfg)
@@ -3017,7 +3027,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 						}
 						return true
 					}
-					if c.streaming || (strings.TrimSpace(curText) == "" && len(c.draftAttachments) == 0) {
+					if c.isConvStreamingLocked(c.currentID) || (strings.TrimSpace(curText) == "" && len(c.draftAttachments) == 0) {
 						c.mu.Unlock()
 						return true
 					}
@@ -3496,8 +3506,8 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							if *deckCursor >= 0 && *deckCursor < len(filtered) {
 								pickVal := filtered[*deckCursor].Value
 								c.mu.Lock()
-								if c.streaming {
-									c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
+								if c.isConvStreamingLocked(c.currentID) {
+									c.setTurnErrorLocked(c.currentID, theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model"), false)
 								} else {
 									_ = c.setBackendModelLocked(selected, pickVal)
 									c.deckOpen = false
@@ -3559,8 +3569,8 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							})
 							if btn.Clicked() {
 								c.mu.Lock()
-								if c.streaming {
-									c.turnError = theme.Tr("请等待当前回复结束后再切换 Agent", "Wait for the current response before changing agent")
+								if c.isConvStreamingLocked(c.currentID) {
+									c.setTurnErrorLocked(c.currentID, theme.Tr("请等待当前回复结束后再切换 Agent", "Wait for the current response before changing agent"), false)
 									c.mu.Unlock()
 								} else {
 									changed := c.selectedBackendLocked() != k
@@ -3694,8 +3704,8 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						})
 						if row.Clicked() {
 							c.mu.Lock()
-							if c.streaming {
-								c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
+							if c.isConvStreamingLocked(c.currentID) {
+								c.setTurnErrorLocked(c.currentID, theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model"), false)
 							} else {
 								_ = c.setBackendModelLocked(selected, m.Value)
 								c.deckOpen = false

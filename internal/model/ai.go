@@ -203,6 +203,7 @@ type ChatMessage struct {
 	DurationMs  int64           `json:"durationMs,omitempty"`
 	Refs                []string        `json:"refs,omitempty"`
 	Skills              []string        `json:"skills,omitempty"`
+	ActivePage          string          `json:"active_page,omitempty"`
 	Attachments         []Attachment    `json:"attachments,omitempty"`
 	AttachmentsSeparate bool            `json:"attachmentsSeparate,omitempty"`
 	Error               string          `json:"error,omitempty"`
@@ -230,6 +231,8 @@ func (a Attachment) IsImage() bool {
 type Conversation struct {
 	ID              uint64        `json:"id"`
 	Title           string        `json:"title"`
+	Notebook        string        `json:"notebook,omitempty"`
+	OriginPage      string        `json:"origin_page,omitempty"`
 	Messages        []ChatMessage `json:"messages"`
 	Backend         BackendKind   `json:"backend,omitempty"`
 	NativeSessionID string        `json:"native_session_id,omitempty"`
@@ -244,13 +247,23 @@ type SentDraft struct {
 	MessageIndex int          `json:"message_index"`
 }
 
-type ActiveDraft struct {
-	Conversation *uint64      `json:"conversation"`
-	Text         string       `json:"text"`
-	Refs         []string     `json:"refs"`
-	Skills       []string     `json:"skills"`
+type NotebookSessionState struct {
+	Conversation *uint64      `json:"conversation,omitempty"`
+	Text         string       `json:"text,omitempty"`
+	Refs         []string     `json:"refs,omitempty"`
+	Skills       []string     `json:"skills,omitempty"`
 	Attachments  []Attachment `json:"attachments,omitempty"`
 	Retry        *SentDraft   `json:"retry,omitempty"`
+}
+
+type ActiveDraft struct {
+	Conversation *uint64                         `json:"conversation"`
+	Text         string                          `json:"text"`
+	Refs         []string                        `json:"refs"`
+	Skills       []string                        `json:"skills"`
+	Attachments  []Attachment                    `json:"attachments,omitempty"`
+	Retry        *SentDraft                      `json:"retry,omitempty"`
+	ByNotebook   map[string]NotebookSessionState `json:"by_notebook,omitempty"`
 }
 
 type SkillSpec struct {

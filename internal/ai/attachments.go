@@ -63,8 +63,7 @@ func (c *Controller) handleComposerPaste(svc ui.Services) bool {
 
 func (c *Controller) showAttachmentPasteError() {
 	c.mu.Lock()
-	c.turnError = theme.Tr("部分附件无法添加。最多 10 个文件，每个文件最多 20 MB。", "Some attachments could not be added. Add up to 10 files, up to 20 MB each.")
-	c.turnErrorSettings = false
+	c.setTurnErrorLocked(c.currentID, theme.Tr("部分附件无法添加。最多 10 个文件，每个文件最多 20 MB。", "Some attachments could not be added. Add up to 10 files, up to 20 MB each."), false)
 	c.mu.Unlock()
 	c.requestRedraw()
 }
