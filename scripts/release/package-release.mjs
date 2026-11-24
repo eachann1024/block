@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +67,52 @@ function ensureDmgbuild() {
   return bin;
 }
 
+// dmgbuild 1.6.5 invokes ditto without checking its exit code, so mount the
+// generated DMG read-only and verify the app bundle and its signature inside.
+function verifyDmgBundle(dmgPath) {
+  assert.ok(existsSync(dmgPath), `DMG missing at ${dmgPath}`);
+  const mountPoint = mkdtempSync(join(tmpdir(), "block-dmg-verify-"));
+  let attached = false;
+  try {
+    const attach = spawnSync(
+      "hdiutil",
+      ["attach", "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mountPoint, dmgPath],
+      { encoding: "utf8" },
+    );
+    assert.equal(
+      attach.status,
+      0,
+      `Failed to mount ${dmgPath} for verification: ${attach.stderr || attach.stdout || attach.error}`,
+    );
+    attached = true;
+
+    const mountedApp = join(mountPoint, `${appName}.app`);
+    const mountedBin = join(mountedApp, "Contents", "MacOS", appName);
+    const applicationsLink = join(mountPoint, "Applications");
+    assert.ok(existsSync(mountedApp), `Mounted DMG missing ${appName}.app`);
+    assert.ok(existsSync(mountedBin), `Mounted DMG missing ${appName}.app/Contents/MacOS/${appName}`);
+    assert.ok(lstatSync(applicationsLink).isSymbolicLink(), "Mounted DMG missing Applications symlink");
+    assert.equal(readlinkSync(applicationsLink), "/Applications", "Mounted DMG Applications symlink target mismatch");
+
+    const verify = spawnSync("codesign", ["--verify", "--deep", "--strict", "--verbose=2", mountedApp], {
+      encoding: "utf8",
+    });
+    assert.equal(
+      verify.status,
+      0,
+      `Mounted DMG codesign verification failed for ${dmgPath}:\n${verify.stderr || verify.stdout}`,
+    );
+  } finally {
+    if (attached) {
+      const detach = spawnSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "ignore" });
+      if (detach.status !== 0) {
+        spawnSync("hdiutil", ["detach", mountPoint, "-force", "-quiet"], { stdio: "ignore" });
+      }
+    }
+    rmSync(mountPoint, { recursive: true, force: true });
+  }
+}
+
 async function createDmgWithRetry(dmgbuild, stagedApp, outDmg) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -82,9 +128,11 @@ async function createDmgWithRetry(dmgbuild, stagedApp, outDmg) {
         "Block",
         outDmg,
       ]);
+      verifyDmgBundle(outDmg);
       return;
     } catch (err) {
       lastError = err;
+      rmSync(outDmg, { force: true });
       if (attempt < 3) {
         await new Promise((r) => setTimeout(r, 1000 * attempt));
       }
