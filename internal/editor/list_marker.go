@@ -444,7 +444,7 @@ func (s *Session) renderTodoCheckbox(c *ui.Context, idx int, checked, readOnly b
 				mark.Scale(chkScale, chkScale)
 			}
 			mark.Children(func() {
-				icons.DrawAnimated(c, icons.Check, theme.IconMicro*z, pal.MonoIconColors(pal.Accent), hovered || pressed || checked)
+				icons.DrawAnimated(c, icons.Check, theme.IconMicro*z, pal.MinimalIconColors(pal.Accent), hovered || pressed || checked)
 			})
 		}
 	})

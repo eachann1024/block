@@ -161,7 +161,7 @@ func (s *Session) renderFindBar(c *ui.Context) {
 						}
 					}
 				}
-				icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+				icons.DrawAnimated(c, icons.FindSearch, theme.IconRow, pal.DuoIconColors(pal.TextSecondary), s.findQuery != "")
 
 				in := ui.TextInputBase(c.Key("find-input"), &s.findQuery).Width(inputW).Height(theme.HeightCompact).
 					Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
@@ -779,7 +779,7 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 							Rows:      []appUi.TooltipRow{{Trigger: it.Label}},
 						})
 						aiBtn.Children(func() {
-							icons.DrawAnimated(c, icons.Sparkles, theme.IconAction, pal.MonoIconColors(pal.Accent), aiHovered || aiPressed)
+							icons.DrawAnimated(c, icons.Sparkles, theme.IconAction, pal.DuoIconColors(pal.Accent), aiHovered || aiPressed)
 						})
 						appUi.Probe(aiBtn, "tb-ai")
 						s.recordOverlayBtn("tb-ai", aiBtn)
@@ -811,12 +811,14 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 						appUi.AnimateSurfaceColors(btn, btnBG, ui.Transparent, false)
 						appUi.TactileCard(btn, btnHovered, btnPressed, active, false)
 						btn.Children(func() {
-							ic := pal.MonoIconColors(pal.TextSecondary)
-							if active || btnHovered || btnPressed {
+							ic := pal.DuoIconColors(pal.TextSecondary)
+							if active {
+								ic = pal.LitDuoIconColors(pal.Text)
+							} else if btnHovered || btnPressed {
 								ic = pal.DuoIconColors(pal.Text)
 							}
 							icons.DrawAnimated(c, it.Icon, theme.IconAction, ic, active || btnHovered || btnPressed)
-							icons.DrawAnimated(c, icons.TbChevron, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary), btnHovered || btnPressed)
+							icons.DrawAnimated(c, icons.TbChevron, theme.IconMicro, pal.HoverIconColors(btnHovered || btnPressed), active || btnHovered || btnPressed)
 						})
 						appUi.Probe(btn, it.ID)
 						s.recordOverlayBtn(it.ID, btn)
@@ -1048,7 +1050,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 						ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Background(sw.FG).Border(1, pal.Hairline)
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
 						if curFG == name {
-							icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text), rowHovered || rowPressed || highlighted)
+							icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MinimalIconColors(pal.Text), rowHovered || rowPressed || highlighted)
 						}
 					})
 					appUi.Probe(row, "fg-sw-"+name)
@@ -1088,7 +1090,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 						ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Background(swatchCol).Border(1, pal.BtnBorder)
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
 						if curBG == bgName {
-							icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text), rowHovered || rowPressed || highlighted)
+							icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MinimalIconColors(pal.Text), rowHovered || rowPressed || highlighted)
 						}
 					})
 					appUi.Probe(row, "bg-sw-"+bgName)
@@ -2343,7 +2345,7 @@ func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, i
 	ui.Row(c).FillWidth().MinWidth(0).Height(theme.HeightMicro).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
 		ui.Row(c).Width(theme.IconInline).Shrink(0).Center().Children(func() {
 			if isResult {
-				icons.Draw(c, icons.Sparkles, theme.IconInline, pal.MonoIconColors(pal.Accent))
+				icons.Draw(c, icons.Sparkles, theme.IconInline, pal.DuoIconColors(pal.Accent))
 			} else {
 				ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
 			}
@@ -2551,7 +2553,7 @@ func (s *Session) renderAnnotationResultBar(c *ui.Context, ann *model.Annotation
 	// Top row: sparkles + version switcher / title / inline prompt + right-aligned actions.
 	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightCompact).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
 		ui.Row(c).Width(theme.IconInline).Shrink(0).Center().Children(func() {
-			icons.Draw(c, icons.Sparkles, theme.IconInline, pal.MonoIconColors(pal.Accent))
+			icons.Draw(c, icons.Sparkles, theme.IconInline, pal.DuoIconColors(pal.Accent))
 		})
 		switch {
 		case verTotal > 1:
@@ -2711,7 +2713,7 @@ func (s *Session) renderAnnotationPromptHistory(c *ui.Context, id string, prompt
 					toggle.Background(pal.Hover)
 				}
 				toggle.Children(func() {
-					icons.Draw(c, icons.ChevronUp, theme.IconMicro, pal.MonoIconColors(pal.Placeholder))
+					icons.DrawAnimated(c, icons.ChevronUp, theme.IconMicro, pal.DuoIconColors(pal.Placeholder), toggle.Hovered() || toggle.Pressed())
 					ui.Text(c, theme.Tr("收起历史", "Collapse history")).SingleLine().
 						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).TextColor(pal.Placeholder)
 				})
@@ -2741,7 +2743,7 @@ func (s *Session) renderAnnotationPromptHistory(c *ui.Context, id string, prompt
 				toggle.Background(pal.Hover)
 			}
 			toggle.Children(func() {
-				icons.Draw(c, icons.ChevronDown, theme.IconMicro, pal.MonoIconColors(pal.Placeholder))
+				icons.DrawAnimated(c, icons.ChevronDown, theme.IconMicro, pal.DuoIconColors(pal.Placeholder), toggle.Hovered() || toggle.Pressed())
 				ui.Text(c, lbl).SingleLine().
 					FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).TextColor(pal.Placeholder)
 			})
@@ -3219,7 +3221,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 					title = theme.Tr("AI 修改审阅", "AI Plan Diff Review")
 				}
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Grow(1).MinWidth(0).Children(func() {
-					icons.Draw(c, icons.Sparkles, theme.IconAction, pal.MonoIconColors(pal.Accent))
+					icons.Draw(c, icons.Sparkles, theme.IconAction, pal.DuoIconColors(pal.Accent))
 					ui.Text(c, title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 				})
 				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {

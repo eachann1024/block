@@ -898,7 +898,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 									true,
 								)
 								delBtn.Children(func() {
-									icons.DrawAnimated(c, icons.KeyBackspace, s.scale(theme.IconAction), pal.MonoIconColors(pal.Danger), delHovered || delPressed)
+									icons.DrawAnimated(c, icons.KeyBackspace, s.scale(theme.IconAction), pal.TintedIconColors(pal.Danger), delHovered || delPressed)
 								})
 								appUi.Probe(delBtn, "first-line-delete-badge")
 								if delBtn.Clicked() {
@@ -1005,14 +1005,14 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 								}
 								appUi.AnimateSurfaceColors(grip, gripBG, gripBD, tableWholeActive)
 								appUi.TactileButton(grip, gripHovered || gripActive || tableWholeActive, gripPressed, tableWholeActive)
-								gripIcon := pal.MonoIconColors(pal.TextSecondary)
+								gripIcon := pal.DuoIconColors(pal.TextSecondary)
 								if tableWholeActive {
-									gripIcon = pal.MonoIconColors(pal.Text)
+									gripIcon = pal.LitDuoIconColors(pal.Text)
 								} else if gripActive || gripPressed || gripHovered {
 									gripIcon = pal.DuoIconColors(pal.Text)
 								}
 								grip.Children(func() {
-									icons.DrawAnimated(c, icons.Drag, icGutter, gripIcon, gripActive || gripPressed || gripHovered)
+									icons.DrawAnimated(c, icons.Drag, icGutter, gripIcon, tableWholeActive || gripActive || gripPressed || gripHovered)
 								})
 								appUi.Probe(grip, gripID)
 								s.recordOverlayBtn(gripID, grip)
@@ -1280,7 +1280,9 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 				appUi.AnimateSurfaceColors(iconBtn, iconBG, iconBD, true)
 				appUi.TactileButton(iconBtn, iconHovered, iconPressed, false)
 				iconBtn.Children(func() {
-					icons.DrawAnimated(c, icons.Callout, s.scale(16), theme.IconColors{Line: st.Accent, Fill: st.IconFill, Accent: st.Accent}, open || iconHovered || iconPressed)
+					calloutIC := pal.TintedIconColors(st.Accent)
+					calloutIC.Fill = st.IconFill
+					icons.DrawAnimated(c, icons.Callout, s.scale(16), calloutIC, open || iconHovered || iconPressed)
 				})
 				appUi.Probe(iconBtn, "callout-icon")
 				if iconBtn.Clicked() {
@@ -1302,7 +1304,7 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 				appUi.TactileCard(pillBtn, pillHovered, pillPressed, open, false)
 				pillBtn.Children(func() {
 					ui.Text(c, calloutLabel(curKind)).FontSize(s.scale(14)).FontWeight(theme.WeightTitle).TextColor(st.Text).SingleLine()
-					icons.DrawAnimated(c, icons.TbChevron, s.scale(theme.IconInline), pal.MonoIconColors(st.Text), open || pillHovered || pillPressed)
+					icons.DrawAnimated(c, icons.TbChevron, s.scale(theme.IconInline), pal.TintedIconColors(st.Text), open || pillHovered || pillPressed)
 				})
 				appUi.Probe(pillBtn, pillID)
 				appUi.Probe(pillBtn, "callout-pill")
@@ -3489,10 +3491,9 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					ph := ui.Row(c.Key("img-ph")).FillWidth().Height(120).Center().Gap(theme.Space8)
 					appUi.AnimateSurfaceColors(ph, phBG, ui.Transparent, false)
 					ph.Children(func() {
-						icCol := pal.MonoIconColors(pal.TextSecondary)
+						icCol := pal.HoverIconColors(phActive)
 						txtCol := pal.TextSecondary
 						if phActive {
-							icCol = pal.DuoIconColors(pal.Text)
 							txtCol = pal.Text
 						}
 						icons.DrawAnimated(c, icons.Image, 20, icCol, phActive)
