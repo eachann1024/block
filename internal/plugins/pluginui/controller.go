@@ -33,6 +33,7 @@ type Controller struct {
 	storeBaseSnap       *storeBaseSnapshot
 	storeViewSnap       *storeViewSnapshot
 	storeHeroIndex      int
+	storeHeroDir        int
 	storeHeroLastSwitch time.Time
 	storeHeroPaused     bool
 	onSuggestPlugin     func(category plugins.Category)
@@ -118,14 +119,19 @@ func (c *Controller) SettingsTabChanged(previous, current string) {
 	c.closeStoreMenus()
 	if modals.IsStoreTab(current) && !modals.IsStoreTab(previous) {
 		c.storeHeroIndex = 0
+		c.storeHeroDir = 1
 		c.storeHeroPaused = false
 		c.storeHeroLastSwitch = time.Time{}
 		c.sup.RefreshCatalogAsync()
 	}
 }
 
-func (c *Controller) selectStoreHero(index int, manual bool, now time.Time) {
+func (c *Controller) selectStoreHero(index, dir int, manual bool, now time.Time) {
+	if dir == 0 {
+		dir = 1
+	}
 	c.storeHeroIndex = index
+	c.storeHeroDir = dir
 	c.storeHeroLastSwitch = now
 	if manual {
 		c.storeHeroPaused = true
