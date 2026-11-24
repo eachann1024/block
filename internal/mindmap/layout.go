@@ -436,8 +436,12 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 		return
 	}
 	pal := opt.Palette
+	bg := opt.Background
+	if bg.A == 0 {
+		bg = pal.CodeBG
+	}
 	if opt.FillBackground {
-		p.Fill(r, opt.Background, 0)
+		p.Fill(r, bg, 0)
 	}
 	branches := pal.MindMapBranchColors()
 	scale := cam.Scale
@@ -494,7 +498,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						wxToScreen(midX), wyToScreen(ny),
 						wxToScreen(nx), wyToScreen(ny),
 					)
-					if n.Depth > 1 {
+					// Skip the bottom underline segment on the selected leaf node so it
+					// cannot double up with or poke past the selection ring.
+					if n.Depth > 1 && n.ID != opt.SelectedID {
 						endX := n.X
 						if d > 0 {
 							endX = n.X + n.W
@@ -548,6 +554,15 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				sh := n.H * scale
 				rect := ui.Rect{X: sx, Y: sy, W: sw, H: sh}
 
+				pad := float32(3) * scale
+				ringR := ui.Rect{X: sx - pad, Y: sy - pad, W: sw + pad*2, H: sh + pad*2}
+				ringRad := theme.RadiusLG * scale
+				if n.Depth == 0 {
+					ringRad = ringR.H * 0.5
+				} else if n.Depth > 1 {
+					ringRad = theme.RadiusMD * scale
+				}
+
 				switch n.Depth {
 				case 0:
 					p.Fill(rect, pal.Text, sh*0.5)
@@ -556,7 +571,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					p.Fill(rect, col.Alpha(0.13), rad)
 					p.Stroke(rect, col, rad, max(1.2*scale, 1))
 				default:
-					if n.ID == opt.HoveredID && n.ID != opt.SelectedID {
+					if n.ID == opt.SelectedID {
+						// Occlude incoming/outgoing branch line tails beneath the selected leaf
+						// so only the selection border renders at the bottom.
+						p.Fill(ringR, bg, ringRad)
+					} else if n.ID == opt.HoveredID {
 						p.Fill(rect, pal.Hover, theme.RadiusSM*scale)
 					}
 				}
@@ -613,12 +632,6 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 
 				// Selection ring (3px outset, Accent stroke).
 				if n.ID == opt.SelectedID {
-					pad := float32(3) * scale
-					ringR := ui.Rect{X: sx - pad, Y: sy - pad, W: sw + pad*2, H: sh + pad*2}
-					ringRad := theme.RadiusLG * scale
-					if n.Depth == 0 {
-						ringRad = ringR.H * 0.5
-					}
 					p.Stroke(ringR, pal.Accent, ringRad, max(1.6*scale, 1.2))
 				}
 			}
@@ -642,10 +655,6 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					scy := wyToScreen(by)
 					sr := layoutFoldRadius * scale
 					badgeR := ui.Rect{X: scx - sr, Y: scy - sr, W: sr * 2, H: sr * 2}
-					bg := opt.Background
-					if bg.A == 0 {
-						bg = pal.CodeBG
-					}
 					p.Fill(badgeR, bg, sr)
 					p.Stroke(badgeR, bc, sr, max(1.2*scale, 1))
 					label := fmt.Sprintf("%d", n.DescendantCount())
