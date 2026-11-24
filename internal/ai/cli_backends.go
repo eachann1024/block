@@ -1371,15 +1371,15 @@ func startMCPBridge(ctrl *Controller, turn *assistantTurn) (*mcpBridgeServer, er
 			}
 			name, _ := rpc.Params["name"].(string)
 			argsVal := rpc.Params["arguments"]
-			rawArgs, _ := json.Marshal(argsVal)
-			resJSON, plan, sources := ctrl.executeTool(r.Context(), turn.notebookScope, name, string(rawArgs))
+			rawArgs := marshalJSON(argsVal)
+			resJSON, plan, sources := ctrl.executeTool(r.Context(), turn.notebookScope, name, rawArgs)
 			ctrl.mu.Lock()
 			if !ctrl.currentTurnLocked(turn) || !ctrl.streaming || r.Context().Err() != nil {
 				ctrl.mu.Unlock()
 				writeRPCError(w, rpc.ID, -32000, "Turn finished")
 				return
 			}
-			ctrl.partialSteps = append(ctrl.partialSteps, processStepForTool(name, string(rawArgs)))
+			ctrl.partialSteps = append(ctrl.partialSteps, processStepForTool(name, rawArgs))
 			var linkedPlan *model.BatchPlan
 			if plan != nil {
 				ctrl.pushMessageLocked(model.ChatMessage{
@@ -1434,7 +1434,9 @@ func (b *mcpBridgeServer) close() {
 
 func writeRPCResult(w http.ResponseWriter, id any, result any) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      id,
 		"result":  result,
@@ -1443,7 +1445,9 @@ func writeRPCResult(w http.ResponseWriter, id any, result any) {
 
 func writeRPCError(w http.ResponseWriter, id any, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      id,
 		"error":   map[string]any{"code": code, "message": msg},
