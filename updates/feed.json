@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T16:22:06.908Z",
-  "latest_version": "1.0.936",
-  "latest_tag": "v1.0.936",
+  "updated_at": "2026-11-24T17:29:54.632Z",
+  "latest_version": "1.0.937",
+  "latest_tag": "v1.0.937",
   "releases": [
+    {
+      "version": "1.0.937",
+      "tag": "v1.0.937",
+      "published_at": "2026-11-24T17:29:54Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.937",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "思维导图：进入和恢复全屏时现在会播放过渡动画。",
+          "思维导图：全屏过渡现在与编辑器生命周期衔接，并安全处理回调。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Mind Map: Full-screen entry and restoration now animate their transitions.",
+          "Mind Map: Full-screen transitions now follow the editor lifecycle, with callbacks handled safely."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-macos-arm64.dmg",
+          "size": 15951814,
+          "sha256": "f34cd38fa248c33f18eab8f668894f1679a50f4d66ac677edc6df628b8c20223"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-macos-x64.dmg",
+          "size": 17592929,
+          "sha256": "31589f3260957e1aea328d6fd31472c8a4257076b839c129ae4edea250479e80"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-windows-x64-setup.exe",
+          "size": 13366313,
+          "sha256": "f883d914096e43d4355be4d5bcbbf6fffbad0ffde70146d779eaa4fa0b691254"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-linux-x64.deb",
+          "size": 10843746,
+          "sha256": "e36e9c2c905b5be3477e35f70aed097a049568ecd6b113cc150d74f74bb38372"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-linux-x64.AppImage",
+          "size": 23894520,
+          "sha256": "8a755c02c88cca28a0c18881847a113904d018fc8e7667611ae95c4b4f8443f5"
+        }
+      ]
+    },
     {
       "version": "1.0.936",
       "tag": "v1.0.936",
@@ -40,38 +98,7 @@
           "Themes: Added underlying data definitions for built-in fonts."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-macos-arm64.dmg",
-          "size": 15937849,
-          "sha256": "e85a43a1813a9f6ed1f9831c5b6911bf7e969abf446268fdc0f1cba26e798bad"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-macos-x64.dmg",
-          "size": 17583372,
-          "sha256": "a27694e194b2a2e55deb5f18b6e9350a2abe2dc10cd1fea6642abfafa890da4d"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-windows-x64-setup.exe",
-          "size": 13355243,
-          "sha256": "fbe3acf300ce0feeb8a5600803b78bb0e8760868e042d99faf039d4ec41834e3"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-linux-x64.deb",
-          "size": 10835936,
-          "sha256": "3c7a4cb5c794d536bd3f8a0675582dfea572934e5f2576aa67be9d853d0d301e"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-linux-x64.AppImage",
-          "size": 23890424,
-          "sha256": "ab30144635265420c44de01a6092c3e58d865d20f7515d9eea706e93417ce71d"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.935",
@@ -1633,39 +1660,6 @@
           "The sidebar tree context menu is simpler to navigate."
         ],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.887",
-      "tag": "v1.0.887",
-      "published_at": "2026-11-21T07:14:02Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.887",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "差异代码块现在会用不同颜色标出新增行和删除行。",
-          "长代码块现在会限制语法高亮的处理量，让编辑保持流畅。"
-        ],
-        "fixes": [
-          "属性列表中的有效注释现在会得到保留。",
-          "已停用的语言插件现在仍可进行来源验证。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "Diff blocks now use distinct colors to highlight added and removed lines.",
-          "Long code blocks now limit syntax highlighting work to keep editing responsive."
-        ],
-        "fixes": [
-          "Valid comments are now preserved in property lists.",
-          "Source verification now remains available for retired language plugins."
-        ],
         "other": []
       },
       "assets": []
