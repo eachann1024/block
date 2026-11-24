@@ -360,6 +360,17 @@ jobs:
           wait "$pid_app"
           wait "$pid_deb"
           wait "$pid_win"
+      - name: Build the setup verification client
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -o "$RUNNER_TEMP/setup-verify/mygo-automation.exe" github.com/egoist/mygo/plugins/automation/cmd/mygo-automation
+      - uses: actions/upload-artifact@v4
+        with:
+          name: setup-verify-tools
+          path: ${{ runner.temp }}/setup-verify/mygo-automation.exe
+          if-no-files-found: error
+          retention-days: 1
       - name: Resolve allowlisted Linux and Windows installers
         id: installer
         shell: bash
@@ -380,14 +391,52 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Installs the packaged setup on real Windows through Block's own setup window
+  # (internal/installer); a setup that cannot install must never be published.
+  verify-windows-installer:
+    name: Verify Windows setup
+    needs: [prepare, release-linux-windows]
+    if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: block-installer-linux-windows-x64
+          path: ${{ runner.temp }}/setup-verify/installers
+      - uses: actions/download-artifact@v4
+        with:
+          name: setup-verify-tools
+          path: ${{ runner.temp }}/setup-verify/tools
+      - name: Install and uninstall through the setup window
+        shell: bash
+        run: |
+          setup="$(node scripts/release/allowed-assets.mjs windows x64 exe)"
+          node scripts/release/verify-windows-installer.mjs \
+            "$RUNNER_TEMP/setup-verify/installers/$setup" \
+            "$RUNNER_TEMP/setup-verify/tools/mygo-automation.exe" \
+            "$RUNNER_TEMP/setup-verify/screenshots"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: setup-verify-screenshots
+          path: ${{ runner.temp }}/setup-verify/screenshots
+          if-no-files-found: ignore
+          retention-days: 14
+
   publish:
     name: Publish GitHub Release
-    needs: [prepare, release-macos, release-linux-windows]
+    needs: [prepare, release-macos, release-linux-windows, verify-windows-installer]
     if: >-
       needs.prepare.outputs.should_build == 'yes' &&
       github.ref == 'refs/heads/main' &&
       needs.release-macos.result == 'success' &&
-      needs.release-linux-windows.result == 'success'
+      needs.release-linux-windows.result == 'success' &&
+      needs.verify-windows-installer.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
