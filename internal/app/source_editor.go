@@ -482,6 +482,7 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	st.SoftWrap = sourceSoftWrap
 	st.Theme = sourceEditorTheme(pal)
 	st.Bindings = sourceFindBindings(st.Bindings)
+	st.RenderFindBar = renderSourceFindBar
 
 	c.Key("source-surface:" + s.Path)
 	outer := ui.Column(c).Fill().Background(pal.Paper)
