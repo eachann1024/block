@@ -1601,7 +1601,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 							if st.ID == "streaming" && !st.Done {
 								bui.SparkleLoader(cUI, 14, pal.TextSecondary, pal.Accent)
 							} else {
-								icons.DrawAnimated(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
+								icons.DrawAnimated(cUI, iconGlyph, 14, pal.DuoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
 							}
 							// The streaming row's detail is already plain (latestStreamLine);
 							// stripping it again would eat stars that sat in code.
@@ -1794,7 +1794,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 		bui.Probe(topBtn, cardID)
 		topBtn.Children(func() {
 			ui.Row(cUI).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-				icons.DrawAnimated(cUI, icons.Sparkles, 16, pal.MonoIconColors(pal.Accent), topBtn.Hovered() || topBtn.Pressed() || pending)
+				icons.DrawAnimated(cUI, icons.Sparkles, 16, pal.DuoIconColors(pal.Accent), topBtn.Hovered() || topBtn.Pressed() || pending)
 				ui.Text(cUI, title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).SingleLine()
 				if isCreate && pending {
 					ui.Box(cUI).Padding(2, 7).Radius(theme.RadiusXS).Background(pal.Selected).Children(func() {
@@ -2090,7 +2090,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 						ind.BorderColor(pal.Text).Background(pal.Text)
 						ind.Children(func() {
 							if q.MultiSelect {
-								icons.DrawAnimated(cUI, icons.Check, 12, pal.MonoIconColors(pal.Paper), on)
+								icons.DrawAnimated(cUI, icons.Check, 12, pal.MinimalIconColors(pal.Paper), on)
 							} else {
 								dot := ui.Box(cUI.Key("qdot-"+optID)).Size(6, 6).Radius(theme.RadiusPill).Background(pal.Paper)
 								sc := dot.AnimateTo("qdotSc", 1.0, bui.SpringTactile)
@@ -2888,7 +2888,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 						ic = icons.FileIconOrDefault(it.value)
 					}
 					active := isSel || hovered || pressed
-					icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.TextSecondary), active)
+					icons.DrawAnimated(cUI, ic, theme.IconRow, pal.DuoIconColors(pal.TextSecondary), active)
 					pickQ := strings.TrimSpace(token[1:])
 					var labelMarks [][2]int
 					if pickQ != "" {
@@ -2903,7 +2903,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 						bui.HighlightedText(cUI, it.hint, hintMarks, theme.FontBody, 0, pal.TextSecondary, pal.SearchHighlight).Shrink(0)
 					}
 					if it.kind == pickFolder {
-						icons.DrawAnimated(cUI, icons.ChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), active)
+						icons.DrawAnimated(cUI, icons.ChevronRight, theme.IconInline, pal.DuoIconColors(pal.TextSecondary), active)
 					}
 				})
 				if row.Clicked() {
@@ -2986,7 +2986,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 				ui.Row(cUI.Key("ai-composer-drop-hint")).FillWidth().Height(theme.HeightMicro).
 					PaddingX(theme.Space8).Gap(theme.Space6).AlignItems(ui.Center).
 					Radius(theme.RadiusSM).Background(ais.TintedSelectedBG).Border(1, pal.Accent).Children(func() {
-					icons.Draw(cUI, icons.Image, theme.IconMicro, pal.MonoIconColors(pal.Accent))
+					icons.Draw(cUI, icons.Image, theme.IconMicro, pal.DuoIconColors(pal.Accent))
 					ui.Text(cUI, theme.Tr("松开以添加图片或文件", "Drop images or files to attach")).
 						FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
 				})
@@ -3249,7 +3249,7 @@ func (c *Controller) renderSelectionChip(cUI *ui.Context, pal theme.Palette, sel
 		bui.Tooltip(cUI, chip, sel.PlainPreview)
 	}
 	chip.Children(func() {
-		icons.Draw(cUI, icons.Quote, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+		icons.Draw(cUI, icons.Quote, theme.IconMicro, pal.DuoIconColors(pal.TextSecondary))
 		ui.Text(cUI, label).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		xBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 			ID:       "ai-selection-chip-x",
@@ -3284,7 +3284,7 @@ func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id stri
 	}
 	bui.AnimateSurfaceColors(chip, bg, border, true)
 	chip.Children(func() {
-		icons.DrawAnimated(cUI, ic, theme.IconAction, pal.MonoIconColors(pal.Accent), hovered)
+		icons.DrawAnimated(cUI, ic, theme.IconAction, pal.DuoIconColors(pal.Accent), hovered)
 		ui.Text(cUI, label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().MaxWidth(180).Ellipsis("…")
 		xBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 			ID:       id + "-x",
@@ -3372,7 +3372,7 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 		if open {
 			chev = icons.ChevronUp
 		}
-		icons.DrawAnimated(cUI, chev, 10, pal.MonoIconColors(pal.Placeholder), hovered || pressed || open)
+		icons.DrawAnimated(cUI, chev, 10, pal.DuoIconColors(pal.Placeholder), hovered || pressed || open)
 	})
 	if btn.Clicked() {
 		c.mu.Lock()
@@ -3537,7 +3537,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 			centerCol.Children(func() {
 				// 1. Header: search input + backend tabs + settings.
 				ui.Row(cUI).FillWidth().MinWidth(0).Height(headerH).Padding(0, theme.Space2, 0, theme.Space8).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-					icons.Draw(cUI, icons.FindSearch, theme.IconInline, pal.MonoIconColors(pal.Placeholder))
+					icons.Draw(cUI, icons.FindSearch, theme.IconInline, pal.DuoIconColors(pal.Placeholder))
 					q := search
 					sInput := ui.TextInputBase(cUI.Key("ai-deck-search"), &q).
 						Grow(1).MinWidth(0).Height(24).Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).
@@ -3696,7 +3696,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							if setHov || setPrs {
 								icCol = pal.Text
 							}
-							icons.DrawAnimated(cUI, icons.Sliders, tabIco, pal.MonoIconColors(icCol), setHov || setPrs)
+							icons.DrawAnimated(cUI, icons.Sliders, tabIco, pal.DuoIconColors(icCol), setHov || setPrs)
 						})
 						if setBtn.Clicked() {
 							c.mu.Lock()
@@ -3762,7 +3762,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						row.Children(func() {
 							ui.Box(cUI).Size(theme.IconInline, theme.IconInline).Shrink(0).Center().Children(func() {
 								if active {
-									icons.DrawAnimated(cUI, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Text), active)
+									icons.DrawAnimated(cUI, icons.Check, theme.IconInline, pal.MinimalIconColors(pal.Text), active)
 								}
 							})
 							fw := theme.WeightRegular
@@ -4075,7 +4075,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 									chevBtn.Background(pal.Hover)
 								}
 								chevBtn.Children(func() {
-									icons.DrawAnimated(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), chevBtn.Hovered() || chevBtn.Pressed())
+									icons.DrawAnimated(cUI, chev, theme.IconInline, pal.DuoIconColors(pal.TextSecondary), chevBtn.Hovered() || chevBtn.Pressed())
 								})
 								if chevBtn.Clicked() {
 									toggleExpand()
@@ -4226,7 +4226,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 									chevBtn.Background(pal.Hover)
 								}
 								chevBtn.Children(func() {
-									icons.DrawAnimated(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), chevBtn.Hovered() || chevBtn.Pressed())
+									icons.DrawAnimated(cUI, chev, theme.IconInline, pal.DuoIconColors(pal.TextSecondary), chevBtn.Hovered() || chevBtn.Pressed())
 								})
 								if chevBtn.Clicked() {
 									toggleExpand()
@@ -5169,7 +5169,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 								if badge != "" {
 									ui.Text(cUI, badge).Font("monospace").FontSize(theme.FontMeta).TextColor(badgeCol).SingleLine()
 								}
-								icons.DrawAnimated(cUI, icons.ChevronRight, 14, pal.MonoIconColors(pal.TextSecondary), hov || prs)
+								icons.DrawAnimated(cUI, icons.ChevronRight, 14, pal.DuoIconColors(pal.TextSecondary), hov || prs)
 							})
 						})
 						if btn.Clicked() {
@@ -5291,7 +5291,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 						ic = icons.Check
 						icCol = pal.Accent
 					}
-					icons.Draw(cUI, ic, 15, pal.MonoIconColors(icCol))
+					icons.Draw(cUI, ic, 15, pal.DuoIconColors(icCol))
 					ui.Text(cUI, statusLine).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
 
@@ -5522,7 +5522,7 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 				if annotOpen {
 					chev = icons.ChevronUp
 				}
-				icons.DrawAnimated(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || annotOpen)
+				icons.DrawAnimated(cUI, chev, theme.IconInline, pal.DuoIconColors(pal.TextSecondary), hovered || pressed || annotOpen)
 			})
 			if trig.Clicked() {
 				c.mu.Lock()
@@ -5691,7 +5691,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 			annotCol.Children(func() {
 				ui.Row(cUI).FillWidth().Height(40).PaddingX(10).Gap(8).AlignItems(ui.Center).
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-					icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+					icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.DuoIconColors(pal.TextSecondary))
 					in := ui.TextInputBase(cUI.Key("annotation-model-search"), &c.annotMenuSearch).
 						Grow(1).MinWidth(0).Height(28).Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).
 						CaretColor(pal.Accent).CaretWidth(2).
@@ -5789,7 +5789,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							}
 							bui.HighlightedText(cUI, opt.Label, marks, theme.FontBody, fw, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
 							if isAct {
-								icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), isAct)
+								icons.DrawAnimated(cUI, icons.Check, 14, pal.MinimalIconColors(pal.Text), isAct)
 							}
 						})
 						if row.Clicked() {
@@ -5884,7 +5884,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 								}
 								ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text)
 								if isAct {
-									icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), isAct)
+									icons.DrawAnimated(cUI, icons.Check, 14, pal.MinimalIconColors(pal.Text), isAct)
 								}
 							})
 							if btn.Clicked() {

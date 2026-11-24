@@ -285,7 +285,7 @@ func (c *Controller) renderUserMessageAttachments(cUI *ui.Context, pal theme.Pal
 				bui.Probe(pill, "ai-user-attachment")
 				c.attachFileTooltip(cUI, pill, fa.att, 0, 0, false, theme.Tr("点击查看详情", "Click to preview"))
 				pill.Children(func() {
-					icons.DrawAnimated(cUI, icons.Note, theme.IconAction, pal.MonoIconColors(pal.Accent), hovered)
+					icons.DrawAnimated(cUI, icons.Note, theme.IconAction, pal.DuoIconColors(pal.Accent), hovered)
 					ui.Text(cUI, fa.att.Name).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
 						TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 					if sz := formatAttachmentSize(fa.att.Size); sz != "" {
@@ -341,10 +341,10 @@ func (c *Controller) renderMessageImageTile(
 				})
 			}
 		case loading:
-			icons.Draw(cUI, icons.Image, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+			icons.Draw(cUI, icons.Image, theme.IconRow, pal.DuoIconColors(pal.TextSecondary))
 		default:
 			ui.Column(cUI).Center().Gap(theme.Space4).Padding(theme.Space8).Children(func() {
-				icons.Draw(cUI, icons.Image, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+				icons.Draw(cUI, icons.Image, theme.IconRow, pal.DuoIconColors(pal.TextSecondary))
 				ui.Text(cUI, att.Name).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).
 					MaxWidth(max(w-theme.Space16, 40)).SingleLine().Ellipsis("…")
 			})
@@ -412,14 +412,14 @@ func (c *Controller) renderComposerImageTile(cUI *ui.Context, pal theme.Palette,
 					})
 				}
 			case loading:
-				icons.Draw(cUI, icons.Image, theme.IconAction, pal.MonoIconColors(pal.TextSecondary))
+				icons.Draw(cUI, icons.Image, theme.IconAction, pal.DuoIconColors(pal.TextSecondary))
 			default:
-				icons.Draw(cUI, icons.Image, theme.IconAction, pal.MonoIconColors(pal.Danger))
+				icons.Draw(cUI, icons.Image, theme.IconAction, pal.TintedIconColors(pal.Danger))
 			}
 		})
 		openClicked = previewBtn.Clicked()
 
-		xBtn := ui.ButtonBase(cUI.Key(id + "-x")).Absolute().Top(theme.Space2).Right(theme.Space2).
+		xBtn := ui.ButtonBase(cUI.Key(id+"-x")).Absolute().Top(theme.Space2).Right(theme.Space2).
 			Size(theme.AIAttachComposerRemoveSize, theme.AIAttachComposerRemoveSize).
 			Radius(theme.RadiusPill).Center().Cursor(ui.CursorPointer).
 			Label(theme.Tr("移除 ", "Remove ") + att.Name)
@@ -472,7 +472,7 @@ func (c *Controller) renderComposerFileChip(cUI *ui.Context, pal theme.Palette, 
 			Cursor(ui.CursorPointer).Label(theme.Tr("查看 ", "Preview ") + att.Name)
 		c.attachFileTooltip(cUI, openBtn, att, 0, 0, false, theme.Tr("点击查看详情", "Click to preview"))
 		openBtn.Children(func() {
-			icons.DrawAnimated(cUI, icons.Note, theme.IconAction, pal.MonoIconColors(pal.Accent), hovered)
+			icons.DrawAnimated(cUI, icons.Note, theme.IconAction, pal.DuoIconColors(pal.Accent), hovered)
 			ui.Text(cUI, att.Name).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
 				TextColor(pal.Text).SingleLine().MaxWidth(164).Ellipsis("…")
 			if sz := formatAttachmentSize(att.Size); sz != "" {
