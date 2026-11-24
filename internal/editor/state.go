@@ -609,6 +609,34 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	}
 }
 
+// ApplySourceDoc updates the document from source editing, preserving existing
+// undo history and optionally recording the pre-source state as one undo step.
+func (s *Session) ApplySourceDoc(doc *model.Doc, recordUndo bool, dirty bool) {
+	if s == nil {
+		return
+	}
+	prevSaved := s.savedMarkdown
+	var prev undoSnapshot
+	if recordUndo {
+		prev = s.captureUndoSnapshot()
+		if prev.FocusIdx < 0 && prev.Doc != nil && len(prev.Doc.Blocks) > 0 {
+			prev.FocusIdx = 0
+			prev.Anchor = Position{Block: 0, Offset: 0}
+			prev.Head = Position{Block: 0, Offset: 0}
+		}
+	}
+	undo := s.undoStack
+	s.SetDoc(doc)
+	s.undoStack = undo
+	if recordUndo {
+		s.pushUndoSnapshot(prev)
+	}
+	s.setDirty(dirty)
+	if dirty {
+		s.savedMarkdown = prevSaved
+	}
+}
+
 // Close releases native media handles and heavy caches held by a closed tab Session.
 func (s *Session) Close() {
 	if s == nil {
