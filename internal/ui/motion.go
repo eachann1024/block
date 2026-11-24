@@ -358,6 +358,39 @@ func GutterHandleTransition() ui.ElementTransition {
 	}
 }
 
+// LiveStepSwapTransition swaps the live step line of an AI run: the new step rises in
+// from below while the old one lifts away, quick enough to follow bursts of steps.
+func LiveStepSwapTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	return ui.ElementTransition{
+		Duration:     220 * time.Millisecond,
+		Ease:         motionEase,
+		ExitDuration: 180 * time.Millisecond,
+		ExitEase:     motionEase,
+		ExitDelay:    -1,
+		Position:     true,
+		Enter:        &ui.Motion{Y: 14, Opacity: 0},
+		Exit:         &ui.Motion{Y: -14, Opacity: 0},
+	}
+}
+
+// LiveTrailItemTransition pops a finished-step icon or a reference chip into place.
+func LiveTrailItemTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	return ui.ElementTransition{
+		Duration:     200 * time.Millisecond,
+		Ease:         motionEase,
+		ExitDuration: 100 * time.Millisecond,
+		Position:     true,
+		Enter:        &ui.Motion{Scale: 0.7, Opacity: 0},
+		Exit:         &ui.Motion{Opacity: 0},
+	}
+}
+
 // RevealTo animates a 0–1 reveal progress toward target with the panel motion,
 // jumping straight to it under tests.
 func RevealTo(el ui.Element, key string, target float32) float32 {
