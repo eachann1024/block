@@ -82,7 +82,7 @@ type HostConfig struct {
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
 	// ApplyNoteTrash runs verify then trash under the editor save lock so an
 	// open note with unsaved edits is never moved to Trash by a plugin.
-	ApplyNoteTrash   func(absPath string, verify, trash func() error) error
+	ApplyNoteTrash   func(pluginID, absPath string, verify, trash func() error) error
 	OnNoteWritten    func(pluginID, notebookRoot, absPath string)
 	OnActionProgress func(rt *Runtime, progress ActionProgress)
 	OpenNote         func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error
@@ -663,18 +663,29 @@ func (rt *Runtime) NotifyNoteSaved(ctx context.Context, notebookRoot, relPath st
 }
 
 func (rt *Runtime) NotifyNoteSavedResult(ctx context.Context, notebookRoot, relPath string) (string, error) {
+	return rt.NotifyNoteEventResult(ctx, "note.saved", notebookRoot, relPath, "")
+}
+
+func (rt *Runtime) NotifyNoteEventResult(ctx context.Context, eventName, notebookRoot, relPath, relFolder string) (string, error) {
 	if !rt.manifest.HasPermission(PermEventNoteSaved) {
 		return "", nil
+	}
+	eventName = strings.TrimSpace(eventName)
+	if eventName == "" {
+		eventName = "note.saved"
 	}
 	nbRoot := strings.TrimSpace(notebookRoot)
 	if nbRoot == "" {
 		nbRoot = rt.notebookRoot()
 	}
 	params := map[string]any{
-		"event":         "note.saved",
+		"event":         eventName,
 		"notebook_root": nbRoot,
 		"path":          filepath.ToSlash(relPath),
 		"timestamp":     time.Now().UTC().Format(time.RFC3339),
+	}
+	if folder := strings.TrimSpace(relFolder); folder != "" {
+		params["folder"] = filepath.ToSlash(folder)
 	}
 	var res struct {
 		Handled bool   `json:"handled"`
@@ -683,7 +694,11 @@ func (rt *Runtime) NotifyNoteSavedResult(ctx context.Context, notebookRoot, relP
 	if err := rt.call(ctx, "plugin.event", params, &res); err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(res.Outcome), nil
+	outcome := strings.TrimSpace(res.Outcome)
+	if !res.Handled && outcome == "" {
+		return "skipped", nil
+	}
+	return outcome, nil
 }
 
 func (rt *Runtime) Shutdown(ctx context.Context) error {
@@ -1248,7 +1263,7 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		}
 		trash := func() error { return files.TrashItem(abs) }
 		if rt.cfg.ApplyNoteTrash != nil {
-			err = rt.cfg.ApplyNoteTrash(abs, verify, trash)
+			err = rt.cfg.ApplyNoteTrash(rt.manifest.ID, abs, verify, trash)
 		} else {
 			rt.noteMu.Lock()
 			if err = verify(); err == nil {
