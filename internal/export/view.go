@@ -570,7 +570,7 @@ func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title stri
 
 		// Center: icon + Title · 导出预览
 		ui.Row(ctx).Grow(1).MinWidth(0).FillHeight().PaddingX(8).Center().Gap(8).Clip().DragWindow().Children(func() {
-			icons.Draw(ctx, icons.Image, 18, pal.MonoIconColors(pal.TextSecondary))
+			icons.Draw(ctx, icons.Image, 18, pal.DuoIconColors(pal.TextSecondary))
 			ui.Text(ctx, title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 			if !compact {
 				ui.Text(ctx, theme.Tr("· 导出预览", "· Export Preview")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
@@ -880,7 +880,7 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 		ui.Row(ctx).FillWidth().PaddingX(theme.Space4).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space4).Children(func() {
 			ui.Text(ctx, spec.Label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 			if selected {
-				icons.DrawAnimated(ctx, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Text), hovered || pressed)
+				icons.DrawAnimated(ctx, icons.Check, theme.IconInline, pal.MinimalIconColors(pal.Text), hovered || pressed)
 			}
 		})
 	})

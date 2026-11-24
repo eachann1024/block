@@ -1003,7 +1003,7 @@ func renderSearchHeaderView(
 		Padding(0, 16, 0, 16).Gap(10).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
 		Children(func() {
-			searchIcon := icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+			searchIcon := icons.Draw(c, icons.FindSearch, theme.IconRow, pal.DuoIconColors(pal.TextSecondary))
 			internalui.Probe(searchIcon, "search-header-icon")
 
 			ph := st.searchPlaceholderParts(activeNotebook)
@@ -1135,16 +1135,12 @@ func renderSearchHeaderView(
 			internalui.TactileCard(scopeTrigger, hovered, pressed, st.scopeMenuOpen, false)
 			scopeTrigger.Children(func() {
 				iconActive := st.scopeMenuOpen || hovered || pressed
-				icons.DrawAnimated(c, icons.Folder, theme.IconRow, theme.IconColors{
-					Line:   line,
-					Fill:   pal.IconFill,
-					Accent: line,
-				}, iconActive)
+				icons.DrawAnimated(c, icons.Folder, theme.IconRow, pal.DuoIconColors(line), iconActive)
 				ui.Box(c).MaxWidth(136).Children(func() {
 					ui.Text(c, scopeLabel).FontSize(theme.FontBody).LineHeight(20.0 / 14.0).
 						TextColor(pal.Text).SingleLine().Ellipsis("…")
 				})
-				icons.DrawAnimated(c, icons.ChevronDown, theme.IconInline, pal.MonoIconColors(line), iconActive)
+				icons.DrawAnimated(c, icons.ChevronDown, theme.IconInline, pal.DuoIconColors(line), iconActive)
 			})
 			internalui.Probe(scopeTrigger, "search-scope-trigger")
 			if scopeTrigger.Clicked() {
@@ -1425,10 +1421,8 @@ func renderSearchHitRowView(
 	row.Children(func() {
 		ui.Column(c).FillWidth().Gap(2).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-				ic := pal.MonoIconColors(pal.TextSecondary)
-				if selected {
-					ic = pal.DuoIconColors(pal.Text)
-				} else if hovered || pressed {
+				ic := pal.DuoIconColors(pal.TextSecondary)
+				if selected || hovered || pressed {
 					ic = pal.DuoIconColors(pal.Text)
 				}
 				icons.DrawAnimated(c, icons.FileIconOrDefault(hit.Path), theme.IconRow, ic, selected || hovered || pressed)
