@@ -201,6 +201,7 @@ jobs:
           BLOCK_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           BLOCK_FEEDBACK_URL: ${{ secrets.BLOCK_FEEDBACK_URL }}
           BLOCK_FEEDBACK_CLIENT_TOKEN: ${{ secrets.BLOCK_FEEDBACK_CLIENT_TOKEN }}
+          BLOCK_REQUIRE_FEEDBACK_URL: "1"
         run: node scripts/release/package-release.mjs
       - name: Resolve allowlisted macOS installers
         id: installer
@@ -348,6 +349,7 @@ jobs:
           BLOCK_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           BLOCK_FEEDBACK_URL: ${{ secrets.BLOCK_FEEDBACK_URL }}
           BLOCK_FEEDBACK_CLIENT_TOKEN: ${{ secrets.BLOCK_FEEDBACK_CLIENT_TOKEN }}
+          BLOCK_REQUIRE_FEEDBACK_URL: "1"
         run: |
           node scripts/release/go-release.mjs linux amd64
           BLOCK_REUSE_BINARY=1 node scripts/release/package-linux.mjs &
