@@ -31,8 +31,7 @@ const (
 // placeIconPicker resolves (x, y, maxH) for the icon picker popover so it never
 // obscures the clicked sidebar icon.
 //
-// Tier 1: float directly right of the icon tile, with the search box vertically
-// centred on the icon.
+// Tier 1: float directly right of the icon tile, top edge level with the row.
 // Tier 2 (window too narrow): place strictly below or strictly above the icon
 // while capping height to available vertical room so clamping never pulls the
 // popover back on top of the icon.
@@ -56,8 +55,11 @@ func placeIconPicker(iconRect, rowRect ui.Rect, popW, popH, vpW, vpH float32) (o
 	if iconRect.W > 0 && iconRect.H > 0 {
 		rightOfIcon := iconRect.X + iconRect.W + gapX
 		if rightOfIcon+popW <= vpW-margin {
-			// border(1) + top padding + half search box puts the search box centre on the icon centre.
-			anchorY := iconRect.Y + iconRect.H/2 - (1 + iconPickerPadX + iconPickerSearchH/2)
+			// Start level with the clicked row so the popover never rises above it.
+			anchorY := iconRect.Y
+			if rowRect.H > 0 && rowRect.Y <= iconRect.Y && rowRect.Y+rowRect.H >= iconRect.Y+iconRect.H {
+				anchorY = rowRect.Y
+			}
 			return round(rightOfIcon), round(clampY(anchorY, finalH)), finalH
 		}
 	}
