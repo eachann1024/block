@@ -5,6 +5,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"block/internal/icons"
 	"block/internal/theme"
@@ -44,20 +45,36 @@ type BlockState struct {
 	LayoutSet   bool
 	Fullscreen  bool
 
-	Camera         Camera
-	CameraInit     bool
-	AutoFitPending bool
-	LastCanvasW    float32
-	LastCanvasH    float32
-	Measure        MeasureCache
+	Camera               Camera
+	CameraInit           bool
+	AutoFitPending       bool
+	EnsureVisiblePending bool
+	LastCanvasW          float32
+	LastCanvasH          float32
+	Measure              MeasureCache
 
 	Panning  bool
 	PanLastX float32
 	PanLastY float32
 
+	DragNodeID   int
+	DragActive   bool
+	DragStartX   float32
+	DragStartY   float32
+	DragCurrX    float32
+	DragCurrY    float32
+	DragTargetID int
+	DragPos      DragDropPos
+
+	lastKeyMod        ui.Modifiers
+	ComposeText       string
+	LastCanvasFocused bool
+
 	EditingID        int
+	EditSeq          int
 	EditDraft        string
 	EditFresh        bool
+	EditSelectAll    bool
 	EditFocusPending bool
 	EditHandle       ui.Handle
 
@@ -175,6 +192,13 @@ func (st *BlockState) allocID() int {
 
 // --- Core CRUD Operations ---
 
+func (st *BlockState) resetDrag() {
+	st.DragNodeID = 0
+	st.DragActive = false
+	st.DragTargetID = 0
+	st.DragPos = DropNone
+}
+
 func (st *BlockState) opAddChild(cb Callbacks) {
 	if cb.ReadOnly || st.Root == nil {
 		return
@@ -192,6 +216,7 @@ func (st *BlockState) opAddChild(cb Callbacks) {
 	}
 	n.Children = append(n.Children, child)
 	st.SelectedID = child.ID
+	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 	st.beginEdit(child, true)
 }
@@ -221,8 +246,125 @@ func (st *BlockState) opAddSibling(cb Callbacks) {
 	kids[idx+1] = sib
 	n.Parent.Children = kids
 	st.SelectedID = sib.ID
+	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 	st.beginEdit(sib, true)
+}
+
+func (st *BlockState) opAddSiblingBefore(cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil {
+		return
+	}
+	n := st.selectedNode()
+	if n == nil {
+		return
+	}
+	if n.Parent == nil {
+		// On root, insert as the first child so Shift+Enter always produces a topic.
+		st.pushUndo()
+		n.Folded = false
+		child := &Node{
+			ID:     st.allocID(),
+			Text:   theme.Tr("新节点", "New Topic"),
+			Parent: n,
+		}
+		n.Children = append([]*Node{child}, n.Children...)
+		st.SelectedID = child.ID
+		st.EnsureVisiblePending = true
+		st.commitChange(cb)
+		st.beginEdit(child, true)
+		return
+	}
+	st.pushUndo()
+	idx := n.IndexInParent()
+	sib := &Node{
+		ID:     st.allocID(),
+		Text:   theme.Tr("新节点", "New Topic"),
+		Parent: n.Parent,
+	}
+	kids := n.Parent.Children
+	kids = append(kids, nil)
+	copy(kids[idx+1:], kids[idx:])
+	kids[idx] = sib
+	n.Parent.Children = kids
+	st.SelectedID = sib.ID
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
+	st.beginEdit(sib, true)
+}
+
+func (st *BlockState) opInsertParent(cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil {
+		return
+	}
+	n := st.selectedNode()
+	if n == nil || n.Parent == nil {
+		return
+	}
+	st.pushUndo()
+	oldParent := n.Parent
+	idx := n.IndexInParent()
+	wrapper := &Node{
+		ID:       st.allocID(),
+		Text:     theme.Tr("新节点", "New Topic"),
+		Parent:   oldParent,
+		Children: []*Node{n},
+	}
+	oldParent.Children[idx] = wrapper
+	n.Parent = wrapper
+	st.SelectedID = wrapper.ID
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
+	st.beginEdit(wrapper, true)
+}
+
+func (st *BlockState) opPromote(cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil {
+		return
+	}
+	n := st.selectedNode()
+	if n == nil || n.Parent == nil || n.Parent.Parent == nil {
+		return
+	}
+	st.pushUndo()
+	oldParent := n.Parent
+	grand := oldParent.Parent
+	idx := n.IndexInParent()
+	oldParent.Children = append(oldParent.Children[:idx], oldParent.Children[idx+1:]...)
+	pIdx := oldParent.IndexInParent()
+	kids := grand.Children
+	kids = append(kids, nil)
+	copy(kids[pIdx+2:], kids[pIdx+1:])
+	kids[pIdx+1] = n
+	grand.Children = kids
+	n.Parent = grand
+	st.SelectedID = n.ID
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
+}
+
+func (st *BlockState) opDemote(cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil {
+		return
+	}
+	n := st.selectedNode()
+	if n == nil || n.Parent == nil {
+		return
+	}
+	idx := n.IndexInParent()
+	if idx <= 0 {
+		return
+	}
+	st.pushUndo()
+	oldParent := n.Parent
+	newParent := oldParent.Children[idx-1]
+	oldParent.Children = append(oldParent.Children[:idx], oldParent.Children[idx+1:]...)
+	newParent.Folded = false
+	n.Parent = newParent
+	newParent.Children = append(newParent.Children, n)
+	st.SelectedID = n.ID
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
 }
 
 func (st *BlockState) opDelete(cb Callbacks) {
@@ -244,7 +386,247 @@ func (st *BlockState) opDelete(cb Callbacks) {
 	} else {
 		st.SelectedID = parent.ID
 	}
+	st.EnsureVisiblePending = true
 	st.commitChange(cb)
+}
+
+// opDeleteSingle deletes only the selected node and splices its children into its parent.
+func (st *BlockState) opDeleteSingle(cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil {
+		return
+	}
+	n := st.selectedNode()
+	if n == nil || n.Parent == nil {
+		return
+	}
+	if len(n.Children) == 0 {
+		st.opDelete(cb)
+		return
+	}
+	st.pushUndo()
+	parent := n.Parent
+	idx := n.IndexInParent()
+	promoted := make([]*Node, len(n.Children))
+	for i, ch := range n.Children {
+		ch.Parent = parent
+		promoted[i] = ch
+	}
+	nextKids := make([]*Node, 0, len(parent.Children)-1+len(promoted))
+	nextKids = append(nextKids, parent.Children[:idx]...)
+	nextKids = append(nextKids, promoted...)
+	nextKids = append(nextKids, parent.Children[idx+1:]...)
+	parent.Children = nextKids
+	st.SelectedID = promoted[0].ID
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
+}
+
+func (st *BlockState) opDuplicate(cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil {
+		return
+	}
+	n := st.selectedNode()
+	if n == nil || n.Parent == nil {
+		return
+	}
+	st.pushUndo()
+	cp := n.Clone()
+	st.NextID = cp.AssignIDs(st.NextID)
+	cp.Parent = n.Parent
+	idx := n.IndexInParent()
+	kids := n.Parent.Children
+	kids = append(kids, nil)
+	copy(kids[idx+2:], kids[idx+1:])
+	kids[idx+1] = cp
+	n.Parent.Children = kids
+	st.SelectedID = cp.ID
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
+}
+
+func (st *BlockState) opReparent(dragged, target *Node, pos DragDropPos, cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil || dragged == nil || target == nil || dragged.Parent == nil || dragged == target {
+		return
+	}
+	if dragged.IsAncestorOf(target) {
+		return
+	}
+	if (pos == DropBefore || pos == DropAfter) && target.Parent == nil {
+		return
+	}
+	// Skip no-op drops so undo history stays clean.
+	switch pos {
+	case DropInside:
+		if dragged.Parent == target && dragged.IndexInParent() == len(target.Children)-1 {
+			return
+		}
+	case DropBefore:
+		if dragged.Parent == target.Parent && dragged.IndexInParent() == target.IndexInParent()-1 {
+			return
+		}
+	case DropAfter:
+		if dragged.Parent == target.Parent && dragged.IndexInParent() == target.IndexInParent()+1 {
+			return
+		}
+	default:
+		return
+	}
+
+	st.pushUndo()
+	oldParent := dragged.Parent
+	oldIdx := dragged.IndexInParent()
+	oldParent.Children = append(oldParent.Children[:oldIdx], oldParent.Children[oldIdx+1:]...)
+
+	if pos == DropInside {
+		target.Folded = false
+		dragged.Parent = target
+		target.Children = append(target.Children, dragged)
+	} else {
+		newParent := target.Parent
+		targetIdx := target.IndexInParent()
+		insIdx := targetIdx
+		if pos == DropAfter {
+			insIdx = targetIdx + 1
+		}
+		kids := newParent.Children
+		kids = append(kids, nil)
+		copy(kids[insIdx+1:], kids[insIdx:])
+		kids[insIdx] = dragged
+		newParent.Children = kids
+		dragged.Parent = newParent
+	}
+	st.SelectedID = dragged.ID
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
+}
+
+func (st *BlockState) opCopy(c *ui.Context) bool {
+	if c == nil || st.Root == nil {
+		return false
+	}
+	n := st.selectedNode()
+	if n == nil {
+		return false
+	}
+	text := SerializeSubtreeMarkdown(n)
+	if text == "" {
+		return false
+	}
+	c.Services().WriteClipboard(text)
+	return true
+}
+
+func (st *BlockState) opCut(c *ui.Context, cb Callbacks) bool {
+	if cb.ReadOnly || c == nil || st.Root == nil {
+		return false
+	}
+	n := st.selectedNode()
+	if n == nil {
+		return false
+	}
+	if !st.opCopy(c) {
+		return false
+	}
+	if n.Parent != nil {
+		st.opDelete(cb)
+	}
+	return true
+}
+
+func (st *BlockState) opPaste(c *ui.Context, cb Callbacks) bool {
+	if cb.ReadOnly || c == nil || st.Root == nil {
+		return false
+	}
+	n := st.selectedNode()
+	if n == nil {
+		return false
+	}
+	raw := c.Services().ReadClipboard()
+	nodes := ParseClipboardNodes(raw)
+	if len(nodes) == 0 {
+		return false
+	}
+	st.pushUndo()
+	n.Folded = false
+	for _, ch := range nodes {
+		st.NextID = ch.AssignIDs(st.NextID)
+		ch.Parent = n
+		n.Children = append(n.Children, ch)
+	}
+	st.SelectedID = nodes[0].ID
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
+	return true
+}
+
+func (st *BlockState) opExpandAll() {
+	if st.Root == nil {
+		return
+	}
+	var walk func(n *Node)
+	walk = func(n *Node) {
+		n.Folded = false
+		for _, ch := range n.Children {
+			walk(ch)
+		}
+	}
+	walk(st.Root)
+}
+
+func (st *BlockState) opCollapseAll() {
+	if st.Root == nil {
+		return
+	}
+	var walk func(n *Node)
+	walk = func(n *Node) {
+		if n.Parent != nil && len(n.Children) > 0 {
+			n.Folded = true
+		}
+		for _, ch := range n.Children {
+			walk(ch)
+		}
+	}
+	walk(st.Root)
+	// If the currently selected node became hidden, select its nearest visible ancestor.
+	if sel := st.selectedNode(); sel != nil {
+		cur := sel
+		for p := cur.Parent; p != nil; p = p.Parent {
+			if p.Folded {
+				cur = p
+			}
+		}
+		st.SelectedID = cur.ID
+	}
+}
+
+func (st *BlockState) hasAnyFolded() bool {
+	if st.Root == nil {
+		return false
+	}
+	found := false
+	var walk func(n *Node)
+	walk = func(n *Node) {
+		if found {
+			return
+		}
+		if n.Folded && len(n.Children) > 0 {
+			found = true
+			return
+		}
+		for _, ch := range n.Children {
+			walk(ch)
+		}
+	}
+	walk(st.Root)
+	return found
+}
+
+func (st *BlockState) opToggleExpandCollapseAll() {
+	if st.hasAnyFolded() {
+		st.opExpandAll()
+	} else {
+		st.opCollapseAll()
+	}
 }
 
 func (st *BlockState) opToggleFold() {
@@ -271,6 +653,7 @@ func (st *BlockState) opMoveSibling(delta int, cb Callbacks) {
 	}
 	st.pushUndo()
 	kids[i], kids[j] = kids[j], kids[i]
+	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 }
 
@@ -296,6 +679,19 @@ func (st *BlockState) opFlipTaskDone(n *Node, cb Callbacks) {
 	n.Task = &next
 	st.SelectedID = n.ID
 	st.commitChange(cb)
+}
+
+// opToggleTaskDoneOrCreate converts a non-task topic into an unchecked task,
+// or flips completion state if it is already a task (Cmd+Enter).
+func (st *BlockState) opToggleTaskDoneOrCreate(n *Node, cb Callbacks) {
+	if cb.ReadOnly || n == nil || n.Parent == nil {
+		return
+	}
+	if n.Task == nil {
+		st.opToggleTask(n, cb)
+		return
+	}
+	st.opFlipTaskDone(n, cb)
 }
 
 func (st *BlockState) opUndo(cb Callbacks) {
@@ -351,20 +747,30 @@ func (st *BlockState) opNavigate(dir string) {
 	if n == nil {
 		return
 	}
+	prevID := st.SelectedID
 	switch dir {
 	case "up":
 		if n.Parent != nil {
 			if i := n.IndexInParent(); i > 0 {
 				st.SelectedID = n.Parent.Children[i-1].ID
+			} else if next := st.findVerticalNeighbor(n, -1); next != nil {
+				st.SelectedID = next.ID
 			}
 		}
 	case "down":
 		if n.Parent != nil {
 			if i := n.IndexInParent(); i >= 0 && i+1 < len(n.Parent.Children) {
 				st.SelectedID = n.Parent.Children[i+1].ID
+			} else if next := st.findVerticalNeighbor(n, 1); next != nil {
+				st.SelectedID = next.ID
 			}
 		}
 	case "out":
+		if len(n.Children) > 0 && n.Folded {
+			n.Folded = false
+			st.EnsureVisiblePending = true
+			return
+		}
 		if n.IsOpen() {
 			st.SelectedID = n.Children[0].ID
 		}
@@ -372,6 +778,87 @@ func (st *BlockState) opNavigate(dir string) {
 		if n.Parent != nil {
 			st.SelectedID = n.Parent.ID
 		}
+	case "home":
+		if st.Root != nil {
+			st.SelectedID = st.Root.ID
+		}
+	}
+	if st.SelectedID != prevID {
+		st.EnsureVisiblePending = true
+	}
+}
+
+// findVerticalNeighbor locates the visually nearest visible node strictly above (delta < 0)
+// or below (delta > 0) n on the same branch side, preferring nodes at the same depth so
+// arrow navigation smoothly crosses branch boundaries like native mind map apps.
+func (st *BlockState) findVerticalNeighbor(n *Node, delta int) *Node {
+	if st.Root == nil || n == nil {
+		return nil
+	}
+	var bestSame, bestAny *Node
+	bestSameDist := float32(1e9)
+	bestAnyDist := float32(1e9)
+	bestAnyDepthDiff := 1 << 20
+
+	var walk func(cur *Node)
+	walk = func(cur *Node) {
+		if cur != n && cur.Parent != nil && cur.Dir == n.Dir {
+			dy := cur.Y - n.Y
+			if (delta < 0 && dy < -0.5) || (delta > 0 && dy > 0.5) {
+				dist := float32(math.Abs(float64(dy)))
+				if cur.Depth == n.Depth {
+					if dist < bestSameDist {
+						bestSameDist = dist
+						bestSame = cur
+					}
+				}
+				dDiff := cur.Depth - n.Depth
+				if dDiff < 0 {
+					dDiff = -dDiff
+				}
+				if dist < bestAnyDist-0.5 || (math.Abs(float64(dist-bestAnyDist)) <= 0.5 && dDiff < bestAnyDepthDiff) {
+					bestAnyDist = dist
+					bestAnyDepthDiff = dDiff
+					bestAny = cur
+				}
+			}
+		}
+		if cur.Folded {
+			return
+		}
+		for _, ch := range cur.Children {
+			walk(ch)
+		}
+	}
+	walk(st.Root)
+	if bestSame != nil {
+		return bestSame
+	}
+	return bestAny
+}
+
+func (st *BlockState) ensureNodeVisible(n *Node, vw, vh float32) {
+	if n == nil || st.Camera.Scale <= 0 || vw <= 0 || vh <= 0 {
+		return
+	}
+	visW := vw / st.Camera.Scale
+	visH := vh / st.Camera.Scale
+	padX := min(float32(36)/st.Camera.Scale, visW*0.3)
+	padY := min(float32(30)/st.Camera.Scale, visH*0.3)
+	left := n.X
+	right := n.X + n.W
+	top := n.Y - n.H/2
+	bottom := n.Y + n.H/2
+
+	if left < st.Camera.X+padX {
+		st.Camera.X = left - padX
+	} else if right > st.Camera.X+visW-padX {
+		st.Camera.X = right - visW + padX
+	}
+	if top < st.Camera.Y+padY {
+		st.Camera.Y = top - padY
+	} else if bottom > st.Camera.Y+visH-padY {
+		st.Camera.Y = bottom - visH + padY
 	}
 }
 
@@ -380,9 +867,26 @@ func (st *BlockState) beginEdit(n *Node, fresh bool) {
 		return
 	}
 	st.EditingID = n.ID
+	st.EditSeq++
 	st.EditDraft = n.Text
 	st.EditFresh = fresh
+	st.EditSelectAll = true
 	st.EditFocusPending = true
+	st.ComposeText = ""
+	st.LinkNodeID = 0
+}
+
+func (st *BlockState) beginEditWithText(n *Node, initial string) {
+	if n == nil {
+		return
+	}
+	st.EditingID = n.ID
+	st.EditSeq++
+	st.EditDraft = initial
+	st.EditFresh = false
+	st.EditSelectAll = false
+	st.EditFocusPending = true
+	st.ComposeText = ""
 	st.LinkNodeID = 0
 }
 
@@ -393,6 +897,8 @@ func (st *BlockState) finishEdit(commit bool, cb Callbacks) {
 	n := st.Root.FindByID(st.EditingID)
 	st.EditingID = 0
 	st.EditFocusPending = false
+	st.EditSelectAll = false
+	st.ComposeText = ""
 	if commit && n != nil {
 		trimmed := strings.TrimSpace(st.EditDraft)
 		if trimmed != "" && trimmed != n.Text {
@@ -567,7 +1073,9 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 	pal := theme.Ocean()
 
 	if c.Shortcut(0, ui.KeyEscape) && st.EditingID == 0 && st.LinkNodeID == 0 {
-		if st.ImportResult != nil {
+		if st.DragActive || st.DragNodeID != 0 {
+			st.resetDrag()
+		} else if st.ImportResult != nil {
 			st.ImportResult = nil
 		} else if st.ExportMenuOpen {
 			st.ExportMenuOpen = false
@@ -813,6 +1321,43 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		st.AutoFitPending = true
 	}
 	st.LastCanvasW, st.LastCanvasH = cw, ch
+	st.LastCanvasFocused = st.CanvasHandle.Focused(c) && st.EditingID == 0 && st.LinkNodeID == 0
+
+	// Pre-layout when a brand-new node is immediately entering inline edit so the
+	// editor box and camera position are exact on the very first frame.
+	if st.Root != nil && st.EditingID != 0 {
+		if en := st.Root.FindByID(st.EditingID); en != nil && (en.W <= 0 || en.H <= 0) {
+			wb := ComputeLayout(st.Root, st.Layout, nil, &st.Measure)
+			if !st.CameraInit || st.AutoFitPending {
+				st.Camera = FitCamera(wb, cw, ch, 28, 22)
+				st.CameraInit = true
+				st.AutoFitPending = false
+				st.EnsureVisiblePending = false
+			} else if st.EnsureVisiblePending {
+				st.EnsureVisiblePending = false
+				st.ensureNodeVisible(en, cw, ch)
+			}
+		}
+	}
+
+	// Enable direct typing & IME composition on the selected node when canvas owns focus.
+	if !cb.ReadOnly && st.EditingID == 0 && st.LinkNodeID == 0 && st.Root != nil {
+		caretR := ui.Rect{X: 8, Y: 8, W: 2, H: 16}
+		if sel := st.selectedNode(); sel != nil && sel.W > 0 && sel.H > 0 {
+			sx, sy := st.Camera.WorldToScreen(sel.X, sel.Y-sel.H/2)
+			scale := st.Camera.Scale
+			if scale <= 0 {
+				scale = 1
+			}
+			caretR = ui.Rect{
+				X: clampFloat32(sx, 0, max(cw-2, 0)),
+				Y: clampFloat32(sy, 0, max(ch-16, 0)),
+				W: 2,
+				H: max(sel.H*scale, 16),
+			}
+		}
+		canvas.TextCaret(caretR)
+	}
 
 	// Context menu (right-click on node or canvas).
 	canvas.ContextMenu(func(m *ui.Menu) {
@@ -820,23 +1365,70 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		if n == nil {
 			return
 		}
+		leftSide := n.Dir < 0
 		if !cb.ReadOnly {
 			if m.Item(theme.Tr("添加子节点", "Add Child")).Shortcut(0, ui.KeyTab).Chosen() {
 				st.opAddChild(cb)
 			}
 			if n.Parent != nil {
-				if m.Item(theme.Tr("添加同级节点", "Add Sibling")).Shortcut(0, ui.KeyEnter).Chosen() {
+				if m.Item(theme.Tr("在下方添加同级", "Add Sibling Below")).Shortcut(0, ui.KeyEnter).Chosen() {
 					st.opAddSibling(cb)
 				}
+				if m.Item(theme.Tr("在上方添加同级", "Add Sibling Above")).Shortcut(ui.Shift, ui.KeyEnter).Chosen() {
+					st.opAddSiblingBefore(cb)
+				}
+				if m.Item(theme.Tr("插入父节点", "Insert Parent")).Shortcut(ui.Shift, ui.KeyTab).Chosen() {
+					st.opInsertParent(cb)
+				}
+			}
+			m.Separator()
+			if m.Item(theme.Tr("改名", "Rename")).Shortcut(0, ui.KeyF2).Chosen() {
+				st.beginEdit(n, false)
+			}
+			if n.Parent != nil {
 				if m.Item(theme.Tr("上移节点", "Move Up")).Shortcut(ui.Alt, ui.KeyUp).Chosen() {
 					st.opMoveSibling(-1, cb)
 				}
 				if m.Item(theme.Tr("下移节点", "Move Down")).Shortcut(ui.Alt, ui.KeyDown).Chosen() {
 					st.opMoveSibling(1, cb)
 				}
+				if n.Parent.Parent != nil {
+					promoteKey := ui.KeyLeft
+					if leftSide {
+						promoteKey = ui.KeyRight
+					}
+					if m.Item(theme.Tr("升级节点", "Promote")).Shortcut(ui.Alt, promoteKey).Chosen() {
+						st.opPromote(cb)
+					}
+				}
+				if n.IndexInParent() > 0 {
+					demoteKey := ui.KeyRight
+					if leftSide {
+						demoteKey = ui.KeyLeft
+					}
+					if m.Item(theme.Tr("降级节点", "Demote")).Shortcut(ui.Alt, demoteKey).Chosen() {
+						st.opDemote(cb)
+					}
+				}
 			}
-			if m.Item(theme.Tr("改名", "Rename")).Shortcut(0, ui.KeyF2).Chosen() {
-				st.beginEdit(n, false)
+			m.Separator()
+		}
+		if m.Item(theme.Tr("复制分支", "Copy")).Shortcut(ui.Cmd, ui.KeyC).Chosen() {
+			st.opCopy(c)
+		}
+		if !cb.ReadOnly {
+			if n.Parent != nil {
+				if m.Item(theme.Tr("剪切分支", "Cut")).Shortcut(ui.Cmd, ui.KeyX).Chosen() {
+					st.opCut(c, cb)
+				}
+			}
+			if m.Item(theme.Tr("粘贴为子节点", "Paste as Child")).Shortcut(ui.Cmd, ui.KeyV).Chosen() {
+				st.opPaste(c, cb)
+			}
+			if n.Parent != nil {
+				if m.Item(theme.Tr("创建副本", "Duplicate")).Shortcut(ui.Cmd, ui.KeyD).Chosen() {
+					st.opDuplicate(cb)
+				}
 			}
 			m.Separator()
 			linkLbl := theme.Tr("链接到笔记", "Link to Note")
@@ -864,7 +1456,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				if n.Task != nil {
 					taskLbl = theme.Tr("取消任务", "Remove Task")
 				}
-				if m.Item(taskLbl).Chosen() {
+				if m.Item(taskLbl).Shortcut(ui.Cmd|ui.Alt, ui.KeyT).Chosen() {
 					st.opToggleTask(n, cb)
 				}
 				if n.Task != nil {
@@ -872,14 +1464,14 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 					if *n.Task {
 						doneLbl = theme.Tr("标记未完成", "Mark Undone")
 					}
-					if m.Item(doneLbl).Chosen() {
+					if m.Item(doneLbl).Shortcut(ui.Cmd, ui.KeyEnter).Chosen() {
 						st.opFlipTaskDone(n, cb)
 					}
 				}
 			}
 		}
+		m.Separator()
 		if len(n.Children) > 0 {
-			m.Separator()
 			foldLbl := theme.Tr("折叠", "Fold")
 			if n.Folded {
 				foldLbl = theme.Tr("展开", "Unfold")
@@ -888,10 +1480,24 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				st.opToggleFold()
 			}
 		}
+		if st.hasAnyFolded() {
+			if m.Item(theme.Tr("全部展开", "Expand All")).Shortcut(ui.Cmd|ui.Alt, ui.KeySlash).Chosen() {
+				st.opExpandAll()
+			}
+		} else {
+			if m.Item(theme.Tr("折叠所有子分支", "Collapse All")).Shortcut(ui.Cmd|ui.Alt, ui.KeySlash).Chosen() {
+				st.opCollapseAll()
+			}
+		}
 		if !cb.ReadOnly && n.Parent != nil {
 			m.Separator()
 			if m.Item(theme.Tr("删除", "Delete")).Shortcut(0, ui.KeyBackspace).Chosen() {
 				st.opDelete(cb)
+			}
+			if len(n.Children) > 0 {
+				if m.Item(theme.Tr("仅删除当前节点", "Delete Single Node")).Shortcut(ui.Alt, ui.KeyBackspace).Chosen() {
+					st.opDeleteSingle(cb)
+				}
 			}
 		}
 	})
@@ -908,6 +1514,30 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				st.PanLastX, st.PanLastY = ev.X, ev.Y
 				return true
 			}
+			if st.DragNodeID != 0 {
+				st.DragCurrX, st.DragCurrY = ev.X, ev.Y
+				if !st.DragActive {
+					dx := float64(ev.X - st.DragStartX)
+					dy := float64(ev.Y - st.DragStartY)
+					if math.Hypot(dx, dy) >= 6 {
+						st.DragActive = true
+					}
+				}
+				if st.DragActive {
+					if dragged := st.Root.FindByID(st.DragNodeID); dragged != nil {
+						wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
+						target, pos := HitTestDropTarget(st.Root, dragged, wx, wy)
+						if target != nil {
+							st.DragTargetID = target.ID
+							st.DragPos = pos
+						} else {
+							st.DragTargetID = 0
+							st.DragPos = DropNone
+						}
+					}
+				}
+				return true
+			}
 			wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
 			hit := HitTest(st.Root, wx, wy)
 			if hit.Node != nil {
@@ -921,6 +1551,9 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			st.ExportMenuOpen = false
 			st.ImportResult = nil
 			st.LinkNodeID = 0
+			st.ComposeText = ""
+			st.lastKeyMod = 0
+			st.resetDrag()
 			if st.EditingID != 0 {
 				st.finishEdit(true, cb)
 			}
@@ -933,6 +1566,16 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 					st.SelectedID = hit.Node.ID
 				}
 				return false
+			}
+			if ev.Button == 2 {
+				// Middle-mouse drag pans the canvas anywhere, even over a node.
+				st.CanvasHandle.Focus()
+				if cb.OnRequestFocus != nil {
+					cb.OnRequestFocus()
+				}
+				st.Panning = true
+				st.PanLastX, st.PanLastY = ev.X, ev.Y
+				return true
 			}
 			if ev.Button != 0 {
 				return false
@@ -961,6 +1604,14 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 					st.beginEdit(hit.Node, false)
 					return true
 				}
+				if !cb.ReadOnly && hit.Node.Parent != nil && ev.Clicks == 1 {
+					st.DragNodeID = hit.Node.ID
+					st.DragActive = false
+					st.DragStartX, st.DragStartY = ev.X, ev.Y
+					st.DragCurrX, st.DragCurrY = ev.X, ev.Y
+					st.DragTargetID = 0
+					st.DragPos = DropNone
+				}
 				return true
 			default:
 				if ev.Clicks >= 2 {
@@ -975,6 +1626,15 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		case ui.InputPointerUp:
 			if st.Panning {
 				st.Panning = false
+				return true
+			}
+			if st.DragNodeID != 0 {
+				if !ev.Canceled && st.DragActive && st.DragTargetID != 0 && st.DragPos != DropNone && st.Root != nil {
+					dragged := st.Root.FindByID(st.DragNodeID)
+					target := st.Root.FindByID(st.DragTargetID)
+					st.opReparent(dragged, target, st.DragPos, cb)
+				}
+				st.resetDrag()
 				return true
 			}
 			return false
@@ -1004,11 +1664,66 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			}
 			return false
 
-		case ui.InputKeyDown:
+		case ui.InputCommand:
 			if st.EditingID != 0 || st.LinkNodeID != 0 {
 				return false
 			}
-			return st.handleCanvasKey(ev.Key, ev.Mods, cb)
+			switch ev.Text {
+			case "copy":
+				return st.opCopy(c)
+			case "cut":
+				return st.opCut(c, cb)
+			case "paste", "pasteAndMatchStyle":
+				return st.opPaste(c, cb)
+			case "undo":
+				st.opUndo(cb)
+				return true
+			case "redo":
+				st.opRedo(cb)
+				return true
+			case "delete":
+				st.opDelete(cb)
+				return true
+			}
+			return false
+
+		case ui.InputCompose:
+			if st.EditingID != 0 || st.LinkNodeID != 0 || cb.ReadOnly || st.DragActive {
+				st.ComposeText = ""
+				return false
+			}
+			if ev.Text != "" && (st.lastKeyMod&(ui.Cmd|ui.Ctrl|ui.Alt)) != 0 {
+				return false
+			}
+			st.ComposeText = ev.Text
+			return true
+
+		case ui.InputText:
+			st.ComposeText = ""
+			if st.EditingID != 0 || st.LinkNodeID != 0 || cb.ReadOnly || st.DragActive {
+				return false
+			}
+			if (st.lastKeyMod & (ui.Cmd | ui.Ctrl | ui.Alt)) != 0 {
+				return false
+			}
+			if isDirectEditText(ev.Text) {
+				if n := st.selectedNode(); n != nil {
+					st.beginEditWithText(n, ev.Text)
+					return true
+				}
+			}
+			return false
+
+		case ui.InputKeyDown:
+			st.lastKeyMod = ev.Mods
+			if st.EditingID != 0 || st.LinkNodeID != 0 {
+				return false
+			}
+			if ev.Key == ui.KeyEscape && (st.DragActive || st.DragNodeID != 0) {
+				st.resetDrag()
+				return true
+			}
+			return st.handleCanvasKey(c, ev.Key, ev.Mods, cb)
 		}
 		return false
 	})
@@ -1023,15 +1738,53 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			st.Camera = FitCamera(worldBounds, r.W, r.H, 28, 22)
 			st.CameraInit = true
 			st.AutoFitPending = false
+			st.EnsureVisiblePending = false
+		} else if st.EnsureVisiblePending {
+			st.EnsureVisiblePending = false
+			if sel := st.Root.FindByID(st.SelectedID); sel != nil {
+				st.ensureNodeVisible(sel, r.W, r.H)
+			}
 		}
-		PaintScene(p, st.Root, r, st.Camera, PaintOptions{
+		opt := PaintOptions{
 			SelectedID: st.SelectedID,
 			HoveredID:  st.HoveredID,
 			EditingID:  st.EditingID,
 			Palette:    pal,
 			Background: pal.CodeBG,
-		})
+		}
+		if st.DragActive && st.DragNodeID != 0 {
+			opt.DragNodeID = st.DragNodeID
+			opt.DragTargetID = st.DragTargetID
+			opt.DragPos = st.DragPos
+			opt.DragGhostX = st.DragCurrX
+			opt.DragGhostY = st.DragCurrY
+		}
+		PaintScene(p, st.Root, r, st.Camera, opt)
 	})
+
+	// IME composition preview overlay while directly typing CJK on a selected node.
+	if st.ComposeText != "" && st.EditingID == 0 && !cb.ReadOnly && st.Root != nil {
+		if n := st.selectedNode(); n != nil {
+			sx, sy := st.Camera.WorldToScreen(n.X, n.Y-n.H/2)
+			scale := st.Camera.Scale
+			if scale <= 0 {
+				scale = 1
+			}
+			edW := max(n.W*scale+36, 96)
+			edH := max(n.H*scale+4, theme.HeightCompact)
+			edX := clampFloat32(sx-2, theme.Space6, max(cw-edW-theme.Space6, theme.Space6))
+			edY := clampFloat32(sy-2, theme.Space6, max(ch-edH-theme.Space6, theme.Space6))
+
+			compBox := ui.Row(c.Key("mm-ime-compose-"+id)).
+				Absolute().Left(edX).Top(edY).MinWidth(edW).Height(edH).
+				PaddingX(theme.Space8).Radius(theme.RadiusMD).
+				Background(pal.Paper).Border(1.5, pal.Accent).
+				AlignItems(ui.Center)
+			compBox.Children(func() {
+				ui.Text(c, st.ComposeText).FontSize(theme.FontSmall).TextColor(pal.Text).Underline().SingleLine()
+			})
+		}
+	}
 
 	// Inline node text editor overlay positioned exactly over the editing node.
 	if st.EditingID != 0 && !cb.ReadOnly {
@@ -1046,7 +1799,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			edX := clampFloat32(sx-2, theme.Space6, max(cw-edW-theme.Space6, theme.Space6))
 			edY := clampFloat32(sy-2, theme.Space6, max(ch-edH-theme.Space6, theme.Space6))
 
-			input := ui.TextInputBase(c.Key("mm-inline-edit-"+id), &st.EditDraft).
+			input := ui.TextInputBase(c.Key(fmt.Sprintf("mm-inline-edit-%s-%d-%d", id, st.EditingID, st.EditSeq)), &st.EditDraft).
 				Absolute().Left(edX).Top(edY).Width(edW).Height(edH).
 				PaddingX(theme.Space8).Radius(theme.RadiusMD).
 				Background(pal.Paper).Border(1.5, pal.Accent).
@@ -1055,7 +1808,11 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				Bind(&st.EditHandle)
 			if st.EditFocusPending {
 				st.EditFocusPending = false
-				st.EditHandle.Focus()
+				if st.EditSelectAll {
+					st.EditHandle.SelectAll(c)
+				} else {
+					st.EditHandle.Focus()
+				}
 			}
 			input.HandleInput(func(ev ui.InputEvent) bool {
 				if ev.Kind != ui.InputKeyDown {
@@ -1063,17 +1820,31 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				}
 				switch ev.Key {
 				case ui.KeyEnter:
-					st.finishEdit(true, cb)
-					st.CanvasHandle.Focus()
-					return true
+					if ev.Mods == ui.Shift {
+						st.finishEdit(true, cb)
+						st.opAddSiblingBefore(cb)
+						return true
+					}
+					if ev.Mods == 0 {
+						st.finishEdit(true, cb)
+						st.CanvasHandle.Focus()
+						return true
+					}
 				case ui.KeyEscape:
 					st.finishEdit(false, cb)
 					st.CanvasHandle.Focus()
 					return true
 				case ui.KeyTab:
-					st.finishEdit(true, cb)
-					st.opAddChild(cb)
-					return true
+					if ev.Mods == ui.Shift {
+						st.finishEdit(true, cb)
+						st.opInsertParent(cb)
+						return true
+					}
+					if ev.Mods == 0 {
+						st.finishEdit(true, cb)
+						st.opAddChild(cb)
+						return true
+					}
 				}
 				return false
 			})
@@ -1082,6 +1853,38 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			}
 		}
 	}
+}
+
+func isDirectEditText(s string) bool {
+	if s == "" {
+		return false
+	}
+	hasGraphic := false
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return false
+		}
+		if !unicode.IsSpace(r) {
+			hasGraphic = true
+		}
+	}
+	return hasGraphic
+}
+
+// ZoomBy zooms the canvas around its viewport center by factor.
+func (st *BlockState) ZoomBy(factor float32) {
+	if st == nil || factor <= 0 {
+		return
+	}
+	st.zoomAt(st.LastCanvasW*0.5, st.LastCanvasH*0.5, st.Camera.Scale*factor)
+}
+
+// FitCanvas schedules an automatic zoom-to-fit on the next paint pass.
+func (st *BlockState) FitCanvas() {
+	if st == nil {
+		return
+	}
+	st.AutoFitPending = true
 }
 
 func (st *BlockState) zoomAt(sx, sy, targetScale float32) {
@@ -1095,18 +1898,42 @@ func (st *BlockState) zoomAt(sx, sy, targetScale float32) {
 	st.Camera.Y = wy - sy/targetScale
 }
 
-func (st *BlockState) handleCanvasKey(key ui.Key, mods ui.Modifiers, cb Callbacks) bool {
+func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifiers, cb Callbacks) bool {
+	n := st.selectedNode()
+	if n == nil {
+		return false
+	}
+	leftSide := n.Dir < 0
+
 	// Cmd/Ctrl shortcuts
 	if mods == ui.Cmd || mods == ui.Ctrl {
 		switch key {
 		case ui.KeyZ:
 			st.opUndo(cb)
 			return true
+		case ui.KeyY:
+			st.opRedo(cb)
+			return true
+		case ui.KeyC:
+			return st.opCopy(c)
+		case ui.KeyX:
+			return st.opCut(c, cb)
+		case ui.KeyV:
+			return st.opPaste(c, cb)
+		case ui.KeyD:
+			st.opDuplicate(cb)
+			return true
 		case ui.KeyL:
 			if !cb.ReadOnly {
-				st.beginLinkEdit(st.selectedNode())
+				st.beginLinkEdit(n)
 				return true
 			}
+		case ui.KeyEnter:
+			st.opToggleTaskDoneOrCreate(n, cb)
+			return true
+		case ui.KeySlash:
+			st.opToggleFold()
+			return true
 		case ui.Key0:
 			st.AutoFitPending = true
 			return true
@@ -1119,12 +1946,46 @@ func (st *BlockState) handleCanvasKey(key ui.Key, mods ui.Modifiers, cb Callback
 		}
 		return false
 	}
-	if (mods == ui.Cmd|ui.Shift || mods == ui.Ctrl|ui.Shift) && key == ui.KeyZ {
-		st.opRedo(cb)
-		return true
+	if mods == ui.Cmd|ui.Shift || mods == ui.Ctrl|ui.Shift {
+		switch key {
+		case ui.KeyZ:
+			st.opRedo(cb)
+			return true
+		case ui.KeyEqual:
+			st.zoomAt(st.LastCanvasW*0.5, st.LastCanvasH*0.5, st.Camera.Scale*1.15)
+			return true
+		}
+		return false
+	}
+	if mods == ui.Cmd|ui.Alt || mods == ui.Ctrl|ui.Alt {
+		switch key {
+		case ui.KeyT:
+			st.opToggleTask(n, cb)
+			return true
+		case ui.KeySlash:
+			st.opToggleExpandCollapseAll()
+			return true
+		}
+		return false
 	}
 
-	// Alt+Up / Alt+Down: reorder node
+	// Shift shortcuts: Shift+Enter (sibling above), Shift+Tab (insert parent), Shift+Backspace (delete single)
+	if mods == ui.Shift {
+		switch key {
+		case ui.KeyEnter:
+			st.opAddSiblingBefore(cb)
+			return true
+		case ui.KeyTab:
+			st.opInsertParent(cb)
+			return true
+		case ui.KeyBackspace, ui.KeyDelete:
+			st.opDeleteSingle(cb)
+			return true
+		}
+		return false
+	}
+
+	// Alt shortcuts: reorder (Up/Down), promote/demote (Left/Right), delete single node (Backspace)
 	if mods == ui.Alt {
 		switch key {
 		case ui.KeyUp:
@@ -1132,6 +1993,23 @@ func (st *BlockState) handleCanvasKey(key ui.Key, mods ui.Modifiers, cb Callback
 			return true
 		case ui.KeyDown:
 			st.opMoveSibling(1, cb)
+			return true
+		case ui.KeyLeft:
+			if leftSide {
+				st.opDemote(cb)
+			} else {
+				st.opPromote(cb)
+			}
+			return true
+		case ui.KeyRight:
+			if leftSide {
+				st.opPromote(cb)
+			} else {
+				st.opDemote(cb)
+			}
+			return true
+		case ui.KeyBackspace, ui.KeyDelete:
+			st.opDeleteSingle(cb)
 			return true
 		}
 		return false
@@ -1141,14 +2019,8 @@ func (st *BlockState) handleCanvasKey(key ui.Key, mods ui.Modifiers, cb Callback
 		return false
 	}
 
-	n := st.selectedNode()
-	if n == nil {
-		return false
-	}
-	leftSide := n.Dir < 0
-
 	switch key {
-	case ui.KeyTab:
+	case ui.KeyTab, ui.KeyInsert:
 		st.opAddChild(cb)
 		return true
 	case ui.KeyEnter:
@@ -1165,6 +2037,9 @@ func (st *BlockState) handleCanvasKey(key ui.Key, mods ui.Modifiers, cb Callback
 			st.beginEdit(n, false)
 			return true
 		}
+	case ui.KeyHome:
+		st.opNavigate("home")
+		return true
 	case ui.KeyUp:
 		st.opNavigate("up")
 		return true
@@ -1183,6 +2058,7 @@ func (st *BlockState) handleCanvasKey(key ui.Key, mods ui.Modifiers, cb Callback
 			k := (len(n.Children) + 1) / 2
 			if k < len(n.Children) {
 				st.SelectedID = n.Children[k].ID
+				st.EnsureVisiblePending = true
 				return true
 			}
 		}
@@ -1199,6 +2075,7 @@ func (st *BlockState) handleCanvasKey(key ui.Key, mods ui.Modifiers, cb Callback
 // --- Outline View ---
 
 func (st *BlockState) renderOutlineView(c *ui.Context, id string, cb Callbacks) {
+	st.LastCanvasFocused = false
 	pal := theme.Ocean()
 	scr := bui.Scroll(c.Key("mm-out-scroll-"+id), &st.OutlineScroll).Fill().Padding(theme.Space12, theme.Space16)
 	scr.Children(func() {
@@ -1284,6 +2161,7 @@ func (st *BlockState) renderOutlineView(c *ui.Context, id string, cb Callbacks) 
 // --- Source View ---
 
 func (st *BlockState) renderSourceView(c *ui.Context, id string, cb Callbacks) {
+	st.LastCanvasFocused = false
 	pal := theme.Ocean()
 	draft := st.LastSource
 	if draft == "" && st.Root != nil {

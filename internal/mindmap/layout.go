@@ -95,7 +95,9 @@ func (mc *MeasureCache) MeasureNodeWidth(n *Node, p *ui.Painter) float32 {
 		clear(mc.widths)
 	}
 	w := estimateNodeWidth(n, p)
-	mc.widths[k] = w
+	if p != nil {
+		mc.widths[k] = w
+	}
 	return w
 }
 
@@ -397,6 +399,56 @@ func HitTest(root *Node, wx, wy float32) HitResult {
 	return hit
 }
 
+// DragDropPos indicates where a dragged node will be placed relative to a target node.
+type DragDropPos uint8
+
+const (
+	DropNone DragDropPos = iota
+	DropInside
+	DropBefore
+	DropAfter
+)
+
+// HitTestDropTarget finds a valid drop target node and relative insertion position
+// for dragged at world coordinates (wx, wy). Never matches dragged or its descendants.
+func HitTestDropTarget(root, dragged *Node, wx, wy float32) (*Node, DragDropPos) {
+	if root == nil || dragged == nil {
+		return nil, DropNone
+	}
+	var target *Node
+	var pos DragDropPos
+	var walk func(n *Node) bool
+	walk = func(n *Node) bool {
+		if n == dragged {
+			return false
+		}
+		if wx >= n.X-6 && wx <= n.X+n.W+6 && wy >= n.Y-n.H/2-6 && wy <= n.Y+n.H/2+6 {
+			target = n
+			if n.Parent == nil {
+				pos = DropInside
+			} else if wy < n.Y-n.H*0.25 {
+				pos = DropBefore
+			} else if wy > n.Y+n.H*0.25 {
+				pos = DropAfter
+			} else {
+				pos = DropInside
+			}
+			return true
+		}
+		if n.Folded {
+			return false
+		}
+		for _, ch := range n.Children {
+			if walk(ch) {
+				return true
+			}
+		}
+		return false
+	}
+	walk(root)
+	return target, pos
+}
+
 func nodeContentLeft(n *Node) float32 {
 	switch n.Depth {
 	case 0:
@@ -426,6 +478,13 @@ type PaintOptions struct {
 	Background     ui.Color
 	// ForceLabels keeps node text visible even at small export scales.
 	ForceLabels bool
+
+	// Drag-and-drop preview state (all zero when not dragging).
+	DragNodeID   int
+	DragTargetID int
+	DragPos      DragDropPos
+	DragGhostX   float32 // Pointer X relative to viewport r.X
+	DragGhostY   float32 // Pointer Y relative to viewport r.Y
 }
 
 // PaintScene renders the entire mind map (edges, nodes, checkboxes, links, fold badges,
@@ -449,6 +508,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 		scale = 1
 	}
 
+	var draggedNode *Node
+	if opt.DragNodeID != 0 {
+		draggedNode = root.FindByID(opt.DragNodeID)
+	}
+
 	// Visible world rect with margin for curves and strokes.
 	margin := float32(64) / scale
 	visMinX := cam.X - margin
@@ -464,6 +528,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 		var paintEdges func(n *Node)
 		paintEdges = func(n *Node) {
 			col := branches[n.Branch%len(branches)]
+			if draggedNode != nil && draggedNode.IsAncestorOf(n) {
+				col = col.Alpha(0.35)
+			}
 			if n.Parent != nil {
 				par := n.Parent
 				d := n.Dir
@@ -531,6 +598,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					if n.Depth > 0 {
 						bc = branches[n.Branch%len(branches)]
 					}
+					if draggedNode != nil && draggedNode.IsAncestorOf(n) {
+						bc = bc.Alpha(0.35)
+					}
 					p.Line(wxToScreen(startX), wyToScreen(by), wxToScreen(bx), wyToScreen(by), max(1.6*scale, 1), bc)
 				}
 				return
@@ -545,6 +615,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 		var paintNodes func(n *Node)
 		paintNodes = func(n *Node) {
 			col := branches[n.Branch%len(branches)]
+			dimmed := draggedNode != nil && draggedNode.IsAncestorOf(n)
 			nodeVisible := n.X+n.W >= visMinX && n.X <= visMaxX && n.Y+n.H/2 >= visMinY && n.Y-n.H/2 <= visMaxY
 
 			if nodeVisible {
@@ -568,16 +639,30 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					p.Fill(rect, pal.Text, sh*0.5)
 				case 1:
 					rad := theme.RadiusMD * scale
-					p.Fill(rect, col.Alpha(0.13), rad)
-					p.Stroke(rect, col, rad, max(1.2*scale, 1))
+					fillCol := col.Alpha(0.13)
+					strokeCol := col
+					if dimmed {
+						fillCol = col.Alpha(0.06)
+						strokeCol = col.Alpha(0.35)
+					}
+					p.Fill(rect, fillCol, rad)
+					p.Stroke(rect, strokeCol, rad, max(1.2*scale, 1))
 				default:
 					if n.ID == opt.SelectedID {
 						// Occlude incoming/outgoing branch line tails beneath the selected leaf
 						// so only the selection border renders at the bottom.
 						p.Fill(ringR, bg, ringRad)
-					} else if n.ID == opt.HoveredID {
+					} else if n.ID == opt.HoveredID && opt.DragNodeID == 0 {
 						p.Fill(rect, pal.Hover, theme.RadiusSM*scale)
 					}
+				}
+
+				// Highlight drop-inside target beneath label so text stays sharp.
+				if opt.DragNodeID != 0 && n.ID == opt.DragTargetID && opt.DragPos == DropInside {
+					if n.Depth > 1 && n.ID != opt.SelectedID {
+						p.Fill(ringR, bg, ringRad)
+					}
+					p.Fill(ringR, pal.Accent.Alpha(0.14), ringRad)
 				}
 
 				if n.ID != opt.EditingID {
@@ -590,7 +675,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						cbR := ui.Rect{X: cbX, Y: cbY, W: cbS, H: cbS}
 						cbRad := float32(3.5) * scale
 						if *n.Task {
-							p.Fill(cbR, pal.Accent, cbRad)
+							acc := pal.Accent
+							if dimmed {
+								acc = acc.Alpha(0.35)
+							}
+							p.Fill(cbR, acc, cbRad)
 							var ck ui.Path
 							ck.Cap(ui.RoundCap).Join(ui.RoundJoin)
 							ck.MoveTo(cbX+cbS*0.24, cbY+cbS*0.52)
@@ -599,7 +688,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 							p.StrokePath(&ck, max(1.5*scale, 1), pal.Paper)
 						} else {
 							p.Fill(cbR, pal.Paper, cbRad)
-							p.Stroke(cbR, pal.TextSecondary, cbRad, max(1.2*scale, 1))
+							borderC := pal.TextSecondary
+							if dimmed {
+								borderC = borderC.Alpha(0.35)
+							}
+							p.Stroke(cbR, borderC, cbRad, max(1.2*scale, 1))
 						}
 						tx += layoutTaskBox + layoutTaskGap
 					}
@@ -612,6 +705,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					}
 					if n.Task != nil && *n.Task {
 						txtColor = txtColor.Alpha(0.55)
+					}
+					if dimmed {
+						txtColor = txtColor.Alpha(0.35)
 					}
 
 					fontSize := nodeFontSize(n.Depth) * scale
@@ -632,7 +728,14 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 
 				// Selection ring (3px outset, Accent stroke).
 				if n.ID == opt.SelectedID {
-					p.Stroke(ringR, pal.Accent, ringRad, max(1.6*scale, 1.2))
+					ringStroke := pal.Accent
+					if dimmed {
+						ringStroke = pal.Accent.Alpha(0.45)
+					}
+					p.Stroke(ringR, ringStroke, ringRad, max(1.6*scale, 1.2))
+				}
+				if opt.DragNodeID != 0 && n.ID == opt.DragTargetID && opt.DragPos == DropInside {
+					p.Stroke(ringR, pal.Accent, ringRad, max(2*scale, 1.5))
 				}
 			}
 
@@ -651,6 +754,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					if n.Depth > 0 {
 						bc = branches[n.Branch%len(branches)]
 					}
+					if dimmed {
+						bc = bc.Alpha(0.35)
+					}
 					scx := wxToScreen(bx)
 					scy := wyToScreen(by)
 					sr := layoutFoldRadius * scale
@@ -659,7 +765,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					p.Stroke(badgeR, bc, sr, max(1.2*scale, 1))
 					label := fmt.Sprintf("%d", n.DescendantCount())
 					fs := max(float32(10)*scale, 6)
-					sp := ui.Span{Text: label, Size: fs, Weight: theme.WeightMono, Color: pal.Text}
+					txtC := pal.Text
+					if dimmed {
+						txtC = txtC.Alpha(0.35)
+					}
+					sp := ui.Span{Text: label, Size: fs, Weight: theme.WeightMono, Color: txtC}
 					tw, th := p.MeasureText(0, sp)
 					p.RichText(scx-tw*0.5, scy-th*0.5, 0, sp)
 				}
@@ -670,5 +780,45 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 			}
 		}
 		paintNodes(root)
+
+		// Pass 3: Drag-and-drop insertion indicator and floating ghost pill.
+		if draggedNode != nil {
+			if opt.DragTargetID != 0 && (opt.DragPos == DropBefore || opt.DragPos == DropAfter) {
+				if target := root.FindByID(opt.DragTargetID); target != nil {
+					lineY := target.Y - target.H/2 - 4
+					if opt.DragPos == DropAfter {
+						lineY = target.Y + target.H/2 + 4
+					}
+					sx1 := wxToScreen(target.X)
+					sx2 := wxToScreen(target.X + target.W)
+					sy := wyToScreen(lineY)
+					p.Line(sx1, sy, sx2, sy, max(2.2*scale, 2), pal.Accent)
+					dotX := sx1
+					if target.Dir < 0 {
+						dotX = sx2
+					}
+					dotR := max(3.5*scale, 3)
+					p.Fill(ui.Rect{X: dotX - dotR, Y: sy - dotR, W: dotR * 2, H: dotR * 2}, pal.Accent, dotR)
+				}
+			}
+
+			// Floating ghost pill following pointer.
+			label := strings.TrimSpace(draggedNode.Text)
+			if label == "" {
+				label = " "
+			}
+			sp := ui.Span{Text: label, Size: theme.FontSmall, Weight: theme.WeightControl, Color: pal.Text}
+			tw, th := p.MeasureText(0, sp)
+			pillW := min(max(tw+theme.Space20, 64), 220)
+			pillH := max(th+theme.Space10, theme.HeightCompact)
+			gx := r.X + opt.DragGhostX + theme.Space12
+			gy := r.Y + opt.DragGhostY - pillH*0.5
+			pillR := ui.Rect{X: gx, Y: gy, W: pillW, H: pillH}
+			p.Fill(pillR, pal.Menu.Alpha(0.94), theme.RadiusMD)
+			p.Stroke(pillR, pal.Accent, theme.RadiusMD, 1.4)
+			p.Clip(pillR, theme.RadiusMD, func() {
+				p.RichText(gx+theme.Space10, gy+(pillH-th)*0.5, 0, sp)
+			})
+		}
 	})
 }

@@ -118,6 +118,45 @@ func (s *Session) CloseMindMapFullscreen() {
 	}
 }
 
+// HandleMindMapZoom handles Cmd+0 / Cmd+= / Cmd+- from the native menu bar when
+// a MindMap block is open in fullscreen or currently focused in Map view.
+// mode: 0 = fit, >0 = zoom in, <0 = zoom out.
+func (s *Session) HandleMindMapZoom(mode int) bool {
+	if s == nil || s.doc == nil || len(s.mindMapStates) == 0 {
+		return false
+	}
+	var target *mindmap.BlockState
+	for i := range s.doc.Blocks {
+		b := &s.doc.Blocks[i]
+		if b.Kind != model.BlockCode || codepreview.CanonicalLanguage(b.Language) != "mindmap" {
+			continue
+		}
+		st := s.mindMapStates[b.ID]
+		if st == nil || st.View != mindmap.ViewMap {
+			continue
+		}
+		if st.Fullscreen {
+			target = st
+			break
+		}
+		if st.LastCanvasFocused {
+			target = st
+		}
+	}
+	if target == nil {
+		return false
+	}
+	switch {
+	case mode == 0:
+		target.FitCanvas()
+	case mode > 0:
+		target.ZoomBy(1.15)
+	default:
+		target.ZoomBy(1.0 / 1.15)
+	}
+	return true
+}
+
 func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnly bool) mindmap.Callbacks {
 	svc := c.Services()
 	return mindmap.Callbacks{
