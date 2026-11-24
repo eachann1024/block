@@ -15,29 +15,31 @@ import (
 )
 
 const (
-	iconPickerWidth     float32 = 316
-	iconPickerMaxHeight float32 = 382
+	iconPickerWidth     float32 = 236 // 6 × 34 cells + 5 × 2 gaps + 2 × 10 padding + border
+	iconPickerMaxHeight float32 = 318
 	iconPickerMinHeight float32 = 200
-	iconPickerHeaderH   float32 = 46
-	iconPickerRailH     float32 = 36
+	iconPickerPadX      float32 = 10
+	iconPickerSearchH   float32 = 30
+	iconPickerRailBtn   float32 = 26
 	iconPickerFooterH   float32 = 42
+	iconPickerCell      float32 = 34
+	iconPickerCellGap   float32 = 2
+	iconPickerSwatch    float32 = 16
 	iconPickerCols              = 6
 )
 
 // placeIconPicker resolves (x, y, maxH) for the icon picker popover so it never
 // obscures the clicked sidebar icon.
 //
-// Tier 1 (normal desktop): float right of the sidebar row, vertically aligned
-// with the icon, keeping both the icon and note/folder title fully visible.
-// Tier 2 (narrow window): float right of the icon button itself so the icon
-// remains unobstructed.
-// Tier 3 (ultra-narrow window): place strictly below or strictly above the icon
-// button while capping height to available vertical room so clamping never pulls
-// the popover back on top of the icon.
+// Tier 1: float directly right of the icon tile, with the search box vertically
+// centred on the icon.
+// Tier 2 (window too narrow): place strictly below or strictly above the icon
+// while capping height to available vertical room so clamping never pulls the
+// popover back on top of the icon.
 func placeIconPicker(iconRect, rowRect ui.Rect, popW, popH, vpW, vpH float32) (ox, oy, finalH float32) {
 	const (
 		margin float32 = 8
-		gapX   float32 = 10
+		gapX   float32 = 6
 		gapY   float32 = 6
 	)
 	availH := max(vpH-margin*2, 120)
@@ -51,21 +53,12 @@ func placeIconPicker(iconRect, rowRect ui.Rect, popW, popH, vpW, vpH float32) (o
 		return float32(math.Round(float64(v)))
 	}
 
-	if rowRect.W > 0 {
-		rightOfRow := rowRect.X + rowRect.W + gapX
-		if rightOfRow+popW <= vpW-margin {
-			anchorY := iconRect.Y - 12
-			if iconRect.H <= 0 {
-				anchorY = rowRect.Y - 8
-			}
-			return round(rightOfRow), round(clampY(anchorY, finalH)), finalH
-		}
-	}
-
-	if iconRect.W > 0 {
+	if iconRect.W > 0 && iconRect.H > 0 {
 		rightOfIcon := iconRect.X + iconRect.W + gapX
 		if rightOfIcon+popW <= vpW-margin {
-			return round(rightOfIcon), round(clampY(iconRect.Y-12, finalH)), finalH
+			// border(1) + top padding + half search box puts the search box centre on the icon centre.
+			anchorY := iconRect.Y + iconRect.H/2 - (1 + iconPickerPadX + iconPickerSearchH/2)
+			return round(rightOfIcon), round(clampY(anchorY, finalH)), finalH
 		}
 	}
 
@@ -224,11 +217,12 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 		p.OnSetFileIcon(pack.PluginID, rel, "", string(theme.IconTintNone))
 	}
 
-	railH := float32(0)
-	if !searching && len(pack.Pack.Categories) > 1 {
-		railH = iconPickerRailH
+	showRail := !searching && len(pack.Pack.Categories) > 1
+	headerH := theme.Space10 + iconPickerSearchH + theme.Space6
+	if showRail {
+		headerH += theme.Space8 + iconPickerRailBtn
 	}
-	bodyH := max(finalH-iconPickerHeaderH-railH-iconPickerFooterH-2, 80)
+	bodyH := max(finalH-headerH-iconPickerFooterH-2, 80)
 
 	c.Key("sidebar-icon-picker")
 	card := blockui.PopoverSurface(
@@ -245,7 +239,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 	renderIconCell := func(keyPrefix string, ic plugins.FileIconDef, allowReveal bool) {
 		selected := hasCustom && curIcon.IconID == ic.ID
 		cell := ui.ButtonBase(c.Key(keyPrefix+"-"+ic.ID)).
-			Grow(1).MinWidth(0).Height(38).Center().Radius(theme.RadiusSM).
+			Size(iconPickerCell, iconPickerCell).Shrink(0).Center().Radius(theme.RadiusMD).
 			Cursor(ui.CursorPointer).FocusRing(false).
 			Selected(selected).Label(ic.Name.Resolve(loc))
 		hovered := cell.Hovered()
@@ -255,11 +249,8 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 		bd := ui.Transparent
 		switch {
 		case selected:
-			bg = pal.Accent.Alpha(0.14)
-			if pal.Dark {
-				bg = pal.Accent.Alpha(0.24)
-			}
-			bd = pal.Accent.Alpha(0.55)
+			bg = pal.Selected
+			bd = pal.SelectedBorder
 		case hovered || pressed:
 			bg = pal.MenuHover
 		}
@@ -270,17 +261,21 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 			Rows:      []blockui.TooltipRow{{Trigger: ic.Name.Resolve(loc)}},
 		})
 
-		lineCol := pal.TextSecondary
+		lineCol := pal.MenuIcon
 		if selected || hovered || pressed {
 			lineCol = pal.Text
 		}
-		colors := pal.TintedDuoIconColors(activeTint, lineCol, hovered || selected)
+		cellTint := theme.IconTintNone
+		if selected {
+			cellTint = activeTint
+		}
+		colors := pal.TintedDuoIconColors(cellTint, lineCol, hovered || selected)
 		var spec plugins.DuoIconSpec
 		if ic.Spec != nil {
 			spec = *ic.Spec
 		}
 		cell.Children(func() {
-			pluginui.DrawFileIcon(c, ic.Ref, spec, theme.IconRow, colors)
+			pluginui.DrawFileIcon(c, ic.Ref, spec, 20, colors)
 		})
 		blockui.Probe(cell, "icon-picker-cell:"+ic.ID)
 
@@ -299,29 +294,25 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 		for start := 0; start < len(list); start += iconPickerCols {
 			end := min(start+iconPickerCols, len(list))
 			row := list[start:end]
-			ui.Row(c.Key(fmt.Sprintf("%s-r%d", keyPrefix, start))).FillWidth().Gap(theme.Space4).Children(func() {
+			ui.Row(c.Key(fmt.Sprintf("%s-r%d", keyPrefix, start))).FillWidth().Gap(iconPickerCellGap).Children(func() {
 				for _, ic := range row {
 					renderIconCell(keyPrefix, ic, allowReveal)
-				}
-				for pad := len(row); pad < iconPickerCols; pad++ {
-					ui.Box(c).Grow(1).MinWidth(0).Height(38)
 				}
 			})
 		}
 	}
 
 	card.Children(func() {
-		// 1. Search header
-		ui.Row(c.Key("icon-picker-header")).FillWidth().Height(iconPickerHeaderH).Shrink(0).
-			Padding(theme.Space8, theme.Space10, theme.Space8, theme.Space10).AlignItems(ui.Center).
-			BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
+		// 1. Header: search box + category rail, no divider (matches the design).
+		ui.Column(c.Key("icon-picker-header")).FillWidth().Height(headerH).Shrink(0).
+			Padding(theme.Space10, iconPickerPadX, theme.Space6, iconPickerPadX).Gap(theme.Space8).
 			Children(func() {
 				var in ui.Element
-				searchBox := ui.Row(c.Key("icon-picker-search-box")).Grow(1).MinWidth(0).Height(30).
+				searchBox := ui.Row(c.Key("icon-picker-search-box")).FillWidth().MinWidth(0).Height(iconPickerSearchH).Shrink(0).
 					Padding(0, theme.Space8, 0, theme.Space8).Gap(theme.Space6).
-					AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.Paper)
+					AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.Shell)
 				searchBox.Children(func() {
-					icons.Draw(c, icons.FindSearch, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+					icons.Draw(c, icons.FindSearch, theme.IconInline, pal.MonoIconColors(pal.MenuMuted))
 					ui.Box(c.Key("icon-picker-input-wrap")).Grow(1).MinWidth(0).Height(28).Clip().Children(func() {
 						in = ui.TextInputBase(c.Key("icon-picker-input"), &p.State.IconPickerQuery).
 							FillWidth().Height(28).Padding(0).
@@ -331,7 +322,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 							Bind(&p.State.IconPickerInput).AutoFocus()
 						blockui.Probe(in, "icon-picker-input")
 						if p.State.IconPickerQuery == "" && !in.Composing() {
-							ph := fmt.Sprintf(theme.Tr("搜索 %d 个图标…", "Search %d icons…"), len(pack.Pack.Icons))
+							ph := theme.Tr("搜索图标", "Search icons")
 							ui.Row(c.Key("icon-picker-ph")).
 								Absolute().Top(0).Bottom(0).Left(theme.Space2).Right(0).
 								AlignItems(ui.Center).IgnoreInput(true).
@@ -358,7 +349,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 						}
 					}
 				})
-				bd := pal.Hairline
+				bd := pal.BtnBorder
 				if in.Valid() && in.Focused() {
 					bd = pal.Accent
 				}
@@ -383,57 +374,60 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 						return false
 					})
 				}
-			})
 
-		// 2. Category quick-jump rail (hidden during search)
-		if !searching && len(pack.Pack.Categories) > 1 {
-			ui.Row(c.Key("icon-picker-rail")).FillWidth().Height(iconPickerRailH).Shrink(0).
-				Padding(theme.Space4, theme.Space8, theme.Space4, theme.Space8).Gap(theme.Space2).
-				AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
-				Children(func() {
-					for _, cat := range pack.Pack.Categories {
-						cat := cat
-						active := p.State.IconPickerActiveCat == cat.ID
-						cb := ui.ButtonBase(c.Key("icon-rail-" + cat.ID)).
-							Grow(1).MinWidth(0).Height(28).Center().Radius(theme.RadiusSM).
-							Cursor(ui.CursorPointer).FocusRing(false).
-							Selected(active).Label(cat.Name.Resolve(loc))
-						hov := cb.Hovered()
-						prs := cb.Pressed()
-						bg := ui.Transparent
-						switch {
-						case active:
-							bg = pal.Selected
-						case hov || prs:
-							bg = pal.MenuHover
-						}
-						blockui.AnimateSurfaceColors(cb, bg, ui.Transparent, false)
-						blockui.RichTooltip(c, cb, blockui.TooltipSpec{
-							Placement: blockui.TooltipAbove,
-							Rows:      []blockui.TooltipRow{{Trigger: cat.Name.Resolve(loc)}},
-						})
-						if def, ok := pack.ByID[cat.Icon]; ok {
-							lineCol := pal.TextSecondary
-							if active || hov {
-								lineCol = pal.Text
+				// 2. Category quick-jump rail (hidden during search)
+				if !showRail {
+					return
+				}
+				ui.Row(c.Key("icon-picker-rail")).FillWidth().Height(iconPickerRailBtn).Shrink(0).
+					AlignItems(ui.Center).Justify(ui.SpaceBetween).
+					Children(func() {
+						for _, cat := range pack.Pack.Categories {
+							cat := cat
+							active := p.State.IconPickerActiveCat == cat.ID
+							cb := ui.ButtonBase(c.Key("icon-rail-"+cat.ID)).
+								Size(iconPickerRailBtn, iconPickerRailBtn).Shrink(0).Center().Radius(theme.RadiusSM).
+								Cursor(ui.CursorPointer).FocusRing(false).
+								Selected(active).Label(cat.Name.Resolve(loc))
+							hov := cb.Hovered()
+							prs := cb.Pressed()
+							bg := ui.Transparent
+							switch {
+							case active:
+								bg = pal.Selected
+							case hov || prs:
+								bg = pal.MenuHover
 							}
-							colors := pal.TintedDuoIconColors(theme.IconTintNone, lineCol, active || hov)
-							var spec plugins.DuoIconSpec
-							if def.Spec != nil {
-								spec = *def.Spec
-							}
-							cb.Children(func() {
-								pluginui.DrawFileIcon(c, def.Ref, spec, theme.IconAction, colors)
+							blockui.AnimateSurfaceColors(cb, bg, ui.Transparent, false)
+							blockui.RichTooltip(c, cb, blockui.TooltipSpec{
+								Placement: blockui.TooltipAbove,
+								Rows:      []blockui.TooltipRow{{Trigger: cat.Name.Resolve(loc)}},
 							})
+							if def, ok := pack.ByID[cat.Icon]; ok {
+								lineCol := pal.MenuMuted
+								switch {
+								case active:
+									lineCol = pal.Text
+								case hov || prs:
+									lineCol = pal.TextSecondary
+								}
+								colors := pal.TintedDuoIconColors(theme.IconTintNone, lineCol, false)
+								var spec plugins.DuoIconSpec
+								if def.Spec != nil {
+									spec = *def.Spec
+								}
+								cb.Children(func() {
+									pluginui.DrawFileIcon(c, def.Ref, spec, theme.IconAction, colors)
+								})
+							}
+							blockui.Probe(cb, "icon-rail:"+cat.ID)
+							if cb.Clicked() {
+								p.State.IconPickerActiveCat = cat.ID
+								p.State.IconPickerJumpCat = cat.ID
+							}
 						}
-						blockui.Probe(cb, "icon-rail:"+cat.ID)
-						if cb.Clicked() {
-							p.State.IconPickerActiveCat = cat.ID
-							p.State.IconPickerJumpCat = cat.ID
-						}
-					}
-				})
-		}
+					})
+			})
 
 		// 3. Scrollable icon grid
 		scrollBox := blockui.Scroll(c.Key("icon-picker-scroll"), &p.State.IconPickerScroll).
@@ -441,7 +435,12 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 		scrollRect := scrollBox.Bounds()
 		var observedCat string
 		scrollBox.Children(func() {
-			ui.Column(c).FillWidth().Padding(theme.Space8, theme.Space10, theme.Space10, theme.Space10).Gap(theme.Space8).Children(func() {
+			secLabel := func(text string) {
+				ui.Row(c).FillWidth().Padding(theme.Space8, theme.Space4, theme.Space4, theme.Space4).Children(func() {
+					ui.Text(c, text).FontSize(theme.FontMeta).TextColor(pal.MenuMuted).SingleLine()
+				})
+			}
+			ui.Column(c).FillWidth().Padding(0, iconPickerPadX, theme.Space8, iconPickerPadX).Gap(iconPickerCellGap).Children(func() {
 				if searching {
 					if len(filtered) == 0 {
 						ui.Column(c).FillWidth().Padding(theme.Space24, theme.Space8, theme.Space24, theme.Space8).
@@ -451,8 +450,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 						})
 						return
 					}
-					ui.Text(c, fmt.Sprintf(theme.Tr("找到 %d 个图标", "%d icons"), len(filtered))).
-						FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
+					ui.Box(c).Height(theme.Space6)
 					renderGrid("search", filtered, false)
 					return
 				}
@@ -465,9 +463,8 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 						}
 					}
 					if len(recDefs) > 0 {
-						ui.Column(c.Key("icon-sec-recent")).FillWidth().Gap(theme.Space4).Children(func() {
-							ui.Text(c, theme.Tr("最近使用", "Recent")).
-								FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
+						ui.Column(c.Key("icon-sec-recent")).FillWidth().Gap(iconPickerCellGap).Children(func() {
+							secLabel(theme.Tr("最近使用", "Recent"))
 							renderGrid("recent", recDefs, false)
 						})
 					}
@@ -478,12 +475,9 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 					if len(list) == 0 {
 						continue
 					}
-					ui.Column(c.Key("icon-sec-" + cat.ID)).FillWidth().Gap(theme.Space4).Children(func() {
-						hdr := ui.Row(c.Key("icon-hdr-" + cat.ID)).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-							ui.Text(c, cat.Name.Resolve(loc)).
-								FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
-							ui.Text(c, fmt.Sprintf("%d", len(list))).
-								FontSize(theme.FontMeta).TextColor(pal.Placeholder).SingleLine()
+					ui.Column(c.Key("icon-sec-" + cat.ID)).FillWidth().Gap(iconPickerCellGap).Children(func() {
+						hdr := ui.Row(c.Key("icon-hdr-"+cat.ID)).FillWidth().Padding(theme.Space8, theme.Space4, theme.Space4, theme.Space4).Children(func() {
+							ui.Text(c, cat.Name.Resolve(loc)).FontSize(theme.FontMeta).TextColor(pal.MenuMuted).SingleLine()
 						})
 						if p.State.IconPickerJumpCat == cat.ID {
 							hdr.ScrollIntoView(ui.ScrollIntoViewOptions{
@@ -506,46 +500,45 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 			p.State.IconPickerActiveCat = observedCat
 		}
 
-		// 4. Footer: 7 tint swatches + Reset to default
+		// 4. Footer: 7 solid tint swatches + icon-only Reset (matches the design).
 		ui.Row(c.Key("icon-picker-footer")).FillWidth().Height(iconPickerFooterH).Shrink(0).
-			Padding(0, theme.Space10, 0, theme.Space10).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+			Padding(0, iconPickerPadX, 0, iconPickerPadX).Gap(theme.Space4).AlignItems(ui.Center).
 			BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).
 			Children(func() {
-				ui.Row(c.Key("icon-picker-tints")).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
-					for _, t := range theme.IconTints {
-						t := t
-						selected := activeTint == t
-						sw := ui.ButtonBase(c.Key("icon-tint-" + string(t))).
-							Size(22, 22).Shrink(0).Center().Radius(theme.RadiusPill).
-							Cursor(ui.CursorPointer).FocusRing(false).
-							Selected(selected).Label(theme.IconTintLabel(t))
-						hov := sw.Hovered()
-						if selected {
-							sw.Border(1.5, pal.Accent)
-						} else if hov {
-							sw.Background(pal.MenuHover)
-						}
-						blockui.RichTooltip(c, sw, blockui.TooltipSpec{
-							Placement: blockui.TooltipAbove,
-							Rows:      []blockui.TooltipRow{{Trigger: theme.IconTintLabel(t)}},
-						})
-						dotCol := pal.IconTintSwatch(t)
-						sw.Children(func() {
-							dot := ui.Box(c).Size(12, 12).Radius(theme.RadiusPill).Background(dotCol)
-							if t == theme.IconTintNone {
-								dot.Border(1, pal.Hairline)
-							}
-						})
-						blockui.Probe(sw, "icon-tint:"+string(t))
-						if sw.Clicked() {
-							applyTint(t)
-						}
+				for _, t := range theme.IconTints {
+					t := t
+					selected := activeTint == t
+					hue := pal.IconTintSwatch(t)
+					sw := ui.ButtonBase(c.Key("icon-tint-"+string(t))).
+						Size(iconPickerSwatch+4, iconPickerSwatch+4).Shrink(0).Center().Radius(theme.RadiusPill).
+						Cursor(ui.CursorPointer).FocusRing(false).
+						Selected(selected).Label(theme.IconTintLabel(t))
+					hov := sw.Hovered()
+					dotSize := iconPickerSwatch
+					if selected {
+						// 1.5px hue ring with a 2px menu-coloured gap around the dot.
+						sw.Border(1.5, hue)
+						dotSize = iconPickerSwatch - 4
+					} else if hov {
+						dotSize = iconPickerSwatch + 2
 					}
-				})
+					blockui.RichTooltip(c, sw, blockui.TooltipSpec{
+						Placement: blockui.TooltipAbove,
+						Rows:      []blockui.TooltipRow{{Trigger: theme.IconTintLabel(t)}},
+					})
+					sw.Children(func() {
+						ui.Box(c).Size(dotSize, dotSize).Radius(theme.RadiusPill).Background(hue)
+					})
+					blockui.Probe(sw, "icon-tint:"+string(t))
+					if sw.Clicked() {
+						applyTint(t)
+					}
+				}
+				ui.Box(c).Grow(1)
 
 				resetBtn := ui.ButtonBase(c.Key("icon-picker-reset")).
-					Height(26).Padding(0, theme.Space8, 0, theme.Space8).Shrink(0).
-					AlignItems(ui.Center).Radius(theme.RadiusSM).FocusRing(false).
+					Size(iconPickerRailBtn, iconPickerRailBtn).Shrink(0).Center().
+					Radius(theme.RadiusSM).FocusRing(false).
 					Disabled(!hasCustom).Cursor(ui.CursorPointer).
 					Label(theme.Tr("恢复默认", "Reset"))
 				rHov := hasCustom && resetBtn.Hovered()
@@ -561,9 +554,12 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 				} else if rHov || rPrs {
 					fg = pal.Text
 				}
+				blockui.RichTooltip(c, resetBtn, blockui.TooltipSpec{
+					Placement: blockui.TooltipAbove,
+					Rows:      []blockui.TooltipRow{{Trigger: theme.Tr("恢复默认", "Reset")}},
+				})
 				resetBtn.Children(func() {
-					ui.Text(c, theme.Tr("恢复默认", "Reset")).
-						FontSize(theme.FontSmall).TextColor(fg).SingleLine()
+					icons.Draw(c, icons.Refresh, theme.IconAction, pal.MonoIconColors(fg))
 				})
 				blockui.Probe(resetBtn, "icon-picker-reset")
 				if hasCustom && resetBtn.Clicked() {
