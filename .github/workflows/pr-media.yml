@@ -1,0 +1,30 @@
+# 每个 PR 描述必须带视频、GIF 或至少一张图片，规则见 .github/pull_request_template.md。
+name: PR media check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: block-pr-media-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  media:
+    name: PR media check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require video, GIF or image in PR description
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s' "$BODY" | grep -Eiq '!\[[^]]*\]\([^)]+\)|<img[[:space:]]|<video[[:space:]]|github\.com/user-attachments/assets/|user-images\.githubusercontent\.com|\.(png|jpe?g|gif|webp|mp4|mov|webm)([?#)[:space:]]|$)'; then
+            echo "Found media in PR description."
+          else
+            echo "::error::PR 描述缺少改动演示：请附上视频、GIF，至少一张截图。PR description needs a video, GIF, or at least one screenshot."
+            exit 1
+          fi
