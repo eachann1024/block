@@ -277,9 +277,11 @@ type Session struct {
 	annotFlashAlpha       float32
 
 	// BatchPlan diff review
-	activePlan     *model.BatchPlan
-	planExpandedOp int
-	planDiffScroll ui.ScrollState
+	activePlan *model.BatchPlan
+	// planReview paints the pending plan over the note; planBaseReadOnly is the
+	// caller's read-only flag before the review locks editing.
+	planReview       *planReviewState
+	planBaseReadOnly bool
 
 	// Code block UI
 	codeLangMenuBlock model.BlockID
@@ -822,12 +824,11 @@ func (s *Session) ActivePlan() *model.BatchPlan {
 
 func (s *Session) SetActivePlan(plan *model.BatchPlan) {
 	s.activePlan = plan
-	s.planExpandedOp = 0
-	if plan != nil {
-		for i := range plan.Ops {
-			s.ensurePlanOpLineSelection(&plan.Ops[i])
-		}
+	if plan == nil {
+		s.planReview = nil
+		return
 	}
+	s.setupPlanReview(plan)
 }
 
 func (s *Session) SetOutlineForceNarrow(narrow bool) {

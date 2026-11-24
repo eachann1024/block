@@ -6635,137 +6635,13 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 
 // --- BatchPlan Diff Computation & Review ---
 
-func computeDiffLines(oldText, newText string) []model.DiffLine {
-	oldLines := splitLinesNonEmptyTail(oldText)
-	newLines := splitLinesNonEmptyTail(newText)
-	m, n := len(oldLines), len(newLines)
-	dp := make([][]int, m+1)
-	for i := range dp {
-		dp[i] = make([]int, n+1)
-	}
-	for i := m - 1; i >= 0; i-- {
-		for j := n - 1; j >= 0; j-- {
-			if oldLines[i] == newLines[j] {
-				dp[i][j] = dp[i+1][j+1] + 1
-			} else if dp[i+1][j] >= dp[i][j+1] {
-				dp[i][j] = dp[i+1][j]
-			} else {
-				dp[i][j] = dp[i][j+1]
-			}
-		}
-	}
-	var out []model.DiffLine
-	i, j := 0, 0
-	for i < m && j < n {
-		if oldLines[i] == newLines[j] {
-			out = append(out, model.DiffLine{Kind: model.DiffEqual, OldLine: i + 1, NewLine: j + 1, Text: oldLines[i]})
-			i++
-			j++
-		} else if dp[i+1][j] >= dp[i][j+1] {
-			out = append(out, model.DiffLine{Kind: model.DiffDelete, OldLine: i + 1, Text: oldLines[i]})
-			i++
-		} else {
-			out = append(out, model.DiffLine{Kind: model.DiffInsert, NewLine: j + 1, Text: newLines[j]})
-			j++
-		}
-	}
-	for i < m {
-		out = append(out, model.DiffLine{Kind: model.DiffDelete, OldLine: i + 1, Text: oldLines[i]})
-		i++
-	}
-	for j < n {
-		out = append(out, model.DiffLine{Kind: model.DiffInsert, NewLine: j + 1, Text: newLines[j]})
-		j++
-	}
-	return out
-}
-
-func splitLinesNonEmptyTail(s string) []string {
-	if s == "" {
-		return nil
-	}
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	lines := strings.Split(s, "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	return lines
-}
-
-func (s *Session) ensurePlanOpLineSelection(op *model.PlanOp) []model.DiffLine {
-	diff := computeDiffLines(op.Old, op.New)
-	changedCount := 0
-	for _, d := range diff {
-		if d.Kind != model.DiffEqual {
-			changedCount++
-		}
-	}
-	if len(op.LineSelected) != changedCount {
-		op.LineSelected = make([]bool, changedCount)
-		for i := range op.LineSelected {
-			op.LineSelected[i] = true
-		}
-	}
-	return diff
-}
-
-func applySelectedDiff(op *model.PlanOp) string {
-	diff := computeDiffLines(op.Old, op.New)
-	selected := make([]bool, len(diff))
-	selIdx := 0
-	for i, d := range diff {
-		if d.Kind == model.DiffEqual {
-			continue
-		}
-		selected[i] = selIdx >= len(op.LineSelected) || op.LineSelected[selIdx]
-		selIdx++
-	}
-	texts, changes := diffChanges(diff)
-	appUi.SyncDiffTableSeps(texts, changes, selected)
-	var out []string
-	for i, d := range diff {
-		switch {
-		case d.Kind == model.DiffEqual,
-			d.Kind == model.DiffDelete && !selected[i],
-			d.Kind == model.DiffInsert && selected[i]:
-			out = append(out, d.Text)
-		}
-	}
-	if len(out) == 0 {
-		return ""
-	}
-	return strings.Join(out, "\n") + "\n"
-}
-
-// diffChanges maps diff kinds to the side markers DiffFenceMask expects.
-func diffChanges(diff []model.DiffLine) ([]string, []int) {
-	texts := make([]string, len(diff))
-	changes := make([]int, len(diff))
-	for i, d := range diff {
-		texts[i] = d.Text
-		switch d.Kind {
-		case model.DiffDelete:
-			changes[i] = -1
-		case model.DiffInsert:
-			changes[i] = 1
-		}
-	}
-	return texts, changes
-}
-
 func (s *Session) acceptActivePlan() {
-	if s.activePlan == nil || s.readOnly {
+	if s.activePlan == nil || !s.canAcceptPlan() {
 		return
 	}
+	// The whole plan is accepted at once.
 	plan := *s.activePlan
 	plan.Ops = append([]model.PlanOp(nil), plan.Ops...)
-	for i := range plan.Ops {
-		op := &plan.Ops[i]
-		s.ensurePlanOpLineSelection(op)
-		if slices.Contains(op.LineSelected, false) {
-			op.New = applySelectedDiff(op)
-		}
-	}
 	if s.host != nil {
 		var err error
 		if reviewHost, ok := s.host.(interface{ AcceptEditorBatchPlan(*model.BatchPlan) error }); ok {
@@ -6774,7 +6650,7 @@ func (s *Session) acceptActivePlan() {
 			err = s.host.ApplyBatchPlan(&plan)
 		}
 		if err == nil {
-			s.activePlan = nil
+			s.SetActivePlan(nil)
 		}
 		return
 	}
@@ -6792,7 +6668,7 @@ func (s *Session) acceptActivePlan() {
 	s.selAnchor = Position{}
 	s.selHead = Position{}
 	s.markDirty()
-	s.activePlan = nil
+	s.SetActivePlan(nil)
 }
 
 func (s *Session) rejectActivePlan() {
@@ -6804,7 +6680,7 @@ func (s *Session) rejectActivePlan() {
 	if s.host != nil {
 		_ = s.host.RejectBatchPlan(plan.ID)
 	}
-	s.activePlan = nil
+	s.SetActivePlan(nil)
 }
 
 // --- Table Structural Edits ---

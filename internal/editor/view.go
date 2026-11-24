@@ -45,6 +45,10 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.doc = model.NewEmptyDoc()
 		s.bumpDocRev()
 	}
+	// A pending AI plan must be accepted before the note can be edited.
+	s.planBaseReadOnly = readOnly
+	s.syncPlanReview()
+	readOnly = readOnly || s.planReview != nil
 	s.readOnly = readOnly
 	s.framePathHover = nil
 	if s.lastPressCmdIntact && (!c.WindowActive() || c.Modifiers() != ui.Cmd) {
@@ -258,6 +262,12 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 							}
 							continue
 						}
+						if handled, hov := s.renderPlanReviewRow(c, i, frameMeta[i]); handled {
+							if hov {
+								nextHover = i
+							}
+							continue
+						}
 						if canVirt {
 							if cachedR, ok := s.canVirtualizeBlock(i, s.doc.Blocks[i].ID); ok {
 								firstID := s.doc.Blocks[i].ID
@@ -270,6 +280,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 										continue
 									}
 									if s.inlineAI != nil && s.isInlineAIPreviewIndex(j) {
+										break
+									}
+									if s.isPlanReviewMember(s.doc.Blocks[j].ID) {
 										break
 									}
 									rj, okJ := s.canVirtualizeBlock(j, s.doc.Blocks[j].ID)
@@ -421,7 +434,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			s.hoveredAnnotID = s.frameAnnotations.hovered
 			c.Invalidate()
 		}
-		s.renderPlanDiffCard(c)
+		s.renderPlanReviewBar(c)
 		s.renderMediaLightbox(c)
 		s.renderMindMapFullscreen(c, readOnly)
 		s.renderHoveredPathTooltip(c)
@@ -515,6 +528,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 			s.closeTransientOverlays()
 		}
 	}
+	s.handlePlanReviewShortcuts(c, annotInputFocused)
 	if readOnly {
 		return
 	}
