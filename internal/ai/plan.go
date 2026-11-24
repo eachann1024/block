@@ -832,6 +832,8 @@ func (c *Controller) SubmitQuestion(convID uint64, msgIdx int, skipped bool) {
 		step = turn.nextStep
 		turn.questionIndex = -1
 		c.streaming = true
+		c.scrollToBottom = true
+		c.scrollToBottomForce = true
 	}
 	c.persistChatsLocked()
 	c.mu.Unlock()

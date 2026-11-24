@@ -850,29 +850,31 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	}
 	convID := c.currentID
 	if prevConvID != convID {
-		if convID != 0 {
-			c.messagesScroll = ui.ScrollState{Y: math.MaxFloat32}
-			c.scrollToBottom = true
-		} else {
-			c.messagesScroll = ui.ScrollState{}
-			c.scrollToBottom = false
-		}
+		c.messagesScroll = ui.ScrollState{}
+		c.lastScrollY = 0
+		c.lastScrollMaxY = 0
+		c.scrollToBottom = convID != 0
+		c.scrollToBottomForce = convID != 0
 	}
-	// 贴底跟随：在底部时内容增长（发消息、流式输出、动画撑高）一直钉在底部；
-	// 用户上滑就停止跟随，滑回底部又恢复。Y/MaxY 是上一帧布局夹紧后的值。
+	// 贴底跟随：在底部时内容增长（发消息、流式输出、步骤追加）一直跟到底部；
+	// 不写 math.MaxFloat32（否则 ScrollIntoView 在 place 夹紧前会把 Y 算成 0 跳到最顶部），
+	// 改用底部零高度锚点的 ScrollIntoView(ScrollEnd) 贴底。
 	if convID != 0 && prevConvID == convID {
-		atBottom := c.messagesScroll.Y >= c.messagesScroll.MaxY-2
-		if c.scrollToBottom && !atBottom {
+		y, maxY := c.messagesScroll.Y, c.messagesScroll.MaxY
+		atBottom := y >= maxY-2
+		if c.scrollToBottomForce {
+			if atBottom {
+				c.scrollToBottomForce = false
+			}
+		} else if c.scrollToBottom && !atBottom {
 			c.scrollToBottom = false
-		} else if !c.scrollToBottom && atBottom {
+		} else if !c.scrollToBottom && atBottom && (y > c.lastScrollY || (c.lastScrollMaxY > 0 && maxY <= 0)) {
 			c.scrollToBottom = true
 		}
+		c.lastScrollY = y
+		c.lastScrollMaxY = maxY
 	}
 	needScrollBottom := c.scrollToBottom && convID != 0
-	if needScrollBottom {
-		c.messagesScroll.X = 0
-		c.messagesScroll.Y = math.MaxFloat32
-	}
 	expandedSnap := make(map[string]bool, len(turns))
 	for i := range turns {
 		k := turns[i].key
@@ -884,6 +886,19 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 
 	scroll := bui.Scroll(cUI.Key("ai-chat-scroll"), &c.messagesScroll).FillWidth().Grow(1)
 	bui.Probe(scroll, "ai-chat-scroll")
+	scroll.ObserveInput(func(ev ui.InputEvent) {
+		if ev.Kind != ui.InputScroll {
+			return
+		}
+		c.mu.Lock()
+		if ev.DY < 0 {
+			c.scrollToBottom = false
+			c.scrollToBottomForce = false
+		} else if ev.DY > 0 && c.messagesScroll.Y >= c.messagesScroll.MaxY-2 {
+			c.scrollToBottom = true
+		}
+		c.mu.Unlock()
+	})
 	scrollH := scroll.Bounds().H
 	if needScrollBottom && scrollH <= 0 {
 		c.requestRedraw()
@@ -894,6 +909,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	visBot := scrollY + scrollH + overscan
 
 	scroll.Children(func() {
+		skipScrollBottom := false
 		outer := ui.Column(cUI).FillWidth().Padding(16).Gap(16).Selectable()
 		if fullscreen {
 			outer.MaxWidth(720).Margin(0, ui.Auto)
@@ -947,7 +963,9 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 						steps, notes = appendStreamingProcess(steps, notes, partial, partialSteps)
 					}
 					if len(steps) > 0 {
-						c.renderProcessCard(cUI, pal, t.key, t.outcome, steps, notes, turnStreaming)
+						if c.renderProcessCard(cUI, pal, t.key, t.outcome, steps, notes, turnStreaming) {
+							skipScrollBottom = true
+						}
 					}
 
 					for _, card := range t.cards {
@@ -984,6 +1002,10 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 				}
 			}
 		})
+		anchor := ui.Box(cUI.Key("ai-chat-bottom")).Height(0)
+		if needScrollBottom && !skipScrollBottom {
+			anchor.ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollEnd})
+		}
 	})
 }
 
@@ -1481,11 +1503,12 @@ func collectTurnSources(turn []model.ChatMessage) []model.SourceNote {
 	return out
 }
 
-func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, outcome string, steps []model.ProcessStep, notes []string, streaming bool) {
+func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, outcome string, steps []model.ProcessStep, notes []string, streaming bool) bool {
 	c.mu.RLock()
 	// 执行中只显示最新一步和已完成步骤的图标轨迹，完整列表按用户点开状态展示。
 	expanded := c.expandedProcess[turnKey]
 	c.mu.RUnlock()
+	localScroll := false
 
 	headline := fmt.Sprintf("%d 步执行完成", len(steps))
 	if theme.IsEn() {
@@ -1502,11 +1525,13 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 	card := ui.Column(cUI.Key("ai-process-card-" + turnKey)).FillWidth().Gap(6).
 		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
 	bui.Probe(card, "ai-process-card")
-	bui.RevealOnExpand(card, !streaming && expanded)
+	bui.RevealOnExpand(card, expanded)
 
 	card.Children(func() {
 		if streaming {
-			c.renderProcessLive(cUI, pal, turnKey, steps, expanded)
+			if c.renderProcessLive(cUI, pal, turnKey, steps, expanded) {
+				localScroll = true
+			}
 		}
 		if !streaming {
 			toggleBtn := ui.ButtonBase(cUI.Key("ai-process-toggle-" + turnKey)).FillWidth().MinHeight(28).
@@ -1523,8 +1548,16 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 			})
 			if toggleBtn.Clicked() {
 				c.mu.Lock()
-				c.expandedProcess[turnKey] = !c.expandedProcess[turnKey]
+				next := !c.expandedProcess[turnKey]
+				c.expandedProcess[turnKey] = next
+				if next {
+					c.scrollToBottom = false
+					c.scrollToBottomForce = false
+				}
 				c.mu.Unlock()
+				if next {
+					localScroll = true
+				}
 			}
 		}
 
@@ -1594,8 +1627,16 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 						})
 						if row.Clicked() {
 							c.mu.Lock()
-							c.expandedStepDetails[stepKey] = !c.expandedStepDetails[stepKey]
+							next := !c.expandedStepDetails[stepKey]
+							c.expandedStepDetails[stepKey] = next
+							if next {
+								c.scrollToBottom = false
+								c.scrollToBottomForce = false
+							}
 							c.mu.Unlock()
+							if next {
+								localScroll = true
+							}
 						}
 
 						type stepDetailRevealKey struct{}
@@ -1621,6 +1662,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 								BorderWidth(0, 0, 0, 2).BorderColor(pal.Hairline)
 							bui.Probe(detBox, detID)
 							if justOpenedDetail {
+								localScroll = true
 								detBox.ScrollIntoView(ui.ScrollIntoViewOptions{
 									Block:     ui.ScrollNearest,
 									Animation: bui.JumpScrollAnimation(true),
@@ -1656,14 +1698,15 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 			})
 		}
 	})
+	return localScroll
 }
 
 // renderProcessLive draws a running turn as scheme D: the newest step on one line,
 // its title swept by a shimmer and swapped with a short slide as steps arrive,
 // over a trail of icons for the steps already finished.
-func (c *Controller) renderProcessLive(cUI *ui.Context, pal theme.Palette, turnKey string, steps []model.ProcessStep, expanded bool) {
+func (c *Controller) renderProcessLive(cUI *ui.Context, pal theme.Palette, turnKey string, steps []model.ProcessStep, expanded bool) bool {
 	if len(steps) == 0 {
-		return
+		return false
 	}
 	liveIdx := len(steps) - 1
 	live := steps[liveIdx]
@@ -1697,7 +1740,7 @@ func (c *Controller) renderProcessLive(cUI *ui.Context, pal theme.Palette, turnK
 	})
 
 	if liveIdx == 0 {
-		return
+		return false
 	}
 	// 轨迹左侧与实时行标题对齐（行内边距 + 图标 + 间距，减去自身内边距）。
 	trail := ui.ButtonBase(cUI.Key("ai-process-trail-"+turnKey)).AlignSelf(ui.Start).Margin(0, 0, 0, 22).
@@ -1726,9 +1769,16 @@ func (c *Controller) renderProcessLive(cUI *ui.Context, pal theme.Palette, turnK
 	})
 	if trail.Clicked() {
 		c.mu.Lock()
-		c.expandedProcess[turnKey] = !c.expandedProcess[turnKey]
+		next := !c.expandedProcess[turnKey]
+		c.expandedProcess[turnKey] = next
+		if next {
+			c.scrollToBottom = false
+			c.scrollToBottomForce = false
+		}
 		c.mu.Unlock()
+		return next
 	}
+	return false
 }
 
 func processStepIcon(kind model.ToolKind) icons.Icon {
