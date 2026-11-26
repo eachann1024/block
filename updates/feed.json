@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-26T14:43:10.843Z",
-  "latest_version": "1.0.943",
-  "latest_tag": "v1.0.943",
+  "updated_at": "2026-11-26T17:00:43.436Z",
+  "latest_version": "1.0.944",
+  "latest_tag": "v1.0.944",
   "releases": [
+    {
+      "version": "1.0.944",
+      "tag": "v1.0.944",
+      "published_at": "2026-11-26T17:00:42Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.944",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "标题栏：品牌菜单头部调整为单行展示，移除了网址链接。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Title Bar: The brand menu header is now displayed on a single line with the website link removed."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-macos-arm64.dmg",
+          "size": 15972569,
+          "sha256": "a1701c5cbdd2d198526d8a15b0b1583eadb00735f394b0e5d4a44b4919eca47e"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-macos-x64.dmg",
+          "size": 17619306,
+          "sha256": "da79d720bf1fd61e75c4713b6872f7bce46296e3c78fc746bda8291703ecf4b9"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-windows-x64-setup.exe",
+          "size": 13384503,
+          "sha256": "e568165460411466f618739f0d904da09df7d53fa897316e3b724d816c5e1c18"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-linux-x64.deb",
+          "size": 10849216,
+          "sha256": "4c17e0f59e0c6ec97d44e4fdd54fe3ee2c355d45ddb9958553b5f68e58718a9a"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-linux-x64.AppImage",
+          "size": 23906808,
+          "sha256": "f5601abacf6618ed21bac98d728082c2f9c62f963c2bb0490e37e4d95ef7e89c"
+        }
+      ]
+    },
     {
       "version": "1.0.943",
       "tag": "v1.0.943",
@@ -28,38 +84,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-macos-arm64.dmg",
-          "size": 16101276,
-          "sha256": "72c7fe43998f31784bab619a6705c899ad8ff6e731fe46c732f27905446457c5"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-macos-x64.dmg",
-          "size": 17757756,
-          "sha256": "e28ea3e85bd924b73e8463cdea4b32833fe0e3a30d8e6624d5790e15ee080e9f"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-windows-x64-setup.exe",
-          "size": 13505453,
-          "sha256": "4a143f3a947c5aab5abfeb62f95e47e1e5b88cb4f84dd16f034543faa2e5f6d2"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-linux-x64.deb",
-          "size": 10969482,
-          "sha256": "b6a2fc563db2b1d0c0fb8d2a353838f6b86d3ffc431f8168f3f34dcfa21583ca"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-linux-x64.AppImage",
-          "size": 24025592,
-          "sha256": "2bae51c21f4660b3080d6954b7ad246327125e682a04f0f428629c0fa31baa2c"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.942",
@@ -1623,31 +1648,6 @@
         "new": [],
         "improvements": [
           "The Store search field now consolidates source and sorting options into an inline filter button."
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.892",
-      "tag": "v1.0.892",
-      "published_at": "2026-11-21T08:41:28Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.892",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "查找和替换栏默认收起，点击切换按钮即可展开。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "The find and replace row is collapsed by default and can be expanded with a toggle."
         ],
         "fixes": [],
         "other": []
