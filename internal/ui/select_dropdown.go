@@ -30,6 +30,10 @@ type DropdownSelectState struct {
 	// Borderless renders the trigger with a transparent background and no border at rest,
 	// revealing a light hover background on interaction.
 	Borderless bool
+	// PreferAbove opens the menu above TriggerRect when space permits.
+	PreferAbove bool
+	// AlignLeft pins the menu's left edge to TriggerRect instead of right-aligning.
+	AlignLeft bool
 }
 
 // DropdownSelect renders an Ocean Paper dropdown trigger button and viewport-aware floating menu.
@@ -173,8 +177,16 @@ func selectMenu(c *ui.Context, id string, options []SelectOption, state *Dropdow
 	}
 
 	capH := float32(280)
-	spec := PlaceBelow(state.TriggerRect).
-		WithAlignX(AlignX{Kind: AlignRight}).
+	alignX := AlignX{Kind: AlignRight}
+	if state.AlignLeft {
+		alignX = AlignX{Kind: AlignLeft}
+	}
+	spec := PlaceBelow(state.TriggerRect)
+	if state.PreferAbove {
+		spec = PlaceAbove(state.TriggerRect)
+	}
+	spec = spec.
+		WithAlignX(alignX).
 		WithGap(theme.Space6).
 		WithMargin(theme.Space8).
 		WithReserveHeight(min(float32(len(options))*30+theme.Space12, capH))
