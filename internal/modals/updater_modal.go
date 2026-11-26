@@ -3,6 +3,7 @@ package modals
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"block/internal/icons"
 	"block/internal/model"
@@ -16,11 +17,29 @@ import (
 // OpenUpdater opens the application update dialog and triggers an initial check if idle.
 func (m *Manager) OpenUpdater() {
 	m.updaterOpen = true
+	m.updaterPreview = nil
+	m.updaterSourceMenu = internalui.DropdownSelectState{
+		PreferAbove: true,
+		AlignLeft:   true,
+	}
 	if m.Updater != nil {
 		snap := m.Updater.Snapshot()
 		if snap.Status == updater.StatusIdle {
 			m.Updater.CheckAsync(true)
 		}
+	}
+	m.requestRedraw()
+}
+
+// OpenUpdaterPreview opens the application update dialog with a caller-supplied
+// snapshot for offscreen layout and snapshot verification without mutating the updater service.
+func (m *Manager) OpenUpdaterPreview(snap updater.Snapshot) {
+	cp := snap
+	m.updaterOpen = true
+	m.updaterPreview = &cp
+	m.updaterSourceMenu = internalui.DropdownSelectState{
+		PreferAbove: true,
+		AlignLeft:   true,
 	}
 	m.requestRedraw()
 }
@@ -31,6 +50,8 @@ func (m *Manager) CloseUpdater() {
 		return
 	}
 	m.updaterOpen = false
+	m.updaterPreview = nil
+	m.updaterSourceMenu.Open = false
 	m.requestRedraw()
 }
 
@@ -61,23 +82,25 @@ func updaterModalTitle(snap updater.Snapshot, showEn bool) string {
 	}
 }
 
-func updaterIdleInfoText(snap updater.Snapshot, showEn bool) string {
-	switch snap.Status {
-	case updater.StatusChecking:
-		return updaterTr(showEn, "正在连接更新源检查新版本…", "Checking update sources…")
-	case updater.StatusAvailable:
-		if snap.PackageManaged {
-			return updaterTr(showEn, "通过包管理器安装，可在包管理器或下载页升级", "Managed by system package manager; update there or via Releases")
-		}
-		if snap.DownloadPath != "" && !snap.InPlace {
-			return updaterTr(showEn, "安装包已校验完成，打开即可安装", "Installer verified and ready to open")
-		}
-		if snap.TotalBytes > 0 {
-			return fmt.Sprintf("%s %s · SHA-256", updaterTr(showEn, "安装包", "Package"), formatMegabytes(snap.TotalBytes))
-		}
-		return fmt.Sprintf("%s v%s", updaterTr(showEn, "当前版本", "Installed"), snap.CurrentVersion)
+func updaterVersionLabel(snap updater.Snapshot) string {
+	if snap.Notes.FromVersion != "" && snap.Notes.ToVersion != "" &&
+		updater.CompareVersion(snap.Notes.FromVersion, snap.Notes.ToVersion) < 0 {
+		return fmt.Sprintf("v%s → v%s", snap.Notes.FromVersion, snap.Notes.ToVersion)
+	}
+	if snap.LatestVersion != "" && updater.CompareVersion(snap.CurrentVersion, snap.LatestVersion) < 0 {
+		return fmt.Sprintf("v%s → v%s", snap.CurrentVersion, snap.LatestVersion)
+	}
+	return fmt.Sprintf("v%s", snap.CurrentVersion)
+}
+
+func updaterSourceLabel(mode updater.SourceMode, showEn bool) string {
+	switch mode {
+	case updater.SourceMirror:
+		return updaterTr(showEn, "国内镜像", "CN Mirror")
+	case updater.SourceGitHub:
+		return "GitHub"
 	default:
-		return updaterTr(showEn, "已是最新版", "Up to date")
+		return updaterTr(showEn, "自动", "Auto")
 	}
 }
 
@@ -88,21 +111,28 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 	showEn := theme.IsEn()
 
 	var snap updater.Snapshot
-	if m.Updater != nil {
+	switch {
+	case m.updaterPreview != nil:
+		snap = *m.updaterPreview
+	case m.Updater != nil:
 		snap = m.Updater.Snapshot()
-	} else {
+	default:
 		cur := updater.CurrentVersion()
 		snap = updater.Snapshot{
 			Status:         updater.StatusUpToDate,
 			CurrentVersion: cur,
 			LatestVersion:  cur,
-			SourceMode:     updater.SourceAuto,
+			SourceMode:     updater.NormalizeSourceMode(m.currentState().UpdateSource),
 			ViewMode:       updater.ViewMerged,
 			Notes: updater.AggregatedNotes{
 				FromVersion: cur,
 				ToVersion:   cur,
 			},
 		}
+	}
+
+	if snap.Status == updater.StatusDownloading || snap.Status == updater.StatusInstalling {
+		m.updaterSourceMenu.Open = false
 	}
 
 	title := updaterModalTitle(snap, showEn)
@@ -112,9 +142,9 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 		MaxHeight: theme.UpdaterModalMaxHeight,
 		Centered:  true,
 	}, func() {
-		ui.Column(c).FillWidth().Clip().Children(func() {
-			ui.Row(c.Key("updater-header")).FillWidth().
-				Padding(theme.Space16, theme.Space20, theme.Space12, theme.Space20).
+		ui.Column(c).FillWidth().Clip().Padding(theme.Space20, 0, theme.Space16, 0).Gap(theme.Space20).Children(func() {
+			// 1. Light Header: App Icon + Title/Version + optional View Toggle + Close.
+			ui.Row(c.Key("updater-header")).FillWidth().PaddingX(theme.Space20).
 				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space12).Grow(1).MinWidth(0).Children(func() {
 					ui.Box(c.Key("updater-app-icon")).
@@ -124,41 +154,46 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 						internalui.CatMark(c, theme.UpdaterHeaderMarkSize, uPal.Mark)
 					})
 
-					ui.Column(c).Gap(theme.Space4).Grow(1).MinWidth(0).Children(func() {
-						ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
-							ui.Text(c, title).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
-								FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
-
-							if snap.Notes.VersionCount > 1 {
-								countText := fmt.Sprintf(updaterTr(showEn, "汇总 %d 个版本", "%d Releases"), snap.Notes.VersionCount)
-								ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).AlignItems(ui.Center).
-									Radius(theme.RadiusPill).Background(uPal.VersionPillBG).Border(1, uPal.VersionPillBorder).Children(func() {
-									ui.Text(c, countText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-										FontWeight(theme.WeightControl).TextColor(uPal.VersionPillFG).SingleLine()
-								})
-							}
-						})
-
-						verLabel := fmt.Sprintf("v%s", snap.CurrentVersion)
-						if snap.Notes.FromVersion != "" && snap.Notes.ToVersion != "" &&
-							updater.CompareVersion(snap.Notes.FromVersion, snap.Notes.ToVersion) < 0 {
-							verLabel = fmt.Sprintf("v%s → v%s", snap.Notes.FromVersion, snap.Notes.ToVersion)
-						} else if snap.LatestVersion != "" && updater.CompareVersion(snap.CurrentVersion, snap.LatestVersion) < 0 {
-							verLabel = fmt.Sprintf("v%s → v%s", snap.CurrentVersion, snap.LatestVersion)
-						}
-						ui.Text(c, verLabel).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-							TextColor(pal.TextSecondary).SingleLine()
+					ui.Column(c).Gap(theme.Space2).Grow(1).MinWidth(0).Children(func() {
+						ui.Text(c, title).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
+							FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+						ui.Text(c, updaterVersionLabel(snap)).Font("monospace").
+							FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+							TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
 					})
 				})
 
-				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space12).Shrink(0).Children(func() {
-					if pubDate := updater.ShortDate(snap.PublishedAt); pubDate != "" {
-						ui.Text(c, pubDate).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-							TextColor(pal.TextSecondary).SingleLine()
+				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0).Children(func() {
+					if snap.Notes.VersionCount > 1 {
+						isByVer := snap.ViewMode == updater.ViewByVersion
+						toggleIc := icons.History
+						toggleTip := updaterTr(showEn, "按版本查看", "By Version")
+						if isByVer {
+							toggleIc = icons.ListBullet
+							toggleTip = updaterTr(showEn, "按分类查看", "By Category")
+						}
+						toggleBtn := internalui.IconButton(c, toggleIc, internalui.IconButtonOptions{
+							ID:      "updater-view-toggle",
+							Label:   toggleTip,
+							Tooltip: toggleTip,
+						})
+						if toggleBtn.Clicked() {
+							next := updater.ViewByVersion
+							if isByVer {
+								next = updater.ViewMerged
+							}
+							if m.updaterPreview != nil {
+								m.updaterPreview.ViewMode = next
+							} else if m.Updater != nil {
+								m.Updater.SetViewMode(next)
+							}
+						}
 					}
+
 					cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-						ID:    "updater-close",
-						Label: updaterTr(showEn, "关闭", "Close"),
+						ID:      "updater-close",
+						Label:   updaterTr(showEn, "关闭", "Close"),
+						Tooltip: updaterTr(showEn, "关闭", "Close"),
 					})
 					if cls.Clicked() {
 						m.CloseUpdater()
@@ -166,99 +201,46 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 				})
 			})
 
-			ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
-
-			// 2. Scheme A Shell Toolbar: Left View Mode Segmented + Right Source Selector & Latency Badge.
-			ui.Row(c.Key("updater-toolbar")).FillWidth().
-				Padding(theme.Space10, theme.Space20).Background(pal.Shell).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space10).Children(func() {
-				viewIdx := 0
-				if snap.ViewMode == updater.ViewByVersion {
-					viewIdx = 1
-				}
-				if internalui.SegmentedControlWithOptions(c, "updater-view-seg", &viewIdx, []internalui.SegmentOption{
-					{ID: "updater-view-merged", Label: updaterTr(showEn, "分类合并", "By Category")},
-					{ID: "updater-view-versions", Label: updaterTr(showEn, "按版本明细", "By Version")},
-				}, internalui.SegmentedControlOptions{CardTrack: true}) {
-					if m.Updater != nil {
-						if viewIdx == 1 {
-							m.Updater.SetViewMode(updater.ViewByVersion)
-						} else {
-							m.Updater.SetViewMode(updater.ViewMerged)
-						}
-					}
-				}
-
-				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
-					srcIdx := 0
-					switch snap.SourceMode {
-					case updater.SourceMirror:
-						srcIdx = 1
-					case updater.SourceGitHub:
-						srcIdx = 2
-					}
-					if internalui.SegmentedControlWithOptions(c, "updater-source-seg", &srcIdx, []internalui.SegmentOption{
-						{ID: "updater-src-auto", Label: updaterTr(showEn, "自动", "Auto")},
-						{ID: "updater-src-mirror", Label: updaterTr(showEn, "国内镜像", "CN Mirror")},
-						{ID: "updater-src-github", Label: "GitHub"},
-					}, internalui.SegmentedControlOptions{CardTrack: true}) {
-						modes := []updater.SourceMode{updater.SourceAuto, updater.SourceMirror, updater.SourceGitHub}
-						picked := modes[srcIdx]
-						if m.Updater != nil {
-							m.Updater.SetSourceMode(picked)
-							if snap.Status == updater.StatusError || snap.Status == updater.StatusIdle || snap.Status == updater.StatusUpToDate {
-								m.Updater.CheckAsync(true)
-							}
-						} else {
-							m.mutateState(func(s *model.AppState) {
-								s.UpdateSource = string(picked)
-							})
-						}
-					}
-
-					if snap.FetchLatencyMs > 0 {
-						ui.Text(c, fmt.Sprintf("%d ms", snap.FetchLatencyMs)).Font("monospace").FontSize(theme.FontMeta).
-							FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).SingleLine()
-					}
-				})
-			})
-
-			ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
-
-			// 3. Scrollable Bilingual Release Notes Body (Scheme A Section Cards).
+			// 2. Scrollable Release Notes Body (cardless, divider-free two-column list).
 			notesScroll := internalui.Scroll(c.Key("updater-notes-scroll"), &m.updaterScroll).
 				Column().FillWidth().MaxHeight(theme.UpdaterNotesMaxHeight).
-				Padding(theme.Space16, theme.Space20).Gap(theme.Space12)
+				PaddingX(theme.Space20).Gap(theme.Space16)
 			internalui.Probe(notesScroll, "updater-notes-scroll")
 			notesScroll.Children(func() {
-				if snap.ViewMode == updater.ViewByVersion && len(snap.Notes.Versions) > 0 {
-					for idx, verEntry := range snap.Notes.Versions {
-						entry := verEntry
-						isLatest := idx == 0
-						renderVersionTimelineCard(c, entry, isLatest, showEn, pal, uPal)
+				if snap.Status == updater.StatusError {
+					errMsg := strings.TrimSpace(snap.ErrorMessage)
+					if errMsg == "" {
+						errMsg = updaterTr(showEn, "更新请求失败，请检查网络或切换更新源", "Update failed; check network or switch update source")
 					}
+					errEl := ui.Text(c, errMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+						TextColor(pal.Danger).FillWidth().SingleLine().Ellipsis("…")
+					internalui.WrappedTooltip(c, errEl, errMsg)
+				}
+
+				if snap.ViewMode == updater.ViewByVersion && len(snap.Notes.Versions) > 0 {
+					renderVersionHangingList(c, snap.Notes.Versions, showEn, pal)
 					return
 				}
 
 				tagged := snap.Notes.TaggedForLanguage(showEn)
 				if tagged.IsEmpty() {
+					if snap.Status == updater.StatusError {
+						return
+					}
 					emptyMsg := updaterTr(showEn, "暂无可展示的更新日志", "No release notes available yet")
 					if snap.Status == updater.StatusChecking {
 						emptyMsg = updaterTr(showEn, "正在获取更新日志…", "Loading release notes…")
 					}
-					ui.Row(c).FillWidth().PaddingY(theme.Space24).Justify(ui.Center).Children(func() {
+					ui.Row(c).FillWidth().PaddingY(theme.Space16).Justify(ui.Center).Children(func() {
 						ui.Text(c, emptyMsg).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
 					})
 					return
 				}
-				renderTaggedMergedSections(c, tagged, snap.Notes.VersionCount > 1, showEn, pal, uPal)
+				renderTaggedHangingList(c, tagged, snap.Notes.VersionCount > 1, showEn, pal)
 			})
 
-			ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
-
-			// 4. Scheme A State-Driven Footer (Available / Downloading / Ready / Installing / Error).
-			ui.Column(c.Key("updater-footer")).FillWidth().
-				Padding(theme.Space12, theme.Space20, theme.Space16, theme.Space20).Children(func() {
+			// 3. Divider-free Footer: Source Picker (hidden during download/install) + State Actions.
+			ui.Column(c.Key("updater-footer")).FillWidth().PaddingX(theme.Space20).Children(func() {
 				m.renderUpdaterFooter(c, snap, showEn, pal, uPal)
 			})
 		})
@@ -269,58 +251,34 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 	}
 }
 
-func renderTaggedMergedSections(
+func renderTaggedHangingList(
 	c *ui.Context,
 	notes updater.TaggedLocalizedNotes,
 	showVersionTag bool,
 	showEn bool,
 	pal theme.Palette,
-	uPal theme.UpdaterPalette,
 ) {
 	if hl := strings.TrimSpace(notes.Highlights); hl != "" {
-		ui.Row(c.Key("merged-hl")).FillWidth().Padding(theme.Space12, theme.Space16).
-			Radius(theme.RadiusLG).Background(pal.Card).Border(1, pal.Hairline).Children(func() {
-			ui.Text(c, hl).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-				FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0)
-		})
+		ui.Text(c.Key("merged-hl"), hl).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+			TextColor(pal.Text).FillWidth()
 	}
 
 	type taggedGroup struct {
 		id    string
-		title string
-		fg    ui.Color
-		bg    ui.Color
+		label string
+		dot   ui.Color
 		items []updater.TaggedBullet
 	}
 	groups := []taggedGroup{
-		{
-			id:    "new",
-			title: updaterTr(showEn, "新增功能", "Features"),
-			fg:    uPal.CategoryNewFG,
-			bg:    uPal.CategoryNewBG,
-			items: notes.New,
-		},
-		{
-			id:    "imp",
-			title: updaterTr(showEn, "体验优化", "Improvements"),
-			fg:    uPal.CategoryImpFG,
-			bg:    uPal.CategoryImpBG,
-			items: notes.Improvements,
-		},
-		{
-			id:    "fix",
-			title: updaterTr(showEn, "问题修复", "Fixes"),
-			fg:    uPal.CategoryFixFG,
-			bg:    uPal.CategoryFixBG,
-			items: notes.Fixes,
-		},
-		{
-			id:    "other",
-			title: updaterTr(showEn, "其他改动", "Other"),
-			fg:    pal.TextSecondary,
-			bg:    pal.Shell,
-			items: notes.Other,
-		},
+		{id: "new", label: updaterTr(showEn, "新增", "New"), dot: pal.Accent, items: notes.New},
+		{id: "imp", label: updaterTr(showEn, "优化", "Improved"), dot: pal.Success, items: notes.Improvements},
+		{id: "fix", label: updaterTr(showEn, "修复", "Fixed"), dot: pal.Warning, items: notes.Fixes},
+		{id: "other", label: updaterTr(showEn, "其他", "Other"), dot: pal.TextSecondary, items: notes.Other},
+	}
+
+	colW := theme.UpdaterCatColWidthZH
+	if showEn {
+		colW = theme.UpdaterCatColWidthEN
 	}
 
 	for _, g := range groups {
@@ -328,102 +286,131 @@ func renderTaggedMergedSections(
 			continue
 		}
 		grp := g
-		ui.Column(c.Key("merged-card-"+grp.id)).FillWidth().
-			Padding(theme.Space12, theme.Space16).Gap(theme.Space10).
-			Radius(theme.RadiusLG).Background(pal.Card).Border(1, pal.Hairline).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
-				ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).AlignItems(ui.Center).
-					Radius(theme.RadiusSM).Background(grp.bg).Children(func() {
-					ui.Text(c, grp.title).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						FontWeight(theme.WeightControl).TextColor(grp.fg).SingleLine()
-				})
-				countLabel := fmt.Sprintf(updaterTr(showEn, "%d 项", "%d items"), len(grp.items))
-				ui.Text(c, countLabel).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-					TextColor(pal.Placeholder).SingleLine()
+		ui.Row(c.Key("merged-grp-"+grp.id)).FillWidth().MinWidth(0).
+			Gap(theme.Space12).AlignItems(ui.Start).Children(func() {
+			ui.Row(c).Width(colW).Height(theme.LineBody).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
+				ui.Box(c).Size(theme.UpdaterBadgeDotSize, theme.UpdaterBadgeDotSize).
+					Radius(theme.RadiusPill).Background(grp.dot).Shrink(0)
+				ui.Text(c, grp.label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+					TextColor(pal.TextSecondary).SingleLine()
 			})
 
-			ui.Column(c).FillWidth().Gap(theme.Space8).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space8).Children(func() {
 				for i, bullet := range grp.items {
 					b := bullet
-					ui.Row(c.Key(fmt.Sprintf("merged-%s-%d", grp.id, i))).FillWidth().Gap(theme.Space8).AlignItems(ui.Start).Children(func() {
-						renderAccentBulletDot(c, pal)
-						ui.Text(c, b.Text).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1).MinWidth(0)
-						if showVersionTag && b.Version != "" {
-							verTag := b.Version
-							if !strings.HasPrefix(verTag, "v") {
-								verTag = "v" + verTag
-							}
-							ui.Text(c, verTag).Font("monospace").FontSize(theme.FontMeta).
-								FixedLineHeight(theme.LineBody).TextColor(pal.Placeholder).Shrink(0).SingleLine()
+					verTag := ""
+					if showVersionTag && b.Version != "" {
+						verTag = b.Version
+						if !strings.HasPrefix(verTag, "v") {
+							verTag = "v" + verTag
 						}
-					})
+					}
+					renderUpdaterBulletText(c.Key(fmt.Sprintf("merged-%s-%d", grp.id, i)), b.Text, verTag, pal)
 				}
 			})
 		})
 	}
 }
 
-func renderVersionTimelineCard(
+func renderVersionHangingList(
 	c *ui.Context,
-	entry updater.ReleaseEntry,
-	isLatest bool,
+	versions []updater.ReleaseEntry,
 	showEn bool,
 	pal theme.Palette,
-	uPal theme.UpdaterPalette,
 ) {
-	sec := updater.VersionForLanguage(entry, showEn)
-	var flat []string
-	if hl := strings.TrimSpace(sec.Highlights); hl != "" {
-		flat = append(flat, hl)
-	}
-	flat = append(flat, sec.New...)
-	flat = append(flat, sec.Improvements...)
-	flat = append(flat, sec.Fixes...)
-	flat = append(flat, sec.Other...)
+	for _, verEntry := range versions {
+		entry := verEntry
+		sec := updater.VersionForLanguage(entry, showEn)
+		var flat []string
+		if hl := strings.TrimSpace(sec.Highlights); hl != "" {
+			flat = append(flat, hl)
+		}
+		flat = append(flat, sec.New...)
+		flat = append(flat, sec.Improvements...)
+		flat = append(flat, sec.Fixes...)
+		flat = append(flat, sec.Other...)
 
-	ui.Column(c.Key("updater-ver-"+entry.Version)).FillWidth().
-		Padding(theme.Space12, theme.Space16).Gap(theme.Space8).
-		Radius(theme.RadiusLG).Background(pal.Card).Border(1, pal.Hairline).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+		ui.Row(c.Key("updater-ver-"+entry.Version)).FillWidth().MinWidth(0).
+			Gap(theme.Space12).AlignItems(ui.Start).Children(func() {
+			ui.Row(c).Width(theme.UpdaterVerColWidth).Height(theme.LineBody).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
+				ui.Box(c).Size(theme.UpdaterBadgeDotSize, theme.UpdaterBadgeDotSize).
+					Radius(theme.RadiusPill).Background(pal.Accent).Shrink(0)
 				ui.Text(c, "v"+entry.Version).Font("monospace").FontSize(theme.FontSmall).
-					FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightMono).TextColor(pal.Text).SingleLine()
-				if isLatest {
-					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).AlignItems(ui.Center).
-						Radius(theme.RadiusXS).Background(uPal.VersionPillBG).Children(func() {
-						ui.Text(c, updaterTr(showEn, "最新", "Latest")).FontSize(theme.FontMeta).
-							FixedLineHeight(theme.LineMeta).FontWeight(theme.WeightControl).TextColor(uPal.VersionPillFG).SingleLine()
-					})
+					FixedLineHeight(theme.LineBody).FontWeight(theme.WeightMono).
+					TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+			})
+
+			ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space8).Children(func() {
+				if len(flat) == 0 {
+					ui.Text(c, updaterTr(showEn, "常规稳定性与性能维护。", "Routine stability and maintenance improvements.")).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).FillWidth()
+					return
+				}
+				for i, line := range flat {
+					renderUpdaterBulletText(c.Key(fmt.Sprintf("ver-%s-%d", entry.Version, i)), line, "", pal)
 				}
 			})
-			if d := updater.ShortDate(entry.PublishedAt); d != "" {
-				ui.Text(c, d).Font("monospace").FontSize(theme.FontMeta).
-					FixedLineHeight(theme.LineMeta).TextColor(pal.Placeholder).SingleLine()
-			}
 		})
-
-		if len(flat) == 0 {
-			ui.Text(c, updaterTr(showEn, "常规稳定性与性能维护。", "Routine stability and maintenance improvements.")).
-				FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
-			return
-		}
-		ui.Column(c).FillWidth().Gap(theme.Space6).Children(func() {
-			for i, line := range flat {
-				text := line
-				ui.Row(c.Key(fmt.Sprintf("ver-%s-%d", entry.Version, i))).FillWidth().Gap(theme.Space8).AlignItems(ui.Start).Children(func() {
-					renderAccentBulletDot(c, pal)
-					ui.Text(c, text).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1).MinWidth(0)
-				})
-			}
-		})
-	})
+	}
 }
 
-func renderAccentBulletDot(c *ui.Context, pal theme.Palette) {
-	ui.Box(c).Width(theme.UpdaterBulletBoxWidth).Height(theme.LineBody).Center().Shrink(0).Children(func() {
-		ui.Box(c).Width(theme.UpdaterBulletDotSize).Height(theme.UpdaterBulletDotSize).
-			Radius(theme.RadiusPill).Background(pal.Accent)
-	})
+func renderUpdaterBulletText(c *ui.Context, text, verTag string, pal theme.Palette) {
+	var spans []ui.Span
+	if prefix, rest, ok := splitUpdaterNotePrefix(text); ok {
+		spans = append(spans,
+			ui.Span{Text: prefix, Size: theme.FontBody, Color: pal.Placeholder},
+			ui.Span{Text: rest, Size: theme.FontBody, Color: pal.Text},
+		)
+	} else {
+		spans = append(spans, ui.Span{Text: text, Size: theme.FontBody, Color: pal.Text})
+	}
+	if verTag != "" {
+		spans = append(spans, ui.Span{
+			Text:  "  " + verTag,
+			Font:  "monospace",
+			Size:  theme.FontMeta,
+			Color: pal.Placeholder,
+		})
+	}
+	ui.RichText(c, spans...).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FillWidth().MinWidth(0)
+}
+
+func splitUpdaterNotePrefix(text string) (prefix, rest string, ok bool) {
+	if text == "" || strings.HasPrefix(text, "http://") || strings.HasPrefix(text, "https://") {
+		return "", text, false
+	}
+	idx := -1
+	sepLen := 0
+	for i, r := range text {
+		if r == '：' || r == ':' {
+			if r == ':' && strings.HasPrefix(text[i:], "://") {
+				return "", text, false
+			}
+			idx = i
+			sepLen = utf8.RuneLen(r)
+			break
+		}
+		if r == '\n' || r == '/' {
+			return "", text, false
+		}
+	}
+	if idx <= 0 {
+		return "", text, false
+	}
+	head := strings.TrimSpace(text[:idx])
+	runeLen := utf8.RuneCountInString(head)
+	if runeLen < 1 || runeLen > 12 {
+		return "", text, false
+	}
+	after := strings.TrimLeft(text[idx+sepLen:], " ")
+	if after == "" {
+		return "", text, false
+	}
+	sep := text[idx : idx+sepLen]
+	if sep == ":" {
+		sep = ": "
+	}
+	return head + sep, after, true
 }
 
 func (m *Manager) renderUpdaterFooter(
@@ -435,161 +422,119 @@ func (m *Manager) renderUpdaterFooter(
 ) {
 	switch snap.Status {
 	case updater.StatusDownloading:
-		ui.Column(c.Key("updater-footer-downloading")).FillWidth().Gap(theme.Space10).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Grow(1).MinWidth(0).Children(func() {
-					var titleText string
-					if snap.Preparing {
-						titleText = updaterTr(showEn, "校验通过，正在解包准备更新…", "Verified, preparing update bundle…")
-						ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent).Label(titleText)
-					} else {
-						titleText = fmt.Sprintf("%s v%s · %d%%",
-							updaterTr(showEn, "正在下载", "Downloading"),
-							snap.LatestVersion,
-							snap.Percent,
-						)
-					}
-					ui.Text(c, titleText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-						FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-
-					var detailParts []string
-					if snap.TotalBytes > 0 && !snap.Preparing {
-						detailParts = append(detailParts, fmt.Sprintf("%s / %s", formatMegabytes(snap.DownloadedBytes), formatMegabytes(snap.TotalBytes)))
-					}
-					if snap.SpeedMBps > 0.05 && !snap.Preparing {
-						detailParts = append(detailParts, fmt.Sprintf("%.1f MB/s", snap.SpeedMBps))
-					}
-					if len(detailParts) > 0 {
-						ui.Text(c, strings.Join(detailParts, " · ")).Font("monospace").FontSize(theme.FontMeta).
-							FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).SingleLine()
-					}
-				})
-
-				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
-					abortBtn := internalui.BtnCancel(c, "updater-abort-download", internalui.PresetOptions{
-						Label:    updaterTr(showEn, "取消", "Cancel"),
-						Height:   theme.HeightCompact,
-						PaddingX: theme.Space10,
-					})
-					if abortBtn.Clicked() && m.Updater != nil {
-						m.Updater.CancelDownload()
-					}
-
-					bgIc := icons.ChevronDown
-					bgBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-						ID:       "updater-bg-download",
-						Label:    updaterTr(showEn, "后台下载", "Hide"),
-						Leading:  &bgIc,
-						Style:    internalui.ButtonGhost,
-						Height:   theme.HeightCompact,
-						PaddingX: theme.Space10,
-					})
-					if bgBtn.Clicked() {
-						m.CloseUpdater()
-					}
-				})
+		ui.Row(c.Key("updater-footer-downloading")).FillWidth().AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+			abortBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+				ID:       "updater-abort-download",
+				Label:    updaterTr(showEn, "取消", "Cancel"),
+				Style:    internalui.ButtonGhost,
+				Height:   theme.HeightLarge,
+				PaddingX: theme.Space12,
 			})
+			if abortBtn.Clicked() && m.Updater != nil {
+				m.Updater.CancelDownload()
+			}
 
-			track := ui.Box(c.Key("updater-progress-track")).FillWidth().Height(theme.UpdaterProgressHeight).
-				Radius(theme.RadiusPill).Background(uPal.ProgressTrack).Clip()
-			track.Children(func() {
-				pct := float32(snap.Percent)
-				if pct < 2 {
-					pct = 2
+			var label string
+			pct := float32(snap.Percent)
+			if snap.Preparing {
+				label = updaterTr(showEn, "正在准备更新…", "Preparing update…")
+				pct = 100
+			} else {
+				label = fmt.Sprintf("%s %d%%", updaterTr(showEn, "下载中", "Downloading"), snap.Percent)
+				if snap.SpeedMBps > 0.05 {
+					label = fmt.Sprintf("%s · %.1f MB/s", label, snap.SpeedMBps)
 				}
-				ui.Box(c.Key("updater-progress-fill")).WidthPercent(pct).Height(theme.UpdaterProgressHeight).
-					Radius(theme.RadiusPill).Background(uPal.ProgressFill)
-			})
+			}
+			renderUpdaterProgressButton(c, label, pct, pal, uPal, false, theme.UpdaterModalWidth-theme.Space20*2-76)
+		})
+
+	case updater.StatusInstalling:
+		ui.Row(c.Key("updater-footer-installing")).FillWidth().AlignItems(ui.Center).Children(func() {
+			label := updaterTr(showEn, "正在保存笔记并重启…", "Saving notes and restarting…")
+			renderUpdaterProgressButton(c, label, 100, pal, uPal, true, theme.UpdaterModalWidth-theme.Space20*2)
 		})
 
 	case updater.StatusReady:
-		ui.Row(c.Key("updater-footer-ready")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Grow(1).MinWidth(0).Children(func() {
-				icons.Draw(c, icons.Check, theme.IconAction, pal.DuoIconColors(pal.Success))
-				ui.Text(c, updaterTr(showEn, "重启时自动保存笔记", "Notes are saved on restart")).
-					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine()
-			})
-
-			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
-				laterBtn := internalui.BtnLater(c, "updater-cancel", internalui.PresetOptions{
-					Label: updaterTr(showEn, "稍后提醒", "Later"),
+		ui.Row(c.Key("updater-footer-ready")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
+			m.renderUpdaterSourcePicker(c, snap, showEn, pal)
+			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
+				laterBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+					ID:       "updater-cancel",
+					Label:    updaterTr(showEn, "稍后", "Later"),
+					Style:    internalui.ButtonGhost,
+					Height:   theme.HeightLarge,
+					PaddingX: theme.Space10,
 				})
 				if laterBtn.Clicked() {
 					m.CloseUpdater()
 				}
-				ic := icons.Refresh
-				submitBtn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "重启并更新", "Restart & Update"), &ic, internalui.ButtonPrimary, false)
+				submitBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+					ID:       "updater-submit",
+					Label:    updaterTr(showEn, "重启并更新", "Restart & Update"),
+					Style:    internalui.ButtonPrimary,
+					Height:   theme.HeightLarge,
+					PaddingX: theme.Space12,
+				})
 				if submitBtn.Clicked() && m.Updater != nil {
 					m.Updater.InstallNow()
 				}
 			})
 		})
 
-	case updater.StatusInstalling:
-		ui.Row(c.Key("updater-footer-installing")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Grow(1).MinWidth(0).Children(func() {
-				installingText := updaterTr(showEn, "正在保存笔记并重启 Block…", "Saving notes and restarting Block…")
-				ui.Spinner(c).FontSize(theme.IconAction).TextColor(pal.Accent).Label(installingText)
-				ui.Text(c, installingText).
-					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0)
-			})
-			internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-				ID:       "updater-submit",
-				Label:    updaterTr(showEn, "正在重启…", "Restarting…"),
-				Style:    internalui.ButtonPrimary,
-				Disabled: true,
+	case updater.StatusAvailable:
+		ui.Row(c.Key("updater-footer-available")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
+			m.renderUpdaterSourcePicker(c, snap, showEn, pal)
+			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
+				laterBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+					ID:       "updater-cancel",
+					Label:    updaterTr(showEn, "稍后", "Later"),
+					Style:    internalui.ButtonGhost,
+					Height:   theme.HeightLarge,
+					PaddingX: theme.Space10,
+				})
+				if laterBtn.Clicked() {
+					m.CloseUpdater()
+				}
+				renderUpdaterAvailablePrimaryButton(c, m, snap, showEn)
 			})
 		})
 
 	case updater.StatusError:
-		ui.Row(c.Key("updater-footer-error")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-			errMsg := snap.ErrorMessage
-			if errMsg == "" {
-				errMsg = updaterTr(showEn, "更新请求失败，请检查网络或切换更新源", "Update failed; check network or switch update source")
-			}
-			ui.Text(c, errMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-				TextColor(pal.Danger).Grow(1).MinWidth(0)
-
-			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
-				if snap.LogPath != "" && mygo.App.IsReady() {
-					revIc := icons.FolderReveal
-					logBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-						ID:       "updater-open-log",
-						Label:    updaterTr(showEn, "查看日志", "View Log"),
-						Leading:  &revIc,
-						Style:    internalui.ButtonGhost,
-						Height:   theme.HeightCompact,
-						PaddingX: theme.Space8,
+		ui.Row(c.Key("updater-footer-error")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
+			m.renderUpdaterSourcePicker(c, snap, showEn, pal)
+			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
+				if snap.LogPath != "" && (mygo.App.IsReady() || m.updaterPreview != nil) {
+					logBtn := internalui.IconButton(c, icons.FileLog, internalui.IconButtonOptions{
+						ID:           "updater-open-log",
+						Label:        updaterTr(showEn, "查看日志", "View Log"),
+						Tooltip:      updaterTr(showEn, "查看日志", "View Log"),
+						TooltipAbove: true,
+						Size:         theme.HeightLarge,
+						IconSize:     theme.IconAction,
 					})
-					if logBtn.Clicked() {
+					if logBtn.Clicked() && mygo.App.IsReady() {
 						mygo.Shell.ShowItemInFolder(snap.LogPath)
 					}
 				}
 				if snap.ReleaseURL != "" {
-					linkIc := icons.LinkOpen
-					webBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-						ID:       "updater-open-web",
-						Label:    updaterTr(showEn, "下载页", "Releases"),
-						Leading:  &linkIc,
-						Style:    internalui.ButtonGhost,
-						Height:   theme.HeightCompact,
-						PaddingX: theme.Space8,
+					webBtn := internalui.IconButton(c, icons.LinkOpen, internalui.IconButtonOptions{
+						ID:           "updater-open-web",
+						Label:        updaterTr(showEn, "下载页", "Releases"),
+						Tooltip:      updaterTr(showEn, "下载页", "Releases"),
+						TooltipAbove: true,
+						Size:         theme.HeightLarge,
+						IconSize:     theme.IconAction,
 					})
 					if webBtn.Clicked() {
 						c.OpenURL(snap.ReleaseURL)
 					}
 				}
-				closeBtn := internalui.BtnClose(c, "updater-cancel", internalui.PresetOptions{
-					Label: updaterTr(showEn, "关闭", "Close"),
-				})
-				if closeBtn.Clicked() {
-					m.CloseUpdater()
-				}
-				retryBtn := internalui.BtnRetry(c, "updater-submit", internalui.PresetOptions{
-					Label: updaterTr(showEn, "重试", "Retry"),
-					Style: internalui.StyleRef(internalui.ButtonPrimary),
+				retryBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+					ID:       "updater-submit",
+					Label:    updaterTr(showEn, "重试", "Retry"),
+					Style:    internalui.ButtonPrimary,
+					Height:   theme.HeightLarge,
+					PaddingX: theme.Space12,
 				})
 				if retryBtn.Clicked() && m.Updater != nil {
 					m.Updater.CheckAsync(true)
@@ -598,71 +543,196 @@ func (m *Manager) renderUpdaterFooter(
 		})
 
 	default:
-		ui.Row(c.Key("updater-footer-idle")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-			ui.Text(c, updaterIdleInfoText(snap, showEn)).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-				TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
-
-			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
-				var cancelBtn ui.Element
-				if snap.HasActionableUpdate() {
-					cancelBtn = internalui.BtnLater(c, "updater-cancel", internalui.PresetOptions{
-						Label: updaterTr(showEn, "稍后提醒", "Later"),
-					})
-				} else {
-					cancelBtn = internalui.BtnClose(c, "updater-cancel", internalui.PresetOptions{
-						Label: updaterTr(showEn, "关闭", "Close"),
-					})
-				}
-				if cancelBtn.Clicked() {
-					m.CloseUpdater()
-				}
-				renderUpdaterIdlePrimaryButton(c, m, snap, showEn)
+		ui.Row(c.Key("updater-footer-idle")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
+			m.renderUpdaterSourcePicker(c, snap, showEn, pal)
+			checking := snap.Status == updater.StatusChecking
+			label := updaterTr(showEn, "检查更新", "Check Now")
+			if checking {
+				label = updaterTr(showEn, "正在检查…", "Checking…")
+			}
+			refIc := icons.Refresh
+			var leading *icons.Icon
+			if checking {
+				leading = &refIc
+			}
+			btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+				ID:       "updater-submit",
+				Label:    label,
+				Leading:  leading,
+				Style:    internalui.ButtonPrimary,
+				Height:   theme.HeightLarge,
+				PaddingX: theme.Space12,
+				Disabled: checking,
+				Loading:  checking,
 			})
+			if btn.Clicked() && m.Updater != nil {
+				m.Updater.CheckAsync(true)
+			}
 		})
 	}
 }
 
-func renderUpdaterIdlePrimaryButton(c *ui.Context, m *Manager, snap updater.Snapshot, showEn bool) {
-	if snap.Status == updater.StatusAvailable {
-		if snap.PackageManaged {
-			linkIc := icons.LinkOpen
-			btn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "前往下载页", "Open Releases"), &linkIc, internalui.ButtonPrimary, false)
-			if btn.Clicked() && snap.ReleaseURL != "" {
-				c.OpenURL(snap.ReleaseURL)
-			}
-			return
-		}
-		if snap.DownloadPath != "" && !snap.InPlace {
-			revIc := icons.FolderReveal
-			btn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "查看安装包", "Show Installer"), &revIc, internalui.ButtonPrimary, false)
-			if btn.Clicked() && mygo.App.IsReady() {
-				mygo.Shell.ShowItemInFolder(snap.DownloadPath)
-			}
-			return
-		}
-		ic := icons.Download
-		btn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "立即更新", "Update Now"), &ic, internalui.ButtonPrimary, false)
-		if btn.Clicked() && m.Updater != nil {
-			m.Updater.StartDownload()
+func renderUpdaterAvailablePrimaryButton(c *ui.Context, m *Manager, snap updater.Snapshot, showEn bool) {
+	if snap.PackageManaged {
+		btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+			ID:       "updater-submit",
+			Label:    updaterTr(showEn, "前往下载页", "Open Releases"),
+			Style:    internalui.ButtonPrimary,
+			Height:   theme.HeightLarge,
+			PaddingX: theme.Space12,
+		})
+		if btn.Clicked() && snap.ReleaseURL != "" {
+			c.OpenURL(snap.ReleaseURL)
 		}
 		return
 	}
-
-	checking := snap.Status == updater.StatusChecking
-	label := updaterTr(showEn, "检查更新", "Check Now")
-	if checking {
-		label = updaterTr(showEn, "正在检查…", "Checking…")
+	if snap.DownloadPath != "" && !snap.InPlace {
+		btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+			ID:       "updater-submit",
+			Label:    updaterTr(showEn, "查看安装包", "Show Installer"),
+			Style:    internalui.ButtonPrimary,
+			Height:   theme.HeightLarge,
+			PaddingX: theme.Space12,
+		})
+		if btn.Clicked() && mygo.App.IsReady() {
+			mygo.Shell.ShowItemInFolder(snap.DownloadPath)
+		}
+		return
 	}
-	refIc := icons.Refresh
 	btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
 		ID:       "updater-submit",
-		Label:    label,
-		Leading:  &refIc,
+		Label:    updaterTr(showEn, "立即更新", "Update Now"),
 		Style:    internalui.ButtonPrimary,
-		Disabled: checking,
-		Loading:  checking,
+		Height:   theme.HeightLarge,
+		PaddingX: theme.Space12,
 	})
 	if btn.Clicked() && m.Updater != nil {
-		m.Updater.CheckAsync(true)
+		m.Updater.StartDownload()
+	}
+}
+
+func renderUpdaterProgressButton(
+	c *ui.Context,
+	label string,
+	pct float32,
+	pal theme.Palette,
+	uPal theme.UpdaterPalette,
+	fillWidth bool,
+	fallbackW float32,
+) {
+	pct = max(0, min(pct, 100))
+	track := ui.Box(c.Key("updater-progress-track")).
+		Height(theme.HeightLarge).Radius(theme.RadiusMD).
+		Background(uPal.ProgressTrack).Clip().
+		Disabled(true).DimDisabled(false).
+		Role(ui.RoleProgress).Label(label)
+	if fillWidth {
+		track.FillWidth()
+	} else {
+		track.Grow(1).MinWidth(0)
+	}
+	if b := track.Bounds(); b.W > 0 {
+		fallbackW = b.W
+	}
+	track.Children(func() {
+		ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Center().PaddingX(theme.Space12).Children(func() {
+			ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+				FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().Ellipsis("…")
+		})
+		if pct > 0 {
+			ui.Box(c.Key("updater-progress-fill")).Absolute().Left(0).Top(0).Bottom(0).
+				WidthPercent(pct).Background(uPal.ProgressFill).Clip().Children(func() {
+				ui.Row(c).Absolute().Left(0).Top(0).Bottom(0).Width(fallbackW).Center().PaddingX(theme.Space12).Children(func() {
+					ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightControl).TextColor(pal.AccentText).SingleLine().Ellipsis("…")
+				})
+			})
+		}
+	})
+	internalui.Probe(track, "updater-progress-track")
+}
+
+func (m *Manager) renderUpdaterSourcePicker(
+	c *ui.Context,
+	snap updater.Snapshot,
+	showEn bool,
+	pal theme.Palette,
+) {
+	srcLabel := updaterSourceLabel(snap.SourceMode, showEn)
+	dotCol := pal.Placeholder
+	switch {
+	case snap.Status == updater.StatusError:
+		dotCol = pal.Danger
+	case snap.FetchLatencyMs > 1000:
+		dotCol = pal.Warning
+	case snap.FetchLatencyMs > 0 || snap.ActiveChannel != "":
+		dotCol = pal.Success
+	}
+
+	open := m.updaterSourceMenu.Open
+	btn := ui.ButtonBase(c.Key("updater-source-btn")).
+		Height(theme.HeightLarge).PaddingX(theme.Space8).Gap(theme.Space6).
+		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+		MinWidth(0).Shrink(1).Label(srcLabel)
+	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+	fg := pal.TextSecondary
+	bg := ui.Transparent
+	switch {
+	case pressed:
+		fg = pal.Text
+		bg = pal.Selected
+	case hovered || open:
+		fg = pal.Text
+		bg = pal.Hover
+	}
+	internalui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+	internalui.TactileButton(btn, hovered, pressed, false)
+	btn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+		m.updaterSourceMenu.TriggerRect = r
+		if internalui.IsProbeEnabled() {
+			internalui.RecordBounds("updater-source-btn", r)
+		}
+	})
+	btn.Children(func() {
+		ui.Box(c).Size(theme.UpdaterBadgeDotSize, theme.UpdaterBadgeDotSize).
+			Radius(theme.RadiusPill).Background(dotCol).Shrink(0)
+		ui.Text(c, srcLabel).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+			FontWeight(theme.WeightControl).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0)
+		if snap.FetchLatencyMs > 0 {
+			ui.Text(c, fmt.Sprintf("%d ms", snap.FetchLatencyMs)).Font("monospace").
+				FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+				TextColor(pal.Placeholder).SingleLine().Shrink(0)
+		}
+		chev := icons.ChevronUp
+		if open {
+			chev = icons.ChevronDown
+		}
+		icons.DrawAnimated(c, chev, theme.IconMicro, pal.DuoIconColors(fg), open || hovered || pressed)
+	})
+	if btn.Clicked() {
+		m.updaterSourceMenu.Open = !m.updaterSourceMenu.Open
+		m.updaterSourceMenu.Cursor = -1
+	}
+
+	options := []internalui.SelectOption{
+		{ID: "updater-src-auto", Value: string(updater.SourceAuto), Label: updaterTr(showEn, "自动", "Auto")},
+		{ID: "updater-src-mirror", Value: string(updater.SourceMirror), Label: updaterTr(showEn, "国内镜像", "CN Mirror")},
+		{ID: "updater-src-github", Value: string(updater.SourceGitHub), Label: "GitHub"},
+	}
+	if picked := internalui.SelectMenu(c, "updater-source-menu", options, &m.updaterSourceMenu, string(snap.SourceMode)); picked >= 0 {
+		mode := updater.SourceMode(options[picked].Value)
+		if m.updaterPreview != nil {
+			m.updaterPreview.SourceMode = mode
+		} else if m.Updater != nil {
+			m.Updater.SetSourceMode(mode)
+			if snap.Status == updater.StatusError || snap.Status == updater.StatusIdle || snap.Status == updater.StatusUpToDate {
+				m.Updater.CheckAsync(true)
+			}
+		} else {
+			m.mutateState(func(s *model.AppState) {
+				s.UpdateSource = string(mode)
+			})
+		}
 	}
 }
