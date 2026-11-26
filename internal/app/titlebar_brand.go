@@ -9,12 +9,11 @@ import (
 
 const (
 	// brandWebsiteURL is where the brand menu's "open website" row leads.
-	brandWebsiteURL  = "https://block.cooool.top"
-	brandWebsiteHost = "block.cooool.top"
+	brandWebsiteURL = "https://block.cooool.top"
 	// brandMarkGap separates the brand wordmark from the sidebar toggle.
 	brandMarkGap = 2
-	// brandMenuHeaderH is the brand menu's identity header (mark + name + version line).
-	brandMenuHeaderH = 44
+	// brandMenuHeaderH is the brand menu's single-line identity header (mark + name + version).
+	brandMenuHeaderH = theme.HeightControl
 )
 
 // renderBrandMark draws the "cooool.top" brand button after the sidebar toggle;
@@ -123,18 +122,14 @@ func renderBrandMenu(c *ui.Context, p TitlebarProps, scrim ui.Element) {
 		HeaderH: brandMenuHeaderH + 7,
 		Header: func() {
 			ui.Row(c.Key("brand-menu-header")).FillWidth().Height(brandMenuHeaderH).Shrink(0).
-				PaddingX(10).Gap(10).AlignItems(ui.Center).Children(func() {
-				blockui.AppMarkImage(c, theme.IconChrome+4)
-				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					ui.Text(c, "Block").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-					sub := brandWebsiteHost
-					if p.AppVersion != "" {
-						sub = "v" + p.AppVersion + " · " + sub
-					}
-					ui.Text(c, sub).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						TextColor(pal.MenuMuted).SingleLine().Ellipsis("…")
-				})
+				PaddingX(theme.Space10).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
+				blockui.AppMarkImage(c, theme.IconRow)
+				ui.Text(c, "Block").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+					FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine()
+				if p.AppVersion != "" {
+					ui.Text(c, "v"+p.AppVersion).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(pal.MenuMuted).SingleLine().Shrink(0)
+				}
 			})
 			blockui.MenuRow(c, blockui.MenuItemSpec{Separator: true}, false)
 		},
