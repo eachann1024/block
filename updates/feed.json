@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T17:29:54.632Z",
-  "latest_version": "1.0.937",
-  "latest_tag": "v1.0.937",
+  "updated_at": "2026-11-26T12:26:32.509Z",
+  "latest_version": "1.0.938",
+  "latest_tag": "v1.0.938",
   "releases": [
+    {
+      "version": "1.0.938",
+      "tag": "v1.0.938",
+      "published_at": "2026-11-26T12:26:32Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.938",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件商店：新增支持 YAML 的笔记标签管理插件。"
+        ],
+        "improvements": [
+          "插件商店：提供可离线安装的内置标签管理插件。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin Store: A new Tag Manager plugin supporting YAML is now available."
+        ],
+        "improvements": [
+          "Plugin Store: The built-in Tag Manager plugin is now available for offline installation."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-macos-arm64.dmg",
+          "size": 16083754,
+          "sha256": "9fd441c5f8468781708f2dc7c2d4ea145c53bdadb06a8811ec522cca540f9bec"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-macos-x64.dmg",
+          "size": 17726407,
+          "sha256": "35b695cd8459bd83b973b0ce15b4d0b9cdd21f34f6f30d45c9f5cded195b8ae2"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-windows-x64-setup.exe",
+          "size": 13487070,
+          "sha256": "2d748e6f27ff018cf40b0a02c4a8e3e899bb638add70e0a783653f14e662ddcb"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-linux-x64.deb",
+          "size": 10956078,
+          "sha256": "808749d70813ac12cae56cf4ead7d228db543e1f00a5da597ff9a16970050d47"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-linux-x64.AppImage",
+          "size": 24009208,
+          "sha256": "20d12042d2d51715b7961865867f526d204f64fca4d7d9349707e33faad7004c"
+        }
+      ]
+    },
     {
       "version": "1.0.937",
       "tag": "v1.0.937",
@@ -30,38 +90,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-macos-arm64.dmg",
-          "size": 15951814,
-          "sha256": "f34cd38fa248c33f18eab8f668894f1679a50f4d66ac677edc6df628b8c20223"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-macos-x64.dmg",
-          "size": 17592929,
-          "sha256": "31589f3260957e1aea328d6fd31472c8a4257076b839c129ae4edea250479e80"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-windows-x64-setup.exe",
-          "size": 13366313,
-          "sha256": "f883d914096e43d4355be4d5bcbbf6fffbad0ffde70146d779eaa4fa0b691254"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-linux-x64.deb",
-          "size": 10843746,
-          "sha256": "e36e9c2c905b5be3477e35f70aed097a049568ecd6b113cc150d74f74bb38372"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.937/block-linux-x64.AppImage",
-          "size": 23894520,
-          "sha256": "8a755c02c88cca28a0c18881847a113904d018fc8e7667611ae95c4b4f8443f5"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.936",
@@ -1635,31 +1664,6 @@
           "The selected tab stays highlighted while its context menu is open.",
           "Sidebar tree rows show their hover highlight in shell themes and while their context menu is open."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.888",
-      "tag": "v1.0.888",
-      "published_at": "2026-11-21T07:18:09Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.888",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "侧边栏树形列表的右键菜单经过简化，更便于查找和使用。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "The sidebar tree context menu is simpler to navigate."
-        ],
-        "fixes": [],
         "other": []
       },
       "assets": []
