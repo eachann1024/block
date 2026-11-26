@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode"
 
 	"block/internal/fuzzy"
@@ -211,7 +212,8 @@ type Manager struct {
 	searchInputHandle ui.Handle
 
 	// About modal state.
-	aboutOpen bool
+	aboutOpen     bool
+	aboutCopiedAt time.Time
 
 	// Feedback modal state.
 	feedbackOpen        bool

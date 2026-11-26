@@ -63,6 +63,7 @@ func (m *Manager) CloseAbout() {
 		return
 	}
 	m.aboutOpen = false
+	m.aboutCopiedAt = time.Time{}
 	m.requestRedraw()
 }
 
@@ -81,41 +82,59 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 	pal := theme.Ocean()
 	open := true
 	title := theme.Tr("关于 Block", "About Block")
-	internalui.ModalCard(c, "about-modal", title, &open, 368, 0, func() {
-		ui.Column(c).FillWidth().Padding(28, 24, 22, 24).Gap(18).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Absolute().Top(10).Right(10).Children(func() {
+	internalui.ModalCard(c, "about-modal", title, &open, 304, 0, func() {
+		ui.Column(c).FillWidth().Padding(theme.Space24, theme.Space20, theme.Space20, theme.Space20).Gap(theme.Space16).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Absolute().Top(theme.Space10).Right(theme.Space10).Children(func() {
 				if internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{ID: "about-close", Label: theme.Tr("关闭", "Close")}).Clicked() {
 					m.CloseAbout()
 				}
 			})
-			ui.Column(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-				ui.Image(c.Key("about-emblem"), aboutLogo()).Size(84, 84).Margin(0, 0, 6, 0)
-				ui.Text(c, "Block").FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-				ui.Text(c, fmt.Sprintf("%s v%s", theme.Tr("版本", "Version"), updater.CurrentVersion())).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-				author := ui.ButtonBase(c.Key("about-profile")).Padding(3, 12).Radius(theme.RadiusPill).Cursor(ui.CursorPointer)
-				authorHover := author.Hovered()
-				authorPress := author.Pressed()
-				authorBG := ui.Transparent
-				if authorPress {
-					authorBG = pal.Selected
-				} else if authorHover {
-					authorBG = pal.Hover
+			ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
+				emblem := ui.Image(c.Key("about-emblem"), aboutLogo()).Size(76, 76).Margin(0, 0, theme.Space4, 0)
+				internalui.Probe(emblem, "about-emblem")
+				ui.Text(c, "Block").FontSize(theme.FontPage).FixedLineHeight(theme.LinePage).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+
+				ver := updater.CurrentVersion()
+				copied := !m.aboutCopiedAt.IsZero() && time.Since(m.aboutCopiedAt) < 1400*time.Millisecond
+				verLabel := fmt.Sprintf("%s v%s", theme.Tr("版本", "Version"), ver)
+				verFG := pal.TextSecondary
+				verBG := ui.Transparent
+				if copied {
+					verLabel = fmt.Sprintf("%s v%s", theme.Tr("已复制", "Copied"), ver)
+					verFG = pal.Success
+					verBG = pal.SuccessSurface
 				}
-				internalui.AnimateSurfaceColors(author, authorBG, ui.Transparent, false)
-				internalui.TactileCard(author, authorHover, authorPress, false, false)
-				author.Children(func() { ui.Text(c, theme.Tr("作者 eachann", "Made by eachann")).FontSize(theme.FontBody).TextColor(pal.Accent) })
-				if author.Clicked() {
-					c.OpenURL("https://github.com/eachann1024")
+
+				verBtn := ui.ButtonBase(c.Key("about-version")).Padding(theme.Space4, theme.Space12).MaxWidthPercent(100).MinWidth(0).
+					AlignItems(ui.Center).Justify(ui.Center).Radius(theme.RadiusPill).Cursor(ui.CursorPointer).Label(verLabel)
+				verHover := verBtn.Hovered()
+				verPress := verBtn.Pressed()
+				if !copied {
+					if verPress {
+						verBG = pal.Selected
+					} else if verHover {
+						verBG = pal.Hover
+					}
+				}
+				internalui.AnimateSurfaceColors(verBtn, verBG, ui.Transparent, false)
+				internalui.TactileButton(verBtn, verHover, verPress, false)
+				internalui.Probe(verBtn, "about-version")
+				verBtn.Children(func() {
+					ui.Text(c, verLabel).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(verFG).
+						MaxWidthPercent(100).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+				})
+				if verBtn.Clicked() {
+					c.Services().WriteClipboard("v" + ver)
+					m.aboutCopiedAt = time.Now()
+					time.AfterFunc(1450*time.Millisecond, m.requestRedraw)
 				}
 			})
-			ui.Column(c).FillWidth().Gap(theme.Space8).Padding(16, 0, 4, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-				if internalui.ActionButton(c, "about-repo", "block", &[]icons.Icon{icons.Github}[0], internalui.ButtonSecondary, false).Height(theme.HeightLarge).FillWidth().Clicked() {
+			ui.Column(c).FillWidth().Padding(theme.Space16, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+				ghIcon := icons.Github
+				if internalui.ActionButton(c, "about-repo", "GitHub", &ghIcon, internalui.ButtonSecondary, false).Height(theme.HeightLarge).FillWidth().Clicked() {
 					c.OpenURL("https://github.com/eachann1024/block")
 				}
 			})
-			if internalui.BtnClose(c, "about-done", internalui.PresetOptions{}).Clicked() {
-				m.CloseAbout()
-			}
 		})
 	})
 
