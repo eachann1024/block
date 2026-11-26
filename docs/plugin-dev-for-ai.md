@@ -6,11 +6,11 @@
 
 ---
 
-## 1. 开发前必读
+## 1. 开发前必读（AI 执行指南）
 
-- **上架边界**：外部插件**无需向主仓提 PR 或人工审批**。放在独立公开、非 Fork、未归档 GitHub 仓库，添加 `blockmd-plugin` Topic 并发布正式 Release（非 Draft / Prerelease），即可参与商店自动采集（采集器仅抓取 stars 降序前 100 名仓库；详见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「发布到应用商店（`blockmd-plugin` 自动采集）」）。任意阶段均可直接在桌面端通过本地目录、`owner/repo` 或 HTTPS 压缩包安装使用。
+外部插件**无需向主仓提 PR 或人工审批**，放在独立公开、非 Fork、未归档 GitHub 仓库，添加 `blockmd-plugin` Topic 并发布正式 Release（非 Draft / Prerelease）即可参与商店自动采集（仅抓取 stars 降序前 100 仓库；详见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「发布到应用商店（`blockmd-plugin` 自动采集）」）；任意阶段均可在桌面端通过本地目录、`owner/repo` 或 HTTPS 压缩包直接安装。
 
-### 四类开发路径决策表
+### 1.1 先定路径（四类开发路径决策表）
 
 | 开发路径 | 适用场景 | 交付结构 | 关键说明 |
 | --- | --- | --- | --- |
@@ -19,23 +19,59 @@
 | `blockmd-plugins/*` 官方认证 | 官方维护且在 `store/verified.json` 1:1 绑定的插件 | 独立仓库 + `manifest.json` + 入口或语法 | 强制要求中英双语 `README` 与 `locale="en"` 英文界面门禁 |
 | 主仓 `plugins/` 随包内置（历史特例） | 目前仅 `tag-manager`（`block-tag-manager`）随主应用二进制内置 | 主仓 `plugins/` + `builtin://` 种子注册 | 仅作历史特例保留，**外部插件禁止仿照提 PR 到主仓 `plugins/`** |
 
-### 动手前 4 条架构与校验前提
+### 1.2 开发前必须规避的 8 条红线
 
-1. **无 WebView / HTML，纯声明式 JSON UI**：交互式插件通过 `stdin`/`stdout` 行分隔 JSON-RPC 2.0 返回 `UIPage` 由宿主原生渲染（启停开关、顶栏控制与卸载菜单由宿主托管，插件无需自绘；详见下文「原生设置挂载、商店展示与 README 渲染」）。
-2. **独立子进程与运行环境门槛**：`entry.command[0]` 须为目标机 `PATH` 解释器（如 `python3`/`node`）或包内相对普通可执行文件（禁符号链接与越界）；宿主仅传白名单环境变量（Windows 不传 `USERPROFILE`/`APPDATA`），读写须用 `data_dir`/`downloads_dir`，避免 `Path.home()`。
-3. **两项强校验直接拒载**：静态文案**严禁 Emoji**（图标仅用 `manifest.icon` 双色 SVG）；`manifest.json`（`<= 256 KiB`、禁重复键）与 `UIPage` 启用 `DisallowUnknownFields`，**严禁未定义字段**（精确字段清单见下文「进程通信、环境变量与强制校验细则」）。
-4. **按需声明敏感权限与默认停用**：仅按需声明 5 类 12 项敏感权限（见 [清单与权限](https://docs.block.cooool.top/plugins/manifest)）；新装交互式插件默认停用，首次请求或新增敏感权限须经用户弹窗确认后才落盘。
+1. **禁向主仓提 PR 或写进主仓 `plugins/`**：外部插件一律独立建仓发布。
+2. **禁写 WebView / HTML / 自绘启停开关与卸载按钮**：宿主仅渲染声明式 `UIPage` JSON，启停开关、顶栏控制与卸载菜单由宿主托管（见下文「原生设置挂载、商店展示与 README 渲染」）。
+3. **严禁静态文案出现任何 Emoji**：违规直接拒载；图标仅用 `manifest.icon` 双色 SVG，`view_box` 为 `"0 0 24 24"`，`stroke_paths` 至少 1 条（见下文「进程通信、环境变量与强制校验细则」与 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」）。
+4. **严禁编造未定义字段或非法键值**：`manifest.json`（`<= 256 KiB` 禁重复键）与 `UIPage` 启用 `DisallowUnknownFields`；`id` 须匹配 `^[a-z0-9][a-z0-9-]{1,47}$` 且不得为 `block-diagnostics`；`surfaces` 仅允许 `["settings_page"]` 或空数组；`category` 选 5 个展示分类之一，纯语言扩展必填 `"language"`，禁用已停用的 `sync` / `publish`（见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」）。
+5. **禁污染 `stdout`、禁假设目标机已装第三方依赖**：`stdout` 仅输出 `\n` 分隔 JSON-RPC 2.0，日志全写 `stderr` 并即时刷新，Python 推荐 `["python3", "-u", "main.py"]`；`entry.command[0]` 须为 `PATH` 解释器或包内相对普通文件，禁符号链接/越界；优先用标准库或将依赖打包进插件目录（见下文「进程通信、环境变量与强制校验细则」与「超时与体积上限」）。
+6. **禁依赖 `Path.home()` 或非白名单环境变量**：Windows 不传 `USERPROFILE` / `APPDATA`，读写数据与导出输出须用 `plugin.initialize` 传入的 `data_dir` 与 `downloads_dir`（见下文「进程通信、环境变量与强制校验细则」）。
+7. **禁过度申请权限、禁忽略关闭信号**：仅按需声明 5 类 12 项敏感权限，移除默认放行的冗余权限 `storage` / `ui:*` / `system:notify` / `system:badge`，敏感权限建议填 `permission_reasons`；收到 `plugin.shutdown` 须在 2s 内退出且不再调 `host.*`（见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」与下文「超时与体积上限」）。
+8. **禁让初始页按钮在空/默认配置下崩溃或执行破坏性操作**：`block-plugin-check` 会以无参与默认值渲染、逐项切换选项并调用初始页全部 `header_actions` 与顶层 `actions`，且忽略 `visible_when`；配置未齐时应安全返回 `{ok: false, message: "..."}`（见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「本地协议检查命令」）。
 
-### 5 步最短落地与本地调试
+### 1.3 标准开发步骤（标「不可跳过」的严禁省略）
 
-1. 创建独立公开 GitHub 仓库，按目标路径准备结构（交互式插件含 `manifest.json` 与入口程序，纯语言扩展含 `manifest.json` 与 `grammars/*.json`）。
-2. 按 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」编写 `manifest.json`（必填 `app: "blockmd"`、显式 `category`、按需权限、`icon` 与可选 `permission_reasons`）。
-3. 按 [协议、UI 与骨架](https://docs.block.cooool.top/plugins/protocol-and-ui) 实现双向 JSON-RPC 2.0 通信与 `UIPage`；如需宿主扩展点或自定义语法，分别按 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions) 与 [语言扩展](https://docs.block.cooool.top/plugins/languages) 配置 `contributes`。
-4. 运行本地协议检查，并在 Block 桌面端通过「设置 → 应用商店 → 本地目录」实测（详细门禁见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store)）：
-   ```bash
-   CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/到你的插件目录
-   ```
-5. 推送代码到公开仓库，添加 `blockmd-plugin` Topic 并发布正式 GitHub Release，参与商店自动采集（或直接分享仓库名 / 压缩包链接安装）。
+1. **【不可跳过】按路径通读对应规范再写代码**：交互式插件读 [清单与权限](https://docs.block.cooool.top/plugins/manifest) + [协议、UI 与骨架](https://docs.block.cooool.top/plugins/protocol-and-ui)（涉及顶栏/侧栏/状态栏/命令/内置设置再读 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions)）；纯语言扩展读 [清单与权限](https://docs.block.cooool.top/plugins/manifest) + [语言扩展](https://docs.block.cooool.top/plugins/languages)。
+2. **创建独立仓库结构与清单**：根目录放 `manifest.json` 与 `README.md`（官方或双语插件同步放纯英文 `README.en.md`）。
+3. **实现核心逻辑与声明式界面**：交互式插件从 [协议、UI 与骨架](https://docs.block.cooool.top/plugins/protocol-and-ui) 的「Python 标准库双向通信骨架」起步实现 `initialize` / `render` / `action` / `shutdown`（及所需 `command` / `event`）；纯语言扩展仅写 `manifest.json` 与 `grammars/*.json`。
+4. **【不可跳过】按 `1.4` 逐项完成开发后验收**：静态自查 → `block-plugin-check` `[PASS]` → Block 桌面端实机加载验收，**禁止跳过**直接发版；本地有条件时必须亲自跑完第 1–3 步，若缺少 Go 工具链或桌面端环境，须跑完第 1 步并如实交接未测项，**严禁**伪造通过。
+5. **【发布时不可跳过】独立仓打 Topic 与发正式 Release**：推送到公开/非 Fork/未归档仓库、核对 `manifest.repo` 一致、添加 `blockmd-plugin` Topic、发布非 Draft / 非 Prerelease 的 GitHub Release（详见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「发布到应用商店（`blockmd-plugin` 自动采集）」）。
+
+### 1.4 开发完成后一步步检查清单（按顺序执行，全部通过才算完成）
+
+**第 1 步：静态与打包自查（无需 Block 源码，必做）**
+
+- [ ] `manifest.json` 为单个合法 JSON 对象（`<= 256 KiB`、无重复键、无未定义字段），`app` 为 `"blockmd"`、`id` 匹配 `^[a-z0-9][a-z0-9-]{1,47}$` 且非 `block-diagnostics`、`category` 合法、`surfaces` 仅 `["settings_page"]` 或 `[]`、`icon` 为 `"0 0 24 24"` 且至少含 1 条 `stroke_paths`。
+- [ ] 全量静态文案（`manifest.json` 与 `UIPage` 静态字段）扫描 0 Emoji。
+- [ ] 仅声明用到的 5 类敏感权限并为敏感权限填写 `permission_reasons`，已移除 `storage` / `ui:*` / `system:notify` / `system:badge` 等默认放行冗余权限。
+- [ ] 入口命令为 `PATH` 解释器或包内相对普通文件，无符号链接/越界；`stdout` 仅输出 `\n` 分隔 JSON-RPC 2.0，日志写 `stderr` 且即时刷新；不依赖 `Path.home()` 或非白名单环境变量，读写使用 `data_dir` / `downloads_dir`；无未打包第三方依赖且包体积未超限。
+- [ ] 根目录已放置 `README.md`（官方或双语插件同步提供纯英文 `README.en.md` 且配图路径各自有效）。
+
+**第 2 步：自动协议检查（`block-plugin-check`，有 Block 源码或克隆后必跑）**
+
+- [ ] 无本地源码时先浅克隆主仓，再运行协议检查（官方仓库或需双语门禁时追加 `-bilingual`）：
+  ```bash
+  git clone --depth 1 https://github.com/eachann1024/block.git /tmp/block
+  CGO_ENABLED=0 go -C /tmp/block run ./cmd/block-plugin-check /绝对路径/到你的插件目录
+  # 双语门禁（blockmd-plugins/* 自动开启，社区插件可按需追加）：
+  CGO_ENABLED=0 go -C /tmp/block run ./cmd/block-plugin-check -bilingual /绝对路径/到你的插件目录
+  ```
+- [ ] 退出码为 `0` 且终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.`，并清理可消除的 `[WARN]`。
+- **环境退路规则**：若当前 AI 运行环境缺少 Go 工具链（第 2 步）或未安装 Block 桌面端（第 3 步），**禁止跳过声称已通过或伪造验收结果**，必须在最终汇报中显式标出未执行的步骤与待用户本机执行的精确命令。
+
+**第 3 步：Block 桌面端实机验收（必做，覆盖 CLI 未测边界）**
+
+- [ ] 在桌面端通过「设置 → 应用商店 → 本地目录」安装，核对敏感权限确认卡片文案与范围。
+- [ ] 验证生命周期：交互式插件首次安装默认停用、手动拨动 Pluck Switch 后正常启动；纯语言扩展首次安装自动启用。
+- [ ] 覆盖 CLI 未测边界：`plugin.command`、宿主扩展点（顶栏/侧栏/状态栏/命令面板/菜单）、浅深色主题、`zh`/`en` 语言切换、多笔记本切换、保存/删除事件、编辑器脏状态写保护、详情页 `README` 渲染与媒体展示。
+- [ ] 验证重新加载、停用与卸载均无报错，且卸载/退出后无残留子进程。
+
+**第 4 步：发布前与上架后复核（公开发布时必做）**
+
+- [ ] GitHub 仓库已设为公开、非 Fork、未归档，已添加 `blockmd-plugin` Topic，且 `manifest.repo` 与 `owner/repo` 一致。
+- [ ] 已发布非 Draft / 非 Prerelease 的正式 Release，包内根目录（或单层顶层目录）含 `manifest.json` 且版本号与 Release 一致。
+- [ ] 在桌面端使用 `owner/repo` 实测远端安装流程通过。
 
 ---
 
