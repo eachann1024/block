@@ -957,6 +957,7 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 			if s.stopping {
 				s.batchUpdating = false
 				s.installingID = ""
+				s.replacingID = ""
 				s.mu.Unlock()
 				s.notifyChanged()
 				return
@@ -969,6 +970,16 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 			inst, err := s.store.UpdateEntryNoEscalation(ctx, entry)
 			cancel()
 			if err != nil {
+				s.mu.Lock()
+				var reloadTargets []viewKey
+				if s.replacingID == entry.ID {
+					s.replacingID = ""
+					reloadTargets = s.recoverViewsAfterReplaceLocked(entry.ID)
+				}
+				s.mu.Unlock()
+				for _, k := range reloadTargets {
+					go s.reloadSurfaceViewForNotebookAsync(k.pluginID, k.notebookRoot, k.surface)
+				}
 				var permErr *PermissionEscalationError
 				if errors.As(err, &permErr) {
 					escalated = append(escalated, entry)
@@ -980,6 +991,9 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 
 			installedList, _ := s.store.ListInstalled()
 			s.mu.Lock()
+			if s.replacingID == entry.ID || (inst != nil && s.replacingID == inst.Manifest.ID) {
+				s.replacingID = ""
+			}
 			langSnap := s.applyInstalledLocked(inst, installedList)
 			langSeq := NextLanguageSyncSeq()
 			s.mu.Unlock()
@@ -996,7 +1010,12 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 		s.mu.Lock()
 		s.batchUpdating = false
 		s.installingID = ""
+		prevReplacing := s.replacingID
 		s.replacingID = ""
+		var reloadTargets []viewKey
+		if prevReplacing != "" {
+			reloadTargets = s.recoverViewsAfterReplaceLocked(prevReplacing)
+		}
 		locale := s.Locale()
 		isEn := normalizeLocale(locale) == "en"
 		var summaryMsg string
@@ -1043,6 +1062,9 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 		}
 		if onDone != nil {
 			onDone(escalated)
+		}
+		for _, k := range reloadTargets {
+			go s.reloadSurfaceViewForNotebookAsync(k.pluginID, k.notebookRoot, k.surface)
 		}
 		s.notifyChanged()
 	}()
@@ -1179,12 +1201,20 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 	isEn := normalizeLocale(locale) == "en"
 
 	s.mu.Lock()
+	prevReplacing := s.replacingID
 	s.installingID = ""
 	s.replacingID = ""
 	if err != nil {
 		msg := formatStoreError(err, locale)
 		s.storeErr = msg
+		var reloadTargets []viewKey
+		if prevReplacing != "" {
+			reloadTargets = s.recoverViewsAfterReplaceLocked(prevReplacing)
+		}
 		s.mu.Unlock()
+		for _, k := range reloadTargets {
+			go s.reloadSurfaceViewForNotebookAsync(k.pluginID, k.notebookRoot, k.surface)
+		}
 		title := "插件安装失败"
 		if wasUpdate {
 			title = "插件更新失败"
@@ -1204,8 +1234,15 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 		return
 	}
 	langSnap := s.applyInstalledLocked(inst, installedList)
+	var reloadTargets []viewKey
+	if prevReplacing != "" && (inst == nil || prevReplacing != inst.Manifest.ID) {
+		reloadTargets = s.recoverViewsAfterReplaceLocked(prevReplacing)
+	}
 	langSeq := NextLanguageSyncSeq()
 	s.mu.Unlock()
+	for _, k := range reloadTargets {
+		go s.reloadSurfaceViewForNotebookAsync(k.pluginID, k.notebookRoot, k.surface)
+	}
 	SyncActiveLanguagesSeq(langSnap, langSeq)
 	if onInstalled != nil {
 		onInstalled(inst.Manifest.ID)
@@ -1316,7 +1353,11 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 			vs.FailedNotePath = ""
 			vs.FailedNoteRoot = ""
 			vs.errorFromBg = true
+			reloadTargets := s.recoverViewsAfterReplaceLocked(pluginID)
 			s.mu.Unlock()
+			for _, k := range reloadTargets {
+				go s.reloadSurfaceViewForNotebookAsync(k.pluginID, k.notebookRoot, k.surface)
+			}
 			s.notifyChanged()
 			return
 		}
@@ -1503,6 +1544,7 @@ func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginV
 	rootChanged := seen && previousRoot != nbRoot
 	s.lastViewRoot[sKey] = nbRoot
 	if vs, ok := s.views[key]; ok &&
+		s.replacingID != pluginID &&
 		!rootChanged &&
 		(!isDialog || vs.dialogToken == curDialogToken) &&
 		vs.lastLocale == curLocale &&
@@ -1522,6 +1564,20 @@ func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginV
 	nbKey := s.notebooksFingerprint()
 
 	s.mu.Lock()
+	if s.replacingID == pluginID {
+		snap := PluginViewState{Loading: true, Values: map[string]any{}}
+		if cur, exists := s.views[key]; exists && cur != nil {
+			if cur.Page != nil {
+				snap = s.snapshotViewLocked(key, cur)
+				snap.Loading = true
+				snap.Error = ""
+			} else {
+				cur.pendingReload = true
+			}
+		}
+		s.mu.Unlock()
+		return snap
+	}
 	vs, ok := s.views[key]
 	if ok && isDialog && vs.dialogToken != curDialogToken {
 		if vs.actionCancel != nil {
@@ -1664,6 +1720,7 @@ func (s *Supervisor) loadAndRenderSurfaceOnce(pluginID, nbRoot string, surface S
 	if origin != nil {
 		originDialogToken = origin.dialogToken
 	}
+	startEpoch := s.installEpoch[pluginID]
 	s.mu.RUnlock()
 	defer s.lockPluginRPC(pluginID)()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -1695,26 +1752,53 @@ func (s *Supervisor) loadAndRenderSurfaceOnce(pluginID, nbRoot string, surface S
 	if err != nil {
 		sameNB := cleanNotebookKey(s.NotebookRoot()) == cleanNotebookKey(nbRoot)
 		rerun := false
+		logErr := false
 		s.mu.Lock()
 		if vs := s.views[key]; vs != nil && vs == origin {
-			vs.Loading = false
 			vs.formVersion = s.formVersions[sKey]
 			if attemptedLocale != "" {
 				vs.lastLocale = attemptedLocale
 			}
-			if !vs.errorFromBg {
-				vs.Error = err.Error()
-				vs.RetryKind = RetryKindReload
-			}
-			if vs.pendingReload && !retriedOnErr && sameNB {
-				vs.pendingReload = false
-				vs.Loading = true
-				rerun = true
+			vs.cachedSnapValid = false
+			replacingNow := s.replacingID == pluginID
+			replacedDuringCall := s.installEpoch[pluginID] != startEpoch
+			if isPluginReplacingError(err) || replacingNow || replacedDuringCall {
+				vs.Error = ""
+				vs.RetryKind = RetryKindNone
+				if !replacingNow && !retriedOnErr && sameNB {
+					vs.Loading = true
+					vs.pendingReload = false
+					rerun = true
+				} else if replacingNow {
+					vs.Loading = true
+					vs.pendingReload = true
+				} else {
+					vs.Loading = false
+					vs.pendingReload = false
+					if vs.Page == nil {
+						vs.initialLoadStarted = false
+					}
+				}
 			} else {
-				vs.pendingReload = false
+				vs.Loading = false
+				if !vs.errorFromBg {
+					vs.Error = err.Error()
+					vs.RetryKind = RetryKindReload
+					logErr = !isPluginDisabledError(err)
+				}
+				if vs.pendingReload && !retriedOnErr && sameNB {
+					vs.pendingReload = false
+					vs.Loading = true
+					rerun = true
+				} else {
+					vs.pendingReload = false
+				}
 			}
 		}
 		s.mu.Unlock()
+		if logErr {
+			files.LogErrorf("plugin surface load failed: id=%s surface=%s err=%v", pluginID, surface, err)
+		}
 		if rerun && cleanNotebookKey(s.NotebookRoot()) != cleanNotebookKey(nbRoot) {
 			rerun = false
 			s.mu.Lock()
@@ -1750,27 +1834,53 @@ func (s *Supervisor) loadAndRenderSurfaceOnce(pluginID, nbRoot string, surface S
 	sameNB := cleanNotebookKey(s.NotebookRoot()) == cleanNotebookKey(nbRoot)
 	rerun := false
 	nextRetried := retriedOnErr
+	logErr := false
 	s.mu.Lock()
 	if vs := s.views[key]; vs != nil && vs == origin {
-		vs.Loading = false
 		vs.formVersion = s.formVersions[sKey]
 		vs.lastNotebookRoot = nbRoot
 		vs.lastActiveNote = activeNote
 		vs.lastLocale = rt.locale()
+		vs.cachedSnapValid = false
 		if err != nil {
-			if !vs.errorFromBg {
-				vs.Error = err.Error()
-				vs.RetryKind = RetryKindReload
-			}
-			if vs.pendingReload && !retriedOnErr && sameNB {
-				vs.pendingReload = false
-				vs.Loading = true
-				rerun = true
-				nextRetried = true
+			replacingNow := s.replacingID == pluginID
+			replacedDuringCall := s.installEpoch[pluginID] != startEpoch
+			if replacingNow || replacedDuringCall {
+				vs.Error = ""
+				vs.RetryKind = RetryKindNone
+				if !replacingNow && !retriedOnErr && sameNB {
+					vs.Loading = true
+					vs.pendingReload = false
+					rerun = true
+					nextRetried = true
+				} else if replacingNow {
+					vs.Loading = true
+					vs.pendingReload = true
+				} else {
+					vs.Loading = false
+					vs.pendingReload = false
+					if vs.Page == nil {
+						vs.initialLoadStarted = false
+					}
+				}
 			} else {
-				vs.pendingReload = false
+				vs.Loading = false
+				if !vs.errorFromBg {
+					vs.Error = err.Error()
+					vs.RetryKind = RetryKindReload
+					logErr = !isPluginDisabledError(err)
+				}
+				if vs.pendingReload && !retriedOnErr && sameNB {
+					vs.pendingReload = false
+					vs.Loading = true
+					rerun = true
+					nextRetried = true
+				} else {
+					vs.pendingReload = false
+				}
 			}
 		} else {
+			vs.Loading = false
 			preserveActionErr := vs.errorFromBg || vs.RetryKind == RetryKindAction
 			if !preserveActionErr {
 				vs.Error = ""
@@ -1797,6 +1907,9 @@ func (s *Supervisor) loadAndRenderSurfaceOnce(pluginID, nbRoot string, surface S
 		}
 	}
 	s.mu.Unlock()
+	if logErr {
+		files.LogErrorf("plugin surface render failed: id=%s surface=%s err=%v", pluginID, surface, err)
+	}
 	if rerun && cleanNotebookKey(s.NotebookRoot()) != cleanNotebookKey(nbRoot) {
 		rerun = false
 		s.mu.Lock()
@@ -1879,12 +1992,33 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 	return rt, err
 }
 
+func (s *Supervisor) checkRuntimeStartAllowedLocked(ctx context.Context, pluginID string, inst InstalledApp) error {
+	current := false
+	for _, app := range s.installed {
+		if app.Manifest.ID == pluginID {
+			current = app.Enabled && app.InstallDir == inst.InstallDir && app.InstalledAt.Equal(inst.InstalledAt)
+			break
+		}
+	}
+	if s.replacingID == pluginID && !s.stopping && current && ctx.Err() == nil {
+		return errPluginReplacing(pluginID)
+	}
+	if s.stopping || s.replacingID == pluginID || !current || ctx.Err() != nil {
+		return errors.New("plugin changed while starting")
+	}
+	return nil
+}
+
 func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRoot string) (*Runtime, string, error) {
 	s.mu.RLock()
-	unavailable := s.stopping || s.replacingID == pluginID
+	stopping := s.stopping
+	replacing := s.replacingID == pluginID
 	s.mu.RUnlock()
-	if unavailable {
-		return nil, "", errors.New("plugin is stopping or being replaced")
+	if stopping {
+		return nil, "", errors.New("plugin supervisor is stopping")
+	}
+	if replacing {
+		return nil, "", errPluginReplacing(pluginID)
 	}
 	inst, ok := s.GetInstalled(pluginID)
 	if !ok {
@@ -1976,27 +2110,30 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	if cfg.SystemIntegration && inst.Manifest.HasPermission(PermSystemSecrets) {
 		cfg.credentialScope = inst.credentialScope()
 	}
-	s.mu.Lock()
-	current := false
-	for _, app := range s.installed {
-		if app.Manifest.ID == pluginID {
-			current = app.Enabled && app.InstallDir == inst.InstallDir && app.InstalledAt.Equal(inst.InstalledAt)
-			break
-		}
-	}
-	if s.stopping || s.replacingID == pluginID || !current || ctx.Err() != nil {
-		s.mu.Unlock()
-		return nil, attemptedLocale, errors.New("plugin changed while starting")
+	s.mu.RLock()
+	err := s.checkRuntimeStartAllowedLocked(ctx, pluginID, inst)
+	s.mu.RUnlock()
+	if err != nil {
+		return nil, attemptedLocale, err
 	}
 	rt, err := StartRuntime(context.Background(), inst.Manifest, cfg)
 	if err != nil {
-		s.mu.Unlock()
 		return nil, attemptedLocale, err
 	}
+	s.mu.Lock()
+	if err := s.checkRuntimeStartAllowedLocked(ctx, pluginID, inst); err != nil {
+		s.mu.Unlock()
+		rt.abort()
+		return nil, attemptedLocale, err
+	}
+	prev := s.runtimes[pluginID]
 	rt.syncedEpoch.Store(curEpoch)
 	rtPtr.Store(rt)
 	s.runtimes[pluginID] = rt
 	s.mu.Unlock()
+	if prev != nil && prev != existing {
+		prev.abort()
+	}
 	if cfg.SystemIntegration && inst.Manifest.HasPermission(PermSystemBadge) {
 		go func() {
 			<-rt.exited
@@ -2005,6 +2142,11 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	}
 	if err := rt.Initialize(ctx); err != nil {
 		rt.abort()
+		s.mu.Lock()
+		if s.runtimes[pluginID] == rt {
+			delete(s.runtimes, pluginID)
+		}
+		s.mu.Unlock()
 		return nil, attemptedLocale, err
 	}
 	if cfg.credentialScope != "" && pluginID == "block-sync" && rt.manifest.HasPermission(PermEventsSystem) {
@@ -2084,6 +2226,7 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 		s.mu.RUnlock()
 		return
 	}
+	startEpoch := s.installEpoch[pluginID]
 	s.mu.RUnlock()
 
 	var refreshTimer *time.Timer
@@ -2131,10 +2274,17 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 	rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 	if err != nil {
 		s.mu.Lock()
-		if cur := s.views[key]; cur != nil && cur.BusyAction == "" && cur.editSeq == seq && !cur.errorFromBg {
+		if cur := s.views[key]; cur != nil && cur == vs && cur.BusyAction == "" && cur.editSeq == seq && !cur.errorFromBg {
 			cur.Refreshing = false
-			cur.Error = err.Error()
-			cur.RetryKind = RetryKindReload
+			cur.cachedSnapValid = false
+			replacingNow := s.replacingID == pluginID
+			replacedDuringCall := s.installEpoch[pluginID] != startEpoch
+			if isPluginReplacingError(err) || replacingNow || replacedDuringCall {
+				cur.pendingReload = true
+			} else {
+				cur.Error = err.Error()
+				cur.RetryKind = RetryKindReload
+			}
 		}
 		s.mu.Unlock()
 		s.notifyChanged()
@@ -2147,10 +2297,17 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, valsCopy)
 	if err != nil {
 		s.mu.Lock()
-		if cur := s.views[key]; cur != nil && cur.BusyAction == "" && cur.editSeq == seq && !cur.errorFromBg {
+		if cur := s.views[key]; cur != nil && cur == vs && cur.BusyAction == "" && cur.editSeq == seq && !cur.errorFromBg {
 			cur.Refreshing = false
-			cur.Error = err.Error()
-			cur.RetryKind = RetryKindReload
+			cur.cachedSnapValid = false
+			replacingNow := s.replacingID == pluginID
+			replacedDuringCall := s.installEpoch[pluginID] != startEpoch
+			if replacingNow || replacedDuringCall {
+				cur.pendingReload = true
+			} else {
+				cur.Error = err.Error()
+				cur.RetryKind = RetryKindReload
+			}
 		}
 		s.mu.Unlock()
 		s.notifyChanged()
@@ -2162,7 +2319,7 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 
 	s.mu.Lock()
 	cur := s.views[key]
-	if cur == nil || cur.BusyAction != "" || cur.editSeq != seq {
+	if cur == nil || cur != vs || cur.BusyAction != "" || cur.editSeq != seq {
 		s.mu.Unlock()
 		return
 	}
@@ -3098,6 +3255,55 @@ type pluginDisabledError string
 func (e pluginDisabledError) Error() string { return "plugin disabled: " + string(e) }
 
 func errPluginDisabled(id string) error { return pluginDisabledError(id) }
+
+func isPluginDisabledError(err error) bool {
+	var disabledErr pluginDisabledError
+	return errors.As(err, &disabledErr)
+}
+
+type pluginReplacingError string
+
+func (e pluginReplacingError) Error() string { return "plugin is stopping or being replaced" }
+
+func errPluginReplacing(id string) error { return pluginReplacingError(id) }
+
+func isPluginReplacingError(err error) bool {
+	var replacingErr pluginReplacingError
+	return errors.As(err, &replacingErr)
+}
+
+func (s *Supervisor) recoverViewsAfterReplaceLocked(pluginID string) []viewKey {
+	if pluginID == "" {
+		return nil
+	}
+	activeNB := cleanNotebookKey(s.NotebookRoot())
+	var reload []viewKey
+	changed := false
+	for k, vs := range s.views {
+		if k.pluginID != pluginID || vs == nil {
+			continue
+		}
+		if vs.RetryKind == RetryKindUninstall || vs.errorFromBg {
+			continue
+		}
+		if vs.pendingReload || (vs.Page == nil && (vs.Loading || vs.Error != "")) || vs.Error == errPluginReplacing(pluginID).Error() {
+			vs.Loading = false
+			vs.pendingReload = false
+			vs.Error = ""
+			vs.RetryKind = RetryKindNone
+			vs.initialLoadStarted = false
+			vs.cachedSnapValid = false
+			changed = true
+			if cleanNotebookKey(k.notebookRoot) == activeNB {
+				reload = append(reload, k)
+			}
+		}
+	}
+	if changed {
+		s.viewEpoch.Add(1)
+	}
+	return reload
+}
 
 func syncNotebookKey(root string) string {
 	trimmed := strings.TrimSpace(root)
