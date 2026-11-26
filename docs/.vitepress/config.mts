@@ -41,7 +41,7 @@ export default defineConfig({
         {
           text: "插件开发",
           items: [
-            { text: "1. 开发前必读与架构边界", link: "/plugins/" },
+            { text: "1. 开发前必读与 AI 指南", link: "/plugins/" },
             { text: "2. 清单与权限", link: "/plugins/manifest" },
             { text: "3. 协议、UI 与骨架", link: "/plugins/protocol-and-ui" },
             { text: "4. 宿主界面扩展", link: "/plugins/ui-contributions" },

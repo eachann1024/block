@@ -1,7 +1,7 @@
 <!-- ai-guide:skip-start -->
 # 目录结构与 `manifest.json` 规范
 
-> [← 开发前必读与架构边界](README.md) · [文档中心](../README.md) · [协议、UI 与骨架 →](protocol-and-ui.md)
+> [← 开发前必读与 AI 指南](README.md) · [文档中心](../README.md) · [协议、UI 与骨架 →](protocol-and-ui.md)
 
 ---
 <!-- ai-guide:skip-end -->
