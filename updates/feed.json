@@ -1,10 +1,72 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-26T13:57:35.921Z",
-  "latest_version": "1.0.941",
-  "latest_tag": "v1.0.941",
+  "updated_at": "2026-11-26T14:10:55.594Z",
+  "latest_version": "1.0.942",
+  "latest_tag": "v1.0.942",
   "releases": [
+    {
+      "version": "1.0.942",
+      "tag": "v1.0.942",
+      "published_at": "2026-11-26T14:10:54Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.942",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "图标：新增 GitHub 品牌图标。"
+        ],
+        "improvements": [
+          "关于：简化关于对话框中的操作和仓库按钮。",
+          "标题栏：品牌菜单中移除了 GitHub 发布说明入口。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Icons: The GitHub brand icon is now available."
+        ],
+        "improvements": [
+          "About: The dialog’s actions and repository button are simpler.",
+          "Titlebar: The brand menu no longer includes a GitHub release notes item."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-macos-arm64.dmg",
+          "size": 16102383,
+          "sha256": "edce6260ce8413ef5ee2ea9eefea580d6129378bbced86a7030b9d232adef60c"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-macos-x64.dmg",
+          "size": 17756131,
+          "sha256": "2eb3630a65182f97062d0a2ed3fba0c79a2a6a743bb84419f92a3d5e6334f839"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-windows-x64-setup.exe",
+          "size": 13505096,
+          "sha256": "23709271a560a2993bf5d576a973059b4542833097f6b52bd1a4807fdab485cb"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-linux-x64.deb",
+          "size": 10962938,
+          "sha256": "37bef80d6ff5328253daedcd39a98f5e67ef90dd58e3dd29e5f4e81999f36eea"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-linux-x64.AppImage",
+          "size": 24021496,
+          "sha256": "3233d9bfa5f4e9e934780b3b3b86a83a32b47a2faa5686232765f9b4a053b392"
+        }
+      ]
+    },
     {
       "version": "1.0.941",
       "tag": "v1.0.941",
@@ -34,38 +96,7 @@
           "CI: Fixed shortcut command key mappings on Linux and pinned the smoke test interface to Chinese to prevent automated test failures."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-macos-arm64.dmg",
-          "size": 16104264,
-          "sha256": "07dbafacaf07e960191d90bb59ccfad1690195409103f571eb934735564fe57e"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-macos-x64.dmg",
-          "size": 17757743,
-          "sha256": "49d0bcfc4b6bf4de602ffccd0901b580dddae3ec441474075068ebeb21dd34da"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-windows-x64-setup.exe",
-          "size": 13505001,
-          "sha256": "0f501882caf9d2ba8a670aee9dde20d0498bf642daf91e95b8505b7450aa2409"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-linux-x64.deb",
-          "size": 10969108,
-          "sha256": "0a87e0cc62b42cc75d51504df5bfacffa78fd3afd24065d51a25d84a2545f359"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-linux-x64.AppImage",
-          "size": 24025592,
-          "sha256": "8cd876024d3da83957cf2762d972901661a8fce30d82f639b5782db4324c0b1b"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.938",
@@ -1624,51 +1655,6 @@
           "The find bar now floats over the page without pushing note content down."
         ],
         "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.890",
-      "tag": "v1.0.890",
-      "published_at": "2026-11-21T08:27:32Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.890",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "现在可以在设置中自定义搜索、查找、新建笔记和人工智能面板的应用内快捷键。"
-        ],
-        "improvements": [
-          "人工智能与插件的错误消息现在同时提供中文和英文。",
-          "开关改为更轻巧的样式，轨道尺寸为 28×16，填充柔和的强调色，旋钮不带阴影，并在标题处显示状态文字。",
-          "界面统一了字号层级，设置标题为 20 像素，对话框标题为 15 像素，加粗标签更少，最小字号为 12 像素。",
-          "图标按钮新增预设样式，所有图标在悬停时都有动效，选中状态更柔和，并新增三个图标。",
-          "设置分类图标和应用商店图标已按统一的 24 像素网格重新绘制。"
-        ],
-        "fixes": [
-          "设置侧边栏的图标现在与文字标签居中对齐，选中的图标也不再移位。"
-        ],
-        "other": [
-          "移除了已停用的插件迁移特殊处理逻辑。"
-        ]
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Settings now let you customize the in-app shortcuts for search, find, new note, and the AI panel."
-        ],
-        "improvements": [
-          "AI and plugin error messages now appear in both English and Chinese.",
-          "Switches now use a lighter design with a 28×16 track, a soft accent fill, a shadowless knob, and a state label in the header.",
-          "The interface now follows a unified type scale, with 20px settings titles, 15px dialog titles, fewer bold labels, and a 12px minimum text size.",
-          "Icon buttons now come with presets, every icon has a hover motion, selected states are softer, and three new icons have been added.",
-          "Settings category icons and App Store icons have been redrawn on a single 24px grid."
-        ],
-        "fixes": [
-          "Settings sidebar icons now sit centered with their labels, and the selected icon no longer shifts."
-        ],
-        "other": [
-          "Retired special cases for plugin migration have been removed."
-        ]
       },
       "assets": []
     }
