@@ -11,8 +11,6 @@ const (
 	// brandWebsiteURL is where the brand menu's "open website" row leads.
 	brandWebsiteURL  = "https://block.cooool.top"
 	brandWebsiteHost = "block.cooool.top"
-	// brandReleasesURL lists full version changelogs on GitHub Releases.
-	brandReleasesURL = "https://github.com/eachann1024/block/releases"
 	// brandMarkGap separates the brand wordmark from the sidebar toggle.
 	brandMarkGap = 2
 	// brandMenuHeaderH is the brand menu's identity header (mark + name + version line).
@@ -80,7 +78,6 @@ func buildBrandMenuItems(c *ui.Context, p TitlebarProps) []blockui.MenuItemSpec 
 	if p.HasUpdate {
 		icUpdate = icons.Download
 	}
-	icChangelog := icons.History
 	icStore := icons.Plug
 	icAbout := icons.HelpCircle
 	item := func(id, label, hint string, ic *icons.Icon, restoreFocus bool, fn func()) blockui.MenuItemSpec {
@@ -108,7 +105,6 @@ func buildBrandMenuItems(c *ui.Context, p TitlebarProps) []blockui.MenuItemSpec 
 	}
 	items := []blockui.MenuItemSpec{
 		item("brand-update", updateLabel, p.UpdateHint, &icUpdate, false, p.OnOpenUpdater),
-		item("brand-changelog", theme.Tr("更新日志", "Release Notes"), "", &icChangelog, true, func() { c.OpenURL(brandReleasesURL) }),
 		item("brand-website", theme.Tr("打开官网", "Open Website"), "", &icSite, true, func() { c.OpenURL(brandWebsiteURL) }),
 		item("brand-plugin-store", theme.Tr("插件商店", "Plugin Store"), "", &icStore, false, p.OnOpenPluginStore),
 		{Separator: true},
