@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-26T17:00:43.436Z",
-  "latest_version": "1.0.944",
-  "latest_tag": "v1.0.944",
+  "updated_at": "2026-11-26T17:20:28.974Z",
+  "latest_version": "1.0.945",
+  "latest_tag": "v1.0.945",
   "releases": [
+    {
+      "version": "1.0.945",
+      "tag": "v1.0.945",
+      "published_at": "2026-11-26T17:20:28Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.945",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "下拉菜单：支持向上方展开并与左侧对齐展示。",
+          "自动更新：更新弹窗采用更轻量的单页设计，移除了工具栏与卡片分隔，将更新源选择移入底部下拉菜单，并在主按钮内直接展示更新进度。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Dropdown Menus: Pop-up menus now support opening upward and aligning to the left.",
+          "Updates: The update dialog now features a lighter, single-sheet layout without toolbars or card dividers, moves the source selector to a footer dropdown, and displays progress directly on the primary button."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-macos-arm64.dmg",
+          "size": 15972022,
+          "sha256": "6c371067ab2aca8b0e5f89ce29d753d01b0e8c9bdfe382c04e599cf6588835c4"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-macos-x64.dmg",
+          "size": 17618122,
+          "sha256": "9e4240c35864948ad153adc7c58b2dde28f1e7d4680be3e22049af7bb4a96fda"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-windows-x64-setup.exe",
+          "size": 13383444,
+          "sha256": "6106ab9f3cbc053e19365f38eaf452dacfeaed833636af3b02bda9800b4bd524"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-linux-x64.deb",
+          "size": 10853234,
+          "sha256": "81ced8101420522e33e7dbab7c21ca1b39ad6545c336abe01e36f64e27c761ee"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-linux-x64.AppImage",
+          "size": 23910904,
+          "sha256": "7268ee712283888e4b7d1de9ef33e797255913c3d49d97e7d95477d31b05aee9"
+        }
+      ]
+    },
     {
       "version": "1.0.944",
       "tag": "v1.0.944",
@@ -28,38 +86,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-macos-arm64.dmg",
-          "size": 15972569,
-          "sha256": "a1701c5cbdd2d198526d8a15b0b1583eadb00735f394b0e5d4a44b4919eca47e"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-macos-x64.dmg",
-          "size": 17619306,
-          "sha256": "da79d720bf1fd61e75c4713b6872f7bce46296e3c78fc746bda8291703ecf4b9"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-windows-x64-setup.exe",
-          "size": 13384503,
-          "sha256": "e568165460411466f618739f0d904da09df7d53fa897316e3b724d816c5e1c18"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-linux-x64.deb",
-          "size": 10849216,
-          "sha256": "4c17e0f59e0c6ec97d44e4fdd54fe3ee2c355d45ddb9958553b5f68e58718a9a"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.944/block-linux-x64.AppImage",
-          "size": 23906808,
-          "sha256": "f5601abacf6618ed21bac98d728082c2f9c62f963c2bb0490e37e4d95ef7e89c"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.943",
@@ -1625,31 +1652,6 @@
         "fixes": [
           "Margin annotation cards can now be scrolled through properly, sending all annotations is handled in the background, and AI answers questions instead of rewriting selected text."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.893",
-      "tag": "v1.0.893",
-      "published_at": "2026-11-21T09:08:43Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.893",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "商店搜索框现已将来源与排序选项整合为框内的筛选按钮。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "The Store search field now consolidates source and sorting options into an inline filter button."
-        ],
-        "fixes": [],
         "other": []
       },
       "assets": []
