@@ -41,12 +41,12 @@ export default defineConfig({
         {
           text: "插件开发",
           items: [
-            { text: "1. 架构与硬边界", link: "/plugins/" },
+            { text: "1. 开发前必读与架构边界", link: "/plugins/" },
             { text: "2. 清单与权限", link: "/plugins/manifest" },
             { text: "3. 协议、UI 与骨架", link: "/plugins/protocol-and-ui" },
-            { text: "4. 检查与上架", link: "/plugins/check-and-store" },
-            { text: "5. 宿主界面扩展", link: "/plugins/ui-contributions" },
-            { text: "6. 语言扩展", link: "/plugins/languages" },
+            { text: "4. 宿主界面扩展", link: "/plugins/ui-contributions" },
+            { text: "5. 语言扩展", link: "/plugins/languages" },
+            { text: "6. 检查与上架", link: "/plugins/check-and-store" },
           ],
         },
       ],

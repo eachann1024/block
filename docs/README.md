@@ -13,16 +13,16 @@
 - **[项目主介绍（README.md）](../README.md)** · **[English README](../README.en.md)**：产品特性、下载入口与开源许可说明。
 
 ### 插件开发文档（`docs/plugins/`）
-适合开发者在 GitHub 上按章节浏览，与官网扩展开发页保持同源同步：
+外部插件独立建仓（添加 `blockmd-plugin` Topic 并发布正式 Release），无需向主仓提 PR 即可参与商店自动采集（抓取 stars 降序前 100 仓库，桌面端也可直接通过本地目录或仓库名安装）；与官网扩展开发页保持同源同步：
 
 | 章节 | 文件 | 说明 |
 | --- | --- | --- |
-| 1. 架构与硬边界 | [plugins/README.md](plugins/README.md) | 独立进程模型、超时与体积上限、设置页挂载、商店分类与信任等级、强制校验规则 |
-| 2. 清单与权限 | [plugins/manifest.md](plugins/manifest.md) | 目录结构、`manifest.json` 字段约束、5 类敏感权限与 `permission_reasons` 自定义缘由 |
-| 3. 协议、UI 与骨架 | [plugins/protocol-and-ui.md](plugins/protocol-and-ui.md) | 双向 JSON-RPC 2.0、`host.*` 方法、15 种 `UIPage` 控件与 Python 标准库骨架 |
-| 4. 检查与上架 | [plugins/check-and-store.md](plugins/check-and-store.md) | `block-plugin-check` 本地协议检查、三层双语门禁与 `blockmd-plugin` 商店自动采集 |
-| 5. 宿主界面扩展 | [plugins/ui-contributions.md](plugins/ui-contributions.md) | 顶栏按钮、内置设置分区、命令菜单、侧边面板、状态栏、弹窗与编辑器/外观宿主方法 |
-| 6. 语言扩展 | [plugins/languages.md](plugins/languages.md) | 零子进程、零权限声明式语法高亮扩展（`contributes.languages` + `grammars/*.json`） |
+| 1. 开发前必读与架构边界 | [plugins/README.md](plugins/README.md) | 无需提 PR 上架边界、四类开发路径、4 条架构与校验前提、5 步落地与本地检查、进程通信/超时/体积上限、原生设置挂载与商店展示 |
+| 2. 清单与权限 | [plugins/manifest.md](plugins/manifest.md) | 目录结构、`manifest.json` 必填与低频字段、27 项有效权限（5 类 12 项敏感权限 + 3 项静默事件 + 12 项默认放行）与 `permission_reasons` |
+| 3. 协议、UI 与骨架 | [plugins/protocol-and-ui.md](plugins/protocol-and-ui.md) | 双向 JSON-RPC 2.0、`host.*` 方法、16 种 `UIItem` 控件、Python 标准库骨架与兼容性/平台实现说明 |
+| 4. 宿主界面扩展 | [plugins/ui-contributions.md](plugins/ui-contributions.md) | 多表面模型、`manifest.contributes` 字段、`plugin.command`/工作区事件、通用及特定场景宿主方法 |
+| 5. 语言扩展 | [plugins/languages.md](plugins/languages.md) | 零子进程、零权限声明式语法高亮扩展（`contributes.languages` + `grammars/*.json`）与宿主文件关联参考 |
+| 6. 检查与上架 | [plugins/check-and-store.md](plugins/check-and-store.md) | `block-plugin-check` 命令与通过标准、双语门禁、`blockmd-plugin` 采集规则（前 100 上限）与 `builtin://` 种子行为 |
 
 ### AI 自包含完整单文件
 - **[plugin-dev-for-ai.md](plugin-dev-for-ai.md)**：由 `bun run docs:sync` 从上述 `docs/plugins/*.md` 自动拼装生成的完整单文件规范，适合一键复制给 AI 工具从零构建插件。请勿只改此文件，修改源章节后运行 `bun run docs:sync` 即可保持严格同步。

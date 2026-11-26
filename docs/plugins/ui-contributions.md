@@ -1,27 +1,26 @@
 <!-- ai-guide:skip-start -->
 # UI Contributions（宿主界面扩展贡献）
 
-> [← 检查与上架](check-and-store.md) · [文档中心](../README.md) · [语言扩展 →](languages.md)
+> [← 协议、UI 与骨架](protocol-and-ui.md) · [文档中心](../README.md) · [语言扩展 →](languages.md)
 
 ---
 <!-- ai-guide:skip-end -->
 
-## 8. UI contributions（宿主界面扩展贡献）
+## 7. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区自定义矢量背景、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。界面扩展本身（所有 `ui:*`）均免声明权限，仅编辑器读写、文件路径与工作区事件订阅需要按需声明。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区自定义矢量背景、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](manifest.md) 的「字段约束」：所有 `ui:*` 界面扩展均已默认放行，仅编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）需要按需声明。
 
-### 8.1 相关权限说明
+### 7.1 多表面（Surfaces）渲染与状态隔离
 
-- **敏感权限（需声明，安装/更新时确认）**：
-  - `"editor:read"`：读取当前编辑器选区（`host.editor.selection`、`plugin.command` 的 `context.selection`）
-  - `"editor:write"`：替换选区或光标处插入文本（`host.editor.insert`）
-  - `"notes:path"`：在 `plugin.command` 的 `context.file` 中读取目标文件的本机绝对路径（含笔记本外打开的文件），不读内容
-- **静默事件订阅（需声明，不弹窗）**：
-  - `"events:workspace"`：订阅工作区界面事件 `plugin.event`（`note.opened`、`theme.changed`、`locale.changed`）
-- **已免声明能力（默认放行，无需写入 `permissions`）**：
-  - 原 9 项 `ui:*` 权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:menubar"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`）现已全部自动放行，声明 `contributes.*` 或调用 `host.titlebar.*` / `host.status.*` / `host.ui.*` / `host.sidebar.*` / `host.menubar.*` 均无需在 `manifest.permissions` 重复登记；旧清单仍保持兼容。
+- 需要独立设置页时在 `manifest.surfaces` 中填写 `["settings_page"]`（无独立设置页的插件可省略）；`settings_sections`、`panels`、`sidebar_sections`、`dialogs` 会自动启用下列前缀表面：
+  - `"settings_section:<id>"`
+  - `"panel:<id>"`
+  - `"sidebar_section:<id>"`
+  - `"dialog:<id>"`
+- 宿主调用 `plugin.render` 与 `plugin.action` 时会在 `params.surface` 中传入对应的表面标识，插件按 `surface` 返回各自独立的 `UIPage` 与 `ActionResult`。
+- 宿主按 `(plugin_id, notebook_root, surface)` 分别隔离加载态、忙碌/反馈状态、表单值、定时刷新（`refresh_interval_ms`）与笔记本切换感知；停用或卸载插件时会销毁其全部表面视图。
 
-### 8.2 `manifest.contributes` 字段定义
+### 7.2 `manifest.contributes` 字段定义
 
 通用校验规则：
 - 所有贡献项 `id` 必须匹配正则 `^[a-z][a-z0-9_-]{0,31}$`，且在同一类别内不可重复。
@@ -87,17 +86,7 @@
       }]
       ```
 
-### 8.3 多表面（Surfaces）渲染与状态隔离
-
-- 需要独立设置页时在 `manifest.surfaces` 中填写 `["settings_page"]`（无独立设置页的插件可省略）；`settings_sections`、`panels`、`sidebar_sections`、`dialogs` 会自动启用下列前缀表面：
-  - `"settings_section:<id>"`
-  - `"panel:<id>"`
-  - `"sidebar_section:<id>"`
-  - `"dialog:<id>"`
-- 宿主调用 `plugin.render` 与 `plugin.action` 时会在 `params.surface` 中传入对应的表面标识，插件按 `surface` 返回各自独立的 `UIPage` 与 `ActionResult`。
-- 宿主按 `(plugin_id, notebook_root, surface)` 分别隔离加载态、忙碌/反馈状态、表单值、定时刷新（`refresh_interval_ms`）与笔记本切换感知；停用或卸载插件时会销毁其全部表面视图。
-
-### 8.4 `plugin.command` 与工作区 `plugin.event`
+### 7.3 `plugin.command` 与工作区 `plugin.event`
 
 1. **`plugin.command`**（Host -> Plugin）
    - 触发来源：命令面板、快捷键、顶栏按钮、页面菜单、编辑器菜单、侧栏右键菜单、标签页右键菜单、状态栏条目或系统菜单栏图标（30 秒超时；若插件未启动，宿主会自动拉起）。
@@ -133,7 +122,7 @@
      - `"locale.changed"`：携带当前语言（如 `{"locale": "zh"|"en"}`）。
    - 返回 `result`：`{"handled": true}`（可选）。
 
-### 8.5 UI 贡献宿主方法（Plugin -> Host）
+### 7.4 通用 UI 贡献宿主方法（Plugin -> Host）
 
 1. **`host.titlebar.get_items`**（无需声明权限，参数 `{}`）
    - 返回：`{"items": [{"id": "feedback", "label": "反馈", "locked": false, "hidden": false, "plugin": "", "icon": {"name": "message-square"}}]}`
@@ -189,34 +178,38 @@
 9.1. **`host.sidebar.set_file_icons` / `host.sidebar.get_file_icons`**（无需声明权限，需声明 `contributes.file_icons`）
    - `host.sidebar.set_file_icons` 参数：`{"notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {".": {"icon": "book", "tint": "blue"}, "welcome.md": {"icon": "wave", "tint": "blue"}}, "prefs": {"picker": true, "sync_tabs": true}}`（`notebook_root` 省略时取当前笔记本；`"."` 表示笔记本自身图标，其余为笔记本内相对路径；`entries` 最多 2048 项，`icon` 须存在于图标包，`tint` 支持 `"none"` | `"blue"` | `"teal"` | `"green"` | `"amber"` | `"red"` | `"purple"`；`patch: true` 时传 `null` 删除单项，`clear: true` 清空当前笔记本映射；`prefs` 覆盖选择器与标签页同步开关；文件重命名/移入回收站时宿主自动同步路径）。
    - `host.sidebar.get_file_icons` 参数：`{"notebook_root": "..."}` -> 返回 `{"notebook_root": "...", "entries": {...}, "recent": [...], "prefs": {"picker": true, "sync_tabs": true}}`。
-10. **`host.ui.backdrop` / `host.ui.set_backdrop`**（无需声明权限）
-    - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的编辑区矢量背景状态 `{"id": "...", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
-    - `host.ui.set_backdrop`（参数：`{"id": "poop-wallpaper", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
-    - 「到处拉屎」插件在 `plugin.initialize` 读取已保存的背景设置并调用 `host.ui.set_backdrop`，外观设置中的控件变化通过 `plugin.render` 的 `values` 即时保存和应用。
-11. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
+10. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
     - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
-12. **`host.editor.insert`**（需 `"editor:write"`）
+11. **`host.editor.insert`**（需 `"editor:write"`）
     - 参数：`{"text": "插入内容", "note": "welcome.md", "mode": "replace"|"insert"}`（**`text` 必填字符串**，省略或传 `null` 直接返回 `-32602`，不会误删当前选区；按 Markdown 解析为原生块后插入，并在写入磁盘时保留块级隐藏 HTML 注释签名且立即落盘，避免编辑器未保存状态与 `host.notes.read/write` 竞争；`mode` 默认 `"replace"` 替换当前选区，传 `"insert"` 时将选区折叠到末尾后再插入、不覆盖选中正文；`note` 可选：给定时主线程联合校验运行时存活、笔记本代次与绝对路径；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记，若右键菜单命令的目标是文件夹或笔记本外文件则直接返回 `-32004` 拒绝写入，不会落入其他活动标签页。`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
-13. **`host.ui.tarot_state` / `host.ui.set_tarot`**（无需声明权限）
-    - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
-    - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
-14. **`host.ui.editor_background` / `host.ui.set_editor_background`**（无需声明权限）
-    - `host.ui.editor_background`（参数 `{}`）：返回当前插件设置的编辑器背景状态 `{"mode": "off"|"dots"|"grid", "contrast": "standard"|"high"}`。
-    - `host.ui.set_editor_background`（参数 `{"mode": "dots", "contrast": "standard"}`）：设置与编辑器行高对齐的点阵（`"dots"`）、方格（`"grid"`）或关闭（`"off"`）背景及对比度（`"standard"` | `"high"`，兼容 `"strong"` 归一化为 `"high"`），持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动失效，返回归一化后的状态对象。
-15. **`host.ui.mindmap_state` / `host.ui.set_mindmap`**（无需声明权限）
-    - `host.ui.mindmap_state`（参数 `{}`）：返回当前插件设置的原生思维导图配置 `{"layout": "right"|"both", "height": "compact"|"standard"|"tall", "show_hints": true}`。
-    - `host.ui.set_mindmap`（参数 `{"layout": "right"|"both", "height": "compact"|"standard"|"tall", "show_hints": true}`，字段均可选）：更新原生思维导图块（```` ```mindmap ````）的默认布局、行内画布高度与底部快捷键提示栏显隐，持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动恢复默认，返回归一化后的状态对象。
-
-16. **`host.menubar.set`**（无需声明权限）
+12. **`host.menubar.set`**（无需声明权限）
     - 参数：`{"id": "<item_id>", "title": "3", "tooltip": "上传中", "menu": [{"id": "r1", "title": "shot.png", "subtitle": "https://...", "command": "copy_link", "payload": "https://..."}, {"separator": true}], "clear_menu": false}`（`id` 必填且须为本插件声明的 `menubar_items[].id`，其余字段可选，省略的字段保持原值）。
     - `title`：图标右侧的短文字（禁止 Emoji，截断至 16 个字符，传 `""` 清除）；`tooltip`：覆盖清单里的提示（截断至 200 个字符）。
     - `menu`：动态条目，整体替换上一次的动态条目，显示在静态 `menu` 下方（最多 20 条）。`title` 必填（截断至 60 个字符），`subtitle` 可选（截断至 80 个字符）；`command` 须引用 `commands[].id`，省略时条目置灰；`payload` 为最多 4096 字节的字符串，点击时作为 `context.payload` 随命令下发。`clear_menu: true` 清空动态条目。
     - 动态内容只保存在内存中。宿主按需启动插件，Block 重开后要等插件首次运行（如 `plugin.initialize`）重新推送，动态条目才会恢复。
     - 返回：`{"ok": true}`。
 
+### 7.5 特定场景与官方专属宿主方法
+
+以下接口服务于编辑区背景装饰、原生思维导图与原生塔罗模式等特定视觉能力（无需声明权限，按实际场景按需调用）：
+
+1. **`host.ui.backdrop` / `host.ui.set_backdrop`**（编辑区矢量背景，适用于壁纸/背景装饰类插件如 `block-poop-everywhere`）
+   - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的编辑区矢量背景状态 `{"id": "...", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
+   - `host.ui.set_backdrop`（参数：`{"id": "poop-wallpaper", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
+   - 「到处拉屎」插件在 `plugin.initialize` 读取已保存的背景设置并调用 `host.ui.set_backdrop`，外观设置中的控件变化通过 `plugin.render` 的 `values` 即时保存和应用。
+2. **`host.ui.editor_background` / `host.ui.set_editor_background`**（编辑器点阵/方格背景，适用于 `block-canvas-dots` 等外观扩展）
+   - `host.ui.editor_background`（参数 `{}`）：返回当前插件设置的编辑器背景状态 `{"mode": "off"|"dots"|"grid", "contrast": "standard"|"high"}`。
+   - `host.ui.set_editor_background`（参数 `{"mode": "dots", "contrast": "standard"}`）：设置与编辑器行高对齐的点阵（`"dots"`）、方格（`"grid"`）或关闭（`"off"`）背景及对比度（`"standard"` | `"high"`，兼容 `"strong"` 归一化为 `"high"`），持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动失效，返回归一化后的状态对象。
+3. **`host.ui.mindmap_state` / `host.ui.set_mindmap`**（原生思维导图配置，适用于 `block-mindmap` 官方扩展）
+   - `host.ui.mindmap_state`（参数 `{}`）：返回当前插件设置的原生思维导图配置 `{"layout": "right"|"both", "height": "compact"|"standard"|"tall", "show_hints": true}`。
+   - `host.ui.set_mindmap`（参数 `{"layout": "right"|"both", "height": "compact"|"standard"|"tall", "show_hints": true}`，字段均可选）：更新原生思维导图块（```` ```mindmap ````）的默认布局、行内画布高度与底部快捷键提示栏显隐，持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动恢复默认，返回归一化后的状态对象。
+4. **`host.ui.tarot_state` / `host.ui.set_tarot`**（宿主原生塔罗模式，适用于 `block-tarot` 官方扩展）
+   - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
+   - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
+
 <!-- ai-guide:skip-start -->
 ---
 
-下一步：[6. 语言扩展规范 →](languages.md)
+下一步：[5. 语言扩展 →](languages.md)
 <!-- ai-guide:skip-end -->
