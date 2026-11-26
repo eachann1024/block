@@ -2,6 +2,12 @@
   <a href="README.md">简体中文</a> · <strong>English</strong>
 </p>
 
+<div align="center">
+
+[![Listed on Awesome MyGo](https://awesomemygo.dev/badge.svg)](https://awesomemygo.dev/apps/block)
+
+</div>
+
 <a href="https://block.cooool.top/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/hero.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/hero.svg"><img alt="Block — Write in blocks. Fast as air." src="docs/readme/en/light/hero.svg"></picture></a>
 
 <a href="https://block.cooool.top/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/features.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/features.svg"><img alt="Block Highlights" src="docs/readme/en/light/features.svg"></picture></a>
