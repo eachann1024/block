@@ -15,6 +15,7 @@ import (
 	"block/internal/model"
 	"block/internal/theme"
 	blockui "block/internal/ui"
+	"block/internal/updater"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -157,7 +158,11 @@ func RunSceneShots(baseTempDir string, cfg SceneShotConfig) (*SceneShotSummary, 
 	}
 
 	prevDark := theme.IsDark()
-	defer theme.SetDark(prevDark)
+	prevLang := theme.Language()
+	defer func() {
+		theme.SetDark(prevDark)
+		theme.SetLanguage(prevLang)
+	}()
 	theme.SetLanguage(model.LangZh)
 
 	summary := &SceneShotSummary{
@@ -231,6 +236,7 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 
 	blockui.ResetSmoke()
 	defer blockui.ResetSmoke()
+	defer theme.SetLanguage(model.LangZh)
 
 	dark := th == "dark"
 
@@ -280,8 +286,13 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 			tt.Frame()
 			tt.Advance(20 * time.Millisecond)
 		}
+	case "updater-ready", "updater-downloading", "updater-installing", "updater-error", "updater-versions", "updater-ready-en":
+		if scene == "updater-ready-en" {
+			theme.SetLanguage(model.LangEn)
+		}
+		ws.Modals().OpenUpdaterPreview(updaterShotSnapshot(scene, filepath.Join(dataDir, "logs", "updater-install.log")))
 	default:
-		return SceneShotResult{}, fmt.Errorf("unknown scene %q (supported: workspace, settings, store, export, find, ai, ai-stream)", scene)
+		return SceneShotResult{}, fmt.Errorf("unknown scene %q (supported: workspace, settings, store, export, find, ai, ai-stream, updater-ready, updater-downloading, updater-installing, updater-error, updater-versions, updater-ready-en)", scene)
 	}
 
 	tt.Frame()
@@ -360,4 +371,77 @@ func isAIChatScrollChild(id string) bool {
 		return true
 	}
 	return strings.HasPrefix(id, "ai-process-tool-")
+}
+
+func updaterShotSnapshot(scene, logPath string) updater.Snapshot {
+	releases := []updater.ReleaseEntry{
+		{
+			Version:     "1.0.942",
+			Tag:         "v1.0.942",
+			PublishedAt: "2026-11-18T12:00:00Z",
+			HTMLURL:     updater.PublicReleasesWebURL,
+			Zh: updater.LocalizedNotes{
+				Highlights:   "本次更新带来更轻盈的更新弹窗体验与更稳健的后台校验。",
+				New:          []string{"图标：新增 GitHub 品牌图标"},
+				Improvements: []string{"关于：简化关于对话框中的操作和仓库按钮", "标题栏：品牌菜单中移除了 GitHub 发布说明入口"},
+				Fixes:        []string{"编辑器：修复只读映像下更新提示缺失的问题"},
+			},
+			En: updater.LocalizedNotes{
+				Highlights:   "A lighter update sheet with steadier background verification.",
+				New:          []string{"Icons: Added GitHub brand icon"},
+				Improvements: []string{"About: Simplified action and repository buttons", "Titlebar: Removed GitHub release link from brand menu"},
+				Fixes:        []string{"Editor: Fixed missing update prompt on read-only images"},
+			},
+		},
+		{
+			Version:     "1.0.941",
+			Tag:         "v1.0.941",
+			PublishedAt: "2026-11-16T09:30:00Z",
+			HTMLURL:     updater.PublicReleasesWebURL,
+			Zh: updater.LocalizedNotes{
+				New:   []string{"商店：新增瀑布流卡片与一键安装"},
+				Fixes: []string{"批注：修复窄窗口下批注栏宽度计算偏差"},
+			},
+			En: updater.LocalizedNotes{
+				New:   []string{"Store: Added masonry cards and one-click install"},
+				Fixes: []string{"Annotations: Fixed rail width in narrow windows"},
+			},
+		},
+	}
+	notes := updater.AggregateReleases(releases, "1.0.940", "")
+	snap := updater.Snapshot{
+		Status:         updater.StatusReady,
+		CurrentVersion: "1.0.940",
+		LatestVersion:  "1.0.942",
+		PublishedAt:    "2026-11-18T12:00:00Z",
+		ReleaseURL:     updater.PublicReleasesWebURL,
+		SourceMode:     updater.SourceAuto,
+		ActiveChannel:  "mirror",
+		FetchLatencyMs: 38,
+		ViewMode:       updater.ViewMerged,
+		InPlace:        true,
+		LogPath:        logPath,
+		Notes:          notes,
+	}
+	switch scene {
+	case "updater-downloading":
+		snap.Status = updater.StatusDownloading
+		snap.Percent = 42
+		snap.SpeedMBps = 3.1
+		snap.DownloadedBytes = 5_637_144
+		snap.TotalBytes = 13_421_772
+	case "updater-installing":
+		snap.Status = updater.StatusInstalling
+		snap.Percent = 100
+	case "updater-error":
+		snap.Status = updater.StatusError
+		snap.SourceMode = updater.SourceMirror
+		snap.FetchLatencyMs = 1240
+		snap.ErrorMessage = "校验安装包失败：SHA-256 摘要不匹配，请重试或切换线路"
+	case "updater-versions":
+		snap.ViewMode = updater.ViewByVersion
+	case "updater-ready-en":
+		snap.SourceMode = updater.SourceMirror
+	}
+	return snap
 }
