@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-26T14:10:55.594Z",
-  "latest_version": "1.0.942",
-  "latest_tag": "v1.0.942",
+  "updated_at": "2026-11-26T14:43:10.843Z",
+  "latest_version": "1.0.943",
+  "latest_tag": "v1.0.943",
   "releases": [
+    {
+      "version": "1.0.943",
+      "tag": "v1.0.943",
+      "published_at": "2026-11-26T14:43:10Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.943",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "关于窗口：采用更紧凑的布局，并新增 GitHub 按钮和版本号复制功能。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "About Dialog: The compact layout adds a GitHub button and lets you copy the app version."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-macos-arm64.dmg",
+          "size": 16101276,
+          "sha256": "72c7fe43998f31784bab619a6705c899ad8ff6e731fe46c732f27905446457c5"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-macos-x64.dmg",
+          "size": 17757756,
+          "sha256": "e28ea3e85bd924b73e8463cdea4b32833fe0e3a30d8e6624d5790e15ee080e9f"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-windows-x64-setup.exe",
+          "size": 13505453,
+          "sha256": "4a143f3a947c5aab5abfeb62f95e47e1e5b88cb4f84dd16f034543faa2e5f6d2"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-linux-x64.deb",
+          "size": 10969482,
+          "sha256": "b6a2fc563db2b1d0c0fb8d2a353838f6b86d3ffc431f8168f3f34dcfa21583ca"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.943/block-linux-x64.AppImage",
+          "size": 24025592,
+          "sha256": "2bae51c21f4660b3080d6954b7ad246327125e682a04f0f428629c0fa31baa2c"
+        }
+      ]
+    },
     {
       "version": "1.0.942",
       "tag": "v1.0.942",
@@ -34,38 +90,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-macos-arm64.dmg",
-          "size": 16102383,
-          "sha256": "edce6260ce8413ef5ee2ea9eefea580d6129378bbced86a7030b9d232adef60c"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-macos-x64.dmg",
-          "size": 17756131,
-          "sha256": "2eb3630a65182f97062d0a2ed3fba0c79a2a6a743bb84419f92a3d5e6334f839"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-windows-x64-setup.exe",
-          "size": 13505096,
-          "sha256": "23709271a560a2993bf5d576a973059b4542833097f6b52bd1a4807fdab485cb"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-linux-x64.deb",
-          "size": 10962938,
-          "sha256": "37bef80d6ff5328253daedcd39a98f5e67ef90dd58e3dd29e5f4e81999f36eea"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.942/block-linux-x64.AppImage",
-          "size": 24021496,
-          "sha256": "3233d9bfa5f4e9e934780b3b3b86a83a32b47a2faa5686232765f9b4a053b392"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.941",
@@ -1625,35 +1650,6 @@
           "The find and replace row is collapsed by default and can be expanded with a toggle."
         ],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.891",
-      "tag": "v1.0.891",
-      "published_at": "2026-11-21T08:38:51Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.891",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "使用查找快捷键可打开搜索并自动填入选中的文本，也可替换单个或全部匹配项。"
-        ],
-        "improvements": [],
-        "fixes": [
-          "查找栏现在浮动显示在页面上方，不会挤压笔记内容。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "The find shortcut opens search with the selected text and supports replacing one or all matches."
-        ],
-        "improvements": [],
-        "fixes": [
-          "The find bar now floats over the page without pushing note content down."
-        ],
         "other": []
       },
       "assets": []
