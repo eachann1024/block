@@ -359,7 +359,10 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	}()
 	go func() {
 		waitErr := cmd.Wait()
-		if !rt.shuttingDown.Load() && !rt.closed.Load() && ctx.Err() == nil && isPython3 {
+		// Invalidation must not depend on a local abort: a plugin that dies before
+		// the first request often fails that write with a broken pipe, which aborts
+		// the runtime and would otherwise leave the broken interpreter cached.
+		if !rt.shuttingDown.Load() && ctx.Err() == nil && isPython3 {
 			if !rt.initialized.Load() || (waitErr != nil && time.Since(startedAt) < 5*time.Second) {
 				python3Cache.invalidate(cmdName)
 			}

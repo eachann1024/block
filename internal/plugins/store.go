@@ -1710,8 +1710,13 @@ func validateCandidateDir(tmpDir string, entry *StoreAppEntry) (*Manifest, error
 		}
 	}
 	if len(m.Entry.Command) > 0 {
-		if _, err := pluginCommand(tmpDir, m.Entry.Command[0]); err != nil {
-			return nil, err
+		// Resolve bare PATH interpreters (python3) only when the runtime actually
+		// starts: probing them during install blocks the store on the host
+		// environment and caches an interpreter the plugin has not run under yet.
+		if !isPython3Command(m.Entry.Command[0]) {
+			if _, err := pluginCommand(tmpDir, m.Entry.Command[0]); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if m.Contributes != nil && len(m.Contributes.Languages) > 0 {
