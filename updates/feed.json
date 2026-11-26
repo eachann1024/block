@@ -1,10 +1,72 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-26T12:26:32.509Z",
-  "latest_version": "1.0.938",
-  "latest_tag": "v1.0.938",
+  "updated_at": "2026-11-26T13:57:35.921Z",
+  "latest_version": "1.0.941",
+  "latest_tag": "v1.0.941",
   "releases": [
+    {
+      "version": "1.0.941",
+      "tag": "v1.0.941",
+      "published_at": "2026-11-26T13:57:35Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.941",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件：更可靠地查找 Python 3 执行环境，并保留被截断的错误输出以便排查问题。",
+          "插件：记录了插件启动失败的错误日志，及时清理异常退出的运行时实例，并对齐了插件 RPC 状态码。"
+        ],
+        "other": [
+          "持续集成：修复了 Linux 环境下命令键的映射记录，并将冒烟测试界面固定为中文以避免自动化测试失败。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugins: The Python 3 executable is now resolved more reliably, and truncated error output is properly preserved for troubleshooting.",
+          "Plugins: Startup failures are now recorded in logs, crashed runtime instances are cleaned up promptly, and plugin RPC status codes have been aligned."
+        ],
+        "other": [
+          "CI: Fixed shortcut command key mappings on Linux and pinned the smoke test interface to Chinese to prevent automated test failures."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-macos-arm64.dmg",
+          "size": 16104264,
+          "sha256": "07dbafacaf07e960191d90bb59ccfad1690195409103f571eb934735564fe57e"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-macos-x64.dmg",
+          "size": 17757743,
+          "sha256": "49d0bcfc4b6bf4de602ffccd0901b580dddae3ec441474075068ebeb21dd34da"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-windows-x64-setup.exe",
+          "size": 13505001,
+          "sha256": "0f501882caf9d2ba8a670aee9dde20d0498bf642daf91e95b8505b7450aa2409"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-linux-x64.deb",
+          "size": 10969108,
+          "sha256": "0a87e0cc62b42cc75d51504df5bfacffa78fd3afd24065d51a25d84a2545f359"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.941/block-linux-x64.AppImage",
+          "size": 24025592,
+          "sha256": "8cd876024d3da83957cf2762d972901661a8fce30d82f639b5782db4324c0b1b"
+        }
+      ]
+    },
     {
       "version": "1.0.938",
       "tag": "v1.0.938",
@@ -32,38 +94,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-macos-arm64.dmg",
-          "size": 16083754,
-          "sha256": "9fd441c5f8468781708f2dc7c2d4ea145c53bdadb06a8811ec522cca540f9bec"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-macos-x64.dmg",
-          "size": 17726407,
-          "sha256": "35b695cd8459bd83b973b0ce15b4d0b9cdd21f34f6f30d45c9f5cded195b8ae2"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-windows-x64-setup.exe",
-          "size": 13487070,
-          "sha256": "2d748e6f27ff018cf40b0a02c4a8e3e899bb638add70e0a783653f14e662ddcb"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-linux-x64.deb",
-          "size": 10956078,
-          "sha256": "808749d70813ac12cae56cf4ead7d228db543e1f00a5da597ff9a16970050d47"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.938/block-linux-x64.AppImage",
-          "size": 24009208,
-          "sha256": "20d12042d2d51715b7961865867f526d204f64fca4d7d9349707e33faad7004c"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.937",
@@ -1638,33 +1669,6 @@
         "other": [
           "Retired special cases for plugin migration have been removed."
         ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.889",
-      "tag": "v1.0.889",
-      "published_at": "2026-11-21T07:26:06Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.889",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "打开标签页的上下文菜单时，当前标签页会继续保持高亮。",
-          "侧边栏树形列表在 Shell 主题下以及打开行菜单时，都会显示悬停高亮。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "The selected tab stays highlighted while its context menu is open.",
-          "Sidebar tree rows show their hover highlight in shell themes and while their context menu is open."
-        ],
-        "other": []
       },
       "assets": []
     }
