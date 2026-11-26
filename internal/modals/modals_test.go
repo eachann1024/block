@@ -163,7 +163,8 @@ func TestSettingsNavigationControlsAndShortcutRecording(t *testing.T) {
 	if !m.IsRecordingShortcut() {
 		t.Fatalf("expected IsRecordingShortcut() == true")
 	}
-	tt.Key(ui.Super|ui.Shift, ui.KeyL)
+	// ui.Cmd is Command on macOS and Ctrl elsewhere; both are stored as "cmd".
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyL)
 	if m.IsRecordingShortcut() {
 		t.Fatalf("expected recording to stop after valid chord")
 	}
@@ -625,8 +626,8 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 	if !m.IsRecordingShortcut() || m.recordingShortcut != "global_summon" {
 		t.Fatalf("expected recording global_summon, got %q", m.recordingShortcut)
 	}
-	// ui.Cmd is Ctrl off macOS; press Super so the recorded spec is cmd-f5 everywhere.
-	tt.Key(ui.Super, ui.KeyF5)
+	// ui.Cmd is Command on macOS and Ctrl elsewhere; both are stored as cmd-f5.
+	tt.Key(ui.Cmd, ui.KeyF5)
 	if got := EffectiveShortcut(*state, "global_summon"); got != "cmd-f5" {
 		t.Fatalf("expected global_summon=cmd-f5, got %q", got)
 	}
@@ -669,7 +670,7 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 	if err := tt.Click(formatShortcutLabel("cmd-f5")); err != nil {
 		t.Fatal(err)
 	}
-	tt.Key(ui.Super, ui.KeyBackslash)
+	tt.Key(ui.Cmd, ui.KeyBackslash)
 	if state.ShortcutQuick != "cmd-\\" {
 		t.Fatalf("expected ShortcutQuick=cmd-\\, got %q", state.ShortcutQuick)
 	}
