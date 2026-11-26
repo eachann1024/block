@@ -3068,7 +3068,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		}
 		st, err := ui.SetTarotMode(p.Enabled, p.Toggle, p.Room)
 		if err != nil {
-			return nil, rpcErr(-32004, err.Error()), true
+			return nil, rpcErr(-32005, err.Error()), true
 		}
 		return st, nil, true
 
