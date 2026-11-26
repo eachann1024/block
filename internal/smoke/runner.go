@@ -111,6 +111,15 @@ func RunAll(baseTempDir string) (*Report, error) {
 		return nil, fmt.Errorf("installSmokePluginFixture: %w", err)
 	}
 
+	// Acceptance steps click Chinese labels. A fresh state follows the OS
+	// language, which is English on CI, so pin zh before the workspace loads it.
+	files.SetDataDirOverride(dataDir)
+	if _, err := files.UpdateState(func(s *model.AppState) {
+		s.Language = model.LangZh
+	}); err != nil {
+		return nil, fmt.Errorf("seed language: %w", err)
+	}
+	theme.SetLanguage(model.LangZh)
 	ws := app.NewWorkspace(dataDir)
 	defer func() {
 		if sup := ws.Plugins(); sup != nil {
@@ -656,10 +665,8 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := clickTarget(tt, "titlebar-feedback"); err != nil {
 			return "", err
 		}
-		if err := tt.Click("发送反馈"); err != nil {
-			if err2 := tt.Click("发送"); err2 != nil {
-				return "", fmt.Errorf("click feedback submit failed: %v", err)
-			}
+		if err := clickTarget(tt, "feedback-send"); err != nil {
+			return "", fmt.Errorf("click feedback submit failed: %w", err)
 		}
 		tt.Frame()
 		if _, ok := blockui.TargetBounds("feedback-done"); !ok {
