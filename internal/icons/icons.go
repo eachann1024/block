@@ -149,6 +149,7 @@ const (
 	ProvOpenai      Icon = "prov-openai"
 	ProvAnthropic   Icon = "prov-anthropic"
 	ProvDeepseek    Icon = "prov-deepseek"
+	Github          Icon = "github"
 	KeyCommand      Icon = "key-command"
 	KeyOption       Icon = "key-option"
 	KeyReturn       Icon = "key-return"
