@@ -14,14 +14,13 @@
 
 外部插件**无需向主仓提 PR 或人工审批**，放在独立公开、非 Fork、未归档 GitHub 仓库，添加 `blockmd-plugin` Topic 并发布正式 Release（非 Draft / Prerelease）即可参与商店自动采集（仅抓取 stars 降序前 100 仓库；详见 [检查与上架](check-and-store.md) 的「发布到应用商店（`blockmd-plugin` 自动采集）」）；任意阶段均可在桌面端通过本地目录、`owner/repo` 或 HTTPS 压缩包直接安装。
 
-### 1.1 先定路径（四类开发路径决策表）
+### 1.1 先定路径（三类开发路径决策表）
 
 | 开发路径 | 适用场景 | 交付结构 | 关键说明 |
 | --- | --- | --- | --- |
 | 功能 / 社区插件 | 同步、图床、导出、AI 面板、宿主 UI 扩展等交互功能 | 独立仓库 + `manifest.json` + `entry.command`（JSON-RPC 2.0 子进程） | 加 `blockmd-plugin` Topic 发正式 Release 参与自动采集 |
 | 纯语法高亮语言扩展 | 为小众语言提供代码块与源码编辑器高亮 | 独立仓库 + `manifest.json`（`category: "language"`）+ `grammars/*.json` | 零子进程、零权限，安装自动启用，详见 [语言扩展](languages.md) |
 | `blockmd-plugins/*` 官方认证 | 官方维护且在 `store/verified.json` 1:1 绑定的插件 | 独立仓库 + `manifest.json` + 入口或语法 | 强制要求中英双语 `README` 与 `locale="en"` 英文界面门禁 |
-| 主仓 `plugins/` 随包内置（历史特例） | 目前仅 `tag-manager`（`block-tag-manager`）随主应用二进制内置 | 主仓 `plugins/` + `builtin://` 种子注册 | 仅作历史特例保留，**外部插件禁止仿照提 PR 到主仓 `plugins/`** |
 
 ### 1.2 开发前必须规避的 8 条红线
 

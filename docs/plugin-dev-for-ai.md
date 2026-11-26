@@ -10,14 +10,13 @@
 
 外部插件**无需向主仓提 PR 或人工审批**，放在独立公开、非 Fork、未归档 GitHub 仓库，添加 `blockmd-plugin` Topic 并发布正式 Release（非 Draft / Prerelease）即可参与商店自动采集（仅抓取 stars 降序前 100 仓库；详见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「发布到应用商店（`blockmd-plugin` 自动采集）」）；任意阶段均可在桌面端通过本地目录、`owner/repo` 或 HTTPS 压缩包直接安装。
 
-### 1.1 先定路径（四类开发路径决策表）
+### 1.1 先定路径（三类开发路径决策表）
 
 | 开发路径 | 适用场景 | 交付结构 | 关键说明 |
 | --- | --- | --- | --- |
 | 功能 / 社区插件 | 同步、图床、导出、AI 面板、宿主 UI 扩展等交互功能 | 独立仓库 + `manifest.json` + `entry.command`（JSON-RPC 2.0 子进程） | 加 `blockmd-plugin` Topic 发正式 Release 参与自动采集 |
 | 纯语法高亮语言扩展 | 为小众语言提供代码块与源码编辑器高亮 | 独立仓库 + `manifest.json`（`category: "language"`）+ `grammars/*.json` | 零子进程、零权限，安装自动启用，详见 [语言扩展](https://docs.block.cooool.top/plugins/languages) |
 | `blockmd-plugins/*` 官方认证 | 官方维护且在 `store/verified.json` 1:1 绑定的插件 | 独立仓库 + `manifest.json` + 入口或语法 | 强制要求中英双语 `README` 与 `locale="en"` 英文界面门禁 |
-| 主仓 `plugins/` 随包内置（历史特例） | 目前仅 `tag-manager`（`block-tag-manager`）随主应用二进制内置 | 主仓 `plugins/` + `builtin://` 种子注册 | 仅作历史特例保留，**外部插件禁止仿照提 PR 到主仓 `plugins/`** |
 
 ### 1.2 开发前必须规避的 8 条红线
 
@@ -1207,4 +1206,4 @@ Block 应用商店采用无审批自动采集机制。**硬门槛与采集上限
    - **桌面端不同安装来源的校验力度与权限确认**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会先暂存并校验清单与打包上限，但不做商店 `sha256`/索引比对。无论商店还是手动来源，首次安装请求 5 类敏感权限任一项或更新新增敏感权限时，桌面端均会先弹出权限确认卡片，用户确认后才落盘；「全部更新」会先自动更新无新增敏感权限的插件，将新增敏感权限的插件留待用户逐项确认（若此时已离开商店页，则通过右上角通知横幅引导返回确认）。
 
 - 带系统权限的发行包通过索引的 `system_apps` 提供，支持该字段的 Block 会优先选用。旧客户端从 `apps` 读取已验证的兼容包。同步插件为旧客户端保留 v1.3.44。随包索引与采集器使用相同分流规则，采集器校验兼容包的固定 SHA-256 后才写入索引。
-- **随包内置种子来源（`builtin://`）**：主程序在编译期通过内嵌 `embed.FS` 嵌入离线兜底索引 `default_index.json`，并仅将历史内置插件 `plugins/tag-manager`（`block-tag-manager`）通过 `RegisterBuiltinCatalogApp` 注册为 `builtin://block-tag-manager` 种子条目（合并目录时优先于远端及离线索引，并过滤保留 ID `block-diagnostics`）。用户点击安装前不解包落盘，查看详情说明时直接从内嵌 `embed.FS` 读取 `README.zh.md` / `README.en.md` / `README.md`；点击安装时才从内嵌 `embed.FS` 解压暂存（免网络请求与 `sha256` 校验，仅核对包内 `id` 并校验清单与敏感权限确认），随后写入 `<BlockAppData>/apps/<id>/`（安装来源记为 `builtin:<id>`，首次安装仍遵循默认停用生命周期，后续同源自动更新受 `UpdateEntryNoEscalation` 约束且禁止新增敏感权限）。`builtin://` 仅用于上述随包历史特例，外部插件一律通过独立公开仓库与 `blockmd-plugin` Topic 参与自动采集，勿提交到主仓 `plugins/`。
+- **离线兜底索引与 `builtin://` 机制**：主程序在编译期仅通过内嵌 `default_index.json` 作为离线兜底索引（`DefaultSeedIndex()` 会过滤保留 ID `block-diagnostics` 及已由宿主内置接管的语言包 ID）；主仓当前不含 `plugins/` 目录或内置插件，`RegisterBuiltinCatalogApp` 暂无调用方。`LoadCachedOrSeedCatalog` 仅在无本地缓存、缓存无效或兜底索引更新时间戳更新时返回兜底索引，否则以本地缓存优先；`RefreshCatalog` 拉取远端 `store-index.json` 后以远端目录优先（若存在已注册的 `builtin://` 种子，则按 `mergeStoreIndexes(parsed/idx, DefaultSeedIndex())` 以缓存/远端条目优先合并）。外部插件一律通过独立公开仓库与 `blockmd-plugin` Topic 参与自动采集，禁止提交到主仓 `plugins/`。

@@ -69,11 +69,10 @@
 
 Developing and publishing community plugins **requires no PR to this main repository**: create a standalone public GitHub repository, add the `blockmd-plugin` topic, and publish a standard Release to join approval-free App Store crawling (or install directly in the desktop app via repository name or local folder). Writing works out of the box, while extensions can be installed and enabled on demand via **Settings → App Store**:
 
-- **Officially Verified & Bundled Extensions**:
+- **Officially Verified Extensions**:
   - **Sync (`block-sync`)**: Incrementally syncs notebooks via folder mirror, WebDAV, or Git while keeping plain `.md` files.
   - **Image Host (`block-image-host`)**: Uploads local images to Cloudflare R2, S3-compatible storage, or GitHub and replaces links automatically.
   - **More Officially Verified Extensions**: See [`store/verified.json`](store/verified.json) for the full list.
-  - **Bundled Extension**: Tag Manager (`block-tag-manager`, bundled with the app binary and enabled on demand).
 - **Community & Language Extensions**: Any standalone public repository following the spec with the `blockmd-plugin` topic and a published Release joins automatic App Store crawling (or can be installed directly via repository name or local folder).
 
 Documentation & AI agent resources:
