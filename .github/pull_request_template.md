@@ -1,3 +1,6 @@
+> **开发或上架插件？** 外部插件无需向主仓提 PR，也勿提交到 `plugins/`；请建独立公开仓库加 `blockmd-plugin` Topic 发正式 Release 自动上架，详见 [docs/plugins/README.md](https://docs.block.cooool.top/plugins/)。
+> **Building a plugin?** External plugins need no PR here and must not be added to `plugins/`. Publish from your own public repo with the `blockmd-plugin` topic and a Release; see [docs/plugins/README.md](https://docs.block.cooool.top/plugins/)。
+
 ## 本 PR 做了什么 / What this PR does
 
 -
