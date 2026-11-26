@@ -109,15 +109,7 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 				}
 			})
 			ui.Column(c).FillWidth().Gap(theme.Space8).Padding(16, 0, 4, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-				upIcon := icons.UpdateTangle
-				if internalui.ActionButton(c, "about-check-update", theme.Tr("检查更新…", "Check for Updates…"), &upIcon, internalui.ButtonSecondary, false).Height(theme.HeightLarge).FillWidth().Clicked() {
-					m.CloseAbout()
-					m.OpenUpdater()
-					if m.Updater != nil {
-						m.Updater.CheckAsync(true)
-					}
-				}
-				if internalui.ActionButton(c, "about-repo", "eachann1024/block", &[]icons.Icon{icons.Code}[0], internalui.ButtonSecondary, false).Height(theme.HeightLarge).FillWidth().Clicked() {
+				if internalui.ActionButton(c, "about-repo", "block", &[]icons.Icon{icons.Github}[0], internalui.ButtonSecondary, false).Height(theme.HeightLarge).FillWidth().Clicked() {
 					c.OpenURL("https://github.com/eachann1024/block")
 				}
 			})
