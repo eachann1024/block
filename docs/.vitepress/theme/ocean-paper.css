@@ -1,40 +1,84 @@
 :root {
-  --vp-c-brand-1: #547dd0;
-  --vp-c-brand-2: #3d63b0;
-  --vp-c-brand-3: #547dd0;
-  --vp-c-brand-soft: rgba(84, 125, 208, 0.12);
-  --vp-c-bg: #ffffff;
-  --vp-c-bg-alt: #fafafa;
-  --vp-c-bg-elv: #ffffff;
-  --vp-c-bg-soft: #f3f1ec;
-  --vp-c-text-1: #20242c;
-  --vp-c-text-2: #526071;
-  --vp-c-divider: #e4e6ea;
-  --vp-c-gutter: #e6e6e6;
-  --vp-code-bg: #f3f1ec;
-  --vp-code-color: #20242c;
-  --vp-code-block-bg: #f3f1ec;
-  --vp-c-default-soft: #f0f0ef;
-  --vp-font-family-base: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Segoe UI", "Microsoft YaHei", sans-serif;
+  /* Ocean Paper Light Tokens (aligned with DESIGN.md) */
+  --bp-bg: #ffffff;
+  --bp-bg-alt: #fafafa;
+  --bp-canvas: #f8f8f8;
+  --bp-shell: #f1f1f1;
+  --bp-code-bg: #f3f1ec;
+  --bp-text-1: #20242c;
+  --bp-text-2: #526071;
+  --bp-text-3: #768294;
+  --bp-border: #e4e6ea;
+  --bp-btn-border: #dcdcdc;
+  --bp-accent: #547dd0;
+  --bp-accent-strong: #3d63b0;
+  --bp-duo-fill: #c9d8f3;
+  --bp-hover: #f0f0ef;
+  --bp-selected: #e5e5e3;
+  --bp-selected-border: rgba(0, 0, 0, 0.1);
+  --bp-dot: rgba(32, 36, 44, 0.08);
+  --bp-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Segoe UI", "Microsoft YaHei", sans-serif;
+  --bp-font-mono: "JetBrains Mono", Menlo, ui-monospace, SFMono-Regular, Consolas, monospace;
+
+  /* VitePress Theme Mapping */
+  --vp-c-brand-1: var(--bp-accent-strong);
+  --vp-c-brand-2: var(--bp-accent);
+  --vp-c-brand-3: var(--bp-accent);
+  --vp-c-brand-soft: rgba(84, 125, 208, 0.11);
+  --vp-c-bg: var(--bp-bg);
+  --vp-c-bg-alt: var(--bp-bg-alt);
+  --vp-c-bg-elv: var(--bp-bg);
+  --vp-c-bg-soft: var(--bp-code-bg);
+  --vp-c-text-1: var(--bp-text-1);
+  --vp-c-text-2: var(--bp-text-2);
+  --vp-c-divider: var(--bp-border);
+  --vp-c-gutter: var(--bp-border);
+  --vp-code-bg: var(--bp-code-bg);
+  --vp-code-color: var(--bp-text-1);
+  --vp-code-block-bg: var(--bp-code-bg);
+  --vp-c-default-soft: var(--bp-hover);
+  --vp-font-family-base: var(--bp-font-sans);
+  --vp-font-family-mono: var(--bp-font-mono);
+  --vp-nav-height: 56px;
+  --vp-sidebar-width: 260px;
 }
 
 .dark {
-  --vp-c-brand-1: #779de8;
+  /* Ocean Paper Dark Tokens (aligned with DESIGN.md) */
+  --bp-bg: #181818;
+  --bp-bg-alt: #222222;
+  --bp-canvas: #1d1d1d;
+  --bp-shell: #262626;
+  --bp-code-bg: #242424;
+  --bp-text-1: #ececec;
+  --bp-text-2: #b4b4b4;
+  --bp-text-3: #8c8c8c;
+  --bp-border: #292929;
+  --bp-btn-border: #444444;
+  --bp-accent: #779de8;
+  --bp-accent-strong: #8fb0f0;
+  --bp-duo-fill: #31456a;
+  --bp-hover: #2c2c2c;
+  --bp-selected: #3a3a3a;
+  --bp-selected-border: rgba(255, 255, 255, 0.12);
+  --bp-dot: rgba(236, 236, 236, 0.08);
+
+  --vp-c-brand-1: var(--bp-accent);
   --vp-c-brand-2: #9dbcf5;
   --vp-c-brand-3: #547dd0;
   --vp-c-brand-soft: rgba(119, 157, 232, 0.16);
-  --vp-c-bg: #181818;
-  --vp-c-bg-alt: #222222;
-  --vp-c-bg-elv: #222222;
-  --vp-c-bg-soft: #242424;
-  --vp-c-text-1: #ececec;
-  --vp-c-text-2: #b4b4b4;
-  --vp-c-divider: #292929;
-  --vp-c-gutter: #292929;
-  --vp-code-bg: #242424;
-  --vp-code-color: #ececec;
-  --vp-code-block-bg: #242424;
-  --vp-c-default-soft: #2c2c2c;
+  --vp-c-bg: var(--bp-bg);
+  --vp-c-bg-alt: var(--bp-bg-alt);
+  --vp-c-bg-elv: var(--bp-bg-alt);
+  --vp-c-bg-soft: var(--bp-code-bg);
+  --vp-c-text-1: var(--bp-text-1);
+  --vp-c-text-2: var(--bp-text-2);
+  --vp-c-divider: var(--bp-border);
+  --vp-c-gutter: var(--bp-border);
+  --vp-code-bg: var(--bp-code-bg);
+  --vp-code-color: var(--bp-text-1);
+  --vp-code-block-bg: var(--bp-code-bg);
+  --vp-c-default-soft: var(--bp-hover);
 }
 
 ::selection {
@@ -47,15 +91,173 @@
   color: #9dbcf5;
 }
 
+/* Full-bleed DocsHome layout */
+.VPContent:has(.bp-home) {
+  width: 100%;
+  max-width: 100%;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Navbar: crisp hairline chrome, no drop shadow */
+.VPNavBar {
+  background-color: var(--bp-bg) !important;
+  border-bottom: 1px solid var(--bp-border);
+}
+
+.VPNavBar .divider {
+  display: none;
+}
+
+.VPNavBarTitle .title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.DocSearch-Button {
+  height: 32px !important;
+  border-radius: 999px !important;
+  border: 1px solid var(--bp-btn-border) !important;
+  background-color: var(--bp-bg-alt) !important;
+  padding: 0 12px !important;
+}
+
+.DocSearch-Button:hover {
+  border-color: var(--bp-accent) !important;
+  background-color: var(--bp-bg) !important;
+}
+
+/* Sidebar: Ocean Paper 260px flat list with 1px inner ring on active item */
+.VPSidebar {
+  background-color: var(--bp-bg-alt) !important;
+  border-right: 1px solid var(--bp-border);
+}
+
+.VPSidebarItem .item {
+  border-radius: 8px;
+  padding: 0 10px;
+  min-height: 32px;
+  transition: background-color 0.14s ease;
+}
+
+.VPSidebarItem.is-link > .item:hover {
+  background-color: var(--bp-hover);
+}
+
+.VPSidebarItem.is-active > .item {
+  background-color: var(--bp-selected);
+  box-shadow: inset 0 0 0 1px var(--bp-selected-border);
+}
+
+.VPSidebarItem.is-active > .item .link > .text {
+  color: var(--bp-text-1) !important;
+  font-weight: 560;
+}
+
+.VPDocAsideOutline .outline-marker {
+  width: 2px;
+  background-color: var(--bp-accent);
+}
+
+/* Inner Document Typography & Spacing */
+.VPDoc .content-container {
+  max-width: 720px;
+}
+
+.vp-doc h1 {
+  font-size: 28px;
+  line-height: 1.28;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.vp-doc h2 {
+  font-size: 21px;
+  line-height: 1.38;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  border-top: 1px solid var(--bp-border);
+  padding-top: 24px;
+  margin-top: 40px;
+}
+
+.vp-doc p,
+.vp-doc li {
+  line-height: 1.72;
+}
+
+.vp-doc a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
 .vp-doc blockquote {
-  border-left-color: #dbd9d4;
+  border-left: 3px solid #dbd9d4;
+  background: var(--bp-canvas);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
 }
 
 .dark .vp-doc blockquote {
   border-left-color: #484848;
 }
 
+/* Code blocks & inline code */
+.vp-doc div[class*="language-"] {
+  border: 1px solid var(--bp-border);
+  border-radius: 10px;
+}
+
+.vp-doc :not(pre) > code {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 0.875em;
+}
+
+.dark .vp-doc :not(pre) > code {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Tables: full width when narrow, horizontal scroll when wide */
 .vp-doc table {
   display: block;
+  width: 100%;
   overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.vp-doc th {
+  background-color: var(--bp-canvas);
+  font-weight: 560;
+  text-align: left;
+}
+
+.vp-doc th,
+.vp-doc td {
+  border: 1px solid var(--bp-border);
+  padding: 9px 12px;
+}
+
+/* Custom blocks: flat Ocean Paper surface with left accent rule */
+.vp-doc .custom-block {
+  background-color: var(--bp-bg);
+  border: 1px solid var(--bp-border);
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.vp-doc .custom-block.tip,
+.vp-doc .custom-block.info {
+  border-left-color: var(--bp-accent);
+}
+
+.vp-doc .custom-block.warning {
+  border-left-color: #c48a2b;
+}
+
+.vp-doc .custom-block.danger {
+  border-left-color: #c94a4a;
 }

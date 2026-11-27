@@ -23,6 +23,13 @@ export default defineConfig({
     "en/README.md": "en/index.md",
     "en/plugins/README.md": "en/plugins/index.md",
   },
+  transformPageData(pageData) {
+    if (pageData.relativePath === "index.md" || pageData.relativePath === "en/index.md") {
+      pageData.frontmatter.layout = "DocsHome";
+      pageData.frontmatter.sidebar = false;
+      pageData.frontmatter.aside = false;
+    }
+  },
   head: [["link", { rel: "icon", href: "https://block.cooool.top/favicon.ico" }]],
   vite: {
     plugins: [sourceLinks(docsRoot, [aiGuide, enAiGuide])],
