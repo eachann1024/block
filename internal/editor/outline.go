@@ -95,7 +95,7 @@ func sampleOutlineTicks(items []model.OutlineItem, activeIdx, hoverIdx, maxTicks
 	return grid
 }
 
-func (s *Session) outlineRightMargin() float32 {
+func (s *Session) outlineLeftMargin() float32 {
 	if s == nil || s.outlineForceNarrow {
 		return 0
 	}
@@ -107,7 +107,7 @@ func (s *Session) outlineRightMargin() float32 {
 }
 
 func (s *Session) outlineVisible() bool {
-	if s == nil || s.minimal || s.embedded || s.outlineRightMargin() < theme.OutlineRailMinRightMargin {
+	if s == nil || s.minimal || s.embedded || s.outlineLeftMargin() < theme.OutlineRailMinLeftMargin {
 		return false
 	}
 	return len(s.Outline()) > 0
@@ -382,7 +382,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 	hoverIdx := outlineIndexByBlockID(items, s.outlineHoverBlockID)
 
 	pal := theme.Ocean()
-	vp, winW, winH := s.overlayViewport(c)
+	vp, _, winH := s.overlayViewport(c)
 	maxTicks := theme.OutlineMaxTicks
 	if vp.H > 0 {
 		maxTicks = min(theme.OutlineMaxTicks, max(1, int((vp.H-theme.Space24)/theme.OutlineTickHitHeight)))
@@ -411,20 +411,54 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		switchTarget       model.OutlineViewMode
 	)
 
-	rightEdge := max(winW-(vp.X+vp.W), 0) + theme.OutlineRailRightOffset
+	leftEdge := max(vp.X, 0) + theme.OutlineRailLeftOffset
 	bottomEdge := max(winH-(vp.Y+vp.H), 0)
-	popupRight := rightEdge + theme.OutlineRailWidth + theme.OutlineBridgeWidth
+	popupLeft := leftEdge + theme.OutlineRailWidth + theme.OutlineBridgeWidth
 	popupStageW := max(theme.OutlineHoverCardWidth, theme.OutlinePanelWidth)
 
 	ui.Overlay(c, func() {
+		outer := ui.Column(c.Key("outline-overlay-root")).
+			Absolute().
+			Top(vp.Y).
+			Bottom(bottomEdge).
+			Left(leftEdge).
+			Justify(ui.Center).
+			AlignItems(ui.Start).
+			PassThrough()
+		outer.Children(func() {
+			rail, railHovered, hoveredTickID = s.renderOutlineTicks(c, pal, items, ticks, activeIdx, hoverIdx)
+			rail.Opacity(s.outlineOpacity(c, rail, now))
+		})
+
+		if s.outlineMode != outlineModeClosed {
+			bridgeH := max(railH, 96)
+			if s.outlineMode == outlineModePanel {
+				estPanelH := min(panelMaxH, float32(len(items))*theme.HeightCompact+60)
+				bridgeH = max(railH, estPanelH*0.5)
+			}
+			bridgeStage := ui.Column(c.Key("outline-bridge-stage")).
+				Absolute().
+				Top(vp.Y).
+				Bottom(bottomEdge).
+				Left(leftEdge + theme.OutlineRailWidth).
+				Width(theme.OutlineBridgeWidth).
+				Justify(ui.Center).
+				AlignItems(ui.Center).
+				PassThrough()
+			bridgeStage.Children(func() {
+				bridge := ui.Box(c.Key("outline-bridge")).Width(theme.OutlineBridgeWidth).Height(bridgeH).PassThrough()
+				bridgeHovered = s.pointerInElement(bridge)
+			})
+		}
+
 		popupStage := ui.Column(c.Key("outline-popup-stage")).
 			Absolute().
 			Top(vp.Y).
 			Bottom(bottomEdge).
-			Right(popupRight).
+			Left(popupLeft).
 			Width(popupStageW).
 			Justify(ui.Center).
-			AlignItems(ui.End).
+			AlignItems(ui.Start).
 			PassThrough()
 		appUi.Probe(popupStage, "outline-popup-stage")
 		popupStage.Children(func() {
@@ -441,40 +475,6 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 				popupPendingLayout = panel.Bounds().W <= 0
 				popupHovered = panel.Hovered() || s.pointerInElement(panel)
 			}
-		})
-
-		if s.outlineMode != outlineModeClosed {
-			bridgeH := max(railH, 96)
-			if s.outlineMode == outlineModePanel {
-				estPanelH := min(panelMaxH, float32(len(items))*theme.HeightCompact+60)
-				bridgeH = max(railH, estPanelH*0.5)
-			}
-			bridgeStage := ui.Column(c.Key("outline-bridge-stage")).
-				Absolute().
-				Top(vp.Y).
-				Bottom(bottomEdge).
-				Right(rightEdge + theme.OutlineRailWidth).
-				Width(theme.OutlineBridgeWidth).
-				Justify(ui.Center).
-				AlignItems(ui.Center).
-				PassThrough()
-			bridgeStage.Children(func() {
-				bridge := ui.Box(c.Key("outline-bridge")).Width(theme.OutlineBridgeWidth).Height(bridgeH).PassThrough()
-				bridgeHovered = s.pointerInElement(bridge)
-			})
-		}
-
-		outer := ui.Column(c.Key("outline-overlay-root")).
-			Absolute().
-			Top(vp.Y).
-			Bottom(bottomEdge).
-			Right(rightEdge).
-			Justify(ui.Center).
-			AlignItems(ui.End).
-			PassThrough()
-		outer.Children(func() {
-			rail, railHovered, hoveredTickID = s.renderOutlineTicks(c, pal, items, ticks, activeIdx, hoverIdx)
-			rail.Opacity(s.outlineOpacity(c, rail, now))
 		})
 	})
 
@@ -521,7 +521,7 @@ func (s *Session) renderOutlineHoverCard(c *ui.Context, pal theme.Palette, items
 			Radius(theme.RadiusXL).
 			Background(pal.Menu).
 			Border(1, pal.MenuBorder).
-			TransformOrigin(1, 0.5).
+			TransformOrigin(0, 0.5).
 			Transition(appUi.OutlinePopoverTransition()).
 			HandleInput(s.forwardRailScroll),
 		theme.ElevationPopover,
@@ -587,7 +587,7 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 			Background(pal.Menu).
 			Border(1, pal.MenuBorder).
 			Clip().
-			TransformOrigin(1, 0.5).
+			TransformOrigin(0, 0.5).
 			Transition(appUi.OutlinePopoverTransition()),
 		theme.ElevationPopover,
 	)
@@ -748,7 +748,7 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 func (s *Session) renderOutlineTicks(c *ui.Context, pal theme.Palette, items []model.OutlineItem, ticks []int, activeIdx, hoverIdx int) (ui.Element, bool, model.BlockID) {
 	rail := ui.Column(c.Key("outline-rail")).
 		Width(theme.OutlineRailWidth).
-		AlignItems(ui.End).
+		AlignItems(ui.Start).
 		Gap(0).
 		HandleInput(s.forwardRailScroll)
 	appUi.Probe(rail, "outline-rail")
@@ -764,7 +764,7 @@ func (s *Session) renderOutlineTicks(c *ui.Context, pal theme.Palette, items []m
 				Height(theme.OutlineTickHitHeight).
 				Padding(0, theme.OutlineTickHitPadX).
 				AlignItems(ui.Center).
-				Justify(ui.End).
+				Justify(ui.Start).
 				Cursor(ui.CursorPointer).
 				KeepFocus().
 				FocusRing(false).

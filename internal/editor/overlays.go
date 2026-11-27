@@ -2005,15 +2005,11 @@ func (s *Session) placeAnnotations(c *ui.Context, canvasLeft, canvasWidth float3
 		return frame
 	}
 	// Match the centered document flow. Leave room for the widest block's
-	// bleed, the gap next to it, and the scrollbar (plus outline rail when visible) at the right edge.
+	// bleed, the gap next to it, and the scrollbar at the right edge.
 	flowWidth := min(canvasWidth, s.outerFlowWidth())
 	bodyRight := canvasLeft + (canvasWidth+flowWidth)*0.5 - s.rightContentInset()
 	frame.railLeft = bodyRight + s.bandBleed() + theme.Space8
-	rightReserve := theme.ScrollGutter
-	if s.outlineVisible() {
-		rightReserve = theme.OutlineRailRightReserve
-	}
-	frame.railWidth = max(canvasLeft+canvasWidth-rightReserve-frame.railLeft, 0)
+	frame.railWidth = max(canvasLeft+canvasWidth-theme.ScrollGutter-frame.railLeft, 0)
 
 	countW, _ := c.MeasureText(0, ui.Span{Text: "1", Size: theme.FontBody, Weight: theme.WeightControl})
 	for _, ann := range s.annotations {

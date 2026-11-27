@@ -209,18 +209,17 @@ const (
 	AIHistoryDrawerWidth     float32 = 300
 	AIHistoryDrawerRowHeight float32 = 36
 
-	// Right-side Orca outline rail, hover card, and directory panel metrics.
-	OutlineIdleOpacity        float32 = 0.40
-	OutlineMaxTicks                   = 20
-	OutlineTickHeight         float32 = 3
-	OutlineTickWidthIdle      float32 = 12
-	OutlineTickWidthLit       float32 = 20
-	OutlineTickHitHeight      float32 = 12
-	OutlineTickHitPadX        float32 = 4
-	OutlineRailWidth          float32 = OutlineTickWidthLit + OutlineTickHitPadX*2
-	OutlineRailRightOffset            = ScrollGutter + Space4
-	OutlineRailRightReserve           = OutlineRailRightOffset + OutlineRailWidth + Space4
-	OutlineRailMinRightMargin float32 = 36
+	// Left-side Orca outline rail, hover card, and directory panel metrics.
+	OutlineIdleOpacity       float32 = 0.40
+	OutlineMaxTicks                  = 20
+	OutlineTickHeight        float32 = 3
+	OutlineTickWidthIdle     float32 = 12
+	OutlineTickWidthLit      float32 = 20
+	OutlineTickHitHeight     float32 = 12
+	OutlineTickHitPadX       float32 = 4
+	OutlineRailWidth         float32 = OutlineTickWidthLit + OutlineTickHitPadX*2
+	OutlineRailLeftOffset            = EdgeHotZoneWidth + Space8
+	OutlineRailMinLeftMargin float32 = 36
 	OutlineBridgeWidth        float32 = 12
 	OutlineHoverCardWidth     float32 = 272
 	OutlinePanelWidth         float32 = 288

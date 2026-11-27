@@ -315,8 +315,8 @@ func PopoverSpringTransition() ui.ElementTransition {
 	}
 }
 
-// OutlinePopoverTransition blooms the right-side outline card/panel smoothly
-// from its trailing rail origin without vertical jump or overshoot.
+// OutlinePopoverTransition blooms the left-side outline card/panel smoothly
+// from its leading rail origin without vertical jump or overshoot.
 func OutlinePopoverTransition() ui.ElementTransition {
 	if testing.Testing() {
 		return ui.ElementTransition{Duration: -1}
@@ -327,7 +327,7 @@ func OutlinePopoverTransition() ui.ElementTransition {
 		ExitEase:     motionEase,
 		Colors:       true,
 		Shadows:      true,
-		Enter:        &ui.Motion{X: 4, Opacity: 0.15},
+		Enter:        &ui.Motion{X: -4, Opacity: 0.15},
 		Exit:         &ui.Motion{Opacity: 0},
 	}
 }

@@ -6089,22 +6089,22 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.StepTab(-1)
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyBracketLeft) || (!theme.IsMacOS() && c.Shortcut(ui.Alt, ui.KeyLeft)) {
+	// A focused MindMap block owns ⌘1/2/3 (Map / Outline / Source) and, on
+	// Windows/Linux, Alt+Left/Right (promote/demote node).
+	mindMapFocused := false
+	if sess := w.ActiveSession(); sess != nil {
+		mindMapFocused = sess.HasMindMapFocus(c)
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyBracketLeft) || (!theme.IsMacOS() && !mindMapFocused && c.Shortcut(ui.Alt, ui.KeyLeft)) {
 		w.NavigateBack()
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyBracketRight) || (!theme.IsMacOS() && c.Shortcut(ui.Alt, ui.KeyRight)) {
+	if c.Shortcut(ui.Cmd, ui.KeyBracketRight) || (!theme.IsMacOS() && !mindMapFocused && c.Shortcut(ui.Alt, ui.KeyRight)) {
 		w.NavigateForward()
 		return
 	}
-	// A focused MindMap block owns ⌘1/2/3 (Map / Outline / Source); ⌘4-9 and
-	// unfocused ⌘1-3 keep switching editor tabs.
-	mindMapOwnsDigits := false
-	if sess := w.ActiveSession(); sess != nil {
-		mindMapOwnsDigits = sess.HasMindMapFocus(c)
-	}
 	for n := 1; n <= 9; n++ {
-		if n <= 3 && mindMapOwnsDigits {
+		if n <= 3 && mindMapFocused {
 			continue
 		}
 		if c.Shortcut(ui.Cmd, ui.Key0+ui.Key(n)) {
@@ -6966,7 +6966,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 											w.headlessMainMu.Lock()
 										}
 										activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
-										activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.RightOpen())
+										activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
 										activeSess.SetOutlineViewMode(stSnap.OutlineView)
 										activeSess.SetBackground(w.pluginEditorBackground())
 										activeSess.SetBlockDecorators(w.pluginBlockDecorators())
