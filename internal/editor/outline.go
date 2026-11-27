@@ -411,10 +411,11 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		switchTarget       model.OutlineViewMode
 	)
 
-	leftEdge := max(vp.X, 0) + theme.OutlineRailLeftOffset
+	winW, _ := c.Size()
+	leftEdge := max(winW-theme.OutlineRailWidth-theme.OutlineRailLeftOffset, 0)
 	bottomEdge := max(winH-(vp.Y+vp.H), 0)
-	popupLeft := leftEdge + theme.OutlineRailWidth + theme.OutlineBridgeWidth
 	popupStageW := max(theme.OutlineHoverCardWidth, theme.OutlinePanelWidth)
+	popupLeft := max(leftEdge-theme.OutlineBridgeWidth-popupStageW, 0)
 
 	ui.Overlay(c, func() {
 		outer := ui.Column(c.Key("outline-overlay-root")).
@@ -440,7 +441,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 				Absolute().
 				Top(vp.Y).
 				Bottom(bottomEdge).
-				Left(leftEdge + theme.OutlineRailWidth).
+				Left(max(leftEdge-theme.OutlineBridgeWidth, 0)).
 				Width(theme.OutlineBridgeWidth).
 				Justify(ui.Center).
 				AlignItems(ui.Center).
@@ -458,7 +459,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 			Left(popupLeft).
 			Width(popupStageW).
 			Justify(ui.Center).
-			AlignItems(ui.Start).
+			AlignItems(ui.End).
 			PassThrough()
 		appUi.Probe(popupStage, "outline-popup-stage")
 		popupStage.Children(func() {

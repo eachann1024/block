@@ -131,8 +131,9 @@ func (c *Controller) SettingsTabChanged(previous, current string) {
 		c.storeHeroLastSwitch = time.Time{}
 		c.storeHeroElapsed = 0
 		c.sup.RefreshCatalogAsync()
-	} else if previous == "" && current != "" {
-		c.sup.RefreshCatalogIfStaleAsync(2 * time.Minute)
+	} else if previous == "" && current != "" && !bui.IsSmokeActive() {
+		// The freshness probe may hop to the UI loop; never block the current frame on it.
+		go c.sup.RefreshCatalogIfStaleAsync(2 * time.Minute)
 	}
 }
 
