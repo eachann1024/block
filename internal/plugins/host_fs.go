@@ -441,24 +441,36 @@ func verifyFSRootIdentity(root *os.Root, target *resolvedFSTarget, expectedRootI
 	return verifyRootExpectedIdentity(root, expectedRootID)
 }
 
-func (rt *Runtime) findDeepestNotebookRoot(canonPath string) (string, string, bool) {
-	bestRoot := ""
-	bestRel := ""
-	for _, nb := range rt.knownNotebooks() {
-		canonNb, err := resolveCanonicalLeafPath(nb)
-		if err != nil || canonNb == "" {
-			continue
+func resolveActualPath(canon string) string {
+	clean := filepath.Clean(canon)
+	var tail []string
+	cur := clean
+	for {
+		linfo, lerr := os.Lstat(cur)
+		if lerr == nil && !files.IsSymlinkOrReparseInfo(linfo) {
+			resolved := files.ActualExistingPath(cur)
+			if resolved == "" {
+				resolved = cur
+			}
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved
 		}
-		rel, ok := pathWithinDir(canonPath, canonNb)
-		if !ok {
-			continue
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return clean
 		}
-		if len(canonNb) > len(bestRoot) {
-			bestRoot = canonNb
-			bestRel = rel
-		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
 	}
-	return bestRoot, bestRel, bestRoot != ""
+}
+
+func resolveActualRootPath(root *os.Root, fallback string) string {
+	if live := files.LiveRootDirPath(root); live != "" {
+		return live
+	}
+	return resolveActualPath(fallback)
 }
 
 func openVerifiedDirRoot(dirPath, expectedRootID string) (*os.Root, *rpcError) {
@@ -482,11 +494,150 @@ func openVerifiedDirRoot(dirPath, expectedRootID string) (*os.Root, *rpcError) {
 	return root, nil
 }
 
+func (rt *Runtime) openMatchingOperationRoot(expectedRootID string, primary *resolvedFSTarget, targets []*resolvedFSTarget) (*os.Root, func(), *rpcError) {
+	scopes, err := rt.collectFSScopes()
+	if err != nil {
+		return nil, nil, rpcErr(-32004, err.Error())
+	}
+
+	type rootCandidate struct {
+		path       string
+		actual     string
+		isNotebook bool
+		rels       []string
+	}
+
+	seen := make(map[string]int)
+	var candidates []rootCandidate
+	addCandidate := func(dirPath string, isNotebook bool) {
+		canon, cerr := resolveCanonicalLeafPath(dirPath)
+		if cerr != nil || canon == "" {
+			return
+		}
+		actual := resolveActualPath(canon)
+		if idx, exists := seen[actual]; exists {
+			if isNotebook && !candidates[idx].isNotebook {
+				candidates[idx].isNotebook = true
+			}
+			return
+		}
+		seen[actual] = len(candidates)
+		candidates = append(candidates, rootCandidate{
+			path:       canon,
+			actual:     actual,
+			isNotebook: isNotebook,
+		})
+	}
+
+	for _, sc := range scopes {
+		if sc.isDir && sc.writable {
+			addCandidate(sc.canonPath, sc.source == "notebook")
+		}
+	}
+	if primary != nil && primary.isDirRoot && primary.writable && primary.rootDir != "" {
+		addCandidate(primary.rootDir, false)
+	}
+
+	targetActuals := make([]string, len(targets))
+	for i, tgt := range targets {
+		targetActuals[i] = resolveActualPath(tgt.canonPath)
+	}
+
+	var containingAll []rootCandidate
+	var dotMatched []rootCandidate
+	var partialMatched []rootCandidate
+	for _, cand := range candidates {
+		primRel, primOK := pathWithinDir(targetActuals[0], cand.actual)
+		if !primOK {
+			continue
+		}
+		if primRel == "." {
+			dotMatched = append(dotMatched, cand)
+			continue
+		}
+		rels := make([]string, len(targets))
+		rels[0] = primRel
+		allContained := true
+		anyDot := false
+		for i := 1; i < len(targets); i++ {
+			rel, ok := pathWithinDir(targetActuals[i], cand.actual)
+			if !ok {
+				allContained = false
+				break
+			}
+			if rel == "." {
+				anyDot = true
+				break
+			}
+			rels[i] = rel
+		}
+		if anyDot {
+			dotMatched = append(dotMatched, cand)
+			continue
+		}
+		cand.rels = rels
+		if allContained {
+			containingAll = append(containingAll, cand)
+		} else {
+			partialMatched = append(partialMatched, cand)
+		}
+	}
+
+	sort.SliceStable(containingAll, func(i, j int) bool {
+		if containingAll[i].isNotebook != containingAll[j].isNotebook {
+			return containingAll[i].isNotebook
+		}
+		if len(containingAll[i].actual) != len(containingAll[j].actual) {
+			return len(containingAll[i].actual) > len(containingAll[j].actual)
+		}
+		return containingAll[i].actual < containingAll[j].actual
+	})
+
+	for _, cand := range containingAll {
+		root, rerr := openVerifiedDirRoot(cand.path, expectedRootID)
+		if rerr != nil {
+			continue
+		}
+		cleanup := func() { _ = root.Close() }
+		actualRoot := resolveActualRootPath(root, cand.path)
+		for i, tgt := range targets {
+			rel := cand.rels[i]
+			if relAgain, ok := pathWithinDir(targetActuals[i], actualRoot); ok && relAgain != "." {
+				rel = relAgain
+			} else if ok && relAgain == "." {
+				cleanup()
+				return nil, nil, rpcErr(-32602, "cannot modify root directory itself")
+			} else if !ok {
+				cleanup()
+				return nil, nil, rpcErr(-32602, "target path is outside verified root")
+			}
+			tgt.rootDir = actualRoot
+			tgt.rel = rel
+			tgt.isDirRoot = true
+		}
+		return root, cleanup, nil
+	}
+
+	for _, cand := range dotMatched {
+		if root, rerr := openVerifiedDirRoot(cand.path, expectedRootID); rerr == nil {
+			_ = root.Close()
+			return nil, nil, rpcErr(-32602, "cannot modify root directory itself")
+		}
+	}
+	for _, cand := range partialMatched {
+		if root, rerr := openVerifiedDirRoot(cand.path, expectedRootID); rerr == nil {
+			_ = root.Close()
+			return nil, nil, rpcErr(-32602, "target path is outside verified notebook root")
+		}
+	}
+	return nil, nil, rpcErr(errCodeNotebookRootMismatch, ErrNotebookRootMismatch.Error())
+}
+
 // openVerifiedFSOperationRoot opens the single os.Root handle under which a host.fs mutation
 // executes and verifies expected_root_identity against it. When expected_root is provided,
 // expected_root_identity is mandatory and targets must reside inside expected_root (-32602).
-// When only expected_root_identity is set (legacy callers), registered notebook roots take
-// precedence over overlapping directory grants such as Downloads.
+// When only expected_root_identity is set (legacy callers), all containing writable directory
+// grants and registered notebook roots are searched for a matching identity before rejecting (-32008).
 func (rt *Runtime) openVerifiedFSOperationRoot(expectedRootRaw, expectedRootIDRaw string, primary *resolvedFSTarget, extra ...*resolvedFSTarget) (*os.Root, func(), *rpcError) {
 	if expectedRootRaw != "" && strings.TrimSpace(expectedRootRaw) == "" {
 		return nil, nil, rpcErr(-32602, "invalid expected_root")
@@ -523,8 +674,10 @@ func (rt *Runtime) openVerifiedFSOperationRoot(expectedRootRaw, expectedRootIDRa
 			return nil, nil, rerr
 		}
 		cleanup := func() { _ = expRoot.Close() }
+		expActual := resolveActualRootPath(expRoot, expTarget.canonPath)
 		for _, tgt := range targets {
-			rel, ok := pathWithinDir(tgt.canonPath, expTarget.canonPath)
+			tgtActual := resolveActualPath(tgt.canonPath)
+			rel, ok := pathWithinDir(tgtActual, expActual)
 			if !ok {
 				cleanup()
 				return nil, nil, rpcErr(-32602, "target path is outside expected_root")
@@ -533,7 +686,7 @@ func (rt *Runtime) openVerifiedFSOperationRoot(expectedRootRaw, expectedRootIDRa
 				cleanup()
 				return nil, nil, rpcErr(-32602, "target path cannot be expected_root itself")
 			}
-			tgt.rootDir = expTarget.canonPath
+			tgt.rootDir = expActual
 			tgt.rel = rel
 			tgt.isDirRoot = true
 		}
@@ -541,30 +694,7 @@ func (rt *Runtime) openVerifiedFSOperationRoot(expectedRootRaw, expectedRootIDRa
 	}
 
 	if expectedRootID != "" && primary != nil {
-		if nbRootPath, rel, ok := rt.findDeepestNotebookRoot(primary.canonPath); ok {
-			if rel == "." {
-				return nil, nil, rpcErr(-32602, "cannot modify notebook root directory itself")
-			}
-			nbRoot, rerr := openVerifiedDirRoot(nbRootPath, expectedRootID)
-			if rerr != nil {
-				return nil, nil, rerr
-			}
-			cleanup := func() { _ = nbRoot.Close() }
-			for _, tgt := range extra {
-				if subRel, subOK := pathWithinDir(tgt.canonPath, nbRootPath); subOK && subRel != "." {
-					tgt.rootDir = nbRootPath
-					tgt.rel = subRel
-					tgt.isDirRoot = true
-				} else if tgt != nil {
-					cleanup()
-					return nil, nil, rpcErr(-32602, "target path is outside verified notebook root")
-				}
-			}
-			primary.rootDir = nbRootPath
-			primary.rel = rel
-			primary.isDirRoot = true
-			return nbRoot, cleanup, nil
-		}
+		return rt.openMatchingOperationRoot(expectedRootID, primary, targets)
 	}
 
 	root, err := os.OpenRoot(primary.rootDir)
@@ -615,6 +745,7 @@ func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSyml
 
 	var dataRoot *os.Root
 	var protectedData []protectedDataFile
+	canonActual := resolveActualPath(canon)
 	checkDataProtection := func(relInData string) *rpcError {
 		if dataRoot != nil {
 			var info os.FileInfo
@@ -642,48 +773,68 @@ func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSyml
 				if rerr := checkDataProtection(relInData); rerr != nil {
 					return nil, rerr
 				}
+			} else if relInData, ok := pathWithinDir(canonActual, resolveActualPath(dataCanon)); ok {
+				if rerr := checkDataProtection(relInData); rerr != nil {
+					return nil, rerr
+				}
 			}
 		}
 	}
 
-	var matchedReadOnly bool
-	for _, sc := range scopes {
-		var rel string
-		var rootDir string
-		matched := false
-		if sc.isDir {
-			if r, ok := pathWithinDir(canon, sc.canonPath); ok {
+	matchScopes := func(useActual bool) (*resolvedFSTarget, bool, *rpcError) {
+		var matchedRO bool
+		targetPath := canon
+		if useActual {
+			targetPath = canonActual
+		}
+		for _, sc := range scopes {
+			scopePath := sc.canonPath
+			if useActual {
+				scopePath = resolveActualPath(sc.canonPath)
+			}
+			var rel string
+			var rootDir string
+			matched := false
+			if sc.isDir {
+				if r, ok := pathWithinDir(targetPath, scopePath); ok {
+					matched = true
+					rel = r
+					rootDir = scopePath
+				}
+			} else if targetPath == scopePath {
 				matched = true
-				rel = r
-				rootDir = sc.canonPath
+				rel = filepath.Base(targetPath)
+				rootDir = filepath.Dir(targetPath)
 			}
-		} else if canon == sc.canonPath {
-			matched = true
-			rel = filepath.Base(canon)
-			rootDir = filepath.Dir(canon)
-		}
-		if !matched {
-			continue
-		}
-		if write && !sc.writable {
-			matchedReadOnly = true
-			continue
-		}
-		if write && sc.isDataDir {
-			if rerr := checkDataProtection(rel); rerr != nil {
-				return nil, rerr
+			if !matched {
+				continue
 			}
+			if write && !sc.writable {
+				matchedRO = true
+				continue
+			}
+			if write && sc.isDataDir {
+				if rerr := checkDataProtection(rel); rerr != nil {
+					return nil, false, rerr
+				}
+			}
+			return &resolvedFSTarget{
+				canonPath: targetPath,
+				rootDir:   rootDir,
+				rel:       rel,
+				isDirRoot: sc.isDir,
+				isDataDir: sc.isDataDir,
+				writable:  sc.writable,
+			}, false, nil
 		}
-		return &resolvedFSTarget{
-			canonPath: canon,
-			rootDir:   rootDir,
-			rel:       rel,
-			isDirRoot: sc.isDir,
-			isDataDir: sc.isDataDir,
-			writable:  sc.writable,
-		}, nil
+		return nil, matchedRO, nil
 	}
-	if matchedReadOnly {
+
+	if res, matchedRO, rerr := matchScopes(false); rerr != nil || res != nil {
+		return res, rerr
+	} else if resActual, matchedActualRO, rerr := matchScopes(true); rerr != nil || resActual != nil {
+		return resActual, rerr
+	} else if matchedRO || matchedActualRO {
 		return nil, rpcErr(-32001, "path is read-only without notes:write permission")
 	}
 	return nil, rpcErr(-32001, "path is outside authorized filesystem scope")

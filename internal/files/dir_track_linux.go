@@ -47,3 +47,7 @@ func CaptureDirLocator(dir string) string {
 func ResolveDirLocator(oldPath, locator string) (string, bool) {
 	return resolveDirLocatorShallow(oldPath, locator)
 }
+
+func actualExistingPath(clean string) string {
+	return clean
+}

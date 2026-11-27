@@ -132,3 +132,41 @@ func PathIdentity(path string) string {
 	_ = windows.CloseHandle(h)
 	return formatWinFileIdentity(&bhfi)
 }
+
+func actualExistingPath(clean string) string {
+	linfo, lerr := os.Lstat(clean)
+	if lerr != nil || isSymlinkOrReparseInfo(linfo) {
+		return clean
+	}
+	h, _, err := openWinHandle(clean, 0)
+	if err != nil {
+		return clean
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]uint16, 512)
+	var raw string
+	for {
+		n, err := windows.GetFinalPathNameByHandle(h, &buf[0], uint32(len(buf)), winFileNameNormalized)
+		if err != nil || n == 0 {
+			return clean
+		}
+		if int(n) < len(buf) {
+			raw = windows.UTF16ToString(buf[:n])
+			break
+		}
+		if n > 32768 {
+			return clean
+		}
+		buf = make([]uint16, n+1)
+	}
+	if strings.HasPrefix(raw, `\\?\UNC\`) {
+		raw = `\\` + strings.TrimPrefix(raw, `\\?\UNC\`)
+	} else if strings.HasPrefix(raw, `\\?\`) {
+		raw = strings.TrimPrefix(raw, `\\?\`)
+	}
+	p := filepath.Clean(raw)
+	if p == "" || p == "." {
+		return clean
+	}
+	return p
+}

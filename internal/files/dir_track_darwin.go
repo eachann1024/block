@@ -135,3 +135,29 @@ func ResolveDirLocator(_ string, locator string) (string, bool) {
 	}
 	return p, true
 }
+
+func actualExistingPath(clean string) string {
+	linfo, lerr := os.Lstat(clean)
+	if lerr != nil || isSymlinkOrReparseInfo(linfo) || (!linfo.IsDir() && !linfo.Mode().IsRegular()) {
+		return clean
+	}
+	fd, err := unix.Open(clean, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return clean
+	}
+	defer unix.Close(fd)
+	var buf [4096]byte
+	_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&buf[0])))
+	if errno != 0 {
+		return clean
+	}
+	n := bytes.IndexByte(buf[:], 0)
+	if n <= 0 {
+		return clean
+	}
+	p := filepath.Clean(string(buf[:n]))
+	if p == "" || p == "." {
+		return clean
+	}
+	return p
+}

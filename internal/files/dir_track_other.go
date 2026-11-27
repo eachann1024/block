@@ -50,3 +50,7 @@ func ResolveDirLocator(_, _ string) (string, bool) {
 func PathIdentity(_ string) string {
 	return ""
 }
+
+func actualExistingPath(clean string) string {
+	return clean
+}

@@ -49,6 +49,20 @@ func IsSymlinkOrReparseInfo(info os.FileInfo) bool {
 	return isSymlinkOrReparseInfo(info)
 }
 
+// LiveRootDirPath returns the OS-normalized live directory path for an open os.Root.
+func LiveRootDirPath(root *os.Root) string {
+	return liveRootDirPath(root)
+}
+
+// ActualExistingPath returns the OS-normalized on-disk path (canonical casing)
+// for an existing non-symlink path when available.
+func ActualExistingPath(clean string) string {
+	if strings.TrimSpace(clean) == "" {
+		return ""
+	}
+	return actualExistingPath(filepath.Clean(clean))
+}
+
 // IsActive reports whether the notebook record is active and pending neither
 // user removal cleanup nor replacement by another directory at the same path.
 func (r NotebookRecord) IsActive() bool {
@@ -1803,29 +1817,10 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 		chk := probeOldPathMissing(ctx, r, nil)
 		if chk.foundLivePath != "" {
 			out.recoveredElsewhere = true
-		} else if chk.inconclusive || inc {
+		} else if chk.inconclusive || inc || chk.pathOccupied {
 			return out
 		} else if chk.confirmedMissing {
 			out.missingConfirmed = true
-		} else if chk.pathOccupied {
-			// Original path is occupied by another directory and complete locator/xattr/previous_paths
-			// lookup inside probeOldPathMissing found nothing: only now confirm missing if the parent
-			// volume is accessible.
-			pAcc, pOK := runProbeWithTimeout(ctx, notebookProbeTimeout, func() bool {
-				parent := filepath.Dir(r.Path)
-				if parent == "" || parent == r.Path {
-					return false
-				}
-				pInfo, pErr := os.Stat(parent)
-				if pErr != nil || !pInfo.IsDir() {
-					return false
-				}
-				pDev, _, hasPDev := statDirDevIno(parent, pInfo)
-				return isParentVolumeAccessible(parent, pDev, hasPDev, r.Device, r.Locator)
-			})
-			if pOK && pAcc {
-				out.missingConfirmed = true
-			}
 		}
 		return out
 	}
@@ -1848,7 +1843,8 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 		if isUnreadableDirErr(p.xattrErr) {
 			return out
 		}
-		// Check complete locator, sibling xattr, and previous_paths before counting missing.
+		// Check complete locator, sibling xattr, and previous_paths; never count a
+		// readable occupying directory at r.Path as missing (only explicit ENOENT counts).
 		type elsewhereResult struct {
 			live bool
 			inc  bool
@@ -1857,24 +1853,8 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 			live, inc := findLiveNotebookElsewhere(r, p.info)
 			return elsewhereResult{live: live != "", inc: inc}
 		})
-		if !okLoc || locRes.inc {
-			return out
-		}
-		if locRes.live {
+		if okLoc && !locRes.inc && locRes.live {
 			out.recoveredElsewhere = true
-			return out
-		}
-		pAcc, ok := runProbeWithTimeout(ctx, notebookProbeTimeout, func() bool {
-			parent := filepath.Dir(r.Path)
-			pInfo, pErr := os.Stat(parent)
-			if pErr != nil || !pInfo.IsDir() {
-				return false
-			}
-			pDev, _, hasPDev := statDirDevIno(parent, pInfo)
-			return isParentVolumeAccessible(parent, pDev, hasPDev, r.Device, r.Locator)
-		})
-		if ok && pAcc {
-			out.missingConfirmed = true
 		}
 		return out
 	}
