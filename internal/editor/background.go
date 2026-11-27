@@ -111,16 +111,97 @@ func paperBackdropStep(z float32) float32 {
 	return step
 }
 
-// windowAlignedTileOrigin computes the first tile coordinate and span for sub
-// locked to a single window-origin grid phase so adjacent surfaces meet without
-// seam offsets.
-func windowAlignedTileOrigin(sub ui.Rect, step float32) (firstX, firstY float32, cols, rows int) {
-	origin := float32(math.Round(float64(step * 0.5)))
-	firstX = origin + float32(math.Floor(float64((sub.X-origin)/step)))*step
-	firstY = origin + float32(math.Floor(float64((sub.Y-origin)/step)))*step
-	cols = max(1, int(math.Ceil(float64((sub.X+sub.W-firstX)/step)))+1)
-	rows = max(1, int(math.Ceil(float64((sub.Y+sub.H-firstY)/step)))+1)
-	return firstX, firstY, cols, rows
+// paintBorderAlignedPaperTiles renders paper dots or grid lines anchored to the
+// canvas border: anchor.X and anchor.Y act as logical index 0 (the border itself),
+// so the first drawn dot or grid line starts at (anchor.X+step, anchor.Y+step),
+// and no dot or line is ever drawn on or clipped across the outer border.
+func paintBorderAlignedPaperTiles(p *ui.Painter, anchor, clipRect ui.Rect, pal theme.Palette, step, zoom float32, mode string, high, chromeSurface bool, exclude ui.Rect) {
+	if p == nil || anchor.W <= 0 || anchor.H <= 0 || clipRect.W <= 0 || clipRect.H <= 0 || step <= 0 {
+		return
+	}
+	edCols := pal.Editor()
+
+	if mode == "dots" {
+		col := edCols.BgDotStandard
+		dotR := float32(1.15)
+		if high {
+			col = edCols.BgDotHigh
+			dotR = 1.6
+		}
+		dotR = max(float32(1.0), min(dotR*zoom, float32(2.6)))
+		if chromeSurface {
+			alphaScale := float32(0.78)
+			if high {
+				alphaScale = 0.62
+			}
+			col = col.Alpha(alphaScale)
+			dotR = min(dotR, 1.3)
+		}
+		margin := dotR + 2
+		maxI := int(math.Floor(float64((anchor.W - margin) / step)))
+		maxJ := int(math.Floor(float64((anchor.H - margin) / step)))
+		if maxI < 1 || maxJ < 1 {
+			return
+		}
+		iStart := max(1, int(math.Ceil(float64((clipRect.X+dotR-anchor.X)/step))))
+		iEnd := min(maxI, int(math.Floor(float64((clipRect.X+clipRect.W-dotR-anchor.X)/step))))
+		jStart := max(1, int(math.Ceil(float64((clipRect.Y+dotR-anchor.Y)/step))))
+		jEnd := min(maxJ, int(math.Floor(float64((clipRect.Y+clipRect.H-dotR-anchor.Y)/step))))
+		if iStart > iEnd || jStart > jEnd {
+			return
+		}
+		hasEx := exclude.W > 0 && exclude.H > 0
+		exL, exT := exclude.X-dotR, exclude.Y-dotR
+		exR, exB := exclude.X+exclude.W+dotR, exclude.Y+exclude.H+dotR
+		d := dotR * 2
+		p.Clip(clipRect, 0, func() {
+			for j := jStart; j <= jEnd; j++ {
+				y := anchor.Y + float32(j)*step
+				for i := iStart; i <= iEnd; i++ {
+					x := anchor.X + float32(i)*step
+					if hasEx && x >= exL && x <= exR && y >= exT && y <= exB {
+						continue
+					}
+					p.Fill(ui.Rect{X: x - dotR, Y: y - dotR, W: d, H: d}, col, dotR)
+				}
+			}
+		})
+		return
+	}
+
+	col := edCols.BgGridStandard
+	if high {
+		col = edCols.BgGridHigh
+	}
+	if chromeSurface {
+		col = col.Alpha(0.72)
+	}
+	const (
+		lineW      float32 = 1
+		edgeMargin float32 = 2
+	)
+	maxI := int(math.Floor(float64((anchor.W - edgeMargin) / step)))
+	maxJ := int(math.Floor(float64((anchor.H - edgeMargin) / step)))
+	if maxI < 1 && maxJ < 1 {
+		return
+	}
+	iStart := max(1, int(math.Ceil(float64((clipRect.X-lineW-anchor.X)/step))))
+	iEnd := min(maxI, int(math.Floor(float64((clipRect.X+clipRect.W-anchor.X)/step))))
+	jStart := max(1, int(math.Ceil(float64((clipRect.Y-lineW-anchor.Y)/step))))
+	jEnd := min(maxJ, int(math.Floor(float64((clipRect.Y+clipRect.H-anchor.Y)/step))))
+	if iStart > iEnd && jStart > jEnd {
+		return
+	}
+	p.Clip(clipRect, 0, func() {
+		for j := jStart; j <= jEnd; j++ {
+			y := anchor.Y + float32(j)*step
+			p.Fill(ui.Rect{X: clipRect.X, Y: y, W: clipRect.W, H: lineW}, col, 0)
+		}
+		for i := iStart; i <= iEnd; i++ {
+			x := anchor.X + float32(i)*step
+			p.Fill(ui.Rect{X: x, Y: clipRect.Y, W: lineW, H: clipRect.H}, col, 0)
+		}
+	})
 }
 
 // subtractBackdropRects splits area into non-overlapping visible sub-rectangles
@@ -174,16 +255,13 @@ func subtractBackdropRects(area ui.Rect, excludes ...ui.Rect) []ui.Rect {
 }
 
 // PaintBackdrop draws a plugin-contributed vector or paper-grain backdrop onto
-// arbitrary non-session surfaces such as the window chrome shell or empty stage.
-// Set chromeSurface for shell/sidebar surfaces so dot/grid contrast stays
-// subtle beneath small navigation labels and translucent window glass.
+// non-session editor-area surfaces such as the blank/empty page stage.
 func PaintBackdrop(p *ui.Painter, r ui.Rect, pal theme.Palette, bd *BackdropSpec, chromeSurface bool) {
 	PaintBackdropClipped(p, r, pal, bd, chromeSurface)
 }
 
-// PaintBackdropClipped draws a plugin-contributed backdrop across r while
-// excluding opaque cards, brand artwork bands, or floating overlays so occluded
-// areas are neither overdrawn nor double-blended under translucent skins.
+// PaintBackdropClipped draws a plugin-contributed backdrop across r anchored to
+// r's border (treating r.X/r.Y as index 0) while excluding any specified regions.
 func PaintBackdropClipped(p *ui.Painter, r ui.Rect, pal theme.Palette, bd *BackdropSpec, chromeSurface bool, excludes ...ui.Rect) {
 	if p == nil || bd == nil || r.W <= 0 || r.H <= 0 {
 		return
@@ -204,8 +282,7 @@ func PaintBackdropClipped(p *ui.Painter, r ui.Rect, pal theme.Palette, bd *Backd
 		}
 		step := paperBackdropStep(z)
 		for _, sub := range visible {
-			firstX, firstY, cols, rows := windowAlignedTileOrigin(sub, step)
-			paintPaperTiles(p, sub, pal, step, firstX, firstY, cols, rows, z, mode, bd.Contrast == "high", chromeSurface, true)
+			paintBorderAlignedPaperTiles(p, r, sub, pal, step, z, mode, bd.Contrast == "high", chromeSurface, ui.Rect{})
 		}
 	default:
 		if len(bd.StrokePaths) > 0 {
@@ -463,15 +540,19 @@ func paintVectorBackdropRect(p *ui.Painter, vis, anchor ui.Rect, pal theme.Palet
 
 func (s *Session) paintGridOrDotsBackground(p *ui.Painter, r ui.Rect, pal theme.Palette, edgeL, edgeR float32, mode string, high, fullWindow bool) {
 	if fullWindow {
-		// In window scope, share the exact window-origin coordinate phase with the
-		// outer shell so grid lines and dots stay seamless across card edges while
-		// scrolling, and carve out a clean breathing strip around the outline rail.
+		// In full-editor scope, treat the editor canvas border (r.X, r.Y) as the
+		// logical 0-th grid line/dot so the first drawn cell is a full square and
+		// no dot or line lands on the border, while carving out the outline rail.
 		z := s.zoom()
 		step := paperBackdropStep(z)
-		visible := subtractBackdropRects(r, s.outlineBackdropExcludeRect(r))
+		outlineEx := s.outlineBackdropExcludeRect(r)
+		if mode == "dots" {
+			paintBorderAlignedPaperTiles(p, r, r, pal, step, z, mode, high, false, outlineEx)
+			return
+		}
+		visible := subtractBackdropRects(r, outlineEx)
 		for _, sub := range visible {
-			firstX, firstY, cols, rows := windowAlignedTileOrigin(sub, step)
-			paintPaperTiles(p, sub, pal, step, firstX, firstY, cols, rows, z, mode, high, false, true)
+			paintBorderAlignedPaperTiles(p, r, sub, pal, step, z, mode, high, false, ui.Rect{})
 		}
 		return
 	}

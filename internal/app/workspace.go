@@ -6518,37 +6518,13 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 	}
 
 	root.Children(func() {
-		// Full-window plugin backdrop (when scope == "window") + window-wide top brand
-		// sky/landscape band both paint strictly at ZIndex(-1) above shellGround and
-		// underneath every interactive shell region, floating card, menu, modal, and toast.
-		// The shell backdrop clips out the top brand artwork band and the right-hand card
-		// so translucent skins/glass never double-blend patterns or bleed into brand art.
-		var backdropExcludeCard ui.Element
+		// Window-wide top brand sky/landscape band painted strictly at ZIndex(-1)
+		// above shellGround and underneath the titlebar, sidebar controls, and paper card.
+		// Plugin full-editor backdrops stay confined to the editor/empty paper canvas
+		// (never painting over the sidebar or titlebar).
 		if !aiImmersive {
 			now := time.Now()
 			scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, now)
-			if winBackdrop != nil {
-				backdropPal := pal
-				hasBrandBand := scID != ""
-				ui.Box(c.Key("workspace-backdrop-layer")).
-					Absolute().Left(0).Top(0).Right(0).Bottom(0).
-					IgnoreInput(true).ZIndex(-1).
-					Draw(func(p *ui.Painter, r ui.Rect) {
-						var excludes [2]ui.Rect
-						n := 0
-						if hasBrandBand {
-							excludes[n] = ui.Rect{X: r.X, Y: r.Y, W: r.W, H: min(blockui.BrandBandHeight, r.H)}
-							n++
-						}
-						if backdropExcludeCard.Valid() {
-							if cb := backdropExcludeCard.Bounds(); cb.W > 0 && cb.H > 0 {
-								excludes[n] = cb
-								n++
-							}
-						}
-						editor.PaintBackdropClipped(p, r, backdropPal, winBackdrop, true, excludes[:n]...)
-					})
-			}
 			pauseBrandAnim := !c.WindowActive() || (activeSess != nil && activeSess.IsScrollingForHover(c.Now()))
 			sceneW := float32(0)
 			if sidebarWide {
@@ -6889,7 +6865,6 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 							Transition(blockui.SurfaceStageTransition()),
 						theme.ElevationCard,
 					)
-					backdropExcludeCard = settingsCard
 					settingsCard.Children(func() {
 						w.modals.RenderSettingsBody(c, layout.SidebarDrawer, func() {
 							w.ToggleSidebar(vpW)
@@ -6922,7 +6897,6 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 							Background(chrome.Card).Border(1, chrome.CardBorder),
 						cardElev,
 					)
-					backdropExcludeCard = panelCard
 					blockui.Probe(panelCard, "workspace-panel-card")
 					panelCard.Children(func() {
 						theme.WithSurface("paper", func() {
