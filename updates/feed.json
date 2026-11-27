@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T07:09:48.393Z",
-  "latest_version": "1.0.949",
-  "latest_tag": "v1.0.949",
+  "updated_at": "2026-11-27T07:46:16.480Z",
+  "latest_version": "1.0.950",
+  "latest_tag": "v1.0.950",
   "releases": [
+    {
+      "version": "1.0.950",
+      "tag": "v1.0.950",
+      "published_at": "2026-11-27T07:46:16Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.950",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "滚动条：滚动条滑块现在以 1 像素内缩的方式更贴近边缘。"
+        ],
+        "fixes": [],
+        "other": [
+          "插件接口：进一步限制了插件的文件和网络访问边界，并改进了 Web 视图暂存对并发操作的处理。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Scrollbars: The scrollbar thumb now sits closer to the edge with a 1 px inset."
+        ],
+        "fixes": [],
+        "other": [
+          "Plugin API: The plugin file and network access boundaries are more strictly enforced, and webview staging handles concurrent operations more safely."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-macos-arm64.dmg",
+          "size": 18750295,
+          "sha256": "9fdfb0e68ea4cadf320a2cda2f8e208af078387e748eb4b0d78cb4381008170b"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-macos-x64.dmg",
+          "size": 20680371,
+          "sha256": "f7ad7e56035b477f14658e7aad9fb4fbe329141493aae198079f724f939da6ba"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-windows-x64-setup.exe",
+          "size": 16212709,
+          "sha256": "c298e6c7473933b4075d657d281d8b9cddba876a96beb3b1cb89d51079e3a1e2"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-linux-x64.deb",
+          "size": 13171294,
+          "sha256": "d282f36c2fbb422bab8ca4021c035f25b740f38c89ffb98b14a2264777ed0893"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-linux-x64.AppImage",
+          "size": 26429944,
+          "sha256": "3e6081e120365f833d305873e61bfb0d64ca74bd6e55ecad7cd2befcfb65a410"
+        }
+      ]
+    },
     {
       "version": "1.0.949",
       "tag": "v1.0.949",
@@ -42,38 +102,7 @@
           "Quick Notes: The skin badge colours are now annotated for design lint."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-macos-arm64.dmg",
-          "size": 18739812,
-          "sha256": "98e4addbc2f05a99571555c8ff560efb9c24fa73ae34140bb58be790195e87ea"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-macos-x64.dmg",
-          "size": 20668652,
-          "sha256": "d72b75e6e9b7cdba24a2c11256ca168a82c5f384a405fca78ef50556339642b3"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-windows-x64-setup.exe",
-          "size": 16201296,
-          "sha256": "3529fe44c31bdbdb510f2889b4f93f736fb10e808ddc5acac9668d58b938acf3"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-linux-x64.deb",
-          "size": 13161374,
-          "sha256": "334daf93e1074e95fa067fe9023c178df83ee7ce4bf2524d175fd9d26ac2ad9a"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-linux-x64.AppImage",
-          "size": 26421752,
-          "sha256": "bf2b766904b64c5cca4f266938e3bd1e04017afb63e35d8c6d948f69d3ffd003"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.948",
@@ -1670,31 +1699,6 @@
         "new": [
           "The plugin system now supports fetching and reading version changelogs from the store.",
           "Plugin detail pages in the App Store now feature a dedicated Changelog tab to display version update histories."
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.898",
-      "tag": "v1.0.898",
-      "published_at": "2026-11-21T09:45:08Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.898",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "批注边栏卡片中的 AI 回答现在会以只读 Markdown 格式呈现。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "AI answers in margin cards now render as read-only Markdown."
         ],
         "improvements": [],
         "fixes": [],
