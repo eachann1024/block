@@ -1397,7 +1397,6 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 			} else {
 				summaryMsg = fmt.Sprintf("已更新 %d 个插件", updated)
 			}
-			s.storeNotice = summaryMsg
 		}
 		var errBody string
 		if len(failedMsgs) > 0 {

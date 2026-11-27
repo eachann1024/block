@@ -162,7 +162,7 @@ type storeCard struct {
 func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab string)) {
 	pal := theme.Ocean()
 	locale := ctrl.sup.Locale()
-	refreshing, installingID, storeErr, storeNotice := ctrl.sup.StoreStatus()
+	refreshing, installingID, storeErr, _ := ctrl.sup.StoreStatus()
 	selectedCat := ctrl.storeCategoryValue()
 
 	body := ui.Column(c.Key("app-store-body")).FillWidth().MinWidth(0).Gap(theme.Space24)
@@ -179,21 +179,6 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 					Label:   theme.Tr("关闭提示", "Dismiss"),
 					Variant: bui.IconPlain,
 					Danger:  true,
-				})
-				if dismissBtn.Clicked() {
-					ctrl.sup.ClearStoreMessage()
-				}
-			})
-		} else if storeNotice != "" {
-			ui.Row(c.Key("app-store-notice")).FillWidth().MinWidth(0).
-				Padding(theme.Space10, theme.Space12).Gap(theme.Space8).Radius(theme.RadiusMD).
-				Background(pal.Selected).Border(1, ui.Transparent).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-				Transition(bui.CascadeRowTransition(0)).Children(func() {
-				ui.Text(c, storeNotice).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1).MinWidth(0)
-				dismissBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
-					ID:      "app-store-notice-dismiss",
-					Label:   theme.Tr("关闭提示", "Dismiss"),
-					Variant: bui.IconPlain,
 				})
 				if dismissBtn.Clicked() {
 					ctrl.sup.ClearStoreMessage()
