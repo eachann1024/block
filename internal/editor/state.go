@@ -320,10 +320,12 @@ type Session struct {
 	codeCopiedUntil   time.Time
 
 	// MindMap block UI
-	mindMapStates map[model.BlockID]*mindmap.BlockState
-	mindMapCfg    mindmap.Config
-	mindMapCfgSet bool
-	onNotify      func(msg, tone string)
+	mindMapStates            map[model.BlockID]*mindmap.BlockState
+	mindMapCfg               mindmap.Config
+	mindMapCfgSet            bool
+	mindMapTutorialAutoShown bool
+	onMindMapTutorialSeen    func()
+	onNotify                 func(msg, tone string)
 
 	// Callout block UI
 	calloutMenuBlock model.BlockID
@@ -669,6 +671,7 @@ func (s *Session) Close() {
 		return
 	}
 	s.cancelInlineAI()
+	s.disposeMindMaps()
 	s.resetMedia()
 	s.resetPathProbeCache()
 	clear(s.textLayoutCache)
@@ -692,6 +695,7 @@ func (s *Session) TrimInactiveCaches() {
 			p.Pause()
 		}
 	}
+	s.pauseMindMapTutorials()
 	s.imageMu.Lock()
 	clear(s.imageCache)
 	s.imageOrder = nil

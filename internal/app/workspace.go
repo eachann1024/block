@@ -7026,6 +7026,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 										activeSess.SetBackground(editor.BackgroundStyle{Backdrop: frameBackdrop})
 										activeSess.SetBlockDecorators(w.pluginBlockDecorators())
 										activeSess.SetMindMapConfig(w.nativeMindMapConfig())
+										activeSess.SetMindMapTutorialSeenFunc(w.markMindMapTutorialSeen)
 										activeSess.SetNotifyFunc(w.notify)
 										activeSess.Render(c, effMainW, false)
 										if w.pluginUI != nil {
@@ -7263,7 +7264,14 @@ func (w *Workspace) pluginBlockDecorators() []editor.BlockDecorator {
 func (w *Workspace) nativeMindMapConfig() mindmap.Config {
 	cfg := mindmap.DefaultConfig()
 	cfg.Enabled = true
+	cfg.TutorialSeen = w.State().MindMapTutorialSeen
 	return cfg
+}
+
+func (w *Workspace) markMindMapTutorialSeen() {
+	w.updateStateAsync(func(s *model.AppState) {
+		s.MindMapTutorialSeen = true
+	})
 }
 
 func (w *Workspace) pluginSidebarFileBadges(activeNB string) map[string][]plugins.ResolvedFileBadge {

@@ -39,6 +39,7 @@ type Callbacks struct {
 	OnNotify          func(msg, tone string)
 	OnRequestFocus    func()
 	OnHostNavKey      func(key ui.Key, mods ui.Modifiers) bool
+	OnTutorialSeen    func()
 	ReadOnly          bool
 }
 
@@ -134,6 +135,9 @@ type BlockState struct {
 	ExportTheme      ExportTheme
 	ShortcutsOpen    bool
 	ShortcutsScroll  ui.ScrollState
+	TutorialOpen     bool
+	TutorialFirstRun bool
+	tutorial         *tutorialPlayerState
 	ImportResult     *ImportReport
 	ImportUndoBefore string
 	ImportUndoAfter  string
@@ -295,6 +299,9 @@ func (st *BlockState) HasFocus(c *ui.Context) bool {
 	if st == nil || c == nil {
 		return false
 	}
+	if st.TutorialOpen {
+		return true
+	}
 	if st.LinkNodeID != 0 || st.LinkFocusPending || st.LinkHandle.Focused(c) || st.LinkPanelHandle.FocusWithin(c) {
 		return true
 	}
@@ -326,6 +333,7 @@ func (st *BlockState) HasEscapeOwner(c *ui.Context) bool {
 		return false
 	}
 	if st.Fullscreen ||
+		st.TutorialOpen ||
 		st.ShortcutsOpen ||
 		st.ExportMenuOpen ||
 		st.ImportResult != nil ||
@@ -566,6 +574,10 @@ func (st *BlockState) CapturesShortcut(c *ui.Context, mods ui.Modifiers, key ui.
 func (st *BlockState) DismissTransient(cb Callbacks) bool {
 	if st == nil {
 		return false
+	}
+	if st.TutorialOpen {
+		st.CloseTutorial(cb)
+		return true
 	}
 	if st.ImportResult != nil {
 		st.ImportResult = nil
@@ -6517,17 +6529,39 @@ func (st *BlockState) renderShortcutsPopover(c *ui.Context, id string, cb Callba
 		hdr.Children(func() {
 			ui.Text(c, theme.Tr("快捷键速查", "Keyboard Shortcuts")).
 				FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
-			closeBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, icons.Close, bui.IconButtonOptions{
-				ID:       "mm-sc-close-" + id,
-				Label:    theme.Tr("关闭", "Close"),
-				Size:     theme.HeightMicro + theme.Space2,
-				IconSize: theme.IconMicro,
-				Radius:   theme.RadiusSM,
-			}))
-			if closeBtn.Clicked() {
-				st.ShortcutsOpen = false
-				st.restoreFocusAfterPopover(c, cb)
-			}
+			hdrRight := ui.Row(c.Key("mm-sc-hdr-r-" + id)).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0)
+			hdrRight.Children(func() {
+				tutLink := ui.ButtonBase(c.Key("mm-sc-tut-"+id)).
+					Height(theme.HeightMicro+theme.Space2).PaddingX(theme.Space6).Radius(theme.RadiusSM).
+					AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Shrink(0).
+					Label(theme.Tr("动画教程", "Guide")).KeepFocus()
+				tutHot := tutLink.Hovered() || tutLink.Pressed()
+				tutFG := pal.Accent
+				if tutHot {
+					tutLink.Background(pal.SelectionBG)
+				}
+				tutLink.Children(func() {
+					icons.DrawAnimated(c, icons.Video, theme.IconMicro, pal.MonoIconColors(tutFG), tutHot)
+					ui.Text(c, theme.Tr("动画教程", "Guide")).
+						FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(tutFG).SingleLine()
+				})
+				if tutLink.Clicked() {
+					st.OpenTutorial(false)
+					c.Invalidate()
+				}
+
+				closeBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, icons.Close, bui.IconButtonOptions{
+					ID:       "mm-sc-close-" + id,
+					Label:    theme.Tr("关闭", "Close"),
+					Size:     theme.HeightMicro + theme.Space2,
+					IconSize: theme.IconMicro,
+					Radius:   theme.RadiusSM,
+				}))
+				if closeBtn.Clicked() {
+					st.ShortcutsOpen = false
+					st.restoreFocusAfterPopover(c, cb)
+				}
+			})
 		})
 
 		scr := bui.Scroll(c.Key("mm-sc-scroll-"+id), &st.ShortcutsScroll).FillWidth().Grow(1).MinHeight(0)
@@ -6800,7 +6834,35 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string, cb Callbacks) {
 			}
 		})
 
-		// Pinned right-side ? Shortcuts button opening the grouped shortcut cheat-sheet.
+		// Pinned right-side Tutorial & Shortcuts buttons.
+		ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
+		tutBtn := ui.ButtonBase(c.Key("mm-tut-btn-"+id)).
+			Height(theme.HeightControl).PaddingX(theme.Space8).AlignItems(ui.Center).Gap(theme.Space4).
+			Cursor(ui.CursorPointer).Shrink(0).Label(theme.Tr("教程", "Guide")).KeepFocus()
+		bui.Tooltip(c, tutBtn, theme.Tr("快捷键动画教程", "Animated shortcut guide"))
+		tutHot := tutBtn.Hovered() || tutBtn.Pressed()
+		tutFG := pal.TextSecondary
+		if st.TutorialOpen {
+			tutBtn.Background(pal.SelectionBG)
+			tutFG = pal.Accent
+		} else if tutHot {
+			tutBtn.Background(pal.Hover)
+			tutFG = pal.Text
+		}
+		tutBtn.Children(func() {
+			icons.DrawAnimated(c, icons.Video, theme.IconMicro, pal.MonoIconColors(tutFG), st.TutorialOpen || tutHot)
+			ui.Text(c, theme.Tr("教程", "Guide")).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
+				TextColor(tutFG).SingleLine()
+		})
+		if tutBtn.Clicked() {
+			if st.TutorialOpen {
+				st.CloseTutorial(cb)
+			} else {
+				st.OpenTutorial(false)
+			}
+			c.Invalidate()
+		}
+
 		ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
 		scBtn := ui.ButtonBase(c.Key("mm-sc-btn-"+id)).
 			Height(theme.HeightControl).PaddingX(theme.Space8).AlignItems(ui.Center).Gap(theme.Space4).

@@ -440,6 +440,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderPlanReviewBar(c)
 		s.renderMediaLightbox(c)
 		s.renderMindMapFullscreen(c, readOnly)
+		s.renderMindMapTutorialOverlay(c, readOnly)
 		s.renderHoveredPathTooltip(c)
 		// MindMaps rendered this frame report Tab ownership via frameTabChildFocused;
 		// a MindMap that stopped rendering cannot leave a stale claim behind.

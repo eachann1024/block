@@ -94,6 +94,7 @@ type Config struct {
 	DefaultLayout LayoutMode
 	Height        HeightMode
 	ShowHints     bool
+	TutorialSeen  bool
 }
 
 // DefaultConfig returns the standard enabled mindmap configuration.
@@ -103,6 +104,7 @@ func DefaultConfig() Config {
 		DefaultLayout: LayoutRight,
 		Height:        HeightStandard,
 		ShowHints:     true,
+		TutorialSeen:  true,
 	}
 }
 

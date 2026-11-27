@@ -35,6 +35,15 @@ func (s *Session) SetNotifyFunc(fn func(msg, tone string)) {
 	s.onNotify = fn
 }
 
+// SetMindMapTutorialSeenFunc registers a host callback invoked when the user
+// dismisses the first-use MindMap tutorial onboarding so it persists in AppState.
+func (s *Session) SetMindMapTutorialSeenFunc(fn func()) {
+	if s == nil {
+		return
+	}
+	s.onMindMapTutorialSeen = fn
+}
+
 func (s *Session) effectiveMindMapConfig() mindmap.Config {
 	if s != nil && s.mindMapCfgSet {
 		return s.mindMapCfg
@@ -152,8 +161,30 @@ func (s *Session) HasMindMapCanvasFocus(c *ui.Context) bool {
 
 func (s *Session) hasActiveMindMapLocalModalOrEdit() bool {
 	return s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
-		return st.EditingID != 0 || st.LinkNodeID != 0 || st.FindOpen || st.ComposeText != "" || st.OutlineComposing || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.BoxSelecting || st.Panning || st.DragActive || st.DragNodeID != 0
+		return st.EditingID != 0 || st.LinkNodeID != 0 || st.FindOpen || st.ComposeText != "" || st.OutlineComposing || st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.BoxSelecting || st.Panning || st.DragActive || st.DragNodeID != 0
 	})
+}
+
+func (s *Session) disposeMindMaps() {
+	if s == nil {
+		return
+	}
+	for _, st := range s.mindMapStates {
+		if st != nil {
+			st.Dispose()
+		}
+	}
+}
+
+func (s *Session) pauseMindMapTutorials() {
+	if s == nil {
+		return
+	}
+	for _, st := range s.mindMapStates {
+		if st != nil {
+			st.PauseTutorial()
+		}
+	}
 }
 
 // CloseMindMapFullscreen exits fullscreen mode for any active MindMap block.
@@ -535,6 +566,12 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 				s.onNotify(msg, tone)
 			}
 		},
+		OnTutorialSeen: func() {
+			s.mindMapTutorialAutoShown = true
+			if s.onMindMapTutorialSeen != nil {
+				s.onMindMapTutorialSeen()
+			}
+		},
 		OnRequestFocus: func() {
 			if idx := s.blockIndexByID(blockID); idx >= 0 {
 				s.focusedBlock = idx
@@ -615,6 +652,9 @@ func (s *Session) renderMindMapCodeBlock(c *ui.Context, idx int, b *model.Block,
 		s.selSyncPending = false
 	}
 	cfg := s.effectiveMindMapConfig()
+	if !s.mindMapTutorialAutoShown && st.MaybeAutoOpenTutorial(cfg, readOnly) {
+		s.mindMapTutorialAutoShown = true
+	}
 	id := fmt.Sprintf("block-%d", b.ID)
 	cb := s.mindMapCallbacks(c, b.ID, readOnly)
 	st.RenderInline(c, id, b.Code, cfg, isFocused, cb)
@@ -647,4 +687,42 @@ func (s *Session) renderMindMapFullscreen(c *ui.Context, readOnly bool) {
 		}
 		return
 	}
+}
+
+func (s *Session) renderMindMapTutorialOverlay(c *ui.Context, readOnly bool) {
+	if s == nil || s.doc == nil || len(s.mindMapStates) == 0 {
+		return
+	}
+	for i := range s.doc.Blocks {
+		b := &s.doc.Blocks[i]
+		if b.Kind != model.BlockCode || codepreview.CanonicalLanguage(b.Language) != "mindmap" {
+			continue
+		}
+		st := s.mindMapStates[b.ID]
+		if st == nil || !st.TutorialOpen {
+			continue
+		}
+		id := fmt.Sprintf("block-%d", b.ID)
+		cb := s.mindMapCallbacks(c, b.ID, readOnly)
+		st.RenderTutorialOverlay(c, id, cb)
+		return
+	}
+}
+
+// OpenFirstMindMapTutorial opens the animated tutorial for the first MindMap block
+// in this session (used for visual verification and programmatic triggers).
+func (s *Session) OpenFirstMindMapTutorial(firstRun bool) bool {
+	if s == nil || s.doc == nil {
+		return false
+	}
+	for i := range s.doc.Blocks {
+		b := &s.doc.Blocks[i]
+		if b.Kind != model.BlockCode || codepreview.CanonicalLanguage(b.Language) != "mindmap" {
+			continue
+		}
+		st := s.mindMapState(b.ID)
+		st.OpenTutorial(firstRun)
+		return true
+	}
+	return false
 }

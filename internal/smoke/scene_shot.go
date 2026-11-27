@@ -241,6 +241,21 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 		"```",
 		"",
 	}, "\n")
+	if scene == "mindmap" || scene == "mindmap-tutorial" {
+		sampleContent = strings.Join([]string{
+			"# 项目计划",
+			"",
+			"```mindmap",
+			"- 项目计划",
+			"  - 规划",
+			"  - 设计",
+			"    - 视觉",
+			"    - 原型",
+			"  - 发布",
+			"```",
+			"",
+		}, "\n")
+	}
 	if err := os.WriteFile(sampleNotePath, []byte(sampleContent), 0o644); err != nil {
 		return SceneShotResult{}, err
 	}
@@ -275,8 +290,12 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 	tt.Frame()
 
 	switch scene {
-	case "workspace":
+	case "workspace", "mindmap":
 		// Already in active workspace with sample note open.
+	case "mindmap-tutorial":
+		if sess := ws.ActiveSession(); sess != nil {
+			sess.OpenFirstMindMapTutorial(true)
+		}
 	case "settings":
 		ws.OpenSettings("appearance")
 	case "store":
