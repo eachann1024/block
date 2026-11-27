@@ -1519,6 +1519,7 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		"host.fs.mkdir",
 		"host.fs.delete",
 		"host.fs.rename",
+		"host.fs.copy",
 		"host.fs.atomic_swap":
 		return rt.dispatchFSHostMethod(method, params)
 
@@ -1762,7 +1763,7 @@ func readPluginFile(root *os.Root, name string, limit int64) ([]byte, error) {
 	}
 	defer file.Close()
 	if info.Size() > limit {
-		return nil, errors.New("plugin file exceeds size limit")
+		return nil, fmt.Errorf("plugin file exceeds size limit (%d > %d bytes)", info.Size(), limit)
 	}
 	return readLimited(file, limit)
 }
@@ -1773,7 +1774,7 @@ func readLimited(reader io.Reader, limit int64) ([]byte, error) {
 		return nil, err
 	}
 	if int64(len(data)) > limit {
-		return nil, errors.New("plugin data exceeds size limit")
+		return nil, fmt.Errorf("plugin data exceeds size limit (> %d bytes)", limit)
 	}
 	return data, nil
 }
