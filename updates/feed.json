@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T16:45:27.325Z",
-  "latest_version": "1.0.965",
-  "latest_tag": "v1.0.965",
+  "updated_at": "2026-11-27T16:59:28.790Z",
+  "latest_version": "1.0.966",
+  "latest_tag": "v1.0.966",
   "releases": [
+    {
+      "version": "1.0.966",
+      "tag": "v1.0.966",
+      "published_at": "2026-11-27T16:59:28Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.966",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "自动更新：macOS 更新会在后台预先准备，重启后安装更快。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Updates: macOS updates now prepare in the background, making restart-to-update faster."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.966/block-macos-arm64.dmg",
+          "size": 18853335,
+          "sha256": "9f0ab0651cc96eaa7c938d0b6cdeda96abb0c4fdca3eaed01766cd6568cdefeb"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.966/block-macos-x64.dmg",
+          "size": 20808926,
+          "sha256": "2a67f9191b7043e1378756f036b313cc64dfba79a38021e0bdbd79d7f030a527"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.966/block-windows-x64-setup.exe",
+          "size": 16323829,
+          "sha256": "9431a79496f96bb7a831f9c278e07ee8ccdf3aa9430fdd9a9a53bab9a77e8851"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.966/block-linux-x64.deb",
+          "size": 13263696,
+          "sha256": "c7b74f842e47f08d57e454394fb23f5bdc5a01ebc0edb010931787bd2d2ed588"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.966/block-linux-x64.AppImage",
+          "size": 26556920,
+          "sha256": "8134783c381abf990810ea0f18f0a5c7dc6c672bd1cc0e6e5c291e1d25c6e00e"
+        }
+      ]
+    },
     {
       "version": "1.0.965",
       "tag": "v1.0.965",
@@ -44,38 +100,7 @@
           "Other: Plugin documentation sync now extracts dispatched host methods by parsing the source, so the generated docs stay accurate."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-macos-arm64.dmg",
-          "size": 18846323,
-          "sha256": "939da3d5c3dc1fcdd63ab3503ee732a779cdc522a08e3c385d2ccf628a4375bf"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-macos-x64.dmg",
-          "size": 20803356,
-          "sha256": "ec0a55af81355e4c2aab3b27063d37e9669437f7d82347b593cb305d80939099"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-windows-x64-setup.exe",
-          "size": 16323178,
-          "sha256": "713677b7f81169c017c322e59a44a3c7ca8f6d4ac0f76dac7936617892d2bc09"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-linux-x64.deb",
-          "size": 13263848,
-          "sha256": "d2a29b422a9277604fcb99f4cb3bc0c6f824f6ff1860c2f6f694665c0598ec02"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-linux-x64.AppImage",
-          "size": 26544632,
-          "sha256": "2621dea8b3c0caf6eb37b91e8fbfe0a452b6e7e4588567d63661d3837b69911e"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.964",
@@ -1700,31 +1725,6 @@
           "The app now includes HEEx configuration.",
           "The app now includes an installation manifest for the Block binary."
         ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.913",
-      "tag": "v1.0.913",
-      "published_at": "2026-11-22T12:47:39Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.913",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "窄窗口下的设置抽屉不再显示暗色背景遮罩。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "The settings drawer no longer displays a dark background overlay in narrow windows."
-        ],
-        "other": []
       },
       "assets": []
     }
