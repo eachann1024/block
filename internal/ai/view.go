@@ -18,7 +18,6 @@ import (
 	"block/internal/fuzzy"
 	"block/internal/icons"
 	"block/internal/model"
-	"block/internal/tarot"
 	"block/internal/theme"
 	bui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -68,8 +67,8 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 		panel.FillWidth().Grow(1)
 	} else {
 		panel.Width(panelW).Shrink(0)
-		if theme.IsTarotMode() {
-			panel.BorderWidth(0, 0, 0, 1).BorderColor(theme.Tarot().GoldBorderHair)
+		if theme.ActiveSkin() != nil {
+			panel.BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline)
 		}
 	}
 	if b := panel.Bounds(); b.W > 0 {
@@ -837,14 +836,14 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	st := c.runStateLocked(c.currentID)
 	streaming := st != nil && st.streaming
 	now := cUI.Now()
-	if c.tarotWasStreaming && !streaming {
-		c.tarotGlintAt = now
+	if c.indicatorWasStreaming && !streaming {
+		c.indicatorGlintAt = now
 	}
-	c.tarotWasStreaming = streaming
-	tarotGlintProg := float32(0)
-	if !streaming && !c.tarotGlintAt.IsZero() {
-		if el := now.Sub(c.tarotGlintAt).Seconds(); el >= 0 && el < 1.3 {
-			tarotGlintProg = float32(el / 1.3)
+	c.indicatorWasStreaming = streaming
+	indicatorGlintProg := float32(0)
+	if !streaming && !c.indicatorGlintAt.IsZero() {
+		if el := now.Sub(c.indicatorGlintAt).Seconds(); el >= 0 && el < 1.3 {
+			indicatorGlintProg = float32(el / 1.3)
 		}
 	}
 	partial := ""
@@ -975,8 +974,8 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 							c.renderUserMessage(cUI, pal, convID, t.startIdx, t.userText, t.userAttachments, t.userAttachmentsSeparate)
 						}
 
-						if theme.IsTarotMode() && ti == len(turns)-1 && (turnStreaming || tarotGlintProg > 0) {
-							tarot.RenderAIDevelopingCard(cUI, turnStreaming, tarotGlintProg)
+						if skin := theme.ActiveSkin(); skin != nil && skin.AIIndicator != nil && ti == len(turns)-1 && (turnStreaming || indicatorGlintProg > 0) {
+							renderSkinAIIndicator(cUI, pal, skin.AIIndicator, turnStreaming, indicatorGlintProg)
 						}
 
 						steps := t.steps
@@ -6031,4 +6030,61 @@ func probeSafeTransition(tr ui.ElementTransition) ui.ElementTransition {
 		tr.ExitDuration = -1
 	}
 	return tr
+}
+
+func renderSkinAIIndicator(cUI *ui.Context, pal theme.Palette, spec *theme.ThemeSkinAIIndicator, streaming bool, glintProg float32) {
+	if spec == nil {
+		return
+	}
+	accent := pal.Accent
+	if strings.TrimSpace(spec.Accent) != "" {
+		if c, err := theme.ParseHexColor(spec.Accent); err == nil {
+			accent = c
+		}
+	}
+	label := strings.TrimSpace(spec.Label.Resolve(string(theme.Language())))
+	if label == "" {
+		if streaming {
+			label = theme.Tr("生成中", "Generating")
+		} else {
+			label = theme.Tr("已完成", "Ready")
+		}
+	}
+	opacity := float32(1)
+	if !streaming && glintProg > 0 {
+		opacity = max(1-glintProg, 0)
+		cUI.After(16 * time.Millisecond)
+	}
+	ais := pal.AISurface()
+	card := ui.Row(cUI.Key("ai-skin-indicator")).FillWidth().Height(36).PaddingX(theme.Space12).
+		AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
+		Background(ais.WellBG).Border(1, accent.Alpha(0.32*opacity))
+	card.DrawOver(func(p *ui.Painter, r ui.Rect) {
+		if r.W <= 4 || r.H <= 4 || p.Preferences().ReduceMotion {
+			return
+		}
+		if streaming {
+			const periodMs int64 = 1800
+			phase := float32(p.Now().UnixMilli()%periodMs) / float32(periodMs)
+			sweepX := r.X + (r.W * phase)
+			barW := min(r.W*0.35, 96)
+			x := max(r.X+1, sweepX-barW/2)
+			w := max(min(barW, r.X+r.W-1-x), 0)
+			if w > 0 {
+				p.Fill(ui.Rect{X: x, Y: r.Y + r.H - 2, W: w, H: 1.5}, accent.Alpha(0.65), 1)
+			}
+			p.AnimationFrameRate(60)
+		} else if glintProg > 0 {
+			p.Stroke(ui.Rect{X: r.X + 0.5, Y: r.Y + 0.5, W: r.W - 1, H: r.H - 1}, accent.Alpha(0.75*opacity), theme.RadiusMD, 1.5)
+			p.AnimationFrameRate(60)
+		}
+	})
+	card.Children(func() {
+		ui.Row(cUI.Key("ai-skin-indicator-left")).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+			ui.Box(cUI.Key("ai-skin-indicator-dot")).Size(7, 7).Radius(theme.RadiusPill).
+				Background(accent.Alpha(opacity))
+			ui.Text(cUI, label).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
+				TextColor(pal.Text.Alpha(opacity)).SingleLine()
+		})
+	})
 }

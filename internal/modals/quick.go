@@ -21,7 +21,6 @@ import (
 	"block/internal/icons"
 	"block/internal/markdown"
 	"block/internal/model"
-	"block/internal/tarot"
 	"block/internal/theme"
 	internalui "block/internal/ui"
 	"github.com/egoist/mygo"
@@ -279,11 +278,10 @@ type QuickNoteController struct {
 	noticeUntil     time.Time
 	noticeSeq       uint64
 	noticeTimer     *time.Timer
-	savedBounds      *model.SavedWindowBounds
-	boundsTimer      *time.Timer
-	syncTimer        *time.Timer
-	tarotDealAt      time.Time
-	tarotSaveFlashAt time.Time
+	savedBounds     *model.SavedWindowBounds
+	boundsTimer     *time.Timer
+	syncTimer       *time.Timer
+	saveFlashAt     time.Time
 }
 
 // NewQuickNoteController creates a QuickNoteController backed by `dataDir/quick`.
@@ -1183,7 +1181,6 @@ func (q *QuickNoteController) switchSlot(slot int) {
 	if q.activeSlot != slot {
 		q.syncSessionToDiskLocked(q.activeSlot)
 		q.activeSlot = slot
-		q.tarotDealAt = time.Now()
 		q.ensureSlotFileLocked(slot)
 		q.noticeSeq++
 		if q.noticeTimer != nil {
@@ -1265,7 +1262,7 @@ func (q *QuickNoteController) SaveToNotebook() (string, error) {
 
 	q.SetText("")
 	q.mu.Lock()
-	q.tarotSaveFlashAt = time.Now()
+	q.saveFlashAt = time.Now()
 	q.mu.Unlock()
 	q.setNotice(theme.Tr("已存入 ", "Saved to ")+filepath.Base(outPath), true)
 	if q.OnSavedNote != nil {
@@ -1562,16 +1559,15 @@ func createUniqueQuickNoteFile(folder, title, content string) (string, error) {
 
 // RenderView renders the standalone Quick Note panel UI.
 func (q *QuickNoteController) RenderView(c *ui.Context) {
+	theme.WithSurface("paper", func() {
+		q.renderViewPaper(c)
+	})
+}
+
+func (q *QuickNoteController) renderViewPaper(c *ui.Context) {
 	pal := theme.Ocean()
 	uiTheme := pal.ToUITheme("")
-	uiTheme.ScrollbarStyle = ui.ScrollbarStyle{
-		TrackWidth: 6,
-		ThumbWidth: theme.ScrollThumbWidth,
-		MinLength:  28,
-		Thumb:      pal.ScrollThumb,
-		Hover:      pal.ScrollThumbHover,
-		Active:     pal.ScrollThumbHover,
-	}
+	uiTheme.ScrollbarStyle = internalui.StandardScrollbarStyle(pal)
 	c.SetTheme(&uiTheme)
 
 	q.mu.Lock()
@@ -1654,9 +1650,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 	notice := q.notice
 	savedFlash := q.savedFlash
 	noticeUntil := q.noticeUntil
-	slotNames := q.names
-	dealAt := q.tarotDealAt
-	saveFlashAt := q.tarotSaveFlashAt
+	saveFlashAt := q.saveFlashAt
 	q.mu.Unlock()
 
 	if (notice != "" || savedFlash) && !noticeUntil.IsZero() {
@@ -1676,57 +1670,52 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 		sess.SetMinCanvasHeight(max(winH-44, 0))
 	}
 
-	if theme.IsTarotMode() {
-		tp := theme.TarotPaperPalette()
-		tTheme := tp.ToUITheme("")
-		tTheme.ScrollbarStyle = ui.ScrollbarStyle{
-			TrackWidth: 6,
-			ThumbWidth: theme.ScrollThumbWidth,
-			MinLength:  28,
-			Thumb:      tp.ScrollThumb,
-			Hover:      tp.ScrollThumbHover,
-			Active:     tp.ScrollThumbHover,
-		}
-		c.SetTheme(&tTheme)
-		if sess != nil {
-			sess.SetMinCanvasHeight(max(winH-68, 0))
-		}
-		tarot.RenderQuickNoteSkin(c, tarot.QuickNoteProps{
-			ActiveSlot:  activeSlot,
-			SlotNames:   slotNames,
-			SavedFlash:  savedFlash,
-			Notice:      notice,
-			DealAt:      dealAt,
-			SaveFlashAt: saveFlashAt,
-			OnHide:      q.Hide,
-			OnSelectSlot: func(slot int) {
-				q.switchSlot(slot)
-			},
-			OnSave: func() {
-				_, _ = q.SaveToNotebook()
-			},
-			OnWheelScroll: func(axis float32) {
-				if sess != nil && sess.HasScrollablePopupOpen() {
-					return
-				}
-				q.OnWheelScroll(axis)
-			},
-		}, func() {
-			if sess != nil {
-				sess.Render(c, max(winW-theme.Space24, 240), false)
-			}
-		})
-		q.scheduleSyncActiveSlot()
-		return
+	var qnSkin *theme.ThemeSkinQuickNote
+	if skin := theme.ActiveSkin(); skin != nil {
+		qnSkin = skin.QuickNote
 	}
 
 	root := ui.Column(c.Key("quick-note-root")).Fill().Background(pal.Paper).TextColor(pal.Text).Clip()
+	if qnSkin != nil && strings.TrimSpace(qnSkin.BorderAccent) != "" {
+		if borderAccent, err := theme.ParseHexColor(qnSkin.BorderAccent); err == nil {
+			root.Border(1, borderAccent)
+		}
+	}
+	if qnSkin != nil && strings.TrimSpace(qnSkin.FlashAccent) != "" && !saveFlashAt.IsZero() {
+		if el := now.Sub(saveFlashAt).Seconds(); el >= 0 && el < 0.9 {
+			if flashColor, err := theme.ParseHexColor(qnSkin.FlashAccent); err == nil {
+				alpha := float32(1.0 - el/0.9)
+				root.DrawOver(func(p *ui.Painter, r ui.Rect) {
+					if r.W <= 2 || r.H <= 2 {
+						return
+					}
+					p.Stroke(ui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}, flashColor.Alpha(0.75*alpha), 0, 2)
+					p.AnimationFrameRate(60)
+				})
+				c.After(16 * time.Millisecond)
+			}
+		}
+	}
 	internalui.Probe(root, "quick-note-root")
 	root.Children(func() {
+		headerBG := pal.Paper
+		headerDark := pal.Dark
+		if qnSkin != nil && strings.TrimSpace(qnSkin.HeaderTint) != "" {
+			if tint, err := theme.ParseHexColor(qnSkin.HeaderTint); err == nil {
+				headerBG = tint
+				lum := (0.299*float64(tint.R) + 0.587*float64(tint.G) + 0.114*float64(tint.B)) / 255.0
+				headerDark = lum <= 0.5
+			}
+		}
 		// Minimalist 44px V1 drag header: quiet top-left dismiss dot, centered recessed-track bead pager, single Duo save action on right.
 		header := ui.Row(c.Key("quick-header")).FillWidth().Height(44).Shrink(0).
 			Padding(0, 12, 0, 16).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-			Background(pal.Paper).KeepFocus()
+			Background(headerBG).KeepFocus()
+		if qnSkin != nil && strings.TrimSpace(qnSkin.BorderAccent) != "" {
+			if borderAccent, err := theme.ParseHexColor(qnSkin.BorderAccent); err == nil {
+				header.BorderWidth(0, 0, 1, 0).BorderColor(borderAccent.Alpha(0.35))
+			}
+		}
 		header.DragWindow()
 		internalui.Probe(header, "quick-header")
 		header.HandleInput(func(ev ui.InputEvent) bool {
@@ -1750,16 +1739,41 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 			return true
 		})
 		header.Children(func() {
-			closeBtn := internalui.WindowDismissDot(
-				c,
-				"quick-close",
-				theme.Tr("关闭", "Close"),
-				theme.Tr("隐藏速记", "Hide Quick Note"),
-				"Esc",
-			).Margin(0, 0, 0, -4).KeepFocus()
-			if closeBtn.Clicked() {
-				q.Hide()
+			badgeText := ""
+			if qnSkin != nil {
+				badgeText = strings.TrimSpace(qnSkin.BadgeText.Resolve(string(theme.Language())))
 			}
+			leftRow := ui.Row(c.Key("quick-header-left")).AlignItems(ui.Center).Gap(theme.Space8)
+			leftRow.Children(func() {
+				closeBtn := internalui.WindowDismissDot(
+					c,
+					"quick-close",
+					theme.Tr("关闭", "Close"),
+					theme.Tr("隐藏速记", "Hide Quick Note"),
+					"Esc",
+				).Margin(0, 0, 0, -4).KeepFocus()
+				if closeBtn.Clicked() {
+					q.Hide()
+				}
+				if badgeText != "" {
+					badgeFG := pal.TextSecondary
+					badgeBG := pal.Hover
+					if headerDark && !pal.Dark {
+						badgeFG = ui.Hex("#e8dec6")
+						badgeBG = ui.RGBA(255, 255, 255, 0.12)
+					}
+					if qnSkin != nil && strings.TrimSpace(qnSkin.BorderAccent) != "" {
+						if accent, err := theme.ParseHexColor(qnSkin.BorderAccent); err == nil {
+							badgeFG = accent
+							badgeBG = accent.Alpha(0.14)
+						}
+					}
+					ui.Row(c.Key("quick-skin-badge")).Height(20).PaddingX(theme.Space8).AlignItems(ui.Center).
+						Radius(theme.RadiusPill).Background(badgeBG).Children(func() {
+						ui.Text(c, badgeText).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(badgeFG).SingleLine()
+					})
+				}
+			})
 
 			// Centered 3-slot recessed-track bead pager inside a pass-through layer so drag & side actions work.
 			ui.Row(c.Key("quick-pager-layer")).Absolute().Left(0).Top(0).Right(0).Bottom(0).

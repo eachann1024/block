@@ -371,7 +371,7 @@ func TestSupervisorInitFailureCleanupLoggingAndReplacingRecovery(t *testing.T) {
 	m := Manifest{
 		App:           TargetApp,
 		SchemaVersion: CurrentSchemaVersion,
-		ID:            "test-tarot-fail",
+		ID:            "test-surface-fail",
 		Name:          LocalizedText{Zh: "失败测试", En: "Fail Test"},
 		Version:       "1.0.0",
 		Author:        "Test",
@@ -431,7 +431,7 @@ func TestSupervisorInitFailureCleanupLoggingAndReplacingRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read block.log: %v", err)
 	}
-	if !strings.Contains(string(logBytes), "plugin surface load failed: id=test-tarot-fail") {
+	if !strings.Contains(string(logBytes), "plugin surface load failed: id=test-surface-fail") {
 		t.Fatalf("expected surface load failure in block.log, got:\n%s", string(logBytes))
 	}
 
@@ -473,70 +473,6 @@ func TestSupervisorInitFailureCleanupLoggingAndReplacingRecovery(t *testing.T) {
 	sup.mu.RUnlock()
 	if strings.Contains(finalErr, "being replaced") {
 		t.Fatalf("view got stuck on replacing error: %q", finalErr)
-	}
-}
-
-type tarotUnavailableHost struct {
-	err error
-}
-
-func (h tarotUnavailableHost) Toast(ToastRequest) ToastResult                         { return ToastResult{} }
-func (h tarotUnavailableHost) OpenPluginSettings(string)                              {}
-func (h tarotUnavailableHost) OpenDialog(string, string, func() error) (string, error) { return "", nil }
-func (h tarotUnavailableHost) ActiveDialogToken(string, string) string                { return "" }
-func (h tarotUnavailableHost) CloseDialog(string, string)                             {}
-func (h tarotUnavailableHost) OpenPanel(string, string)                               {}
-func (h tarotUnavailableHost) ClosePanel(string, string)                              {}
-func (h tarotUnavailableHost) TogglePanel(string, string) (bool, error)               { return false, nil }
-func (h tarotUnavailableHost) OpenNote(string, string, os.FileInfo, []byte, func() error) error {
-	return nil
-}
-func (h tarotUnavailableHost) EditorSelection() (EditorSelection, error) {
-	return EditorSelection{}, nil
-}
-func (h tarotUnavailableHost) EditorInsert(string, string, string, string, string, func() error) error {
-	return nil
-}
-func (h tarotUnavailableHost) TarotState() (TarotState, error) {
-	return TarotState{}, h.err
-}
-func (h tarotUnavailableHost) SetTarotMode(*bool, bool, string) (TarotState, error) {
-	return TarotState{}, h.err
-}
-
-func TestHostUISetTarotUnavailableReturns32005(t *testing.T) {
-	m := Manifest{
-		ID:          "block-tarot",
-		Permissions: []Permission{PermUISettings},
-	}
-	registerActive := func(sup *Supervisor) *Runtime {
-		rt := &Runtime{manifest: m}
-		sup.mu.Lock()
-		sup.installed = []InstalledApp{{Manifest: m, Enabled: true}}
-		sup.runtimes[m.ID] = rt
-		sup.mu.Unlock()
-		return rt
-	}
-
-	sup := NewSupervisor(SupervisorConfig{
-		AppDataDir: t.TempDir(),
-		UI:         tarotUnavailableHost{err: errors.New("host is shutting down")},
-	})
-	rt := registerActive(sup)
-	_, rpcErr, handled := sup.dispatchExtensionHostMethod(rt, "host.ui.set_tarot", json.RawMessage(`{"toggle":true}`), nil)
-	if !handled || rpcErr == nil {
-		t.Fatalf("expected handled rpcError, got handled=%v err=%v", handled, rpcErr)
-	}
-	if rpcErr.Code != -32005 {
-		t.Fatalf("got rpc error code %d, want -32005", rpcErr.Code)
-	}
-
-	// Also verify nil UIHost returns -32005.
-	supNil := NewSupervisor(SupervisorConfig{AppDataDir: t.TempDir()})
-	rtNil := registerActive(supNil)
-	_, rpcErrNil, handledNil := supNil.dispatchExtensionHostMethod(rtNil, "host.ui.set_tarot", json.RawMessage(`{"toggle":true}`), nil)
-	if !handledNil || rpcErrNil == nil || rpcErrNil.Code != -32005 {
-		t.Fatalf("nil UIHost got (%v, %v), want -32005", handledNil, rpcErrNil)
 	}
 }
 

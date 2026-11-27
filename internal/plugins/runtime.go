@@ -80,7 +80,6 @@ type HostConfig struct {
 	ActiveNote      string
 	Locale          string
 	Theme           string
-	Tarot           bool
 	HostVersion     string
 	GetNotebooks    func() []string
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
@@ -1236,7 +1235,6 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"notebooks":       notebooks,
 		"locale":          locale,
 		"theme":           themeName,
-		"tarot":           rt.cfg.Tarot,
 		"host_version":    ver,
 		"ui_capabilities": capabilities,
 	}

@@ -141,8 +141,9 @@ const (
 	FindBarHeight              = HeightControl + Space4*2 + FindBarBorderWidth*2
 	FindBarJumpGap             = Space24 + Space8
 
-	ScrollGutter     float32 = 14
-	ScrollThumbWidth float32 = 6
+	ScrollGutter          float32 = 14
+	ScrollThumbWidth      float32 = 2
+	ScrollThumbHoverWidth float32 = 7
 
 	ResizeHitWidth  float32 = 8
 	ResizeLineWidth float32 = 2
@@ -192,12 +193,12 @@ const (
 	EdgeFloatLeaveMs             = 120
 
 	// Narrow sidebar expand-pill cue timings & geometry (designs/settings-narrow-float Scheme A).
-	SidebarExpandCueHoldMs       = 2400
-	SidebarExpandCuePillMs       = 260
-	SidebarExpandCueRingDelayMs  = 80
-	SidebarExpandCueRingMs       = 720
-	SidebarExpandCueNudgeDelayMs = 140
-	SidebarExpandCueNudgeMs      = 950
+	SidebarExpandCueHoldMs               = 2400
+	SidebarExpandCuePillMs               = 260
+	SidebarExpandCueRingDelayMs          = 80
+	SidebarExpandCueRingMs               = 720
+	SidebarExpandCueNudgeDelayMs         = 140
+	SidebarExpandCueNudgeMs              = 950
 	SidebarExpandCueLabelWidthZH float32 = 30
 	SidebarExpandCueLabelWidthEN float32 = 48
 	SidebarExpandCueRingWidth    float32 = 1.5
@@ -363,26 +364,6 @@ const (
 	VideoPlayBadgeSize       float32 = 52
 	VideoOSDVolumeBarW       float32 = 72
 	VideoOSDVolumeBarH       float32 = 4
-
-	// Tarot mode ("午夜铜版") typography, radii, and layout metrics.
-	TarotTopbarHeight      float32 = 44
-	TarotSidebarWidth      float32 = 260
-	TarotReadingAsideWidth float32 = 320
-	TarotDeckAsideWidth    float32 = 380
-	TarotSheetMaxWidth     float32 = 820
-	TarotRadiusCard        float32 = 12
-	TarotRadiusDailyCard   float32 = 16
-	TarotRadiusDeckDetail  float32 = 14
-	TarotFontRomanSmall    float32 = 16
-	TarotFontRomanCard     float32 = 22
-	TarotFontRomanDetail   float32 = 26
-	TarotFontRomanDaily    float32 = 32
-	TarotFontReading       float32 = 19
-	TarotFontCardTitle     float32 = 15
-	TarotFontDailyTitle    float32 = 20
-	TarotFontPosLabel      float32 = 20
-	TarotFontDeckHeading   float32 = 28
-	TarotWeightBold                = 650
 
 	// Top-right notification banner & plugin permission confirmation modal metrics.
 	ToastBannerWidth         float32 = 360

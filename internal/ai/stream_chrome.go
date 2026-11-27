@@ -29,7 +29,7 @@ type streamChromeState struct {
 	thinkTiming        map[string]*thinkTimingEntry
 	codeTheme          *codeed.Theme
 	codeThemeDark      bool
-	codeThemeTarot     bool
+	codeThemeSkinID    string
 	codeThemeSet       bool
 	lastReplyRevealing bool
 }
@@ -66,7 +66,11 @@ func aiResolvedCodeFont() string {
 }
 
 func aiCodeEditorTheme(pal theme.Palette, chrome *streamChromeState) *codeed.Theme {
-	if chrome != nil && chrome.codeThemeSet && chrome.codeThemeDark == pal.Dark && chrome.codeThemeTarot == pal.Tarot && chrome.codeTheme != nil {
+	skinID := ""
+	if skin := theme.ActiveSkin(); skin != nil {
+		skinID = skin.ID
+	}
+	if chrome != nil && chrome.codeThemeSet && chrome.codeThemeDark == pal.Dark && chrome.codeThemeSkinID == skinID && chrome.codeTheme != nil {
 		return chrome.codeTheme
 	}
 	ct := &codeed.Theme{
@@ -114,7 +118,7 @@ func aiCodeEditorTheme(pal theme.Palette, chrome *streamChromeState) *codeed.The
 	if chrome != nil {
 		chrome.codeTheme = ct
 		chrome.codeThemeDark = pal.Dark
-		chrome.codeThemeTarot = pal.Tarot
+		chrome.codeThemeSkinID = skinID
 		chrome.codeThemeSet = true
 	}
 	return ct
@@ -122,21 +126,21 @@ func aiCodeEditorTheme(pal theme.Palette, chrome *streamChromeState) *codeed.The
 
 func aiMarkdownTheme(pal theme.Palette, chrome *streamChromeState) *markdown.Theme {
 	return &markdown.Theme{
-		FontSize:            theme.FontBody,
-		CodeFont:            aiResolvedCodeFont(),
-		LineHeight:          1.62,
-		CodeLineHeight:      1.55,
-		Text:                pal.Text,
-		Muted:               pal.TextSecondary,
-		Link:                pal.Accent,
-		Strong:              pal.Text,
-		StrongWeight:        theme.WeightTitle,
-		Code:                pal.Text,
-		CodeBackground:      pal.InlineCodeBG,
-		CodeSize:            0.88,
-		BlockSpacing:        0.95,
-		ItemSpacing:         0.35,
-		ListIndent:          1.45,
+		FontSize:       theme.FontBody,
+		CodeFont:       aiResolvedCodeFont(),
+		LineHeight:     1.62,
+		CodeLineHeight: 1.55,
+		Text:           pal.Text,
+		Muted:          pal.TextSecondary,
+		Link:           pal.Accent,
+		Strong:         pal.Text,
+		StrongWeight:   theme.WeightTitle,
+		Code:           pal.Text,
+		CodeBackground: pal.InlineCodeBG,
+		CodeSize:       0.88,
+		BlockSpacing:   0.95,
+		ItemSpacing:    0.35,
+		ListIndent:     1.45,
 		Headings: [6]markdown.HeadingStyle{
 			{Size: 1.30, Weight: theme.WeightTitle, Color: pal.Text, Top: 1.25, Bottom: 0.45, Rule: false},
 			{Size: 1.16, Weight: theme.WeightTitle, Color: pal.Text, Top: 1.15, Bottom: 0.40, Rule: false},
@@ -198,7 +202,7 @@ func (c *Controller) renderAICodeBlock(cUI *ui.Context, b *markdown.CodeBlockVie
 				copyIcon = icons.Check
 				copyFG = pal.Accent
 			}
-			copyBtn := ui.ButtonBase(cUI.Key("ai-code-copy-" + cardKey)).
+			copyBtn := ui.ButtonBase(cUI.Key("ai-code-copy-"+cardKey)).
 				Height(theme.HeightMicro).Padding(0, theme.Space6).Gap(theme.Space4).
 				AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
 				Label(copyLabel)
@@ -314,9 +318,6 @@ func applyComposerStreamingRim(shell ui.Element, pal theme.Palette, streaming bo
 	ais := pal.AISurface()
 	baseBorder := ais.ComposerBorder
 	secondaryHue := pal.SyntaxType
-	if pal.Tarot {
-		secondaryHue = pal.AccentHover
-	}
 
 	shell.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		if r.W <= 2 || r.H <= 2 {
@@ -480,7 +481,7 @@ func renderThinkingLive(cUI *ui.Context, pal theme.Palette, turnKey string, prev
 	slot := ui.Column(cUI.Key("ai-process-live-" + turnKey)).FillWidth().Gap(theme.Space4)
 	bui.Probe(slot, "ai-process-live")
 	slot.Children(func() {
-		ui.Row(cUI.Key("ai-process-live-think-hdr-"+turnKey)).FillWidth().Height(theme.HeightCompact).
+		ui.Row(cUI.Key("ai-process-live-think-hdr-" + turnKey)).FillWidth().Height(theme.HeightCompact).
 			PaddingX(theme.Space6).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
 			bui.SparkleLoader(cUI, theme.IconInline, pal.TextSecondary, pal.Accent)
 			bui.ShimmerText(cUI, theme.Tr("正在思考…", "Thinking…"), theme.FontBody, theme.WeightControl, pal.TextSecondary, pal.Text)
@@ -632,9 +633,9 @@ func (c *Controller) SeedScenePreview(streaming bool) {
 	}
 
 	conv := model.Conversation{
-		ID:      previewConvID,
-		Title:   "流墨纸面与细环流光预览",
-		Backend: model.BackendBuiltin,
+		ID:       previewConvID,
+		Title:    "流墨纸面与细环流光预览",
+		Backend:  model.BackendBuiltin,
 		Messages: msgs,
 	}
 

@@ -1114,19 +1114,6 @@ type EditorSelection struct {
 	HasFocus bool   `json:"has_focus"`
 }
 
-// TarotState describes the host's native Tarot Mode state for host.ui.tarot_state
-// and host.ui.set_tarot.
-type TarotState struct {
-	Supported  bool   `json:"supported"`
-	Enabled    bool   `json:"enabled"`
-	Room       string `json:"room"`
-	Collected  int    `json:"collected"`
-	Total      int    `json:"total"`
-	DailyDrawn bool   `json:"daily_drawn"`
-	DailyNote  string `json:"daily_note"`
-	ActiveNote string `json:"active_note"`
-}
-
 // EditorBackdropState stores a plugin's active custom vector or paper backdrop configuration
 // controlled via host.ui.backdrop and host.ui.set_backdrop.
 type EditorBackdropState struct {
@@ -1303,8 +1290,6 @@ type UIHost interface {
 	// expectedRoot and expectedNote guard against cross-notebook or cross-note
 	// races; checkValid re-verifies runtime & epoch liveness on the main thread.
 	EditorInsert(pluginID, expectedRoot, expectedNote, mode, text string, checkValid func() error) error
-	TarotState() (TarotState, error)
-	SetTarotMode(enabled *bool, toggle bool, room string) (TarotState, error)
 }
 
 // ---------------------------------------------------------------------------
@@ -1313,20 +1298,20 @@ type UIHost interface {
 type contribRegistry struct {
 	mu              sync.RWMutex
 	path            string
-	hidden          map[string]bool                                                 // legacy global titlebar slot id -> hidden
-	hiddenBy        map[string]map[string]bool                                      // plugin id -> hidden titlebar slot ids
-	backdropBy      map[string]EditorBackdropState                                  // plugin id -> custom vector or paper backdrop
-	themeSkins      map[string]ThemeSkinState                                       // plugin id -> theme skin state
-	fileBadges      map[string]map[string]map[string]map[string]FileBadgeEntry      // pluginID -> notebookRoot -> badgeID -> relPath -> entry
-	fileIcons       map[string]map[string]map[string]FileIconEntry                  // pluginID -> notebookRoot -> relPath -> entry
-	fileIconPrefs   map[string]FileIconPrefs                                        // pluginID -> picker/sync_tabs overrides
-	fileIconRecents map[string][]string                                             // pluginID -> recent icon ids
-	warmedUp        map[string]string                                               // plugin id -> initialized version
-	badges          map[string]string                                               // plugin slot id -> badge text
-	active          map[string]bool                                                 // plugin slot id -> active
-	status          map[string]statusOverlay                                        // "<plugin>/<item>" -> text/icon
-	menubar         map[string]menubarOverlay                                       // "<plugin>/<item>" -> title/tooltip/dynamic menu
-	refreshed       map[string]time.Time                                            // surface refresh requests "<plugin>|<surface>"
+	hidden          map[string]bool                                            // legacy global titlebar slot id -> hidden
+	hiddenBy        map[string]map[string]bool                                 // plugin id -> hidden titlebar slot ids
+	backdropBy      map[string]EditorBackdropState                             // plugin id -> custom vector or paper backdrop
+	themeSkins      map[string]ThemeSkinState                                  // plugin id -> theme skin state
+	fileBadges      map[string]map[string]map[string]map[string]FileBadgeEntry // pluginID -> notebookRoot -> badgeID -> relPath -> entry
+	fileIcons       map[string]map[string]map[string]FileIconEntry             // pluginID -> notebookRoot -> relPath -> entry
+	fileIconPrefs   map[string]FileIconPrefs                                   // pluginID -> picker/sync_tabs overrides
+	fileIconRecents map[string][]string                                        // pluginID -> recent icon ids
+	warmedUp        map[string]string                                          // plugin id -> initialized version
+	badges          map[string]string                                          // plugin slot id -> badge text
+	active          map[string]bool                                            // plugin slot id -> active
+	status          map[string]statusOverlay                                   // "<plugin>/<item>" -> text/icon
+	menubar         map[string]menubarOverlay                                  // "<plugin>/<item>" -> title/tooltip/dynamic menu
+	refreshed       map[string]time.Time                                       // surface refresh requests "<plugin>|<surface>"
 	// commandNote maps a plugin to the note its in-flight command targets.
 	commandNote map[string]string
 }
@@ -1339,15 +1324,15 @@ type statusOverlay struct {
 }
 
 type contribFile struct {
-	TitlebarHidden   []string                                                 `json:"titlebar_hidden,omitempty"`
-	TitlebarHiddenBy map[string][]string                                      `json:"titlebar_hidden_by,omitempty"`
-	EditorBackdrops  map[string]EditorBackdropState                           `json:"editor_backdrops,omitempty"`
-	ThemeSkins       map[string]ThemeSkinState                                `json:"theme_skins,omitempty"`
+	TitlebarHidden   []string                                                   `json:"titlebar_hidden,omitempty"`
+	TitlebarHiddenBy map[string][]string                                        `json:"titlebar_hidden_by,omitempty"`
+	EditorBackdrops  map[string]EditorBackdropState                             `json:"editor_backdrops,omitempty"`
+	ThemeSkins       map[string]ThemeSkinState                                  `json:"theme_skins,omitempty"`
 	FileBadges       map[string]map[string]map[string]map[string]FileBadgeEntry `json:"file_badges,omitempty"`
-	FileIcons        map[string]map[string]map[string]FileIconEntry           `json:"file_icons,omitempty"`
-	FileIconPrefs    map[string]FileIconPrefs                                 `json:"file_icon_prefs,omitempty"`
-	FileIconRecents  map[string][]string                                      `json:"file_icon_recents,omitempty"`
-	WarmedUp         map[string]string                                        `json:"warmed_up,omitempty"`
+	FileIcons        map[string]map[string]map[string]FileIconEntry             `json:"file_icons,omitempty"`
+	FileIconPrefs    map[string]FileIconPrefs                                   `json:"file_icon_prefs,omitempty"`
+	FileIconRecents  map[string][]string                                        `json:"file_icon_recents,omitempty"`
+	WarmedUp         map[string]string                                          `json:"warmed_up,omitempty"`
 }
 
 func newContribRegistry(appDataDir string) *contribRegistry {
@@ -3306,40 +3291,6 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			go s.reloadSurfaceViewForNotebookAsync(m.ID, nbRoot, surf)
 		}
 		return map[string]any{"ok": true}, nil, true
-
-	case "host.ui.tarot_state":
-		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
-			return nil, missingPerm(PermUISettings), true
-		}
-		if ui == nil {
-			return TarotState{Supported: false, Room: "writing", Total: 22}, nil, true
-		}
-		st, err := ui.TarotState()
-		if err != nil {
-			return nil, rpcErr(-32005, err.Error()), true
-		}
-		return st, nil, true
-
-	case "host.ui.set_tarot":
-		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
-			return nil, missingPerm(PermUISettings), true
-		}
-		var p struct {
-			Enabled *bool  `json:"enabled"`
-			Toggle  bool   `json:"toggle"`
-			Room    string `json:"room"`
-		}
-		if e := decode(&p); e != nil {
-			return nil, e, true
-		}
-		if ui == nil {
-			return nil, rpcErr(-32005, "tarot host unavailable"), true
-		}
-		st, err := ui.SetTarotMode(p.Enabled, p.Toggle, p.Room)
-		if err != nil {
-			return nil, rpcErr(-32005, err.Error()), true
-		}
-		return st, nil, true
 
 	case "host.ui.backdrop":
 		if !m.HasPermission(PermUIAppearance) {

@@ -7,15 +7,13 @@ import "github.com/egoist/mygo/ui"
 type Elevation uint8
 
 const (
-	ElevationRaised  Elevation = iota // switch knobs, floating pills, small chips
-	ElevationCard                     // main floating paper card resting over the window ground
-	ElevationCardHover                // recessed store card lifting onto crisp paper on hover
-	ElevationPopover        // menus, tooltips, toolbars, popovers
-	ElevationPopoverFocused // focused floating input popovers with a soft accent halo
-	ElevationDialog         // modal dialogs, search, export, command panels
-	ElevationDrawer                   // side drawers sliding over content
-	ElevationTarotCard                // tarot cards hovering over the midnight table
-	ElevationTarotSheet               // tarot parchment sheet over the crosshatch desk
+	ElevationRaised         Elevation = iota // switch knobs, floating pills, small chips
+	ElevationCard                            // main floating paper card resting over the window ground
+	ElevationCardHover                       // recessed store card lifting onto crisp paper on hover
+	ElevationPopover                         // menus, tooltips, toolbars, popovers
+	ElevationPopoverFocused                  // focused floating input popovers with a soft accent halo
+	ElevationDialog                          // modal dialogs, search, export, command panels
+	ElevationDrawer                          // side drawers sliding over content
 )
 
 // Shadow is one layer of an elevation stack.
@@ -49,14 +47,6 @@ func (p Palette) Shadows(e Elevation) []Shadow {
 		return []Shadow{{0, 2, 6, 0, black(0.08)}, {0, 12, 32, 0, black(0.14)}}
 	case ElevationDrawer:
 		return []Shadow{{8, 0, 28, 0, black(0.18)}}
-	case ElevationTarotCard:
-		return []Shadow{{0, 18, 36, 0, ui.RGBA(2, 6, 14, 0.58)}}
-	case ElevationTarotSheet:
-		return []Shadow{
-			{0, 1, 0, 0, ui.Hex("#d9cdaf")},
-			{0, 2, 0, 0, ui.Hex("#8f7f5c")},
-			{0, 24, 56, 0, ui.RGBA(2, 6, 14, 0.55)},
-		}
 	case ElevationPopoverFocused:
 		ringAlpha := float32(0.14)
 		if p.Dark {

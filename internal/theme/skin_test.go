@@ -210,3 +210,71 @@ func TestActiveSkinStateAndApplySkinPalette(t *testing.T) {
 	wg.Wait()
 	ClearActiveSkin("")
 }
+
+func TestWithSurfaceOceanAndResolvedFonts(t *testing.T) {
+	t.Cleanup(func() {
+		ClearActiveSkin("")
+		SetDark(false)
+	})
+	ClearActiveSkin("")
+	SetDark(false)
+
+	if got := Ocean(); got.Paper != OceanLight.Paper {
+		t.Fatalf("expected OceanLight without active skin, got %+v", got.Paper)
+	}
+	defaultFont := ResolvedEditorFont()
+
+	spec, err := ParseThemeSkinJSON([]byte(`{
+		"id": "dual-surface",
+		"fonts": {
+			"serif": "Noto Serif SC, serif",
+			"display": "Cormorant Garamond, serif"
+		},
+		"chrome_dark": true,
+		"light": {
+			"Paper": "#f3ecdc",
+			"Text": "#221d16"
+		},
+		"dark": {
+			"Shell": "#09111e",
+			"Paper": "#0a1322"
+		},
+		"surfaces": {
+			"paper": {"Paper": "#f4ecd9"},
+			"chrome": {"Shell": "#08101c"}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	SetActiveSkin("plugin-a", spec)
+	if ResolvedEditorFont() != "Noto Serif SC, serif" {
+		t.Fatalf("ResolvedEditorFont got %q, want Noto Serif SC, serif", ResolvedEditorFont())
+	}
+	if ResolvedDisplayFont() != "Cormorant Garamond, serif" {
+		t.Fatalf("ResolvedDisplayFont got %q, want Cormorant Garamond, serif", ResolvedDisplayFont())
+	}
+
+	WithSurface("chrome", func() {
+		chromePal := Ocean()
+		if !chromePal.Dark || chromePal.Shell != ui.Hex("#08101c") {
+			t.Fatalf("chrome surface unexpected: dark=%v shell=%+v", chromePal.Dark, chromePal.Shell)
+		}
+		WithSurface("paper", func() {
+			paperPal := Ocean()
+			if paperPal.Dark || paperPal.Paper != ui.Hex("#f4ecd9") {
+				t.Fatalf("nested paper surface unexpected: dark=%v paper=%+v", paperPal.Dark, paperPal.Paper)
+			}
+		})
+		afterNested := Ocean()
+		if !afterNested.Dark || afterNested.Shell != ui.Hex("#08101c") {
+			t.Fatalf("expected chrome surface restored after nested WithSurface, got dark=%v shell=%+v", afterNested.Dark, afterNested.Shell)
+		}
+	})
+
+	ClearActiveSkin("plugin-a")
+	if ResolvedEditorFont() != defaultFont {
+		t.Fatalf("expected ResolvedEditorFont restored to %q, got %q", defaultFont, ResolvedEditorFont())
+	}
+}

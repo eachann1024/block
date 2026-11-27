@@ -81,30 +81,6 @@ func (tc TableColors) CellTint(name string) (ui.Color, bool) {
 
 // Table returns the table border, header, handle, selection and tint colours.
 func (p Palette) Table() TableColors {
-	if p.Tarot && !p.Dark {
-		return TableColors{
-			Border:          p.Hairline,
-			HeaderBG:        ui.Hex("#ece2ca"),
-			SelectedTint:    p.Hover,
-			OuterSelectRing: p.Accent.Alpha(0.24),
-			HandleBG:        p.Paper,
-			HandleHoverBG:   p.Hover,
-			HandleBorder:    p.BtnBorder,
-			HandleFG:        p.TextSecondary,
-			HandleActiveBG:  p.AccentHover,
-			HandleActiveFG:  p.AccentText,
-			TintSlate:       ui.Hex("#e8e2d4"),
-			TintOcean:       ui.Hex("#e2e5e8"),
-			TintEmerald:     ui.Hex("#e1e8dd"),
-			TintAmber:       ui.Hex("#f1e4c6"),
-			TintRose:        ui.Hex("#efdcd5"),
-			SwatchSlate:     ui.Hex("#cbc3b2"),
-			SwatchOcean:     ui.Hex("#b8c4d4"),
-			SwatchEmerald:   ui.Hex("#aec6b2"),
-			SwatchAmber:     ui.Hex("#dfc07e"),
-			SwatchRose:      ui.Hex("#d9a99d"),
-		}
-	}
 	if p.Dark {
 		return TableColors{
 			Border:          p.MenuBorder,
@@ -164,15 +140,6 @@ type CodeBlockColors struct {
 
 // CodeBlock returns the code block text and language/copy pill colours.
 func (p Palette) CodeBlock() CodeBlockColors {
-	if p.Tarot && !p.Dark {
-		return CodeBlockColors{
-			TextFG:      p.Text,
-			PillFG:      p.MenuMuted,
-			PillHoverFG: p.Text,
-			PillBG:      ui.Hex("#f4ecd9"),
-			PillHoverBG: ui.Hex("#e8dcc0"),
-		}
-	}
 	if p.Dark {
 		return CodeBlockColors{
 			TextFG:      p.Text,

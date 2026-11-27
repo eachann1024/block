@@ -24,7 +24,6 @@ import (
 	"block/internal/model"
 	"block/internal/plugins"
 	"block/internal/plugins/pluginui"
-	"block/internal/tarot"
 	"block/internal/telemetry"
 	"block/internal/theme"
 	blockui "block/internal/ui"
@@ -89,16 +88,14 @@ type Workspace struct {
 	recoveryContent string
 	recoveryVersion *int64
 
-	ai           *ai.Controller
-	modals       *modals.Manager
-	updater      *updater.Service
-	pluginsUI    *pluginui.Controller
-	pluginUI     *pluginHostUI
-	palette      CommandPalette
-	quick        *modals.QuickNoteController
-	searchWin    *modals.SearchWindowController
-	tarot        *tarot.Controller
-	tarotSyncKey string
+	ai        *ai.Controller
+	modals    *modals.Manager
+	updater   *updater.Service
+	pluginsUI *pluginui.Controller
+	pluginUI  *pluginHostUI
+	palette   CommandPalette
+	quick     *modals.QuickNoteController
+	searchWin *modals.SearchWindowController
 
 	// OnAppMenuOrHotkeysChanged is notified whenever Settings updates shortcuts or language
 	// so main.go can live-refresh the native application menu bar and OS global hotkeys.
@@ -269,12 +266,12 @@ func NewWorkspace(dataDir string) *Workspace {
 		IsOnline: func() bool {
 			return mygo.Network.Status().Online
 		},
-		GetTheme: func() (string, bool) {
+		GetTheme: func() string {
 			mode := string(w.State().Theme)
 			if mode == "" {
 				mode = string(model.ThemeSystem)
 			}
-			return mode, theme.IsTarotMode()
+			return mode
 		},
 		GetPerfSnapshot: func(refreshDisk bool) (*plugins.PerfSnapshot, error) {
 			snap := w.modals.PerfSnapshot(refreshDisk)
@@ -347,7 +344,6 @@ func NewWorkspace(dataDir string) *Workspace {
 		ApplyNoteWrite: w.applyPluginNoteWrite,
 		ApplyNoteTrash: w.applyPluginNoteTrash,
 		OnChanged: func() {
-			w.syncTarotWithPluginState(false)
 			w.RequestRedraw()
 		},
 		OnRedraw: w.RequestRedraw,
@@ -369,9 +365,7 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.wireModalCallbacks()
 	w.wireQuickNoteCallbacks()
 	w.wireSearchWindowCallbacks()
-	w.initTarot()
 	w.hydrateInitialWorkspace()
-	w.syncTarotWithPluginState(true)
 	if sup := w.Plugins(); sup != nil {
 		sup.WarmupAppearancePluginsAsync()
 	}
@@ -1980,9 +1974,6 @@ func (w *Workspace) Plugins() *plugins.Supervisor {
 }
 
 func (w *Workspace) notifyPluginNoteSaved(absPath string) {
-	if w.tarot != nil && theme.IsTarotMode() {
-		w.tarot.OnNoteSaved(absPath)
-	}
 	if sup := w.Plugins(); sup != nil {
 		source := ""
 		if w.pluginUI != nil {
@@ -5359,12 +5350,9 @@ func (w *Workspace) ToggleCommandPalette() {
 	w.RequestRedraw()
 }
 
-// SaveActiveDocument flushes dirty sessions and triggers the tarot save flash when active.
+// SaveActiveDocument flushes dirty sessions.
 func (w *Workspace) SaveActiveDocument() {
 	_ = w.FlushDirtySessions()
-	if theme.IsTarotMode() && w.tarot != nil {
-		w.tarot.TriggerSaveFlash()
-	}
 }
 
 // ToggleFullScreen toggles native full-screen mode on the main window.
@@ -5495,10 +5483,6 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		return
 	}
 	if w.palette.IsOpen() || w.modals.HasActiveModal() || w.hasActivePluginModal() {
-		return
-	}
-	if theme.IsTarotMode() && w.tarot != nil && w.tarot.Room() != tarot.RoomWriting && c.Shortcut(0, ui.KeyEscape) {
-		w.tarot.BackToWriting()
 		return
 	}
 	if matchRaw(blockui.DefaultCommandPaletteShortcut) || (!theme.IsMacOS() && c.Shortcut(0, ui.KeyF1)) {
@@ -5724,16 +5708,15 @@ func (w *Workspace) Render(c *ui.Context) {
 	}
 	theme.SetZoom(zoom)
 
+	theme.WithSurface("chrome", func() {
+		w.renderWorkspaceChrome(c)
+	})
+}
+
+func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 	pal := theme.Ocean()
 	uiTheme := pal.ToUITheme("")
-	uiTheme.ScrollbarStyle = ui.ScrollbarStyle{
-		TrackWidth: theme.ScrollGutter,
-		ThumbWidth: theme.ScrollThumbWidth,
-		MinLength:  32,
-		Thumb:      pal.ScrollThumb,
-		Hover:      pal.ScrollThumbHover,
-		Active:     pal.ScrollThumbHover,
-	}
+	uiTheme.ScrollbarStyle = blockui.StandardScrollbarStyle(pal)
 	c.SetTheme(&uiTheme)
 
 	// Full-window 12-theme A-Export stage covers the entire window when active.
@@ -5942,20 +5925,6 @@ func (w *Workspace) Render(c *ui.Context) {
 		svgShowSource = activeSurf.SVGShowSource
 	} else if activeSess != nil {
 		tbSurface = SurfaceNote
-	}
-
-	if theme.IsTarotMode() && w.tarot != nil && !inSettings && !aiImmersive {
-		cardLeft := float32(8)
-		if layout.SidebarDocked {
-			cardLeft = 0
-		}
-		cardHorizMargin := cardLeft + 8
-		effMainW := max(layout.MainWidth-cardHorizMargin, 0)
-		w.renderTarotWorkspace(
-			c, vpW, layout, entries, activeNB, activeTab, dirtyTabs[activeTab],
-			activeSurf, activeSess, toast, aiEnabled, sidebarWide, effMainW, cardHorizMargin, 0, 0,
-		)
-		return
 	}
 
 	chrome := pal.ShellChrome()
@@ -6348,100 +6317,107 @@ func (w *Workspace) Render(c *ui.Context) {
 					)
 					blockui.Probe(panelCard, "workspace-panel-card")
 					panelCard.Children(func() {
-						mainCol := ui.Column(c.Key("stage-workspace")).Grow(1).MinWidth(minMainW).FillHeight().
-							Background(pal.Paper).Transition(blockui.SurfaceStageTransition())
-						mainCol.Children(func() {
-							if activeTab != "" && isExternalFile(activeTab, activeNB) {
-								renderExternalPathBar(c, activeTab, &w.extPathBar, w.openDirInShell, w.revealInShell, w.notifyPathCopied)
-							}
-							if toast != nil && toast.Active && toast.NotePath == activeTab {
-								toast.RenderBanner(
-									c,
-									func() {
-										w.bgSaveMu.Lock()
-										defer w.bgSaveMu.Unlock()
-										if sess := w.SessionFor(toast.NotePath); sess != nil && (sess.Dirty() || w.noteSourceDirty(toast.NotePath)) {
-											w.setNotice(theme.Tr("笔记已有新编辑，无法撤回恢复", "The note has newer edits"))
-											return
-										}
-										if err := files.CheckTextVersion(toast.NotePath, toast.RestoredFingerprint); err != nil {
-											w.setNotice(err.Error())
-											return
-										}
-										if err := w.writeNoteLocked(toast.NotePath, toast.UndoContent); err != nil {
-											w.setNotice(err.Error())
-											return
-										}
-										w.mu.Lock()
-										w.historyToast = nil
-										w.mu.Unlock()
-									},
-									func() {
-										w.mu.Lock()
-										w.historyToast = nil
-										w.mu.Unlock()
-										w.RequestRedraw()
-									},
-								)
-							}
-
-							noteArea := ui.Column(c.Key("workspace-note-area")).Grow(1).MinHeight(0).FillWidth()
-							noteArea.Children(func() {
-								switch {
-								case activeSurf != nil:
-									if w.pluginUI != nil {
-										w.pluginUI.setEditorFocus(activeTab, false)
-									}
-									activeSurf.Render(
+						theme.WithSurface("paper", func() {
+							paperPal := theme.Ocean()
+							paperTheme := paperPal.ToUITheme("")
+							paperTheme.ScrollbarStyle = blockui.StandardScrollbarStyle(paperPal)
+							c.SetTheme(&paperTheme)
+							mainCol := ui.Column(c.Key("stage-workspace")).Grow(1).MinWidth(minMainW).FillHeight().
+								Background(paperPal.Paper).Transition(blockui.SurfaceStageTransition())
+							mainCol.Children(func() {
+								if activeTab != "" && isExternalFile(activeTab, activeNB) {
+									renderExternalPathBar(c, activeTab, &w.extPathBar, w.openDirInShell, w.revealInShell, w.notifyPathCopied)
+								}
+								if toast != nil && toast.Active && toast.NotePath == activeTab {
+									toast.RenderBanner(
 										c,
-										func(p string) {
-											if mygo.App.IsReady() {
-												mygo.Shell.ShowItemInFolder(p)
+										func() {
+											w.bgSaveMu.Lock()
+											defer w.bgSaveMu.Unlock()
+											if sess := w.SessionFor(toast.NotePath); sess != nil && (sess.Dirty() || w.noteSourceDirty(toast.NotePath)) {
+												w.setNotice(theme.Tr("笔记已有新编辑，无法撤回恢复", "The note has newer edits"))
+												return
 											}
+											if err := files.CheckTextVersion(toast.NotePath, toast.RestoredFingerprint); err != nil {
+												w.setNotice(err.Error())
+												return
+											}
+											if err := w.writeNoteLocked(toast.NotePath, toast.UndoContent); err != nil {
+												w.setNotice(err.Error())
+												return
+											}
+											w.mu.Lock()
+											w.historyToast = nil
+											w.mu.Unlock()
 										},
-										func(p string) {
-											if mygo.App.IsReady() {
-												_ = mygo.Shell.OpenPath(p)
-											}
+										func() {
+											w.mu.Lock()
+											w.historyToast = nil
+											w.mu.Unlock()
+											w.RequestRedraw()
 										},
 									)
-								case activeSess != nil && w.noteSourceActive(activeTab):
-									if w.pluginUI != nil {
-										w.pluginUI.setEditorFocus(activeTab, false)
-									}
-									w.renderNoteSource(c, activeSess)
-								case activeSess != nil:
-									headlessLock := !mygo.App.IsReady()
-									if headlessLock {
-										w.headlessMainMu.Lock()
-									}
-									activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
-									activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.RightOpen())
-									activeSess.SetBackground(w.pluginEditorBackground())
-									activeSess.SetBlockDecorators(w.pluginBlockDecorators())
-									activeSess.SetMindMapConfig(w.nativeMindMapConfig())
-									activeSess.SetNotifyFunc(w.notify)
-									activeSess.Render(c, effMainW, false)
-									if w.pluginUI != nil {
-										w.pluginUI.setEditorFocus(activeTab, activeSess.HasFocus(c))
-									}
-									if aiEligible {
-										w.syncAIEditorSelection(c, activeSess)
-									}
-									if headlessLock {
-										w.headlessMainMu.Unlock()
-									}
-								default:
-									if w.pluginUI != nil {
-										w.pluginUI.setEditorFocus("", false)
-									}
-									allowGhostFocus := !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() &&
-										w.sidebarUI.RenamingPath == "" && !layout.SidebarDrawer &&
-										!w.edgeFloat.LeftOpen() && !w.edgeFloat.RightOpen()
-									w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
 								}
+
+								noteArea := ui.Column(c.Key("workspace-note-area")).Grow(1).MinHeight(0).FillWidth()
+								noteArea.Children(func() {
+									switch {
+									case activeSurf != nil:
+										if w.pluginUI != nil {
+											w.pluginUI.setEditorFocus(activeTab, false)
+										}
+										activeSurf.Render(
+											c,
+											func(p string) {
+												if mygo.App.IsReady() {
+													mygo.Shell.ShowItemInFolder(p)
+												}
+											},
+											func(p string) {
+												if mygo.App.IsReady() {
+													_ = mygo.Shell.OpenPath(p)
+												}
+											},
+										)
+									case activeSess != nil && w.noteSourceActive(activeTab):
+										if w.pluginUI != nil {
+											w.pluginUI.setEditorFocus(activeTab, false)
+										}
+										w.renderNoteSource(c, activeSess)
+									case activeSess != nil:
+										headlessLock := !mygo.App.IsReady()
+										if headlessLock {
+											w.headlessMainMu.Lock()
+										}
+										activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
+										activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.RightOpen())
+										activeSess.SetBackground(w.pluginEditorBackground())
+										activeSess.SetBlockDecorators(w.pluginBlockDecorators())
+										activeSess.SetMindMapConfig(w.nativeMindMapConfig())
+										activeSess.SetNotifyFunc(w.notify)
+										activeSess.Render(c, effMainW, false)
+										if w.pluginUI != nil {
+											w.pluginUI.setEditorFocus(activeTab, activeSess.HasFocus(c))
+										}
+										if aiEligible {
+											w.syncAIEditorSelection(c, activeSess)
+										}
+										if headlessLock {
+											w.headlessMainMu.Unlock()
+										}
+									default:
+										if w.pluginUI != nil {
+											w.pluginUI.setEditorFocus("", false)
+										}
+										allowGhostFocus := !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() &&
+											w.sidebarUI.RenamingPath == "" && !layout.SidebarDrawer &&
+											!w.edgeFloat.LeftOpen() && !w.edgeFloat.RightOpen()
+										w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
+									}
+								})
+								renderPluginStatusStrip(c, w.Plugins(), w.activeSelectionText, w.ActiveNotePath)
 							})
-							renderPluginStatusStrip(c, w.Plugins(), w.activeSelectionText, w.ActiveNotePath)
+							c.SetTheme(&uiTheme)
 						})
 
 						aiOpen := w.ai.IsOpen()

@@ -54,7 +54,6 @@ func TitleBarActionTrailing() float32 {
 // Palette holds the complete Ocean Paper Light or Dark token set.
 type Palette struct {
 	Dark           bool
-	Tarot          bool
 	Shell          ui.Color
 	Sidebar        ui.Color
 	SettingsBG     ui.Color
@@ -229,8 +228,8 @@ var OceanLight = Palette{
 	TooltipPillBG:       ui.Hex("#f2f4f8"),
 	TooltipPillBorder:   ui.Hex("#dfe4ed"),
 	TooltipPillFG:       ui.Hex("#3e4c63"),
-	ScrollThumb:         ui.RGBA(0x0b, 0x0b, 0x0b, 0.20),
-	ScrollThumbHover:    ui.RGBA(0x0b, 0x0b, 0x0b, 0.35),
+	ScrollThumb:         ui.RGBA(0x0b, 0x0b, 0x0b, 0.26),
+	ScrollThumbHover:    ui.RGBA(0x0b, 0x0b, 0x0b, 0.45),
 	Link:                ui.Hex("#256abf"),
 	InlineCodeFG:        ui.Hex("#eb5757"),
 	InlineCodeBG:        ui.RGBA(135, 131, 120, 0.10),
@@ -335,8 +334,8 @@ var OceanDark = Palette{
 	TooltipPillBG:       ui.Hex("#303030"),
 	TooltipPillBorder:   ui.Hex("#444444"),
 	TooltipPillFG:       ui.Hex("#e0e0e0"),
-	ScrollThumb:         ui.RGBA(0xff, 0xff, 0xff, 0.20),
-	ScrollThumbHover:    ui.RGBA(0xff, 0xff, 0xff, 0.35),
+	ScrollThumb:         ui.RGBA(0xff, 0xff, 0xff, 0.26),
+	ScrollThumbHover:    ui.RGBA(0xff, 0xff, 0xff, 0.45),
 	Link:                ui.Hex("#8bb0f9"),
 	InlineCodeFG:        ui.Hex("#ff7369"),
 	InlineCodeBG:        ui.RGBA(255, 255, 255, 0.094),
@@ -715,6 +714,12 @@ func DefaultUIFontStack() string {
 
 // ResolvedEditorFont resolves the configured editor body font into a complete CSS/CoreText family list.
 func ResolvedEditorFont() string {
+	if sf := ActiveSerifFont(); sf != "" {
+		return sf
+	}
+	if df := ActiveDisplayFont(); df != "" {
+		return df
+	}
 	edFont, _, _ := Typography()
 	f := strings.TrimSpace(edFont)
 	switch f {
@@ -725,6 +730,15 @@ func ResolvedEditorFont() string {
 	default:
 		return f + ", PingFang SC, Songti SC, Noto Sans SC, Microsoft YaHei"
 	}
+}
+
+// ResolvedDisplayFont returns the active skin's display font stack when set,
+// falling back to ResolvedEditorFont.
+func ResolvedDisplayFont() string {
+	if df := ActiveDisplayFont(); df != "" {
+		return df
+	}
+	return ResolvedEditorFont()
 }
 
 // Inline highlight/text colors supported in selection palette & Markdown spans.
@@ -853,14 +867,41 @@ func IsDark() bool {
 	return darkAtomic.Load()
 }
 
+var (
+	surfaceMu      sync.RWMutex
+	surfaceOverlay string
+)
+
+// WithSurface temporarily scopes theme.Ocean() to surface ("paper" or "chrome")
+// while fn executes, restoring the previous surface on return.
+func WithSurface(surface string, fn func()) {
+	if fn == nil {
+		return
+	}
+	surfaceMu.Lock()
+	prev := surfaceOverlay
+	surfaceOverlay = surface
+	surfaceMu.Unlock()
+	defer func() {
+		surfaceMu.Lock()
+		surfaceOverlay = prev
+		surfaceMu.Unlock()
+	}()
+	fn()
+}
+
 func Ocean() Palette {
-	if ov, ok := activePaletteOverride(); ok {
-		return ov
-	}
+	base := OceanLight
 	if IsDark() {
-		return OceanDark
+		base = OceanDark
 	}
-	return OceanLight
+	if ActiveSkin() == nil {
+		return base
+	}
+	surfaceMu.RLock()
+	surface := surfaceOverlay
+	surfaceMu.RUnlock()
+	return ApplySkinPalette(base, surface)
 }
 
 func SetThemeMode(m model.ThemeMode, systemDark bool) {

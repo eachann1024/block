@@ -216,14 +216,14 @@ type Controller struct {
 
 	mediaCache *attachmentMediaCache
 
-	tarotWasStreaming bool
-	tarotGlintAt      time.Time
-	lightboxOpen      bool              // synchronized under c.mu for cross-thread queries
-	lightbox          bui.LightboxState // UI-thread-only persistent state (stable Scroll pointer)
-	lightboxSource    attachmentLightboxSource
-	clipSeq           uint64
-	pendingClip       *pendingAttachmentClip
-	onEnabledChanged  func(bool)
+	indicatorWasStreaming bool
+	indicatorGlintAt      time.Time
+	lightboxOpen          bool              // synchronized under c.mu for cross-thread queries
+	lightbox              bui.LightboxState // UI-thread-only persistent state (stable Scroll pointer)
+	lightboxSource        attachmentLightboxSource
+	clipSeq               uint64
+	pendingClip           *pendingAttachmentClip
+	onEnabledChanged      func(bool)
 
 	activePlan     *ActivePlanPreview
 	planInFlight   string

@@ -25,7 +25,7 @@ const (
 	pluginToastInfoDuration    = 4 * time.Second
 	pluginToastWarningDuration = 6 * time.Second
 	pluginToastMinResume       = 250 * time.Millisecond
-	pluginToastVisibleMax = 3
+	pluginToastVisibleMax      = 3
 	// pluginToastQueueMax bounds queued toasts so a chatty plugin cannot
 	// build an endless backlog while still allowing 4-tone showcase queues.
 	pluginToastQueueMax = 6
@@ -1372,26 +1372,6 @@ func (h *pluginHostUI) EditorInsert(pluginID, expectedRoot, expectedNote, mode, 
 		insertSucceeded = true
 	}
 	return nil
-}
-
-func (h *pluginHostUI) TarotState() (plugins.TarotState, error) {
-	ch := make(chan plugins.TarotState, 1)
-	if err := h.onMainWait(func() {
-		ch <- h.w.TarotStateSnapshot()
-	}); err != nil {
-		return plugins.TarotState{}, err
-	}
-	return <-ch, nil
-}
-
-func (h *pluginHostUI) SetTarotMode(enabled *bool, toggle bool, room string) (plugins.TarotState, error) {
-	ch := make(chan plugins.TarotState, 1)
-	if err := h.onMainWait(func() {
-		ch <- h.w.ApplyTarotPluginControl(enabled, toggle, room)
-	}); err != nil {
-		return plugins.TarotState{}, err
-	}
-	return <-ch, nil
 }
 
 // isHostReservedShortcut delegates to internal/ui.IsHostReservedShortcut so

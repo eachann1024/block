@@ -121,7 +121,7 @@ type SupervisorConfig struct {
 	GetNotebooks    func() []string
 	GetActiveNote   func() string
 	GetLocale       func() string
-	GetTheme        func() (string, bool)
+	GetTheme        func() string
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 	PickDirectory   func(title, defaultPath string, onPicked func(path string))
 	PickFile        func(title, defaultPath string, extensions []string, onPicked func(path string))
@@ -2184,9 +2184,9 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 			return uiHost.OpenNote(notebookRoot, relPath, rootInfo, content, checkValid)
 		}
 	}
-	curTheme, curTarot := "system", false
+	curTheme := "system"
 	if s.cfg.GetTheme != nil {
-		curTheme, curTarot = s.cfg.GetTheme()
+		curTheme = s.cfg.GetTheme()
 	}
 	cfg := HostConfig{
 		PluginDir:         inst.InstallDir,
@@ -2197,7 +2197,6 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		ActiveNote:        s.activeNoteFor(nbRoot),
 		Locale:            rawLocale,
 		Theme:             curTheme,
-		Tarot:             curTarot,
 		HostVersion:       hostVer,
 		GetNotebooks:      s.Notebooks,
 		GetPerfSnapshot:   s.cfg.GetPerfSnapshot,

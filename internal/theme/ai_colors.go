@@ -32,22 +32,6 @@ type AISurfaceColors struct {
 
 // AISurface returns the AI surface colour set for p.
 func (p Palette) AISurface() AISurfaceColors {
-	if p.Tarot && p.Dark {
-		return AISurfaceColors{
-			RailBG:              ui.Hex("#09111e"),
-			ComposerBG:          ui.Hex("#0c182b"),
-			ComposerBorder:      ui.RGBA(201, 162, 90, 0.28),
-			ComposerFocusBorder: ui.Hex("#e2c07e"),
-			MediaFrameBG:        ui.Hex("#101e34"),
-			CapsuleBG:           ui.Hex("#13233d"),
-			CapsuleBorder:       ui.RGBA(201, 162, 90, 0.34),
-			WellBG:              ui.Hex("#0f1b2e"),
-			UserBubbleBG:        ui.Hex("#17263f"),
-			HoverBG:             ui.Hex("#16263f"),
-			SelectedBG:          ui.Hex("#1c2e4d"),
-			TintedSelectedBG:    ui.RGBA(201, 162, 90, 0.16),
-		}
-	}
 	if p.Dark {
 		return AISurfaceColors{
 			RailBG:              ui.Hex("#1b1b1b"),
