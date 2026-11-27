@@ -209,6 +209,9 @@ func (s *Session) renderFindBar(c *ui.Context) {
 						c.Invalidate()
 						return true
 					}
+					if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
+						return true
+					}
 					return false
 				})
 				if s.findFocusPending {
@@ -316,6 +319,8 @@ func (s *Session) renderFindReplaceRow(c *ui.Context, inputW float32) {
 			case k.Key == ui.KeyTab && k.Mods == ui.Shift:
 				s.findFocusPending = true
 				c.Invalidate()
+				return true
+			case k.Key == ui.KeyTab && k.Mods == 0:
 				return true
 			}
 			return false
@@ -1171,6 +1176,9 @@ func (s *Session) renderLinkCardPopover(c *ui.Context, vp ui.Rect, winW, winH fl
 		in.OnTextKey(func(k ui.TextKey) bool {
 			if k.Key == ui.KeyEscape {
 				s.toolbarPop = ""
+				return true
+			}
+			if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
 				return true
 			}
 			return false
@@ -2621,6 +2629,8 @@ func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation,
 				case k.Key == ui.KeyEscape:
 					*draft = ""
 					return true
+				case k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift):
+					return true
 				case isAnnotationSubmitKey(k):
 					if s.SendAnnotationFollowup(id, k.Text()) {
 						delete(s.followupDrafts, id)
@@ -2629,6 +2639,9 @@ func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation,
 				}
 				return false
 			})
+			if in.Focused() {
+				s.frameTabChildFocused = true
+			}
 
 			sendBG := pal.BtnBorder
 			sendFG := pal.AccentText
@@ -2691,6 +2704,8 @@ func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 		case k.Key == ui.KeyEscape:
 			s.editingAnnotID = ""
 			return true
+		case k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift):
+			return true
 		case isAnnotationSubmitKey(k):
 			if s.editingAnnotID != ann.ID {
 				return true
@@ -2701,6 +2716,9 @@ func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 		}
 		return false
 	})
+	if in.Focused() {
+		s.frameTabChildFocused = true
+	}
 	if s.editingFocusPending {
 		in.Focus()
 		s.editingFocusPending = false
@@ -2891,6 +2909,10 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 				})
 			}
 		})
+		if rail.FocusWithin() && !s.frameTabChildFocused {
+			rail.Shortcut(0, ui.KeyTab)
+			rail.Shortcut(ui.Shift, ui.KeyTab)
+		}
 	})
 }
 

@@ -1808,6 +1808,9 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 							s.aiEscape()
 							return true
 						}
+						if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
+							return true
+						}
 						if k.Key == ui.KeyEnter && k.Mods == 0 {
 							ai.InputText = k.Text()
 							s.aiSubmitInput()

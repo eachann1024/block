@@ -51,6 +51,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	readOnly = readOnly || s.planReview != nil
 	s.readOnly = readOnly
 	s.framePathHover = nil
+	s.frameTabChildFocused = false
 	if s.lastPressCmdIntact && (!c.WindowActive() || c.Modifiers() != ui.Cmd) {
 		s.lastPressCmdIntact = false
 	}
@@ -397,6 +398,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 				s.multiSelFocusPending = false
 			}
 			multiFocused := multiFocus.Focused()
+			if multiFocused {
+				s.frameTabChildFocused = true
+			}
 			if !multiFocused && !s.multiSelFocusPending {
 				s.detachedCompose = ""
 			}
@@ -435,8 +439,14 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderMediaLightbox(c)
 		s.renderMindMapFullscreen(c, readOnly)
 		s.renderHoveredPathTooltip(c)
+		if s.rootHandle.FocusWithin(c) && !s.frameTabChildFocused {
+			root.Shortcut(0, ui.KeyTab)
+			root.Shortcut(ui.Shift, ui.KeyTab)
+		}
 		if s.hasMenuPopupOpen() {
 			appUi.ReserveMenuNavKeys(c)
+			c.Shortcut(0, ui.KeyTab)
+			c.Shortcut(ui.Shift, ui.KeyTab)
 		}
 	})
 }
@@ -1727,26 +1737,34 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 							return true
 						}
 					}
-				case mods == 0 && key == ui.KeyTab:
-					if b.Kind.IsList() && b.Indent < 8 {
-						s.pushUndo()
-						b.Indent++
-						b.Dirty = true
-						s.markDirty()
+				case (mods == 0 || mods == ui.Shift) && key == ui.KeyTab:
+					if s.hasMultiBlockSelection() {
+						s.indentMultiBlockSelection(mods == ui.Shift)
 						return true
 					}
-				case mods == ui.Shift && key == ui.KeyTab:
-					if b.Kind.IsList() && b.Indent > 0 {
-						s.pushUndo()
-						b.Indent--
-						b.Dirty = true
-						s.markDirty()
-						return true
+					if b.Kind.IsList() {
+						if mods == 0 && b.Indent < 8 {
+							s.pushUndo()
+							b.Indent++
+							b.Dirty = true
+							b.CleanSource = ""
+							s.markDirty()
+						} else if mods == ui.Shift && b.Indent > 0 {
+							s.pushUndo()
+							b.Indent--
+							b.Dirty = true
+							b.CleanSource = ""
+							s.markDirty()
+						}
 					}
+					return true
 				}
 				return false
 			},
 		})
+		if in.Focused() {
+			s.frameTabChildFocused = true
+		}
 
 		s.recordBlockTextLayoutBounds(b.ID, in)
 		_ = s.updateFocusedRichInputDrag(c, s.frameRoot, st, idx)
@@ -2407,6 +2425,25 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					}
 				})
 				ta.OnTextKey(func(k ui.TextKey) bool {
+					if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
+						if !s.readOnly {
+							cur := k.Text()
+							selA := len([]rune(cur))
+							selB := selA
+							if s.selAnchor.Block == idx && s.selHead.Block == idx {
+								selA, selB = s.selAnchor.Offset, s.selHead.Offset
+							}
+							nextText, nextA, nextB := applyCodeBlockTab(cur, selA, selB, k.Mods == ui.Shift)
+							if nextText != cur {
+								k.SetText(nextText)
+								s.applyBlockTextEdit(idx, nextText, nextB)
+								s.selAnchor = Position{Block: idx, Offset: nextA}
+								s.selHead = Position{Block: idx, Offset: nextB}
+								s.selSyncPending = true
+							}
+						}
+						return true
+					}
 					if s.navigateFromCodeKey(idx, k.Key, k.Mods, k.Text()) {
 						return true
 					}
@@ -2464,6 +2501,9 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					selStart, selEnd := ta.TextSelection()
 					s.selAnchor = Position{Block: idx, Offset: selStart}
 					s.selHead = Position{Block: idx, Offset: selEnd}
+				}
+				if ta.Focused() {
+					s.frameTabChildFocused = true
 				}
 				s.setBlockHandle(id, handle)
 			} else {
@@ -3123,7 +3163,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 							return true
 						}
 					}
-					if key == ui.KeyTab {
+					if (mods == 0 || mods == ui.Shift) && key == ui.KeyTab {
 						if mods == ui.Shift {
 							s.stepTableCell(blockID, tbl, rIdx, cIdx, -1)
 						} else {
@@ -3183,6 +3223,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					return false
 				},
 			})
+			if in.Focused() {
+				s.frameTabChildFocused = true
+			}
 			_ = s.updateFocusedRichTableCellDrag(c, s.frameRoot, st, blockIdx, blockID, rIdx, cIdx)
 			if s.focusPending {
 				in.Focus(ui.FocusOptions{PreventScroll: s.focusPreventScroll})
@@ -3898,3 +3941,99 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 
 // soloAddIntroDur is how long the single-line add button plays its hover intro.
 const soloAddIntroDur = 450 * time.Millisecond
+
+const codeBlockTabWidth = 4
+
+// applyCodeBlockTab indents or outdents code block text around [selStart, selEnd] in runes.
+func applyCodeBlockTab(text string, selStart, selEnd int, outdent bool) (string, int, int) {
+	rs := []rune(text)
+	n := len(rs)
+	lo := clampInt(min(selStart, selEnd), 0, n)
+	hi := clampInt(max(selStart, selEnd), lo, n)
+
+	hasNewline := false
+	for i := lo; i < hi; i++ {
+		if rs[i] == '\n' {
+			hasNewline = true
+			break
+		}
+	}
+
+	if !outdent && !hasNewline {
+		unit := []rune(strings.Repeat(" ", codeBlockTabWidth))
+		next := make([]rune, 0, n-(hi-lo)+len(unit))
+		next = append(next, rs[:lo]...)
+		next = append(next, unit...)
+		next = append(next, rs[hi:]...)
+		pos := lo + len(unit)
+		return string(next), pos, pos
+	}
+
+	// Find first line start covering lo, and last line end covering hi.
+	lineStart := lo
+	for lineStart > 0 && rs[lineStart-1] != '\n' {
+		lineStart--
+	}
+	effHi := hi
+	if hasNewline && effHi > lo && rs[effHi-1] == '\n' {
+		effHi--
+	}
+
+	var out []rune
+	out = append(out, rs[:lineStart]...)
+	newLo, newHi := lo, hi
+	pos := lineStart
+	for pos <= n {
+		end := pos
+		for end < n && rs[end] != '\n' {
+			end++
+		}
+		if outdent {
+			rem := 0
+			if pos < end && rs[pos] == '\t' {
+				rem = 1
+			} else {
+				for rem < codeBlockTabWidth && pos+rem < end && rs[pos+rem] == ' ' {
+					rem++
+				}
+			}
+			if rem > 0 {
+				if lo > pos {
+					newLo -= min(rem, lo-pos)
+				}
+				if hi > pos {
+					newHi -= min(rem, hi-pos)
+				}
+			}
+			out = append(out, rs[pos+rem:end]...)
+		} else {
+			for k := 0; k < codeBlockTabWidth; k++ {
+				out = append(out, ' ')
+			}
+			if lo >= pos {
+				newLo += codeBlockTabWidth
+			}
+			if hi >= pos {
+				newHi += codeBlockTabWidth
+			}
+			out = append(out, rs[pos:end]...)
+		}
+		if end >= n {
+			break
+		}
+		out = append(out, '\n')
+		pos = end + 1
+		if pos > effHi {
+			out = append(out, rs[pos:]...)
+			break
+		}
+	}
+	nextText := string(out)
+	nextLen := len(out)
+	newLo = clampInt(newLo, 0, nextLen)
+	newHi = clampInt(newHi, newLo, nextLen)
+	if selStart > selEnd {
+		return nextText, newHi, newLo
+	}
+	return nextText, newLo, newHi
+}

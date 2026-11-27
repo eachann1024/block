@@ -772,6 +772,8 @@ func (s *Session) handleFocusedAtomicInput(svc ui.Services, ev ui.InputEvent) bo
 			s.FocusBlock(idx + 1)
 			s.markDirty()
 			return true
+		case ev.Key == ui.KeyTab && (ev.Mods == 0 || ev.Mods == ui.Shift):
+			return true
 		default:
 			if s.navigateFromAtomic(idx, ev.Key, ev.Mods) {
 				return true
@@ -922,6 +924,11 @@ func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) b
 			return true
 		case ev.Mods == ui.Shift && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight):
 			return s.extendSelectionByArrow(ev.Key)
+		case ev.Key == ui.KeyTab && (ev.Mods == 0 || ev.Mods == ui.Shift):
+			if !s.readOnly && s.hasMultiBlockSelection() {
+				s.indentMultiBlockSelection(ev.Mods == ui.Shift)
+			}
+			return true
 		case ev.Mods == 0 && ev.Key == ui.KeyEscape:
 			_, b := s.orderedSelection()
 			s.selAnchor = b
@@ -936,6 +943,48 @@ func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) b
 		}
 	}
 	return false
+}
+
+func (s *Session) indentMultiBlockSelection(outdent bool) {
+	if s.doc == nil || !s.hasMultiBlockSelection() {
+		return
+	}
+	a, b := s.orderedSelection()
+	pushed := false
+	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
+		_, _, _, selected := s.blockSelectionSpanRange(idx)
+		if !selected {
+			continue
+		}
+		blk := &s.doc.Blocks[idx]
+		if !blk.Kind.IsList() {
+			continue
+		}
+		if outdent {
+			if blk.Indent <= 0 {
+				continue
+			}
+			if !pushed {
+				s.pushUndo()
+				pushed = true
+			}
+			blk.Indent--
+		} else {
+			if blk.Indent >= 8 {
+				continue
+			}
+			if !pushed {
+				s.pushUndo()
+				pushed = true
+			}
+			blk.Indent++
+		}
+		blk.Dirty = true
+		blk.CleanSource = ""
+	}
+	if pushed {
+		s.markDirty()
+	}
 }
 
 func (s *Session) syncCollapsedTableCellFocus(pos Position) {

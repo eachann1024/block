@@ -398,9 +398,10 @@ type Session struct {
 	viewportHeight    float32
 	editorRect        ui.Rect
 	scrollRect        ui.Rect
-	rootHandle        ui.Handle
-	detachedFocus     ui.Handle
-	frameRoot         ui.Element
+	rootHandle           ui.Handle
+	detachedFocus        ui.Handle
+	frameRoot            ui.Element
+	frameTabChildFocused bool
 	toolbarRect       ui.Rect
 	overlayBtnRects   map[string]ui.Rect
 	overlayPanelRects map[string]ui.Rect

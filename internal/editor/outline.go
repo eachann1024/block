@@ -623,6 +623,9 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 							Bind(&s.outlineInputHandle)
 						appUi.Probe(in, "outline-filter-input")
 						in.OnTextKey(func(k ui.TextKey) bool {
+							if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
+								return true
+							}
 							if k.Key == ui.KeyEscape {
 								if s.outlineFilter != "" {
 									s.outlineFilter = ""
