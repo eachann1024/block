@@ -19,6 +19,7 @@ require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
+	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	go.digitalxero.dev/rpm v0.3.4 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
