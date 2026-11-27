@@ -273,13 +273,13 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
        "host_version": "1.0.958",
        "ui_capabilities": [
          "kv_tooltip", "treemap", "checklist_add_folder", "action_feedback",
-         "action_progress", "note_revision", "sidebar_sections", "open_settings"
+         "action_progress", "note_revision", "sidebar_sections", "open_settings", "form_autosave", "button_link"
        ]
      }
      ```
      - **Runtime Context**: `notebook_root` is populated only when declaring `notes:read`, `notes:write`, or `events:note_saved` and a notebook is active (otherwise `""`); `notebooks` is populated only when declaring `notes:read` (otherwise `[]`). Switching notebooks typically re-initializes the sandbox with the new `notebook_root` on the next call (including background `note.saved` events), while certain appearance/UI plugins may warm immediately on switch.
      - `downloads_dir` (defaults to `~/Downloads`, env `BLOCKMD_DOWNLOADS_DIR`): export files, backups, and user-facing output should default to `downloads_dir` rather than hidden directories inside `apps-data` or notebooks.
-     - `ui_capabilities`: progressive capability flags (up to 37 keys depending on host version, config, and OS; see Section 4.4).
+     - `ui_capabilities`: progressive capability flags (up to 39 keys depending on host version, config, and OS; see Section 4.4).
    - Return `result`: `{"ready": true}`.
 
 2. **`plugin.render`**
@@ -293,6 +293,7 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
 
 3. **`plugin.action`**
    - Triggered when clicking page buttons or toast notification action buttons (for toasts: `surface: "toast"`, `action_id: action.id`, `values: action.payload`). Note: `block-plugin-check` calls every top-level `header_actions` and `actions` button on the initial `UIPage` regardless of `visible_when` or collapsed state—ensure defaults never trigger destructive side effects.
+   - **Autosave** sends the full form `values` and adds `"trigger": "autosave"` to `params`. The checker only calls button actions. Autosave uses `ok`, `tone`, `status`, `page`, and `values`, preserving the focused input and caret while merging other fields. Warnings and errors appear inline. Success and informational responses are quiet, with no toast or button flash.
    - Request `params`:
      ```json
      {
@@ -320,7 +321,7 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
      }
      ```
      - **Labels & Extra Fields**: optional `busy_label`, `success_label`, `error_label`, `retry_label` (no Emoji), plus optional `icon` and `synced_notebooks` (`string[]`). Write error or status text to `status` (the host does not read `message`).
-     - **Merge Order**: if both `page` and `values` are returned, `page` control defaults apply first, then `result.values`; if `page.status` is empty and `result.status` is non-empty, `result.status` populates `page.status`.
+     - **Merge Order**: if both `page` and `values` are returned, the host applies `page` control defaults first and `result.values` second. Button actions also fill empty `page.status` from `result.status`.
      - **Feedback (`ok` / `tone` / `status`)**: explicit valid `tone` (`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`) wins, then `ok`, then keyword inference defaulting to `"success"`. `test_conn`, `test_*`, and `*_test` buttons stay in success state until the form changes or another action runs; other buttons show a green check for 2.4s.
      - **Output Files (`open_path` / `reveal_path`)**: paths are cleaned and verified to exist inside `downloads_dir` with no symlinks under `downloads_dir` (otherwise silently ignored). `open_path` blocks `.app` directories and allows only `.html`, `.htm`, `.pdf`, `.txt`, `.md`, `.markdown`, `.csv`, `.tsv`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.docx`, `.xlsx`, `.pptx`; use `reveal_path` for other formats (e.g. `.zip`). Omit both fields on failed actions.
 
@@ -402,8 +403,8 @@ Interactive system operations (open URL, reveal, dialogs, clipboard, trash) requ
 
 ### 4.4 Compatibility & Platform Notes
 
-- **`ui_capabilities` keys** (up to 37 total, depending on host version, config, and OS):
-  `kv_tooltip`, `treemap`, `host_perf`, `checklist`, `checklist_add_folder`, `form_layout`, `multi_notebook`, `card_collapse`, `metric_tone`, `log_columns`, `file_picker`, `action_feedback`, `action_progress`, `note_revision`, `sidebar_sections`, `file_badges`, `sidebar_menu`, `backdrops`, `status_icon`, `toast_icon`, `notes_open`, `log_actions`, `panel_toggle`, `editor_insert_mode`, `dialog_token`, `item_icons`, `tab_menu`, `file_path`, `log_timeline`, `progress_bar`, `segmented_status`, `toast_banner`, `open_settings`, `store_changelog`, `system_integration`, `menubar`, `menubar_drop` (macOS only).
+- **`ui_capabilities` keys** (up to 39 total, depending on host version, config, and OS):
+  `kv_tooltip`, `treemap`, `host_perf`, `checklist`, `checklist_add_folder`, `form_layout`, `multi_notebook`, `card_collapse`, `metric_tone`, `log_columns`, `file_picker`, `action_feedback`, `action_progress`, `note_revision`, `sidebar_sections`, `file_badges`, `sidebar_menu`, `backdrops`, `status_icon`, `toast_icon`, `notes_open`, `log_actions`, `panel_toggle`, `editor_insert_mode`, `dialog_token`, `item_icons`, `tab_menu`, `file_path`, `log_timeline`, `progress_bar`, `segmented_status`, `toast_banner`, `open_settings`, `form_autosave`, `button_link`, `store_changelog`, `system_integration`, `menubar`, `menubar_drop` (macOS only).
 - **Platform Details**: macOS uses Notification Center (click targets persist 7 days across restarts), Keychain, and Dock; Windows uses native notifications, Credential Manager, and taskbar badge; Linux uses desktop notifications, Secret Service (must be unlocked), Unity Launcher Dock, and logind wake events.
 - **Safe Trash**: saves dirty editors before confirming, stages on the same volume, verifies file identity, restores on failure, and tracks original paths for recovery prompts.
 
@@ -445,10 +446,19 @@ Within a `UIPage`, every `card.id`, control `item.id`, and `button.id` (`header_
 - `status`: optional short read-only status (omit or `""` when idle; never write placeholders like `"Ready"` / `"Enabled"`).
 - `progress`: optional `0`–`1` float for polling background progress (use `host.action.progress` during `plugin.action`).
 - `refresh_interval_ms`: optional `500`–`60000` ms (`0`/omitted disables polling).
-- `header_actions`: optional buttons (`variant`: `"primary"` | `"secondary"` | `"danger"`, plus optional `busy_label`/`success_label`/`error_label`/`retry_label`). First `primary` (or first `danger`) appears in the titlebar; remaining buttons move into `⋯`.
+- `header_actions`: optional buttons (`variant`: `"primary"` | `"secondary"` | `"danger"` | `"link"` (requires `button_link`), plus optional `busy_label`/`success_label`/`error_label`/`retry_label`). First `primary` (or first `danger`) appears in the titlebar; remaining buttons move into `⋯`.
 - `cards`: required non-empty array (`<= 64` cards, `<= 400` total items). Each card has unique `id`, optional `title`, `meta`, `badge`, `collapsible`, `default_collapsed`, and non-empty `items`.
 
 ### 16 `UIItem` Controls
+
+With `form_autosave`, set `"autosave": "<action_id>"` on `input` (including URLs and numbers entered as strings), `secret`, `select`, `segmented`, `switch`, `checklist`, or `folder`. Supported `group.fields` work too. The ID follows button ID rules and can be shared across controls. Text triggers on blur or about 800 ms after typing stops. Other controls trigger immediately when their value changes. The host skips unchanged values. Each page sends one autosave at a time and combines queued triggers into one follow-up using the latest action ID and the current form values. Omit `autosave` and keep a submit button on older hosts.
+
+```json
+[
+  { "kind": "input", "id": "endpoint_url", "label": "Server URL", "value": "", "autosave": "save_config" },
+  { "kind": "actions", "buttons": [{ "id": "help", "label": "Setup guide", "variant": "link" }] }
+]
+```
 
 All `UIItem`s (including `group.fields`) support optional `visible_when` (`{"control_id", "equals"? , "in"?}`; non-empty `in` takes precedence over `equals`; strict JSON type equality). Valid `layout` values: `""`, `"stacked"` (`segmented`/`folder`/`input`/`secret`), `"full"` (`segmented` only; allows omitting `label`). Soft palette keys: `"assets"`, `"config"`, `"notes"`, `"history"`, `"recovery"`, `"logs"`, `"ai_sessions"`.
 
@@ -458,7 +468,7 @@ All `UIItem`s (including `group.fields`) support optional `visible_when` (`{"con
 4. **`folder`**: `id`, `label`, `value` (path or `""`), optional `layout`, `accept_extensions` (hint only—validate selected files in plugin code).
 5. **`secret`**: same as `input` with masked display and visibility toggle.
 6. **`switch`**: `id`, `label`, `value` (`bool`), optional `icon` (`{"name"}` | inline `DuoIconSpec` | `{"chip", "dot"}` with `"item_icons"`).
-7. **`actions`**: non-empty `buttons` array (same fields as `header_actions` plus optional `icon`).
+7. **`actions`**: non-empty `buttons` array (same fields as `header_actions` plus optional `icon`). With `button_link`, `variant: "link"` uses accent text on a transparent background, with no border, a click target at least 28 px tall, and a keyboard focus ring. Use `secondary` on older hosts.
 8. **`metrics`**: non-empty `metrics` array (`label`, `value`, optional `tone`), auto-laid out 1–4 columns.
 9. **`kv`**: non-empty `rows` (`label`, `value`, optional `tooltip`, `icon`).
 10. **`preview`**: `preview` object with `variant` (`"article"` | `"cards"` | `"diff"` | `"plan"`), `palette` (`"ocean"` | `"paper"` | `"ink"` | `"warm"`), required `title`, optional `badge`, `subtitle`, `body`, `before`, `after`, `cards`.
