@@ -120,10 +120,11 @@ type PluginViewState struct {
 type SupervisorConfig struct {
 	AppDataDir           string
 	HostVersion          string
-	GetNotebookRoot      func() string
-	GetNotebooks         func() []string
-	GetActiveNote        func() string
-	GetLocale            func() string
+	GetNotebookRoot        func() string
+	GetNotebooks           func() []string
+	GetActiveNote          func() string
+	GetPinnedTitlebarSlots func() []string
+	GetLocale              func() string
 	GetTheme             func() string
 	GetPerfSnapshot      func(refreshDisk bool) (*PerfSnapshot, error)
 	PickDirectory        func(title, defaultPath string, onPicked func(path string))

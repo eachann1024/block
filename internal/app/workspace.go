@@ -280,6 +280,11 @@ func NewWorkspace(dataDir string) *Workspace {
 		GetActiveNote: func() string {
 			return w.State().ActiveTab
 		},
+		GetPinnedTitlebarSlots: func() []string {
+			w.mu.RLock()
+			defer w.mu.RUnlock()
+			return append([]string(nil), w.state.PinnedPluginButtons...)
+		},
 		GetLocale: func() string {
 			return string(theme.Language())
 		},

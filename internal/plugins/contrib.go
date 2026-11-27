@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"block/internal/icons"
 	"block/internal/theme"
 )
 
@@ -1084,6 +1085,7 @@ const (
 
 	TitlebarGroupMarkdown = "markdown"
 	TitlebarGroupSource   = "source"
+	TitlebarGroupPreview  = "preview"
 )
 
 // TitlebarSlot describes one titlebar item for host.titlebar.get_items.
@@ -1105,45 +1107,321 @@ type TitlebarGroup struct {
 	Order []string `json:"order"`
 }
 
+// TitlebarControlKind identifies whether a titlebar slot control renders as an
+// icon glyph or a text/dot chip.
+type TitlebarControlKind uint8
+
+const (
+	TitlebarControlIcon TitlebarControlKind = iota
+	TitlebarControlChip
+)
+
+// TitlebarControlDef describes one visual control inside a built-in titlebar slot,
+// shared between real titlebar rendering and host.titlebar.get_items previews.
+type TitlebarControlDef struct {
+	ID       string
+	Kind     TitlebarControlKind
+	Icon     icons.Icon
+	Zh       string
+	En       string
+	Shortcut string
+	Dot      bool
+}
+
+// Localized returns the control's label for en (true = English, false = Chinese).
+func (d TitlebarControlDef) Localized(en bool) string {
+	if en {
+		return d.En
+	}
+	return d.Zh
+}
+
+// UIText returns the control's label for the active UI language.
+func (d TitlebarControlDef) UIText() string {
+	return theme.Tr(d.Zh, d.En)
+}
+
+// TitlebarSlotDef describes one built-in titlebar slot, shared between real
+// titlebar rendering, manageability/lock enforcement, and host.titlebar.get_items.
+type TitlebarSlotDef struct {
+	ID         string
+	Zh         string
+	En         string
+	Group      string
+	Icon       icons.Icon
+	Locked     bool
+	Manageable bool
+	Controls   []TitlebarControlDef
+}
+
+// UIText returns the slot's label for the active UI language.
+func (s TitlebarSlotDef) UIText() string {
+	return theme.Tr(s.Zh, s.En)
+}
+
+// TitlebarSurfaceMode enumerates the surface modes used by the real titlebar to
+// select which mode group of slots is displayed.
+type TitlebarSurfaceMode string
+
+const (
+	TitlebarModeNote         TitlebarSurfaceMode = "note"
+	TitlebarModeCode         TitlebarSurfaceMode = "code"
+	TitlebarModeHTML         TitlebarSurfaceMode = "html"
+	TitlebarModeSVGSource    TitlebarSurfaceMode = "svg_source"
+	TitlebarModeSVGPreview   TitlebarSurfaceMode = "svg_preview"
+	TitlebarModeImagePreview TitlebarSurfaceMode = "image_preview"
+	TitlebarModeOther        TitlebarSurfaceMode = "other"
+)
+
 // PluginTitlebarSlotID is the slot id for a plugin button: "plugin:<pluginID>/<buttonID>".
 func PluginTitlebarSlotID(pluginID, buttonID string) string {
 	return "plugin:" + pluginID + "/" + buttonID
 }
 
+var titlebarBuiltinSlotDefs = []TitlebarSlotDef{
+	{
+		ID:         TitlebarSlotFeedback,
+		Zh:         "反馈",
+		En:         "Feedback",
+		Group:      TitlebarGroupMarkdown,
+		Icon:       icons.MessageSquare,
+		Manageable: true,
+		Controls: []TitlebarControlDef{
+			{ID: TitlebarSlotFeedback, Kind: TitlebarControlIcon, Icon: icons.MessageSquare, Zh: "反馈", En: "Feedback"},
+		},
+	},
+	{
+		ID:         TitlebarSlotAI,
+		Zh:         "AI Agent",
+		En:         "AI Agent",
+		Group:      TitlebarGroupMarkdown,
+		Icon:       icons.Sparkles,
+		Manageable: true,
+		Controls: []TitlebarControlDef{
+			{ID: TitlebarSlotAI, Kind: TitlebarControlIcon, Icon: icons.Sparkles, Zh: "AI Agent", En: "AI Agent"},
+		},
+	},
+	{
+		ID:         TitlebarSlotSendAll,
+		Zh:         "统一发送批注",
+		En:         "Send All Annotations",
+		Group:      TitlebarGroupMarkdown,
+		Manageable: true,
+		Controls: []TitlebarControlDef{
+			{ID: TitlebarSlotSendAll, Kind: TitlebarControlChip, Zh: "统一发送", En: "Send all", Dot: true},
+		},
+	},
+	{
+		ID:         TitlebarSlotWrap,
+		Zh:         "自动换行",
+		En:         "Word Wrap",
+		Group:      TitlebarGroupSource,
+		Icon:       icons.Wrap,
+		Manageable: true,
+		Controls: []TitlebarControlDef{
+			{ID: TitlebarSlotWrap, Kind: TitlebarControlIcon, Icon: icons.Wrap, Zh: "自动换行", En: "Word Wrap"},
+		},
+	},
+	{
+		ID:         TitlebarSlotZoom,
+		Zh:         "缩放",
+		En:         "Zoom",
+		Group:      TitlebarGroupPreview,
+		Icon:       icons.TbPlus,
+		Manageable: true,
+		Controls: []TitlebarControlDef{
+			{ID: "out", Kind: TitlebarControlIcon, Icon: icons.TbMinus, Zh: "缩小", En: "Zoom Out", Shortcut: "cmd--"},
+			{ID: "pct", Kind: TitlebarControlChip, Zh: "100%", En: "100%"},
+			{ID: "in", Kind: TitlebarControlIcon, Icon: icons.TbPlus, Zh: "放大", En: "Zoom In", Shortcut: "cmd-="},
+			{ID: "fit", Kind: TitlebarControlChip, Zh: "适应", En: "Fit"},
+		},
+	},
+	{
+		ID:         TitlebarSlotReveal,
+		Zh:         "在文件夹中显示",
+		En:         "Reveal in Folder",
+		Manageable: false,
+	},
+	{
+		ID:         TitlebarSlotMore,
+		Zh:         "页面操作",
+		En:         "Page Actions",
+		Group:      TitlebarGroupMarkdown,
+		Icon:       icons.More,
+		Locked:     true,
+		Manageable: true,
+		Controls: []TitlebarControlDef{
+			{ID: TitlebarSlotMore, Kind: TitlebarControlIcon, Icon: icons.More, Zh: "页面操作", En: "Page Actions"},
+		},
+	},
+}
+
+var titlebarBuiltinSlotByID = func() map[string]TitlebarSlotDef {
+	m := make(map[string]TitlebarSlotDef, len(titlebarBuiltinSlotDefs))
+	for _, def := range titlebarBuiltinSlotDefs {
+		m[def.ID] = def
+	}
+	return m
+}()
+
+// BuiltinTitlebarSlotDef returns the shared definition for a built-in titlebar slot.
+func BuiltinTitlebarSlotDef(slotID string) (TitlebarSlotDef, bool) {
+	def, ok := titlebarBuiltinSlotByID[slotID]
+	return def, ok
+}
+
+// TitlebarSlotControls returns the shared control parts rendered for slotID.
+func TitlebarSlotControls(slotID string) []TitlebarControlDef {
+	def, ok := titlebarBuiltinSlotByID[slotID]
+	if !ok {
+		return nil
+	}
+	return def.Controls
+}
+
+// IsManageableTitlebarSlot reports whether slotID can be hidden by a titlebar
+// manager plugin (plugin button slots or built-in manageable, non-locked slots).
+func IsManageableTitlebarSlot(slotID string) bool {
+	if def, ok := titlebarBuiltinSlotByID[slotID]; ok {
+		return def.Manageable && !def.Locked
+	}
+	return strings.HasPrefix(slotID, TitlebarSlotPlugins)
+}
+
+type titlebarTailEntry struct {
+	slot     string
+	pillSubs []string
+}
+
+var titlebarFallbackTail = []titlebarTailEntry{
+	{slot: TitlebarSlotPlugins},
+	{slot: TitlebarSlotFeedback},
+	{slot: TitlebarSlotAI},
+	{slot: TitlebarSlotMore},
+}
+
 type titlebarGroupDef struct {
-	id    string
-	zh    string
-	en    string
-	order []string
+	id   string
+	zh   string
+	en   string
+	tail []titlebarTailEntry
 }
 
 var titlebarGroupDefs = []titlebarGroupDef{
 	{
-		id:    TitlebarGroupMarkdown,
-		zh:    "Markdown",
-		en:    "Markdown",
-		order: []string{TitlebarSlotPlugins, TitlebarSlotFeedback, TitlebarSlotAI, TitlebarSlotSendAll, TitlebarSlotMore},
+		id: TitlebarGroupMarkdown,
+		zh: "Markdown",
+		en: "Markdown",
+		tail: []titlebarTailEntry{
+			{slot: TitlebarSlotPlugins},
+			{slot: TitlebarSlotFeedback},
+			{slot: TitlebarSlotAI},
+			{slot: TitlebarSlotMore, pillSubs: []string{TitlebarSlotSendAll, TitlebarSlotMore}},
+		},
 	},
 	{
-		id:    TitlebarGroupSource,
-		zh:    "源码模式",
-		en:    "Source Mode",
-		order: []string{TitlebarSlotWrap, TitlebarSlotZoom, TitlebarSlotPlugins, TitlebarSlotFeedback, TitlebarSlotAI, TitlebarSlotMore},
+		id: TitlebarGroupSource,
+		zh: "源码模式",
+		en: "Source Mode",
+		tail: []titlebarTailEntry{
+			{slot: TitlebarSlotWrap},
+			{slot: TitlebarSlotPlugins},
+			{slot: TitlebarSlotFeedback},
+			{slot: TitlebarSlotAI},
+			{slot: TitlebarSlotMore},
+		},
 	},
+	{
+		id: TitlebarGroupPreview,
+		zh: "图片预览",
+		en: "Image Preview",
+		tail: []titlebarTailEntry{
+			{slot: TitlebarSlotZoom},
+			{slot: TitlebarSlotPlugins},
+			{slot: TitlebarSlotFeedback},
+			{slot: TitlebarSlotAI},
+			{slot: TitlebarSlotMore},
+		},
+	},
+}
+
+// TitlebarGroupForMode maps a real titlebar surface mode to its canonical group id,
+// or "" when the surface has only the common trailing controls.
+func TitlebarGroupForMode(mode TitlebarSurfaceMode) string {
+	switch mode {
+	case TitlebarModeNote:
+		return TitlebarGroupMarkdown
+	case TitlebarModeCode, TitlebarModeHTML, TitlebarModeSVGSource:
+		return TitlebarGroupSource
+	case TitlebarModeImagePreview, TitlebarModeSVGPreview:
+		return TitlebarGroupPreview
+	default:
+		return ""
+	}
+}
+
+func titlebarTailForGroup(group string) []titlebarTailEntry {
+	for _, g := range titlebarGroupDefs {
+		if g.id == group {
+			return g.tail
+		}
+	}
+	return titlebarFallbackTail
 }
 
 // ForEachTitlebarTailSlot invokes fn for each slot id in group's canonical
 // left-to-right titlebar tail order without allocating.
 func ForEachTitlebarTailSlot(group string, fn func(slotID string)) {
-	for _, g := range titlebarGroupDefs {
-		if g.id != group {
+	for _, entry := range titlebarTailForGroup(group) {
+		fn(entry.slot)
+	}
+}
+
+// TitlebarPillSlots returns the canonical left-to-right sub-slot ids inside the
+// trailing page-action pill for group.
+func TitlebarPillSlots(group string) []string {
+	for _, entry := range titlebarTailForGroup(group) {
+		if entry.slot == TitlebarSlotMore && len(entry.pillSubs) > 0 {
+			return entry.pillSubs
+		}
+	}
+	return []string{TitlebarSlotMore}
+}
+
+// OrderByPinned places items whose slot ID appears in pinned first (in pinned
+// order), followed by the remaining items in their original relative order.
+func OrderByPinned[T any](items []T, slotID func(T) string, pinned []string) []T {
+	if len(items) <= 1 || len(pinned) == 0 {
+		out := make([]T, len(items))
+		copy(out, items)
+		return out
+	}
+	bySlot := make(map[string]T, len(items))
+	for _, it := range items {
+		id := slotID(it)
+		if _, exists := bySlot[id]; !exists {
+			bySlot[id] = it
+		}
+	}
+	ordered := make([]T, 0, len(items))
+	used := make(map[string]bool, len(items))
+	for _, slot := range pinned {
+		if used[slot] {
 			continue
 		}
-		for _, id := range g.order {
-			fn(id)
+		if it, ok := bySlot[slot]; ok {
+			ordered = append(ordered, it)
+			used[slot] = true
 		}
-		return
 	}
+	for _, it := range items {
+		id := slotID(it)
+		if !used[id] {
+			ordered = append(ordered, it)
+			used[id] = true
+		}
+	}
+	return ordered
 }
 
 func previewIconsFromSingle(ic *UIIcon) []UIIcon {
@@ -1153,65 +1431,50 @@ func previewIconsFromSingle(ic *UIIcon) []UIIcon {
 	return []UIIcon{*ic}
 }
 
-func builtinTitlebarSlots(en bool) []TitlebarSlot {
-	tr := func(zh, e string) string {
-		if en {
-			return e
+func previewIconsFromControls(controls []TitlebarControlDef, en bool) []UIIcon {
+	out := make([]UIIcon, 0, len(controls))
+	for _, ctrl := range controls {
+		switch ctrl.Kind {
+		case TitlebarControlIcon:
+			out = append(out, UIIcon{Name: string(ctrl.Icon)})
+		case TitlebarControlChip:
+			out = append(out, UIIcon{Chip: ctrl.Localized(en), Dot: ctrl.Dot})
 		}
-		return zh
 	}
-	return []TitlebarSlot{
-		{
-			ID:      TitlebarSlotFeedback,
-			Label:   tr("反馈", "Feedback"),
-			Icon:    &UIIcon{Name: "message-square"},
-			Group:   TitlebarGroupMarkdown,
-			Preview: []UIIcon{{Name: "message-square"}},
-		},
-		{
-			ID:      TitlebarSlotAI,
-			Label:   tr("AI Agent", "AI Agent"),
-			Icon:    &UIIcon{Name: "sparkles"},
-			Group:   TitlebarGroupMarkdown,
-			Preview: []UIIcon{{Name: "sparkles"}},
-		},
-		{
-			ID:      TitlebarSlotSendAll,
-			Label:   tr("统一发送批注", "Send All Annotations"),
-			Icon:    &UIIcon{Chip: tr("统一发送", "Send all"), Dot: true},
-			Group:   TitlebarGroupMarkdown,
-			Preview: []UIIcon{{Chip: tr("统一发送", "Send all"), Dot: true}},
-		},
-		{
-			ID:      TitlebarSlotWrap,
-			Label:   tr("自动换行", "Word Wrap"),
-			Icon:    &UIIcon{Name: "wrap"},
-			Group:   TitlebarGroupSource,
-			Preview: []UIIcon{{Name: "wrap"}},
-		},
-		{
-			ID:      TitlebarSlotZoom,
-			Label:   tr("缩放", "Zoom"),
-			Icon:    &UIIcon{Name: "tb-plus"},
-			Group:   TitlebarGroupSource,
-			Preview: []UIIcon{{Name: "tb-minus"}, {Chip: "100%"}, {Name: "tb-plus"}},
-		},
-		{
-			ID:      TitlebarSlotReveal,
-			Label:   tr("在文件夹中显示", "Reveal in Folder"),
-			Icon:    &UIIcon{Name: "folder-reveal"},
-			Group:   TitlebarGroupSource,
-			Preview: []UIIcon{},
-		},
-		{
-			ID:      TitlebarSlotMore,
-			Label:   tr("页面操作", "Page Actions"),
-			Locked:  true,
-			Icon:    &UIIcon{Name: "more"},
-			Group:   TitlebarGroupMarkdown,
-			Preview: []UIIcon{{Name: "more"}},
-		},
+	return out
+}
+
+func rowIconFromSlotDef(def TitlebarSlotDef, en bool) *UIIcon {
+	if def.Icon != "" {
+		return &UIIcon{Name: string(def.Icon)}
 	}
+	if len(def.Controls) > 0 && def.Controls[0].Kind == TitlebarControlChip {
+		ctrl := def.Controls[0]
+		return &UIIcon{Chip: ctrl.Localized(en), Dot: ctrl.Dot}
+	}
+	return nil
+}
+
+func builtinTitlebarSlots(en bool) []TitlebarSlot {
+	out := make([]TitlebarSlot, 0, len(titlebarBuiltinSlotDefs))
+	for _, def := range titlebarBuiltinSlotDefs {
+		if !def.Manageable {
+			continue
+		}
+		label := def.Zh
+		if en {
+			label = def.En
+		}
+		out = append(out, TitlebarSlot{
+			ID:      def.ID,
+			Label:   label,
+			Locked:  def.Locked,
+			Icon:    rowIconFromSlotDef(def, en),
+			Group:   def.Group,
+			Preview: previewIconsFromControls(def.Controls, en),
+		})
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -1470,7 +1733,7 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 			var f contribFile
 			if json.Unmarshal(b, &f) == nil {
 				for _, id := range f.TitlebarHidden {
-					if id != TitlebarSlotMore {
+					if IsManageableTitlebarSlot(id) {
 						r.hidden[id] = true
 					}
 				}
@@ -1480,7 +1743,7 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 					}
 					m := make(map[string]bool, len(slots))
 					for _, id := range slots {
-						if id != "" && id != TitlebarSlotMore {
+						if IsManageableTitlebarSlot(id) {
 							m[id] = true
 						}
 					}
@@ -1639,7 +1902,7 @@ func (r *contribRegistry) saveLocked() {
 		for pluginID, slots := range r.hiddenBy {
 			list := make([]string, 0, len(slots))
 			for id, h := range slots {
-				if h && id != TitlebarSlotMore {
+				if h && IsManageableTitlebarSlot(id) {
 					list = append(list, id)
 				}
 			}
@@ -2066,21 +2329,30 @@ func (s *Supervisor) isRuntimeActiveLocked(pluginID string, rt *Runtime) bool {
 	return false
 }
 
-// TitlebarHidden reports whether a titlebar slot is hidden by an enabled
-// titlebar-manager plugin. "more" is never hidden, and disabling or
-// uninstalling all titlebar manager plugins immediately restores built-in slots.
-func (s *Supervisor) TitlebarHidden(slotID string) bool {
-	if slotID == TitlebarSlotMore || s == nil || s.contrib == nil {
-		return false
+func (s *Supervisor) enabledTitlebarManagerIDs() []string {
+	if s == nil {
+		return nil
 	}
 	s.mu.RLock()
-	enabledManagerIDs := make([]string, 0, len(s.installed))
+	defer s.mu.RUnlock()
+	var ids []string
 	for _, a := range s.installed {
 		if a.Enabled && isTitlebarManagerManifest(a.Manifest) && a.Manifest.HasPermission(PermUITitlebar) {
-			enabledManagerIDs = append(enabledManagerIDs, a.Manifest.ID)
+			ids = append(ids, a.Manifest.ID)
 		}
 	}
-	s.mu.RUnlock()
+	return ids
+}
+
+// TitlebarHidden reports whether a titlebar slot is hidden by an enabled
+// titlebar-manager plugin. Locked or unmanageable slots are never hidden, and
+// disabling or uninstalling all titlebar manager plugins immediately restores
+// built-in slots.
+func (s *Supervisor) TitlebarHidden(slotID string) bool {
+	if s == nil || s.contrib == nil || !IsManageableTitlebarSlot(slotID) {
+		return false
+	}
+	enabledManagerIDs := s.enabledTitlebarManagerIDs()
 	if len(enabledManagerIDs) == 0 {
 		return false
 	}
@@ -2097,7 +2369,7 @@ func (s *Supervisor) TitlebarHidden(slotID string) bool {
 	return s.contrib.hidden[slotID]
 }
 
-// TitlebarSlots lists built-in and plugin titlebar slots with hidden state.
+// TitlebarSlots lists manageable built-in and plugin titlebar slots with hidden state.
 func (s *Supervisor) TitlebarSlots() []TitlebarSlot {
 	loc := s.Locale()
 	en := strings.HasPrefix(strings.ToLower(loc), "en")
@@ -2115,14 +2387,18 @@ func (s *Supervisor) TitlebarSlots() []TitlebarSlot {
 			})
 		}
 	}
+	hidden := s.HiddenTitlebarSlots()
 	for i := range slots {
-		slots[i].Hidden = s.TitlebarHidden(slots[i].ID)
+		if !slots[i].Locked && hidden[slots[i].ID] {
+			slots[i].Hidden = true
+		}
 	}
 	return slots
 }
 
 // TitlebarGroups returns localized titlebar groups with their real left-to-right
-// slot order (expanding TitlebarSlotPlugins into active plugin button slot ids).
+// slot order (expanding TitlebarSlotPlugins into active plugin button slot ids
+// sorted with pinned buttons first).
 func (s *Supervisor) TitlebarGroups() []TitlebarGroup {
 	en := strings.HasPrefix(strings.ToLower(s.Locale()), "en")
 	var pluginSlots []string
@@ -2131,18 +2407,25 @@ func (s *Supervisor) TitlebarGroups() []TitlebarGroup {
 			pluginSlots = append(pluginSlots, PluginTitlebarSlotID(a.Manifest.ID, b.ID))
 		}
 	}
+	var pinned []string
+	if s != nil && s.cfg.GetPinnedTitlebarSlots != nil {
+		pinned = s.cfg.GetPinnedTitlebarSlots()
+	}
+	orderedPlugins := OrderByPinned(pluginSlots, func(id string) string { return id }, pinned)
 	groups := make([]TitlebarGroup, 0, len(titlebarGroupDefs))
 	for _, def := range titlebarGroupDefs {
 		label := def.zh
 		if en {
 			label = def.en
 		}
-		order := make([]string, 0, len(def.order)+len(pluginSlots))
-		for _, id := range def.order {
-			if id == TitlebarSlotPlugins {
-				order = append(order, pluginSlots...)
+		order := make([]string, 0, len(def.tail)+len(orderedPlugins)+1)
+		for _, entry := range def.tail {
+			if len(entry.pillSubs) > 0 {
+				order = append(order, entry.pillSubs...)
+			} else if entry.slot == TitlebarSlotPlugins {
+				order = append(order, orderedPlugins...)
 			} else {
-				order = append(order, id)
+				order = append(order, entry.slot)
 			}
 		}
 		groups = append(groups, TitlebarGroup{
@@ -2154,20 +2437,42 @@ func (s *Supervisor) TitlebarGroups() []TitlebarGroup {
 	return groups
 }
 
-// HiddenTitlebarSlots returns the set of currently hidden, non-locked slot ids.
+// HiddenTitlebarSlots merges hidden manageable slot ids across enabled
+// titlebar-manager plugins without allocating display labels or previews.
 func (s *Supervisor) HiddenTitlebarSlots() map[string]bool {
-	if s == nil {
+	if s == nil || s.contrib == nil {
 		return nil
 	}
+	enabledManagerIDs := s.enabledTitlebarManagerIDs()
+	if len(enabledManagerIDs) == 0 {
+		return nil
+	}
+	s.contrib.mu.RLock()
+	defer s.contrib.mu.RUnlock()
 	var hidden map[string]bool
-	for _, sl := range s.TitlebarSlots() {
-		if sl.Locked || !sl.Hidden {
-			continue
+	add := func(id string) {
+		if !IsManageableTitlebarSlot(id) {
+			return
 		}
 		if hidden == nil {
 			hidden = make(map[string]bool)
 		}
-		hidden[sl.ID] = true
+		hidden[id] = true
+	}
+	if len(s.contrib.hiddenBy) > 0 {
+		for _, pid := range enabledManagerIDs {
+			for id, h := range s.contrib.hiddenBy[pid] {
+				if h {
+					add(id)
+				}
+			}
+		}
+		return hidden
+	}
+	for id, h := range s.contrib.hidden {
+		if h {
+			add(id)
+		}
 	}
 	return hidden
 }
@@ -2175,11 +2480,12 @@ func (s *Supervisor) HiddenTitlebarSlots() map[string]bool {
 // TitlebarButtons returns visible plugin titlebar buttons in install order.
 func (s *Supervisor) TitlebarButtons() []ResolvedTitlebarButton {
 	loc := s.Locale()
+	hidden := s.HiddenTitlebarSlots()
 	var out []ResolvedTitlebarButton
 	for _, a := range s.enabledContribs() {
 		for _, b := range a.Manifest.Contributes.TitlebarButtons {
 			slot := PluginTitlebarSlotID(a.Manifest.ID, b.ID)
-			if s.TitlebarHidden(slot) {
+			if hidden[slot] {
 				continue
 			}
 			rb := ResolvedTitlebarButton{PluginID: a.Manifest.ID, ID: b.ID, SlotID: slot, Icon: b.Icon,
@@ -3012,9 +3318,17 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if e := decode(&p); e != nil {
 			return nil, e, true
 		}
-		known := map[string]bool{}
-		for _, sl := range s.TitlebarSlots() {
-			known[sl.ID] = true
+		manageable := map[string]bool{}
+		locked := map[string]bool{}
+		for _, def := range titlebarBuiltinSlotDefs {
+			if !def.Manageable {
+				continue
+			}
+			if def.Locked {
+				locked[def.ID] = true
+				continue
+			}
+			manageable[def.ID] = true
 		}
 		// Keep hidden preferences for installed-but-currently-disabled plugin
 		// buttons so toggling another slot does not drop them before re-enable.
@@ -3024,13 +3338,13 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 				continue
 			}
 			for _, b := range a.Manifest.Contributes.TitlebarButtons {
-				known[PluginTitlebarSlotID(a.Manifest.ID, b.ID)] = true
+				manageable[PluginTitlebarSlotID(a.Manifest.ID, b.ID)] = true
 			}
 		}
 		s.mu.RUnlock()
 		next := map[string]bool{}
 		for _, id := range p.Hidden {
-			if id == TitlebarSlotMore || !known[id] {
+			if locked[id] || !manageable[id] {
 				continue
 			}
 			next[id] = true

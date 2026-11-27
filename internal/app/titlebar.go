@@ -276,7 +276,7 @@ type TitlebarProps struct {
 }
 
 func slotHidden(p TitlebarProps, slotID string) bool {
-	if slotID == plugins.TitlebarSlotMore || p.HiddenSlots == nil {
+	if !plugins.IsManageableTitlebarSlot(slotID) || p.HiddenSlots == nil {
 		return false
 	}
 	return p.HiddenSlots[slotID]
@@ -575,28 +575,6 @@ func renderNonNoteTitlebarChrome(c *ui.Context, p TitlebarProps, surface Titleba
 	}
 }
 
-func renderSurfaceWrapSlot(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind, availW float32) {
-	switch surface {
-	case SurfaceHTML, SurfaceCode:
-		renderSourceWrapButton(c, p, availW)
-	case SurfaceSVG:
-		if p.SVGShowSource {
-			renderSourceWrapButton(c, p, availW)
-		}
-	}
-}
-
-func renderSurfaceZoomSlot(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind, availW float32) {
-	switch surface {
-	case SurfaceImagePreview:
-		renderZoomCluster(c, "tb-img-zoom", p, availW)
-	case SurfaceSVG:
-		if !p.SVGShowSource {
-			renderZoomCluster(c, "tb-svg-zoom", p, availW)
-		}
-	}
-}
-
 func renderOpenInBrowserButton(c *ui.Context, p TitlebarProps, availW float32) {
 	vpW, _ := c.Size()
 	if isNarrowTitlebar(vpW, availW) {
@@ -617,9 +595,10 @@ func renderSourceWrapButton(c *ui.Context, p TitlebarProps, availW float32) {
 	if slotHidden(p, plugins.TitlebarSlotWrap) || isNarrowTitlebar(vpW, availW) {
 		return
 	}
-	btn := blockui.IconButton(c, icons.Wrap, blockui.IconButtonOptions{
+	def, _ := plugins.BuiltinTitlebarSlotDef(plugins.TitlebarSlotWrap)
+	btn := blockui.IconButton(c, def.Icon, blockui.IconButtonOptions{
 		ID:          "tb-source-wrap",
-		Tooltip:     theme.Tr("自动换行", "Word Wrap"),
+		Tooltip:     def.UIText(),
 		ChromeHover: true,
 		Active:      p.SourceWrap,
 	})
@@ -633,61 +612,70 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps, availW float32
 		return
 	}
 	pal := theme.Ocean()
-	pct := p.PreviewZoomPct
-	if pct == "" {
-		pct = "100%"
-	}
 	c.Key(id)
 	cluster := ui.Row(c).Height(28).PaddingX(4).Gap(2).AlignItems(ui.Center).
 		Radius(theme.RadiusMD).Background(pal.Card).Border(1, pal.BtnBorder)
 	blockui.Probe(cluster, id)
 	cluster.Children(func() {
-		outBtn := blockui.IconButton(c, icons.TbMinus, blockui.IconButtonOptions{
-			ID:       id + "-out",
-			Size:     22,
-			IconSize: 13,
-			Tooltip:  theme.Tr("缩小", "Zoom Out"),
-			Shortcut: blockui.FormatShortcutDisplay("cmd--"),
-		})
-		if outBtn.Clicked() && p.OnPreviewZoomStep != nil {
-			p.OnPreviewZoomStep(1.0 / 1.2)
-		}
-		c.Key(id + "-pct")
-		pctBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(pct)
-		if pctBtn.Hovered() {
-			pctBtn.Background(pal.Hover)
-		}
-		pctBtn.Children(func() {
-			ui.Text(c, pct).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
-		})
-		blockui.Probe(pctBtn, id+"-pct")
-		if pctBtn.Clicked() && p.OnPreviewActual != nil {
-			p.OnPreviewActual()
-		}
-		inBtn := blockui.IconButton(c, icons.TbPlus, blockui.IconButtonOptions{
-			ID:       id + "-in",
-			Size:     22,
-			IconSize: 13,
-			Tooltip:  theme.Tr("放大", "Zoom In"),
-			Shortcut: blockui.FormatShortcutDisplay("cmd-="),
-		})
-		if inBtn.Clicked() && p.OnPreviewZoomStep != nil {
-			p.OnPreviewZoomStep(1.2)
-		}
-		c.Key(id + "-fit")
-		fitBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(theme.RadiusXS).Border(1, ui.Transparent).Cursor(ui.CursorPointer).
-			Label(theme.Tr("适应", "Fit"))
-		if p.PreviewZoomFit {
-			fitBtn.Background(pal.Selected).Border(1, pal.SelectedBorder)
-		} else if fitBtn.Hovered() {
-			fitBtn.Background(pal.Hover)
-		}
-		fitBtn.Children(func() {
-			ui.Text(c, theme.Tr("适应", "Fit")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
-		})
-		blockui.Probe(fitBtn, id+"-fit")
-		if fitBtn.Clicked() && p.OnPreviewFit != nil {
-			p.OnPreviewFit()
+		for _, part := range plugins.TitlebarSlotControls(plugins.TitlebarSlotZoom) {
+			tip := part.UIText()
+			switch part.ID {
+			case "out":
+				outBtn := blockui.IconButton(c, part.Icon, blockui.IconButtonOptions{
+					ID:       id + "-out",
+					Size:     22,
+					IconSize: 13,
+					Tooltip:  tip,
+					Shortcut: blockui.FormatShortcutDisplay(part.Shortcut),
+				})
+				if outBtn.Clicked() && p.OnPreviewZoomStep != nil {
+					p.OnPreviewZoomStep(1.0 / 1.2)
+				}
+			case "pct":
+				pct := p.PreviewZoomPct
+				if pct == "" {
+					pct = tip
+				}
+				c.Key(id + "-pct")
+				pctBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(pct)
+				if pctBtn.Hovered() {
+					pctBtn.Background(pal.Hover)
+				}
+				pctBtn.Children(func() {
+					ui.Text(c, pct).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+				})
+				blockui.Probe(pctBtn, id+"-pct")
+				if pctBtn.Clicked() && p.OnPreviewActual != nil {
+					p.OnPreviewActual()
+				}
+			case "in":
+				inBtn := blockui.IconButton(c, part.Icon, blockui.IconButtonOptions{
+					ID:       id + "-in",
+					Size:     22,
+					IconSize: 13,
+					Tooltip:  tip,
+					Shortcut: blockui.FormatShortcutDisplay(part.Shortcut),
+				})
+				if inBtn.Clicked() && p.OnPreviewZoomStep != nil {
+					p.OnPreviewZoomStep(1.2)
+				}
+			case "fit":
+				c.Key(id + "-fit")
+				fitBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(theme.RadiusXS).Border(1, ui.Transparent).Cursor(ui.CursorPointer).
+					Label(tip)
+				if p.PreviewZoomFit {
+					fitBtn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+				} else if fitBtn.Hovered() {
+					fitBtn.Background(pal.Hover)
+				}
+				fitBtn.Children(func() {
+					ui.Text(c, tip).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+				})
+				blockui.Probe(fitBtn, id+"-fit")
+				if fitBtn.Clicked() && p.OnPreviewFit != nil {
+					p.OnPreviewFit()
+				}
+			}
 		}
 	})
 }

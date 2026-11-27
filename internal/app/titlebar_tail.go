@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,26 @@ import (
 
 // titlebarActionTrailing matches thinkly-fast TITLEBAR_ACTION_TRAILING (TRAFFIC_X - 4 on macOS).
 const titlebarActionTrailing = 12
+
+func titlebarSurfaceMode(surface TitlebarSurfaceKind, svgShowSource bool) plugins.TitlebarSurfaceMode {
+	switch surface {
+	case SurfaceNote:
+		return plugins.TitlebarModeNote
+	case SurfaceCode:
+		return plugins.TitlebarModeCode
+	case SurfaceHTML:
+		return plugins.TitlebarModeHTML
+	case SurfaceSVG:
+		if svgShowSource {
+			return plugins.TitlebarModeSVGSource
+		}
+		return plugins.TitlebarModeSVGPreview
+	case SurfaceImagePreview:
+		return plugins.TitlebarModeImagePreview
+	default:
+		return plugins.TitlebarModeOther
+	}
+}
 
 // renderTitlebarTail renders the right rail (thinkly-fast render_titlebar_tail):
 // notes show feedback, AI, then the page more pill; other surfaces put their
@@ -53,10 +74,7 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset, availW float
 			c.After(16 * time.Millisecond)
 		}
 	}
-	group := plugins.TitlebarGroupMarkdown
-	if surface != SurfaceNote {
-		group = plugins.TitlebarGroupSource
-	}
+	group := plugins.TitlebarGroupForMode(titlebarSurfaceMode(surface, p.SVGShowSource))
 	tail.Children(func() {
 		if surface != SurfaceNote {
 			renderNonNoteTitlebarChrome(c, p, surface, availW)
@@ -64,9 +82,13 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset, availW float
 		plugins.ForEachTitlebarTailSlot(group, func(slotID string) {
 			switch slotID {
 			case plugins.TitlebarSlotWrap:
-				renderSurfaceWrapSlot(c, p, surface, availW)
+				renderSourceWrapButton(c, p, availW)
 			case plugins.TitlebarSlotZoom:
-				renderSurfaceZoomSlot(c, p, surface, availW)
+				zoomID := "tb-img-zoom"
+				if surface == SurfaceSVG {
+					zoomID = "tb-svg-zoom"
+				}
+				renderZoomCluster(c, zoomID, p, availW)
 			case plugins.TitlebarSlotPlugins:
 				renderPluginTitlebarButtons(c, p, hasBuiltinTail, availW)
 			case plugins.TitlebarSlotFeedback:
@@ -79,7 +101,7 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset, availW float
 				}
 			case plugins.TitlebarSlotMore:
 				if showMore {
-					renderPageMorePill(c, p, availW)
+					renderPageMorePill(c, p, group, availW)
 				}
 			}
 		})
@@ -290,13 +312,15 @@ func renderPluginTitlebarButton(c *ui.Context, p TitlebarProps, b plugins.Resolv
 }
 
 func renderFeedbackButton(c *ui.Context, p TitlebarProps) {
-	tip := theme.Tr("反馈", "Feedback")
+	def, _ := plugins.BuiltinTitlebarSlotDef(plugins.TitlebarSlotFeedback)
+	label := def.UIText()
+	tip := label
 	if p.FeedbackOpen {
 		tip = ""
 	}
-	btn := blockui.IconButton(c, icons.MessageSquare, blockui.IconButtonOptions{
+	btn := blockui.IconButton(c, def.Icon, blockui.IconButtonOptions{
 		ID:          "titlebar-feedback",
-		Label:       theme.Tr("反馈", "Feedback"),
+		Label:       label,
 		Tooltip:     tip,
 		Active:      p.FeedbackOpen,
 		ActiveStyle: blockui.ActiveAccentFlat,
@@ -316,10 +340,11 @@ func renderFeedbackButton(c *ui.Context, p TitlebarProps) {
 }
 
 func renderAIButton(c *ui.Context, p TitlebarProps) {
+	def, _ := plugins.BuiltinTitlebarSlotDef(plugins.TitlebarSlotAI)
 	sc := nonEmptyOr(p.ShortcutAI, "cmd-j")
-	btn := blockui.IconButton(c, icons.Sparkles, blockui.IconButtonOptions{
+	btn := blockui.IconButton(c, def.Icon, blockui.IconButtonOptions{
 		ID:          "titlebar-ai",
-		Tooltip:     theme.Tr("AI Agent", "AI Agent"),
+		Tooltip:     def.UIText(),
 		Shortcut:    blockui.FormatShortcutDisplay(sc),
 		Active:      p.AIOpen,
 		ActiveStyle: blockui.ActiveAccent,
@@ -331,15 +356,19 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 }
 
 // renderPageMorePill is thinkly-fast titlebar_split_pill: the page more button,
-// joined with the annotation send segment when the note has annotations. The
-// segment unfolds leftward out of the more button and folds back into it while
-// staying in the layout, so the titlebar icons beside it glide instead of jump.
-func renderPageMorePill(c *ui.Context, p TitlebarProps, availW float32) {
+// joined with the annotation send segment when the note has annotations. Its
+// sub-items follow plugins.TitlebarPillSlots(group) so real layout and
+// host.titlebar.get_items order always stay aligned.
+func renderPageMorePill(c *ui.Context, p TitlebarProps, group string, availW float32) {
 	pal := theme.Ocean()
 	vpW, _ := c.Size()
 	narrow := isNarrowTitlebar(vpW, availW)
-	hasSendAction := p.ActiveSurface == SurfaceNote && p.AnnotHasAny && !slotHidden(p, plugins.TitlebarSlotSendAll)
+	pillSubs := plugins.TitlebarPillSlots(group)
+	sendIdx := slices.Index(pillSubs, plugins.TitlebarSlotSendAll)
+	moreIdx := slices.Index(pillSubs, plugins.TitlebarSlotMore)
+	hasSendAction := sendIdx >= 0 && p.ActiveSurface == SurfaceNote && p.AnnotHasAny && !slotHidden(p, plugins.TitlebarSlotSendAll)
 	split := hasSendAction && !narrow
+	sendAfterMore := sendIdx >= 0 && moreIdx >= 0 && sendIdx > moreIdx
 	foldedSendAttention := hasSendAction && narrow && (p.AnnotDrafts > 0 || p.AnnotGenerating)
 	open := p.MenuState != nil && p.MenuState.PageMenuOpen
 	c.Key("titlebar-action-pill")
@@ -354,49 +383,56 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps, availW float32) {
 	pill.Height(theme.HeightChrome + inset).Padding(inset)
 	blockui.AnimateSurfaceColors(pill, bg, border, true)
 	pill.Children(func() {
-		if split || reveal > 0.001 {
-			renderSendGroup(c, p, reveal)
-		}
-		moreLabel := theme.Tr("页面操作", "Page Actions")
-		moreTip := ""
-		if foldedSendAttention {
-			if p.AnnotGenerating {
-				moreLabel = theme.Tr("页面操作 · 批注生成中…", "Page Actions · Generating annotations…")
-			} else {
-				moreLabel = theme.Tr("页面操作 · 待发送批注 ", "Page Actions · Pending annotations ") + strconv.Itoa(p.AnnotDrafts)
-			}
-			if !open {
-				moreTip = moreLabel
-			}
-		}
-		btn := blockui.IconButton(c, icons.More, blockui.IconButtonOptions{
-			ID:          "titlebar-more",
-			Label:       moreLabel,
-			Tooltip:     moreTip,
-			Active:      open,
-			ActiveStyle: blockui.ActiveAccent,
-			Size:        theme.HeightChrome - inset,
-			Radius:      theme.RadiusMD - inset,
-			ChromeHover: !split,
-		})
-		if p.MenuState != nil {
-			btn.Bind(&p.MenuState.PageMoreTrigger)
-		}
-		if foldedSendAttention && !open {
-			dot := pal.AnnotSendDot
-			btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
-				blockui.RecordBounds("titlebar-more", r)
-				pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
-			})
-		}
-		if b := btn.Bounds(); p.MenuState != nil && b.W > 0 {
-			p.MenuState.PageMenuAnchor = b
-		}
-		if btn.Clicked() && p.MenuState != nil {
-			p.MenuState.Close()
-			p.MenuState.PageMenuOpen = !open
-			if !open {
-				p.MenuState.MenuTrigger = &p.MenuState.PageMoreTrigger
+		moreDef, _ := plugins.BuiltinTitlebarSlotDef(plugins.TitlebarSlotMore)
+		for _, sub := range pillSubs {
+			switch sub {
+			case plugins.TitlebarSlotSendAll:
+				if split || reveal > 0.001 {
+					renderSendGroup(c, p, reveal, sendAfterMore)
+				}
+			case plugins.TitlebarSlotMore:
+				moreLabel := moreDef.UIText()
+				moreTip := ""
+				if foldedSendAttention {
+					if p.AnnotGenerating {
+						moreLabel = theme.Tr("页面操作 · 批注生成中…", "Page Actions · Generating annotations…")
+					} else {
+						moreLabel = theme.Tr("页面操作 · 待发送批注 ", "Page Actions · Pending annotations ") + strconv.Itoa(p.AnnotDrafts)
+					}
+					if !open {
+						moreTip = moreLabel
+					}
+				}
+				btn := blockui.IconButton(c, moreDef.Icon, blockui.IconButtonOptions{
+					ID:          "titlebar-more",
+					Label:       moreLabel,
+					Tooltip:     moreTip,
+					Active:      open,
+					ActiveStyle: blockui.ActiveAccent,
+					Size:        theme.HeightChrome - inset,
+					Radius:      theme.RadiusMD - inset,
+					ChromeHover: !split,
+				})
+				if p.MenuState != nil {
+					btn.Bind(&p.MenuState.PageMoreTrigger)
+				}
+				if foldedSendAttention && !open {
+					dot := pal.AnnotSendDot
+					btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+						blockui.RecordBounds("titlebar-more", r)
+						pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
+					})
+				}
+				if b := btn.Bounds(); p.MenuState != nil && b.W > 0 {
+					p.MenuState.PageMenuAnchor = b
+				}
+				if btn.Clicked() && p.MenuState != nil {
+					p.MenuState.Close()
+					p.MenuState.PageMenuOpen = !open
+					if !open {
+						p.MenuState.MenuTrigger = &p.MenuState.PageMoreTrigger
+					}
+				}
 			}
 		}
 	})
@@ -406,8 +442,8 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps, availW float32) {
 const pillInset = 2
 
 // renderSendGroup clips the send segment and divider to reveal × their width,
-// pinned to the more button's side, fading with the reveal.
-func renderSendGroup(c *ui.Context, p TitlebarProps, reveal float32) {
+// anchored to the more button's adjacent edge, fading with the reveal.
+func renderSendGroup(c *ui.Context, p TitlebarProps, reveal float32, sendAfterMore bool) {
 	pal := theme.Ocean()
 	moving := reveal < 0.999
 	c.Key("titlebar-send-group")
@@ -417,7 +453,12 @@ func renderSendGroup(c *ui.Context, p TitlebarProps, reveal float32) {
 	}
 	clip.Children(func() {
 		c.Key("titlebar-send-content")
-		content := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(pillInset).Padding(0, pillInset, 0, 0)
+		content := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(pillInset)
+		if sendAfterMore {
+			content.Padding(0, 0, 0, pillInset)
+		} else {
+			content.Padding(0, pillInset, 0, 0)
+		}
 		if moving {
 			natural := content.Bounds().W
 			if natural <= 0 {
@@ -425,11 +466,18 @@ func renderSendGroup(c *ui.Context, p TitlebarProps, reveal float32) {
 			}
 			shown := natural * reveal
 			clip.Width(shown)
-			content.Translate(shown-natural, 0)
+			if !sendAfterMore {
+				content.Translate(shown-natural, 0)
+			}
 		}
 		content.Children(func() {
-			renderSendAllSegment(c, p)
-			ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
+			if sendAfterMore {
+				ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
+				renderSendAllSegment(c, p)
+			} else {
+				renderSendAllSegment(c, p)
+				ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
+			}
 		})
 	})
 }
@@ -440,6 +488,9 @@ func renderSendAllSegment(c *ui.Context, p TitlebarProps) {
 	enabled := p.AnnotDrafts > 0 && !p.AnnotGenerating && p.OnSendAnnotations != nil
 	active := enabled || p.AnnotGenerating
 	label := theme.Tr("统一发送", "Send all")
+	if ctrls := plugins.TitlebarSlotControls(plugins.TitlebarSlotSendAll); len(ctrls) > 0 {
+		label = ctrls[0].UIText()
+	}
 	if p.AnnotGenerating {
 		label = theme.Tr("生成中…", "Generating…")
 	}

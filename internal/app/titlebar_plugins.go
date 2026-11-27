@@ -147,32 +147,12 @@ func isPluginSlotPinned(pinned []string, slotID string) bool {
 // windows or wide docked sidebars keep fewer inline so built-in tools and tabs never crowd out.
 func splitPluginTitlebarButtons(p TitlebarProps, vpW, availW float32) (inline, overflow []plugins.ResolvedTitlebarButton) {
 	visible := make([]plugins.ResolvedTitlebarButton, 0, len(p.PluginButtons))
-	bySlot := make(map[string]plugins.ResolvedTitlebarButton, len(p.PluginButtons))
 	for _, b := range p.PluginButtons {
-		slot := pluginButtonSlotID(b)
-		if !slotHidden(p, slot) {
+		if !slotHidden(p, pluginButtonSlotID(b)) {
 			visible = append(visible, b)
-			bySlot[slot] = b
 		}
 	}
-	ordered := make([]plugins.ResolvedTitlebarButton, 0, len(visible))
-	used := make(map[string]bool, len(visible))
-	for _, slot := range p.PinnedPluginSlots {
-		if used[slot] {
-			continue
-		}
-		if b, ok := bySlot[slot]; ok {
-			ordered = append(ordered, b)
-			used[slot] = true
-		}
-	}
-	for _, b := range visible {
-		slot := pluginButtonSlotID(b)
-		if !used[slot] {
-			ordered = append(ordered, b)
-			used[slot] = true
-		}
-	}
+	ordered := plugins.OrderByPinned(visible, pluginButtonSlotID, p.PinnedPluginSlots)
 	limit := pluginInlineLimit(p, vpW, availW, len(ordered))
 	if len(ordered) <= limit {
 		return ordered, nil
