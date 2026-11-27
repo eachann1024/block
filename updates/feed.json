@@ -1,10 +1,86 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-26T17:20:28.974Z",
-  "latest_version": "1.0.945",
-  "latest_tag": "v1.0.945",
+  "updated_at": "2026-11-27T04:32:21.849Z",
+  "latest_version": "1.0.946",
+  "latest_tag": "v1.0.946",
   "releases": [
+    {
+      "version": "1.0.946",
+      "tag": "v1.0.946",
+      "published_at": "2026-11-27T04:32:21Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.946",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "主界面搜索：支持在扫描和搜索时检索并显示隐藏文件与文件夹。",
+          "设置：新增显示或隐藏文件与文件夹的切换开关。",
+          "编辑器：在编辑器右侧新增垂直居中的大纲导航轨，方便快速浏览与定位文档结构。"
+        ],
+        "improvements": [
+          "标题栏：将品牌菜单的布局细节与文件夹切换器对齐，并将操作图标更换为刷新图标。"
+        ],
+        "fixes": [
+          "编辑器：打开右侧面板时会自动隐藏右侧大纲导航轨，避免界面内容重叠。",
+          "快捷键：按下 Esc 键现在可以正常关闭打开的下拉选择菜单。",
+          "自动更新：修复了关闭更新源下拉菜单时会导致更新弹窗被意外关闭的问题。"
+        ],
+        "other": [
+          "图标资源：清理了应用中未使用的更新图标资源。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Search: Added support for scanning and displaying hidden files and folders in search results.",
+          "Settings: Added a toggle switch to show or hide hidden files and folders across the workspace.",
+          "Editor: Added a vertically centered outline rail on the right side of the editor for quick document navigation."
+        ],
+        "improvements": [
+          "Title Bar: Aligned the brand menu layout details with the folder switcher and updated the action icon to a refresh icon."
+        ],
+        "fixes": [
+          "Editor: The right-side outline rail now automatically hides when the right edge panel opens to avoid interface overlap.",
+          "Shortcuts: Pressing the Escape key now properly closes open select dropdown menus.",
+          "Updates: Fixed an issue where closing the update source dropdown would unintentionally dismiss the updater dialog."
+        ],
+        "other": [
+          "Icons: Removed unused update icon assets from the application."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-macos-arm64.dmg",
+          "size": 15986966,
+          "sha256": "e245f1376feeb89b49e49d254edbaff9530c0b67ec701fa9c1cf64822b748b5f"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-macos-x64.dmg",
+          "size": 17639707,
+          "sha256": "169a0f751c23281458414488b1fa4e8b6d555ac8a9e0a99fdacbcedc652f4cbd"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-windows-x64-setup.exe",
+          "size": 13400971,
+          "sha256": "f4f5ee879322b875d51cb62792bdb9dc16b5a6c30b7433ea5e994bfe13cbec33"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-linux-x64.deb",
+          "size": 10871386,
+          "sha256": "428c28b82472c9864a7e7a1bec28d776f73f1940e0c9d078832299f489eab34a"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-linux-x64.AppImage",
+          "size": 23927288,
+          "sha256": "4bfdb11293972168c7a4792add1b361dc27d754c05394840e828582f4b3e03a8"
+        }
+      ]
+    },
     {
       "version": "1.0.945",
       "tag": "v1.0.945",
@@ -30,38 +106,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-macos-arm64.dmg",
-          "size": 15972022,
-          "sha256": "6c371067ab2aca8b0e5f89ce29d753d01b0e8c9bdfe382c04e599cf6588835c4"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-macos-x64.dmg",
-          "size": 17618122,
-          "sha256": "9e4240c35864948ad153adc7c58b2dde28f1e7d4680be3e22049af7bb4a96fda"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-windows-x64-setup.exe",
-          "size": 13383444,
-          "sha256": "6106ab9f3cbc053e19365f38eaf452dacfeaed833636af3b02bda9800b4bd524"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-linux-x64.deb",
-          "size": 10853234,
-          "sha256": "81ced8101420522e33e7dbab7c21ca1b39ad6545c336abe01e36f64e27c761ee"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.945/block-linux-x64.AppImage",
-          "size": 23910904,
-          "sha256": "7268ee712283888e4b7d1de9ef33e797255913c3d49d97e7d95477d31b05aee9"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.944",
@@ -1627,31 +1672,6 @@
           "Native system notifications are now always sent, with rate limits applied separately to each plugin."
         ],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.894",
-      "tag": "v1.0.894",
-      "published_at": "2026-11-21T09:12:48Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.894",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "边栏批注卡片现在可以正常滚动浏览，全部发送批注改为在后台处理，且 AI 会解答提问而不是重写选中文本。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Margin annotation cards can now be scrolled through properly, sending all annotations is handled in the background, and AI answers questions instead of rewriting selected text."
-        ],
         "other": []
       },
       "assets": []
