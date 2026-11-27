@@ -5,8 +5,8 @@ const (
 	NoteFloor            float32 = 480
 	ThreeColumnNoteFloor float32 = 560
 	SettingsFloor        float32 = 680
-	WindowMinW           float32 = 680
-	WindowMinH           float32 = 480
+	WindowMinW           float32 = 760
+	WindowMinH           float32 = 560
 
 	SidebarMinW     float32 = 240
 	SidebarDefaultW float32 = 240

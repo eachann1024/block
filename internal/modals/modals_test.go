@@ -1453,7 +1453,7 @@ func TestUpdaterModalAllStatesAndEnglishWidth(t *testing.T) {
 		}()},
 	}
 
-	for _, vpW := range []int{460, 420} {
+	for _, vpW := range []int{520, 480} {
 		narrowTT := ui.NewTester(func(c *ui.Context) {
 			ui.Box(c).Fill().Children(func() {
 				m.RenderModals(c)
@@ -1471,7 +1471,7 @@ func TestUpdaterModalAllStatesAndEnglishWidth(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s (vpW=%d): missing updater-modal probe", sc.name, vpW)
 			}
-			if vpW == 460 && math.Abs(float64(modalRect.W-theme.UpdaterModalWidth)) > 1.0 {
+			if vpW == 520 && math.Abs(float64(modalRect.W-theme.UpdaterModalWidth)) > 1.0 {
 				t.Fatalf("%s (vpW=%d): expected modal width %.0f, got %.1f", sc.name, vpW, theme.UpdaterModalWidth, modalRect.W)
 			}
 			const eps = float32(0.5)

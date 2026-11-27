@@ -324,9 +324,9 @@ const (
 	TreeMoreBtnSize         = HeightMicro
 
 	// Updater modal & titlebar brand-mark update dot metrics.
-	UpdaterModalWidth          float32 = 420
-	UpdaterModalMaxHeight      float32 = 650
-	UpdaterNotesMaxHeight      float32 = 350
+	UpdaterModalWidth          float32 = 480
+	UpdaterModalMaxHeight      float32 = 660
+	UpdaterNotesMaxHeight      float32 = 360
 	UpdaterHeaderIconBox       float32 = 36
 	UpdaterHeaderMarkSize      float32 = 30
 	UpdaterBadgeDotSize        float32 = 6
@@ -335,7 +335,7 @@ const (
 	UpdaterCatColWidthZH       float32 = 54
 	UpdaterCatColWidthEN       float32 = 82
 	UpdaterVerColWidth         float32 = 82
-	UpdaterSourceMenuWidth     float32 = 288
+	UpdaterSourceMenuWidth     float32 = 292
 	UpdaterSourcePopoverHeader float32 = 24
 	UpdaterSourceAutoCardH     float32 = 54
 	UpdaterSourceChannelRowH   float32 = 36
