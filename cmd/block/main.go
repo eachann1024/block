@@ -115,6 +115,8 @@ func main() {
 		return
 	}
 
+	app.ConfigureRuntimeMemory()
+
 	isIsolatedRun := smokeFlag || smokeOnceFlag || dataDirFlag != "" || os.Getenv("MYGO_AUTOMATION") != ""
 
 	if smokeOnceFlag {
@@ -139,13 +141,18 @@ func main() {
 	if smokeFlag || os.Getenv("MYGO_AUTOMATION") != "" {
 		blockui.EnableSmokeMode()
 	}
-	if err := app.RegisterPluginStageRuntime(); err != nil {
-		files.LogErrorf("register plugin stage runtime failed: %v", err)
-	}
-
 	ws := app.NewWorkspace(dataDirFlag)
 	if !isIsolatedRun {
-		files.EnsureHarmonyFontsAsync(files.AppDataDir(), ws.InvalidateAllWindows)
+		theme.SetHarmonyFontEnsurer(func() {
+			if mygo.App.IsReady() {
+				go files.EnsureHarmonyFontsAsync(files.AppDataDir(), ws.InvalidateAllWindows)
+				return
+			}
+			files.EnsureHarmonyFontsAsync(files.AppDataDir(), ws.InvalidateAllWindows)
+		})
+		if runtime.GOOS != "darwin" || theme.NeedsHarmonyFont() {
+			files.EnsureHarmonyFontsAsync(files.AppDataDir(), ws.InvalidateAllWindows)
+		}
 	}
 	ws.SetPersistWindowBounds(!smokeFlag && !smokeOnceFlag && !hiddenFlag)
 	if mockAIFlag {
@@ -462,6 +469,11 @@ func main() {
 		}
 		win := mygo.NewWindow(winOpts)
 		ws.AttachWindow(win)
+		win.OnBlur(func() {
+			if !isQuitting {
+				app.ScheduleMemoryRelease(3 * time.Second)
+			}
+		})
 		if resolved.HasPosition && resolved.Rect.X == 0 && resolved.Rect.Y == 0 &&
 			!resolved.Maximized && !resolved.Fullscreen && !hiddenFlag {
 			win.SetBounds(resolved.Rect)
@@ -477,6 +489,7 @@ func main() {
 				}
 				e.PreventDefault()
 				win.Hide()
+				app.ScheduleMemoryRelease(1500 * time.Millisecond)
 				return
 			}
 			ws.FlushWindowBounds()
@@ -583,6 +596,12 @@ func main() {
 		}
 	})
 
+	mygo.App.OnDidResignActive(func() {
+		if !isQuitting {
+			app.ScheduleMemoryRelease(3 * time.Second)
+		}
+	})
+
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
 		if err := ws.FlushDirtySessionsForQuit(); err != nil {
 			e.PreventDefault()
@@ -593,6 +612,7 @@ func main() {
 			return
 		}
 		isQuitting = true
+		app.CancelScheduledMemoryRelease()
 		ws.StopExternalSync()
 		modals.SetAppQuitting(true)
 		ws.FlushWindowBounds()
@@ -650,6 +670,7 @@ func main() {
 		if (!isIsolatedRun || os.Getenv("BLOCK_MOCK_UPDATE") == "1") && ws.Updater() != nil {
 			ws.Updater().StartAutomatic()
 		}
+		app.ScheduleMemoryRelease(5 * time.Second)
 	})
 
 	if err := mygo.App.Run(); err != nil {
