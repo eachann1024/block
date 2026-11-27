@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"block/internal/ai"
@@ -124,7 +125,13 @@ type Workspace struct {
 	hasAISelKey      bool
 	aiSelNote        string
 	lastNotifiedNote string
+
+	startupNanos   atomic.Int64
+	dirtyExit      atomic.Bool
+	telemetryArmed atomic.Bool
 }
+
+var processStartedAt = time.Now()
 
 type aiSelectionSyncKey struct {
 	notePath string
@@ -170,6 +177,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		historyView:          &PageHistoryView{Mode: "diff"},
 		lastSnapAt:           make(map[string]time.Time),
 	}
+	w.startupNanos.Store(-1)
 	if st.SidebarWidth != nil && *st.SidebarWidth > 0 {
 		w.sidebarWidth = ClampSidebarWidth(*st.SidebarWidth)
 	}
@@ -239,14 +247,6 @@ func NewWorkspace(dataDir string) *Workspace {
 		},
 	})
 	w.modals.Updater = w.updater
-	if updater.IsPackagedBuild() && !blockui.IsSmokeActive() {
-		telemetry.Start(telemetry.Config{
-			DataDir: actualDir,
-			Version: updater.CurrentVersion(),
-			Enabled: func() bool { return !w.State().TelemetryOff },
-			Lang:    func() string { return string(theme.Language()) },
-		})
-	}
 	w.pluginUI = newPluginHostUI(w)
 	w.stageCtrl = newPluginStageController(w)
 	w.pluginsUI = pluginui.NewController(plugins.NewSupervisor(plugins.SupervisorConfig{
@@ -371,11 +371,86 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.wireQuickNoteCallbacks()
 	w.wireSearchWindowCallbacks()
 	w.hydrateInitialWorkspace()
+	if d := time.Since(processStartedAt); d >= 0 {
+		w.startupNanos.Store(d.Nanoseconds())
+	} else {
+		w.startupNanos.Store(0)
+	}
+	if updater.IsPackagedBuild() && !blockui.IsSmokeActive() {
+		if !w.State().TelemetryOff && !telemetry.EnvDisabled() {
+			w.dirtyExit.Store(telemetry.BeginSession(actualDir))
+			w.telemetryArmed.Store(true)
+		}
+		telemetry.Start(telemetry.Config{
+			DataDir: actualDir,
+			Version: updater.CurrentVersion(),
+			Enabled: func() bool { return !w.State().TelemetryOff },
+			Lang:    func() string { return string(theme.Language()) },
+			Theme: func() string {
+				mode := w.State().Theme
+				if mode == "" {
+					return string(model.ThemeSystem)
+				}
+				return string(mode)
+			},
+			UpdateSource: func() string {
+				return string(updater.NormalizeSourceMode(w.State().UpdateSource))
+			},
+			NoteCount: w.scannedNoteCount,
+			AIBackend: func() string {
+				if w.ai == nil {
+					return "none"
+				}
+				return w.ai.TelemetryBackendCategory()
+			},
+			Plugins: func() []string {
+				if sup := w.Plugins(); sup != nil {
+					return sup.EnabledTelemetryPluginIDs()
+				}
+				return nil
+			},
+			Startup: func() time.Duration {
+				ns := w.startupNanos.Load()
+				if ns < 0 {
+					return -1
+				}
+				return time.Duration(ns)
+			},
+			DirtyExit: func() bool {
+				return w.dirtyExit.Load()
+			},
+		})
+	}
 	if sup := w.Plugins(); sup != nil {
 		sup.WarmupAppearancePluginsAsync()
 	}
 	w.lastNotifiedNote = w.State().ActiveTab
 	return w
+}
+
+func (w *Workspace) scannedNoteCount() int {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if w.state.Folder == "" {
+		return 0
+	}
+	if w.lastScanErr != "" || w.entries == nil {
+		return -1
+	}
+	notes, _ := countWorkspaceEntries(w.entries)
+	return notes
+}
+
+// MarkCleanExit removes the active-session telemetry marker during normal shutdown.
+func (w *Workspace) MarkCleanExit() {
+	telemetry.MarkCleanExit(w.dataDir)
+}
+
+// ResumeTelemetrySession re-arms the active-session telemetry marker if a quit was canceled.
+func (w *Workspace) ResumeTelemetrySession() {
+	if w.telemetryArmed.Load() {
+		_ = telemetry.BeginSession(w.dataDir)
+	}
 }
 
 // Start the installer only once MyGo has completed the cancellable quit checks.

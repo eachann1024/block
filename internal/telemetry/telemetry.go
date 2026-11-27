@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -33,33 +34,43 @@ import (
 const Endpoint = "https://block.cooool.top/api/ping"
 
 const (
-	startDelay    = 5 * time.Second // short enough that quick open-and-close sessions still count
-	checkInterval = 3 * time.Hour
-	retryInterval = 15 * time.Minute // after a failed ping, so a short session later today still counts
-	limitedRetry  = time.Minute      // after a 429: the server's window is 60 s, plus up to limitedJitter
-	limitedJitter = 2 * time.Minute  // spreads out many clients behind one address that were limited together
-	wakeStep      = 5 * time.Minute  // longest single sleep, so a laptop waking from sleep notices a passed deadline
-	behindRetry   = time.Minute      // first recheck after the server counted an earlier day; doubles up to retryInterval
-	fileName      = "telemetry.json"
+	startDelay      = 5 * time.Second // short enough that quick open-and-close sessions still count
+	checkInterval   = 3 * time.Hour
+	retryInterval   = 15 * time.Minute // after a failed ping, so a short session later today still counts
+	limitedRetry    = time.Minute      // after a 429: the server's window is 60 s, plus up to limitedJitter
+	limitedJitter   = 2 * time.Minute  // spreads out many clients behind one address that were limited together
+	wakeStep        = 5 * time.Minute  // longest single sleep, so a laptop waking from sleep notices a passed deadline
+	behindRetry     = time.Minute      // first recheck after the server counted an earlier day; doubles up to retryInterval
+	fileName        = "telemetry.json"
+	runningFileName = "telemetry.running"
 )
 
 var (
-	idRe  = regexp.MustCompile(`^[0-9a-f]{32}$`)
-	dayRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	idRe       = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	dayRe      = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	pluginIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,39}$`)
 )
 
 // errLimited reports a 429: the source address sent too many pings in the last minute.
 var errLimited = errors.New("telemetry: rate limited")
 
 // Config wires the sender to the app. Enabled and Lang are read before every check,
-// so turning the setting off takes effect without a restart.
+// so turning the setting off takes effect without a restart. All extra metric
+// callbacks are optional; nil callbacks omit the corresponding fields.
 type Config struct {
-	DataDir  string
-	Version  string
-	Enabled  func() bool
-	Lang     func() string
-	Endpoint string       // empty means Endpoint
-	Client   *http.Client // nil means a client with a short timeout
+	DataDir      string
+	Version      string
+	Enabled      func() bool
+	Lang         func() string
+	Theme        func() string
+	UpdateSource func() string
+	NoteCount    func() int
+	AIBackend    func() string
+	Plugins      func() []string
+	Startup      func() time.Duration
+	DirtyExit    func() bool
+	Endpoint     string       // empty means Endpoint
+	Client       *http.Client // nil means a client with a short timeout
 }
 
 type record struct {
@@ -68,15 +79,49 @@ type record struct {
 }
 
 type payload struct {
-	ID   string `json:"id"`
-	V    string `json:"v"`
-	OS   string `json:"os"`
-	OSV  string `json:"osv"`
-	Arch string `json:"arch"`
-	Lang string `json:"lang"`
+	ID        string   `json:"id"`
+	V         string   `json:"v"`
+	OS        string   `json:"os"`
+	OSV       string   `json:"osv"`
+	Arch      string   `json:"arch"`
+	Lang      string   `json:"lang"`
+	Theme     string   `json:"theme,omitempty"`
+	UpdateSrc string   `json:"update_src,omitempty"`
+	Notes     string   `json:"notes,omitempty"`
+	AI        string   `json:"ai,omitempty"`
+	Plugins   []string `json:"plugins,omitempty"`
+	Startup   string   `json:"startup,omitempty"`
+	DirtyExit bool     `json:"dirty_exit,omitempty"`
 }
 
 var startOnce sync.Once
+
+// EnvDisabled reports whether telemetry is disabled via DO_NOT_TRACK or BLOCK_NO_TELEMETRY.
+func EnvDisabled() bool {
+	return envDisabled()
+}
+
+// BeginSession records an active-session marker in dataDir and reports whether
+// the previous session's marker was still present (indicating an unclean exit).
+func BeginSession(dataDir string) bool {
+	if dataDir == "" {
+		return false
+	}
+	marker := filepath.Join(dataDir, runningFileName)
+	_, err := os.Lstat(marker)
+	dirty := err == nil
+	_ = os.MkdirAll(dataDir, 0o755)
+	_ = os.WriteFile(marker, []byte("1\n"), 0o600)
+	return dirty
+}
+
+// MarkCleanExit removes the active-session marker from dataDir on normal shutdown.
+func MarkCleanExit(dataDir string) {
+	if dataDir == "" {
+		return
+	}
+	_ = os.Remove(filepath.Join(dataDir, runningFileName))
+}
 
 // Start launches the background sender once per process.
 func Start(cfg Config) {
@@ -179,7 +224,36 @@ func check(ctx context.Context, cfg Config) (counted string, err error) {
 	if cfg.Lang != nil && cfg.Lang() == "zh" {
 		lang = "zh"
 	}
-	body, err := json.Marshal(payload{ID: rec.ID, V: cfg.Version, OS: runtime.GOOS, OSV: osMajor(), Arch: runtime.GOARCH, Lang: lang})
+	p := payload{
+		ID:   rec.ID,
+		V:    cfg.Version,
+		OS:   runtime.GOOS,
+		OSV:  osMajor(),
+		Arch: runtime.GOARCH,
+		Lang: lang,
+	}
+	if cfg.Theme != nil {
+		p.Theme = normalizeTheme(cfg.Theme())
+	}
+	if cfg.UpdateSource != nil {
+		p.UpdateSrc = normalizeUpdateSource(cfg.UpdateSource())
+	}
+	if cfg.NoteCount != nil {
+		p.Notes = bucketNotes(cfg.NoteCount())
+	}
+	if cfg.AIBackend != nil {
+		p.AI = normalizeAI(cfg.AIBackend())
+	}
+	if cfg.Plugins != nil {
+		p.Plugins = sanitizePlugins(cfg.Plugins())
+	}
+	if cfg.Startup != nil {
+		p.Startup = bucketStartup(cfg.Startup())
+	}
+	if cfg.DirtyExit != nil && cfg.DirtyExit() {
+		p.DirtyExit = true
+	}
+	body, err := json.Marshal(p)
 	if err != nil {
 		return "", err
 	}
@@ -374,4 +448,87 @@ func majorLabel(family, major string) string {
 		}
 	}
 	return family + "-" + major
+}
+
+func normalizeTheme(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "system", "light", "dark":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return "unknown"
+	}
+}
+
+func normalizeUpdateSource(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "auto", "mirror", "github":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return "unknown"
+	}
+}
+
+func bucketNotes(count int) string {
+	switch {
+	case count < 0:
+		return "unknown"
+	case count == 0:
+		return "0"
+	case count <= 10:
+		return "1-10"
+	case count <= 50:
+		return "11-50"
+	case count <= 200:
+		return "51-200"
+	default:
+		return "200+"
+	}
+}
+
+func normalizeAI(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "none", "deepseek", "openai", "claude", "claude-code", "codex", "antigravity", "pi", "dsh", "other":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return "unknown"
+	}
+}
+
+func sanitizePlugins(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(raw))
+	out := make([]string, 0, min(len(raw), 20))
+	for _, id := range raw {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if !pluginIDRe.MatchString(id) || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	slices.Sort(out)
+	if len(out) > 20 {
+		out = out[:20]
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func bucketStartup(d time.Duration) string {
+	switch {
+	case d < 0:
+		return "unknown"
+	case d < 300*time.Millisecond:
+		return "<300ms"
+	case d < 800*time.Millisecond:
+		return "300-800ms"
+	case d < 2000*time.Millisecond:
+		return "800-2000ms"
+	default:
+		return ">2s"
+	}
 }

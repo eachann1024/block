@@ -691,6 +691,49 @@ func (s *Supervisor) Installed() []InstalledApp {
 	return out
 }
 
+// EnabledTelemetryPluginIDs returns enabled official store plugin IDs and folds
+// any enabled local or unofficial custom plugins into a single "custom" marker.
+func (s *Supervisor) EnabledTelemetryPluginIDs() []string {
+	s.mu.RLock()
+	catalog := s.catalog
+	installed := append([]InstalledApp(nil), s.installed...)
+	s.mu.RUnlock()
+
+	officialEntries := make(map[string]StoreAppEntry)
+	if catalog != nil {
+		for _, entry := range catalog.Apps {
+			if entry.ID != "" {
+				officialEntries[entry.ID] = entry
+			}
+		}
+	}
+
+	var out []string
+	seen := make(map[string]bool)
+	hasCustom := false
+	for _, inst := range installed {
+		if !inst.Enabled {
+			continue
+		}
+		id := strings.TrimSpace(inst.Manifest.ID)
+		entry, ok := officialEntries[id]
+		if ok && s.store != nil && s.store.MatchesOfficialSource(inst, entry) {
+			norm := strings.ToLower(id)
+			if !seen[norm] {
+				seen[norm] = true
+				out = append(out, norm)
+			}
+		} else {
+			hasCustom = true
+		}
+	}
+	if hasCustom && !seen["custom"] {
+		out = append(out, "custom")
+	}
+	slices.Sort(out)
+	return out
+}
+
 func (s *Supervisor) GetInstalled(pluginID string) (InstalledApp, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

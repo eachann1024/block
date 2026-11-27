@@ -587,6 +587,7 @@ func main() {
 		isQuitting = true
 		modals.SetAppQuitting(true)
 		ws.FlushWindowBounds()
+		ws.MarkCleanExit()
 		if sup := ws.Plugins(); sup != nil {
 			sup.ShutdownAll()
 		}
@@ -598,6 +599,7 @@ func main() {
 	mygo.App.OnQuitCanceled(func() {
 		isQuitting = false
 		modals.SetAppQuitting(false)
+		ws.ResumeTelemetrySession()
 		files.ResumeFileDialogs()
 	})
 

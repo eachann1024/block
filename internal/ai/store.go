@@ -3116,3 +3116,64 @@ func cloneConversation(conv model.Conversation) model.Conversation {
 	}
 	return cp
 }
+
+// TelemetryBackendCategory returns a coarse, privacy-safe category string for the
+// currently configured and active AI backend, or "none" when AI is disabled or unconfigured.
+func (c *Controller) TelemetryBackendCategory() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.providerCfg.Enabled {
+		return "none"
+	}
+	kind := c.selectedBackendLocked()
+	if kind == model.BackendBuiltin {
+		if isBackendEnabled(c.backendsCfg, model.BackendBuiltin) {
+			resolved := resolveProviderExecutionConfig(c.providerCfg)
+			if builtinReady(resolved) {
+				return classifyBuiltinProvider(resolved)
+			}
+		}
+		for _, k := range c.priorityOrderLocked(c.recognizedBackendsLocked()) {
+			if k != model.BackendBuiltin && isBackendEnabled(c.backendsCfg, k) {
+				return classifyBackendKind(k)
+			}
+		}
+		return "none"
+	}
+	if !c.isBackendAvailableLocked(kind) {
+		return "none"
+	}
+	return classifyBackendKind(kind)
+}
+
+func classifyBackendKind(kind model.BackendKind) string {
+	switch kind {
+	case model.BackendCodex:
+		return "codex"
+	case model.BackendClaude:
+		return "claude-code"
+	case model.BackendAgy:
+		return "antigravity"
+	case model.BackendPi:
+		return "pi"
+	case model.BackendDsh:
+		return "dsh"
+	default:
+		return "unknown"
+	}
+}
+
+func classifyBuiltinProvider(cfg model.AIProviderConfig) string {
+	prov := strings.ToLower(strings.TrimSpace(cfg.Provider))
+	base := strings.ToLower(strings.TrimSpace(cfg.BaseURL))
+	switch {
+	case prov == "deepseek" || strings.HasPrefix(prov, "deepseek-") || strings.Contains(base, "api.deepseek.com"):
+		return "deepseek"
+	case prov == "openai" || strings.HasPrefix(prov, "openai-") || strings.Contains(base, "api.openai.com"):
+		return "openai"
+	case prov == "anthropic" || prov == "claude" || strings.HasPrefix(prov, "anthropic-") || strings.HasPrefix(prov, "claude-") || strings.Contains(base, "api.anthropic.com"):
+		return "claude"
+	default:
+		return "other"
+	}
+}
