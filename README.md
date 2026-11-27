@@ -21,7 +21,8 @@
   <a href="https://github.com/eachann1024/block/releases/latest">最新版本</a> ·
   <a href="https://block.cooool.top/#compare">软件对比</a> ·
   <a href="https://docs.block.cooool.top/">完整文档</a> ·
-  <a href="https://docs.block.cooool.top/plugins/">插件开发指南</a>
+  <a href="https://docs.block.cooool.top/plugins/">插件开发指南</a> ·
+  <a href="https://block.cooool.top/privacy/">隐私政策</a>
 </p>
 
 <p align="center">

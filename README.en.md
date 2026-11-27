@@ -21,7 +21,8 @@
   <a href="https://github.com/eachann1024/block/releases/latest">Latest Release</a> ·
   <a href="https://block.cooool.top/#compare">Comparison</a> ·
   <a href="https://docs.block.cooool.top/">Documentation</a> ·
-  <a href="https://docs.block.cooool.top/plugins/">Plugin Guide</a>
+  <a href="https://docs.block.cooool.top/plugins/">Plugin Guide</a> ·
+  <a href="https://block.cooool.top/privacy/">Privacy Policy</a>
 </p>
 
 <p align="center">

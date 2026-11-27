@@ -11,6 +11,7 @@
 ### 核心规范
 - **[设计语言与配色规范（DESIGN.md）](../DESIGN.md)**：Ocean Paper 色板、字号与几何尺度、全局 Pluck Switch 与 Scheme A 双色图标体系。
 - **[项目主介绍（README.md）](../README.md)** · **[English README](../README.en.md)**：产品特性、下载入口与开源许可说明。
+- **[隐私政策](https://block.cooool.top/privacy/)**
 
 ### 插件开发文档（`docs/plugins/`）
 外部插件独立建仓（添加 `blockmd-plugin` Topic 并发布正式 Release），无需向主仓提 PR 即可参与商店自动采集（抓取 stars 降序前 100 仓库，桌面端也可直接通过本地目录或仓库名安装）；与官网扩展开发页保持同源同步：
