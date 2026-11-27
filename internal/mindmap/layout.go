@@ -714,7 +714,7 @@ func HitTestWithActions(root *Node, activeIDs [2]int, readOnly bool, wx, wy, sca
 		}
 	}
 
-	hit := HitTestAtScale(root, wx, wy, scale)
+	hit := hitTestCoreAtScale(root, wx, wy, scale)
 	if hit.Kind != HitNone {
 		return hit
 	}
@@ -739,7 +739,8 @@ func HitTestWithActions(root *Node, activeIDs [2]int, readOnly bool, wx, wy, sca
 			}
 		}
 	}
-	return HitResult{}
+	// Extended row / connector grab zones come last so they never steal the hover bridge.
+	return hitTestExtendedAtScale(root, wx, wy, scale)
 }
 
 // HitTest finds which node, link badge, task checkbox, or fold badge lies under world point (wx, wy).
@@ -749,6 +750,14 @@ func HitTest(root *Node, wx, wy float32) HitResult {
 
 // HitTestAtScale matches the rendered minimum screen-space geometry for badges at any zoom level.
 func HitTestAtScale(root *Node, wx, wy, scale float32) HitResult {
+	if hit := hitTestCoreAtScale(root, wx, wy, scale); hit.Kind != HitNone {
+		return hit
+	}
+	return hitTestExtendedAtScale(root, wx, wy, scale)
+}
+
+// hitTestCoreAtScale tests badges, checkboxes and the painted node rects only.
+func hitTestCoreAtScale(root *Node, wx, wy, scale float32) HitResult {
 	if root == nil {
 		return HitResult{}
 	}
@@ -804,9 +813,9 @@ func HitTestAtScale(root *Node, wx, wy, scale float32) HitResult {
 			}
 		}
 
-		// Check node rect (with generous 2px vertical hit padding).
+		// Pass 1: Core node rect (with +3px bottom pad to cover depth > 1 underlines cleanly).
 		top := n.Y - n.H/2 - 2
-		bot := n.Y + n.H/2 + 2
+		bot := n.Y + n.H/2 + 3
 		if wx >= n.X-2 && wx <= n.X+n.W+2 && wy >= top && wy <= bot {
 			if n.Task != nil {
 				tx := nodeContentLeft(n)
@@ -834,6 +843,123 @@ func HitTestAtScale(root *Node, wx, wy, scale float32) HitResult {
 	return hit
 }
 
+// hitTestExtendedAtScale widens node rows horizontally and captures the child end of
+// incoming connectors, keeping vertical padding tight so blank gaps between compact
+// rows still start box selection.
+func hitTestExtendedAtScale(root *Node, wx, wy, scale float32) HitResult {
+	if root == nil {
+		return HitResult{}
+	}
+	if scale <= 0 {
+		scale = 1
+	}
+	inPad := clampFloat32(6.0/scale, 4.0, 10.0)
+	outPad := clampFloat32(3.0/scale, 2.5, 5.0)
+	const rowPadTop = float32(2)
+	const rowPadBot = float32(3)
+	lineTol := clampFloat32(3.0/scale, 3.0, 6.0)
+	lineTol2 := lineTol * lineTol
+
+	var bestNode *Node
+	bestDist2 := float32(1e18)
+	var walkExtended func(n *Node)
+	walkExtended = func(n *Node) {
+		dir := n.Dir
+		if dir == 0 {
+			dir = 1
+		}
+		x0, x1 := n.X-inPad, n.X+n.W+outPad
+		if dir < 0 {
+			x0, x1 = n.X-outPad, n.X+n.W+inPad
+		}
+		y0, y1 := n.Y-n.H/2-rowPadTop, n.Y+n.H/2+rowPadBot
+		if wx >= x0 && wx <= x1 && wy >= y0 && wy <= y1 {
+			if d2 := nodeRectDist2(n, wx, wy); d2 < bestDist2 {
+				bestDist2 = d2
+				bestNode = n
+			}
+		}
+
+		if n.Parent != nil {
+			par := n.Parent
+			px := par.X
+			if dir > 0 {
+				px = par.X + par.W
+			}
+			py := par.Y
+			if par.Depth > 1 {
+				py = par.Y + par.H/2
+			}
+			nx := n.X + n.W
+			if dir > 0 {
+				nx = n.X
+			}
+			ny := n.Y
+			if n.Depth > 1 {
+				ny = n.Y + n.H/2
+			}
+			// Leave the parent's hover-action bridge corridor untouched while capturing the child end.
+			if float32(math.Abs(float64(wx-px))) > 14 {
+				minCX, maxCX := min(px, nx)-lineTol, max(px, nx)+lineTol
+				minCY, maxCY := min(py, ny)-lineTol, max(py, ny)+lineTol
+				if wx >= minCX && wx <= maxCX && wy >= minCY && wy <= maxCY {
+					midX := (px + nx) * 0.5
+					const steps = 8
+					const tStart = float32(0.45)
+					prevX := cubicBezier1D(px, midX, midX, nx, tStart)
+					prevY := cubicBezier1D(py, py, ny, ny, tStart)
+					for i := 1; i <= steps; i++ {
+						t := tStart + (1-tStart)*float32(i)/steps
+						curX := cubicBezier1D(px, midX, midX, nx, t)
+						curY := cubicBezier1D(py, py, ny, ny, t)
+						if d2 := pointSegDist2(wx, wy, prevX, prevY, curX, curY); d2 <= lineTol2 && d2 < bestDist2 {
+							bestDist2 = d2
+							bestNode = n
+						}
+						prevX, prevY = curX, curY
+					}
+				}
+			}
+		}
+
+		if n.Folded {
+			return
+		}
+		for _, ch := range n.Children {
+			walkExtended(ch)
+		}
+	}
+	walkExtended(root)
+	if bestNode != nil {
+		return HitResult{Kind: HitNode, Node: bestNode}
+	}
+	return HitResult{}
+}
+
+func cubicBezier1D(p0, p1, p2, p3, t float32) float32 {
+	u := 1 - t
+	return u*u*u*p0 + 3*u*u*t*p1 + 3*u*t*t*p2 + t*t*t*p3
+}
+
+func pointSegDist2(px, py, ax, ay, bx, by float32) float32 {
+	abx, aby := bx-ax, by-ay
+	apx, apy := px-ax, py-ay
+	abLen2 := abx*abx + aby*aby
+	if abLen2 <= 1e-6 {
+		return apx*apx + apy*apy
+	}
+	t := clampFloat32((apx*abx+apy*aby)/abLen2, 0, 1)
+	cx, cy := ax+t*abx, ay+t*aby
+	dx, dy := px-cx, py-cy
+	return dx*dx + dy*dy
+}
+
+func nodeRectDist2(n *Node, wx, wy float32) float32 {
+	dx := max(float32(0), max(n.X-wx, wx-(n.X+n.W)))
+	dy := max(float32(0), max((n.Y-n.H*0.5)-wy, wy-(n.Y+n.H*0.5)))
+	return dx*dx + dy*dy
+}
+
 // DragDropPos indicates where a dragged node will be placed relative to a target node.
 type DragDropPos uint8
 
@@ -844,44 +970,276 @@ const (
 	DropAfter
 )
 
+func isNoOpDrop(dragged, target *Node, pos DragDropPos) bool {
+	if dragged == nil || target == nil || dragged.Parent == nil || dragged == target {
+		return true
+	}
+	if dragged.IsAncestorOf(target) {
+		return true
+	}
+	switch pos {
+	case DropInside:
+		return dragged.Parent == target && dragged.IndexInParent() == len(target.Children)-1
+	case DropBefore:
+		return target.Parent == nil || (dragged.Parent == target.Parent && dragged.IndexInParent() == target.IndexInParent()-1)
+	case DropAfter:
+		return target.Parent == nil || (dragged.Parent == target.Parent && dragged.IndexInParent() == target.IndexInParent()+1)
+	default:
+		return true
+	}
+}
+
 // HitTestDropTarget finds a valid drop target node and relative insertion position
-// for dragged at world coordinates (wx, wy). Never matches dragged or its descendants.
+// for dragged at world coordinates (wx, wy). Never matches dragged or its descendants,
+// and returns (nil, DropNone) when dropping would be a no-op or out of range.
 func HitTestDropTarget(root, dragged *Node, wx, wy float32) (*Node, DragDropPos) {
-	if root == nil || dragged == nil {
+	if root == nil || dragged == nil || dragged.Parent == nil {
 		return nil, DropNone
 	}
-	var target *Node
-	var pos DragDropPos
-	var walk func(n *Node) bool
-	walk = func(n *Node) bool {
-		if n == dragged {
-			return false
-		}
-		if wx >= n.X-6 && wx <= n.X+n.W+6 && wy >= n.Y-n.H/2-6 && wy <= n.Y+n.H/2+6 {
-			target = n
-			if n.Parent == nil {
-				pos = DropInside
-			} else if wy < n.Y-n.H*0.25 {
-				pos = DropBefore
-			} else if wy > n.Y+n.H*0.25 {
-				pos = DropAfter
-			} else {
-				pos = DropInside
-			}
+
+	// Dragging onto the dragged node itself or any visible descendant always cancels.
+	var hitSelfOrDesc func(n *Node) bool
+	hitSelfOrDesc = func(n *Node) bool {
+		if wx >= n.X-4 && wx <= n.X+n.W+4 && wy >= n.Y-n.H/2-4 && wy <= n.Y+n.H/2+4 {
 			return true
 		}
 		if n.Folded {
 			return false
 		}
 		for _, ch := range n.Children {
-			if walk(ch) {
+			if hitSelfOrDesc(ch) {
 				return true
 			}
 		}
 		return false
 	}
-	walk(root)
-	return target, pos
+	if hitSelfOrDesc(dragged) {
+		return nil, DropNone
+	}
+
+	// Step 1: Explicit DropInside when pointer is over the outward third-middle of a node,
+	// clearly past its outward edge (mirrored for left-side branches), or over the root topic.
+	var insideTarget *Node
+	var findInside func(n *Node) bool
+	findInside = func(n *Node) bool {
+		if n == dragged {
+			return false
+		}
+		if n.Parent == nil {
+			padX := float32(10)
+			if !n.IsOpen() {
+				padX = 48
+			}
+			if wx >= n.X-padX && wx <= n.X+n.W+padX && wy >= n.Y-n.H/2-10 && wy <= n.Y+n.H/2+10 {
+				insideTarget = n
+				return true
+			}
+		} else {
+			dir := n.Dir
+			if dir == 0 {
+				dir = 1
+			}
+			// Only a clear move past the node's outward edge nests it, so vertical
+			// reordering inside a column never turns into an accidental reparent.
+			outward := wx - (n.X + n.W)
+			if dir < 0 {
+				outward = n.X - wx
+			}
+			const minOutward = float32(14)
+			maxOutward := float32(68)
+			if n.IsOpen() {
+				maxOutward = max(layoutHGap*0.55, minOutward+8)
+			}
+			dy := float32(math.Abs(float64(wy - n.Y)))
+			if outward >= minOutward && outward <= maxOutward && dy <= n.H*0.5 {
+				insideTarget = n
+				return true
+			}
+		}
+		if n.Folded {
+			return false
+		}
+		for _, ch := range n.Children {
+			if findInside(ch) {
+				return true
+			}
+		}
+		return false
+	}
+	if findInside(root) {
+		if isNoOpDrop(dragged, insideTarget, DropInside) {
+			return nil, DropNone
+		}
+		return insideTarget, DropInside
+	}
+
+	// Step 2: Reorder / reparent by finding the nearest sibling gap vertically within
+	// the hovered branch column (supports same-branch and cross-branch sibling lists).
+	type siblingGroup struct {
+		parent   *Node
+		dir      int
+		siblings []*Node
+	}
+	var groups []siblingGroup
+	var collectGroups func(p *Node)
+	collectGroups = func(p *Node) {
+		if p == nil || !p.IsOpen() || p == dragged || dragged.IsAncestorOf(p) {
+			return
+		}
+		if p == root {
+			var rightSibs, leftSibs []*Node
+			for _, ch := range p.Children {
+				if ch.Dir < 0 {
+					leftSibs = append(leftSibs, ch)
+				} else {
+					rightSibs = append(rightSibs, ch)
+				}
+			}
+			if len(rightSibs) > 0 {
+				groups = append(groups, siblingGroup{parent: p, dir: 1, siblings: rightSibs})
+			}
+			if len(leftSibs) > 0 {
+				groups = append(groups, siblingGroup{parent: p, dir: -1, siblings: leftSibs})
+			}
+		} else {
+			dir := p.Dir
+			if dir == 0 {
+				dir = 1
+			}
+			groups = append(groups, siblingGroup{parent: p, dir: dir, siblings: p.Children})
+		}
+		for _, ch := range p.Children {
+			collectGroups(ch)
+		}
+	}
+	collectGroups(root)
+
+	// In the two-sided layout the root's children are split by index, so a slot only
+	// counts when the moved node would really land on that side after the move.
+	bothMode := root.W > 0 && float32(math.Abs(float64(root.X+root.W/2))) < 0.5
+	landsOnSide := func(g siblingGroup, target *Node, pos DragDropPos) bool {
+		if !bothMode || g.parent != root {
+			return true
+		}
+		n := len(root.Children)
+		if dragged.Parent != root {
+			n++
+		}
+		idx := target.IndexInParent()
+		if pos == DropAfter {
+			idx++
+		}
+		if dragged.Parent == root && dragged.IndexInParent() < idx {
+			idx--
+		}
+		k := (n + 1) / 2
+		if g.dir > 0 {
+			return idx < k
+		}
+		return idx >= k
+	}
+
+	var bestTarget *Node
+	bestPos := DropNone
+	bestDy := float32(0)
+	bestDx := float32(0)
+	hasBest := false
+
+	for _, g := range groups {
+		sibs := g.siblings
+		first := sibs[0]
+		last := sibs[len(sibs)-1]
+		gMinY := min(first.Y-first.H*0.5, first.Y-first.SubH*0.5) - 24
+		gMaxY := max(last.Y+last.H*0.5, last.Y+last.SubH*0.5) + 24
+		if wy < gMinY || wy > gMaxY {
+			continue
+		}
+
+		slotIdx := len(sibs)
+		for i, s := range sibs {
+			if wy < s.Y {
+				slotIdx = i
+				break
+			}
+		}
+
+		// Insertion gap of this slot: the vertical span the indicator line sits in.
+		var candTarget *Node
+		var candPos DragDropPos
+		var refA, refB *Node
+		var gapTop, gapBot float32
+		switch {
+		case slotIdx == 0:
+			candTarget, candPos, refA = first, DropBefore, first
+			gapTop, gapBot = first.Y-first.H*0.5-24, first.Y-first.H*0.5
+		case slotIdx == len(sibs):
+			candTarget, candPos, refA = last, DropAfter, last
+			gapTop, gapBot = last.Y+last.H*0.5, last.Y+last.H*0.5+24
+		default:
+			prev := sibs[slotIdx-1]
+			next := sibs[slotIdx]
+			refA, refB = prev, next
+			prevBot := prev.Y + prev.H*0.5
+			nextTop := next.Y - next.H*0.5
+			gapTop, gapBot = prevBot, nextTop
+			if wy <= (prevBot+nextTop)*0.5 {
+				candTarget, candPos = prev, DropAfter
+			} else {
+				candTarget, candPos = next, DropBefore
+			}
+		}
+
+		nearX := first.X
+		if g.dir < 0 {
+			nearX = first.X + first.W
+		}
+		var minX, maxX float32
+		if g.dir > 0 {
+			minX = nearX
+			maxX = max(nearX+56, refA.X+refA.W)
+			if refB != nil {
+				maxX = max(maxX, refB.X+refB.W)
+			}
+		} else {
+			maxX = nearX
+			minX = min(nearX-56, refA.X)
+			if refB != nil {
+				minX = min(minX, refB.X)
+			}
+		}
+		if wx < minX-20 || wx > maxX+20 {
+			continue
+		}
+		if !landsOnSide(g, candTarget, candPos) {
+			continue
+		}
+
+		// Vertical distance to the slot's own gap decides first; among equally close
+		// slots, the column whose near edge the pointer most recently crossed wins.
+		dy := float32(0)
+		if wy < gapTop {
+			dy = gapTop - wy
+		} else if wy > gapBot {
+			dy = wy - gapBot
+		}
+		dx := wx - nearX
+		if g.dir < 0 {
+			dx = nearX - wx
+		}
+		if dx < 0 {
+			dx = 1000 - dx
+		}
+		if !hasBest || dy < bestDy-4 || (dy <= bestDy+4 && dx < bestDx) {
+			hasBest = true
+			bestDy, bestDx = dy, dx
+			bestTarget, bestPos = candTarget, candPos
+		}
+	}
+
+	if !hasBest || isNoOpDrop(dragged, bestTarget, bestPos) {
+		return nil, DropNone
+	}
+	return bestTarget, bestPos
 }
 
 func nodeContentLeft(n *Node) float32 {
@@ -1543,8 +1901,13 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 			titleSpan := ui.Span{Text: label, Size: theme.FontSmall, Weight: theme.WeightControl, Color: pal.Text}
 			tw, th := p.MeasureText(0, titleSpan)
 
-			hintText := ""
-			if targetNode != nil && opt.DragPos != DropNone {
+			hasValidDrop := targetNode != nil && opt.DragPos != DropNone
+			hintText := theme.Tr("松手取消", "Release to cancel")
+			hintColor := pal.TextSecondary
+			borderColor := pal.MenuBorder
+			if hasValidDrop {
+				borderColor = pal.Accent
+				hintColor = pal.Accent
 				tLbl := truncateRunes(strings.ReplaceAll(strings.TrimSpace(targetNode.Text), "\n", " "), 12)
 				if tLbl == "" {
 					tLbl = theme.Tr("节点", "Node")
@@ -1559,19 +1922,12 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				}
 			}
 
-			var hw, hh float32
-			var hintSpan ui.Span
-			if hintText != "" {
-				hintSpan = ui.Span{Text: hintText, Size: theme.FontMeta, Weight: theme.WeightControl, Color: pal.Accent}
-				hw, hh = p.MeasureText(0, hintSpan)
-			}
+			hintSpan := ui.Span{Text: hintText, Size: theme.FontMeta, Weight: theme.WeightControl, Color: hintColor}
+			hw, hh := p.MeasureText(0, hintSpan)
 
 			contentW := max(tw, hw)
 			pillW := min(max(contentW+theme.Space20, 76), 248)
-			pillH := max(th+theme.Space10, theme.HeightCompact)
-			if hintText != "" {
-				pillH = th + hh + theme.Space12 + 2
-			}
+			pillH := th + hh + theme.Space12 + 2
 			gx := r.X + opt.DragGhostX + theme.Space12
 			gy := r.Y + opt.DragGhostY - pillH*0.5
 			if gx+pillW > r.X+r.W-6 {
@@ -1588,14 +1944,10 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 			}
 			pillR := ui.Rect{X: gx, Y: gy, W: pillW, H: pillH}
 			p.Fill(pillR, pal.Menu.Alpha(0.95), theme.RadiusMD)
-			p.Stroke(pillR, pal.Accent, theme.RadiusMD, 1.4)
+			p.Stroke(pillR, borderColor, theme.RadiusMD, 1.4)
 			p.Clip(pillR, theme.RadiusMD, func() {
-				if hintText == "" {
-					p.RichText(gx+theme.Space10, gy+(pillH-th)*0.5, 0, titleSpan)
-				} else {
-					p.RichText(gx+theme.Space10, gy+theme.Space6, 0, titleSpan)
-					p.RichText(gx+theme.Space10, gy+theme.Space6+th+2, 0, hintSpan)
-				}
+				p.RichText(gx+theme.Space10, gy+theme.Space6, 0, titleSpan)
+				p.RichText(gx+theme.Space10, gy+theme.Space6+th+2, 0, hintSpan)
 			})
 		}
 

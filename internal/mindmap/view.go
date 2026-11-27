@@ -88,6 +88,9 @@ type BlockState struct {
 	DragCurrY    float32
 	DragTargetID int
 	DragPos      DragDropPos
+	// releaselessMoves counts consecutive button-up moves during a gesture; one can
+	// precede a normal release, so only a second one means the release was lost.
+	releaselessMoves int
 
 	lastKeyMod        ui.Modifiers
 	ComposeText       string
@@ -4118,9 +4121,15 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			// A lost release (capture taken by another control) leaves no button
 			// down: drop the stale gesture instead of panning / boxing / dragging on hover.
 			if (st.Panning || st.BoxSelecting || st.DragNodeID != 0) && ev.Pointer == ui.PointerMouse && ev.Pressure == 0 {
-				st.Panning = false
-				st.resetBoxSelect()
-				st.resetDrag()
+				st.releaselessMoves++
+				if st.releaselessMoves >= 2 {
+					st.releaselessMoves = 0
+					st.Panning = false
+					st.resetBoxSelect()
+					st.resetDrag()
+				}
+			} else {
+				st.releaselessMoves = 0
 			}
 			if st.Panning && st.Camera.Scale > 0 {
 				st.fsCamAnimActive = false
@@ -4342,7 +4351,20 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				st.resetBoxSelect()
 				return true
 			}
+			st.releaselessMoves = 0
 			if st.DragNodeID != 0 {
+				// Re-resolve the drop at the actual release point, not the last move.
+				if !ev.Canceled && st.DragActive && st.Root != nil {
+					st.DragTargetID, st.DragPos = 0, DropNone
+					inCanvas := st.LastCanvasW <= 0 || st.LastCanvasH <= 0 ||
+						(ev.X >= 0 && ev.X <= st.LastCanvasW && ev.Y >= 0 && ev.Y <= st.LastCanvasH)
+					if dragged := st.Root.FindByID(st.DragNodeID); dragged != nil && inCanvas {
+						wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
+						if target, pos := HitTestDropTarget(st.Root, dragged, wx, wy); target != nil {
+							st.DragTargetID, st.DragPos = target.ID, pos
+						}
+					}
+				}
 				if !ev.Canceled && st.DragActive && st.DragTargetID != 0 && st.DragPos != DropNone && st.Root != nil {
 					dragged := st.Root.FindByID(st.DragNodeID)
 					target := st.Root.FindByID(st.DragTargetID)
