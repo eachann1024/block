@@ -25,7 +25,7 @@ var deepUIFenceLangs = map[string]bool{"ui": true, "blockui": true, "genui": tru
 
 // deepUIPromptHint is the always-on routing prompt; the full component catalog
 // stays in the deepUI skill and is loaded on demand.
-const deepUIPromptHint = "# 深层次界面（回复默认优先）\n\n凡回答含多节、多条建议/清单、数据、对比或步骤（如天气+穿搭+建议、攻略、方案），默认用 ```ui 围栏 JSON 输出，不要写多节 Markdown 长文（优先于 Markdown）。内容全进组件，围栏外 ≤3 行且不复述画面；纯闲聊、单句问答、纯代码或新建/修改笔记时不用。\n图表/表格或复杂排版先调 `loadSkill(\"deepUI\")` 取目录并搭多种组件；常规结构化内容也可直接输出单行 JSON：`{\"title\":\"…\",\"blocks\":[{\"t\":\"kpi\",\"items\":[{\"l\":\"…\",\"v\":\"…\"}]},{\"t\":\"cards\",\"title\":\"…\",\"items\":[{\"name\":\"…\",\"pts\":[\"…\"]}]}]}`（`t` 亦可用 `checklist/steps/proscons/callout/tags/text`）。"
+const deepUIPromptHint = "# 深层次界面（回复默认优先）\n\n回答含多节、多条建议/清单、数据、对比或步骤（如天气+穿搭+建议、攻略、方案）时，必须优先以 ```ui 围栏输出单行 JSON，勿写多节 Markdown 长文（优先于 Markdown）。内容全进组件，围栏外 ≤3 行且不复述画面；纯闲聊、单句问答、纯代码或新建/修改笔记时不用。\n图表/表格或复杂布局先调 `loadSkill(\"deepUI\")` 取目录并混搭多种组件；常规结构化回复可直接输出：`{\"title\":\"…\",\"blocks\":[{\"t\":\"kpi\",\"items\":[{\"l\":\"…\",\"v\":\"…\"}]},{\"t\":\"cards\",\"title\":\"…\",\"items\":[{\"name\":\"…\",\"pts\":[\"…\"]}]}]}`（`t` 也可用 `checklist/steps/proscons/callout/tags/text`）。"
 
 type deepAIConfig struct {
 	Enabled bool `json:"enabled"`
@@ -854,6 +854,28 @@ func renderDeepProsCons(cUI *ui.Context, pal theme.Palette, key string, m deepNo
 	sides := []side{
 		{deepStr(m, "prosTitle", "aName"), deepStrs(m, "pros", "a", "good"), pal.Success, "+"},
 		{deepStr(m, "consTitle", "bName"), deepStrs(m, "cons", "b", "bad"), pal.Danger, "−"},
+	}
+	if len(sides[0].pts) == 0 && len(sides[1].pts) == 0 {
+		nodes := deepNodes(deepArr(m, "items"))
+		if len(nodes) == 1 {
+			sides[0].pts = deepStrs(nodes[0], "pros", "a", "good")
+			sides[1].pts = deepStrs(nodes[0], "cons", "b", "bad")
+		} else if len(nodes) >= 2 {
+			if nm := deepStr(nodes[0], "name", "l", "label", "title"); nm != "" {
+				sides[0].name = nm
+			}
+			sides[0].pts = deepStrs(nodes[0], "pts", "points", "items", "pros", "a", "good")
+			if nm := deepStr(nodes[1], "name", "l", "label", "title"); nm != "" {
+				sides[1].name = nm
+			}
+			sides[1].pts = deepStrs(nodes[1], "pts", "points", "items", "cons", "b", "bad")
+		}
+		if len(sides[0].pts) == 0 && len(sides[1].pts) == 0 {
+			if pts := deepStrs(m, "items", "pts", "points"); len(pts) > 0 {
+				renderDeepBullets(cUI, pal, key, pts, pal.TextSecondary)
+				return
+			}
+		}
 	}
 	if sides[0].name == "" {
 		sides[0].name = theme.Tr("优势", "Pros")

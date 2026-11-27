@@ -1517,12 +1517,13 @@ func (c *Controller) startExternalTurn(turn *assistantTurn, kind model.BackendKi
 			prompt += " Use only Block MCP tools for notebook access and propose all note changes through executeBatchPlan."
 		}
 		if turn.deepUI {
-			prompt += "\n\nFor Block chat replies, follow the UI rule below over default Markdown (use Block MCP tool `loadSkill` for `deepUI` when needed):\n\n" + deepUIPromptHint
+			prompt += "\n\nFollow the UI rule below over Markdown (call Block MCP `loadSkill` for `deepUI` if needed):\n\n" + deepUIPromptHint
 		}
 	}
 	selectedModel := c.effectiveBackendModelLocked(kind)
 	st := c.ensureRunStateLocked(turn.convID)
 	st.partialText.Reset()
+	st.needTextBreak = false
 	st.partialThink.Reset()
 	st.partialSteps = nil
 	c.mu.Unlock()
@@ -1560,6 +1561,7 @@ func (c *Controller) startExternalTurn(turn *assistantTurn, kind model.BackendKi
 			st.sentSelection = nil
 		}
 		st.partialText.Reset()
+		st.needTextBreak = false
 		st.partialThink.Reset()
 		st.partialSteps = nil
 		if turn.convID == c.currentID {
@@ -1832,10 +1834,14 @@ func rpcErrorMessage(raw any) string {
 }
 
 func trimBlockMCPToolPrefix(name string) (string, bool) {
-	for _, prefix := range []string{"mcp_block_", "mcp__block__"} {
+	for _, prefix := range []string{"mcp_block_", "mcp__block__", "block/", "block:"} {
 		if strings.HasPrefix(name, prefix) {
 			return strings.TrimPrefix(name, prefix), true
 		}
+	}
+	switch name {
+	case "loadSkill", "listNotebooks", "listPages", "searchNotes", "readPage", "executeBatchPlan":
+		return name, true
 	}
 	return "", false
 }
@@ -1986,13 +1992,41 @@ func (c *Controller) streamAgy(turn *assistantTurn, scanner *lineReader, stdin i
 		}
 		return out.Encode(frame)
 	}
+	agyToolNames := make(map[string]string)
+	rememberAgyTool := func(frame map[string]any) {
+		if method, _ := frame["method"].(string); method != "session/update" {
+			return
+		}
+		params, _ := frame["params"].(map[string]any)
+		upd, _ := params["update"].(map[string]any)
+		kind, _ := upd["sessionUpdate"].(string)
+		if kind != "tool_call" && kind != "tool_call_update" {
+			return
+		}
+		toolID, _ := upd["toolCallId"].(string)
+		name, _ := upd["name"].(string)
+		if toolID != "" && name != "" {
+			agyToolNames[toolID] = name
+		}
+	}
 	handleRequest := func(frame map[string]any) error {
 		method, _ := frame["method"].(string)
 		if method == "session/request_permission" {
 			params, _ := frame["params"].(map[string]any)
 			toolCall, _ := params["toolCall"].(map[string]any)
+			toolID, _ := toolCall["toolCallId"].(string)
 			toolName, _ := toolCall["name"].(string)
+			if toolName == "" && toolID != "" {
+				toolName = agyToolNames[toolID]
+			}
 			_, allowBlockMCP := trimBlockMCPToolPrefix(toolName)
+			if !allowBlockMCP && toolName == "" {
+				toolKind, _ := toolCall["kind"].(string)
+				toolTitle, _ := toolCall["title"].(string)
+				if toolKind != "execute" && toolKind != "edit" && toolKind != "delete" {
+					_, allowBlockMCP = trimBlockMCPToolPrefix(toolTitle)
+				}
+			}
 			options, _ := params["options"].([]any)
 			pickOption := func(kinds ...string) string {
 				for _, want := range kinds {
@@ -2051,6 +2085,7 @@ func (c *Controller) streamAgy(turn *assistantTurn, scanner *lineReader, stdin i
 				continue
 			}
 			if frame["method"] != nil {
+				rememberAgyTool(frame)
 				c.handleCLIStreamFrame(turn.convID, turn.serial, frame)
 				continue
 			}
@@ -2169,6 +2204,32 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 		st.partialSteps = append(st.partialSteps, step)
 	}
 
+	appendText := func(s string) {
+		if s == "" {
+			return
+		}
+		if st.needTextBreak {
+			st.needTextBreak = false
+			if cur := st.partialText.String(); cur != "" {
+				trimmed := strings.TrimRight(cur, " \t")
+				if !strings.HasSuffix(trimmed, "\n\n") {
+					if strings.HasSuffix(trimmed, "\n") {
+						if !strings.HasPrefix(s, "\n") {
+							st.partialText.WriteByte('\n')
+						}
+					} else if !strings.HasPrefix(s, "\n\n") {
+						if strings.HasPrefix(s, "\n") {
+							st.partialText.WriteByte('\n')
+						} else {
+							st.partialText.WriteString("\n\n")
+						}
+					}
+				}
+			}
+		}
+		st.partialText.WriteString(s)
+	}
+
 	switch {
 	case typ == "system":
 		if id, ok := frame["session_id"].(string); ok && id != "" {
@@ -2180,14 +2241,19 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 	case typ == "assistant":
 		if msg, ok := frame["message"].(map[string]any); ok {
 			if blocks, ok := msg["content"].([]any); ok {
+				wroteText := false
 				for _, b := range blocks {
 					bm, _ := b.(map[string]any)
 					switch bm["type"] {
 					case "text":
-						if txt, ok := bm["text"].(string); ok {
-							st.partialText.WriteString(txt)
+						if txt, ok := bm["text"].(string); ok && txt != "" {
+							appendText(txt)
+							wroteText = true
 						}
 					case "thinking":
+						if st.partialText.Len() > 0 {
+							st.needTextBreak = true
+						}
 						if th, ok := bm["thinking"].(string); ok && strings.TrimSpace(th) != "" {
 							st.partialSteps = append(st.partialSteps, model.ProcessStep{
 								ID:     fmt.Sprintf("think-%d-%d", convID, len(st.partialSteps)),
@@ -2198,6 +2264,9 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 							})
 						}
 					case "tool_use":
+						if st.partialText.Len() > 0 {
+							st.needTextBreak = true
+						}
 						name, _ := bm["name"].(string)
 						rawArgs, _ := json.Marshal(bm["input"])
 						step := processStepForTool(name, string(rawArgs))
@@ -2206,6 +2275,9 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 						}
 						upsertStep(step)
 					}
+				}
+				if wroteText && st.partialText.Len() > 0 {
+					st.needTextBreak = true
 				}
 			}
 		}
@@ -2218,6 +2290,7 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 		}
 		if res, ok := frame["result"].(string); ok && res != "" && strings.TrimSpace(st.partialText.String()) == "" {
 			st.partialText.Reset()
+			st.needTextBreak = false
 			st.partialText.WriteString(res)
 		}
 	case typ == "message_update":
@@ -2226,7 +2299,7 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 			switch sub["type"] {
 			case "text_delta":
 				if d, ok := sub["delta"].(string); ok {
-					st.partialText.WriteString(d)
+					appendText(d)
 				}
 			case "thinking_delta":
 				if d, ok := sub["delta"].(string); ok {
@@ -2249,7 +2322,7 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 		isDelta = true
 		if params, ok := frame["params"].(map[string]any); ok {
 			if d, ok := params["delta"].(string); ok {
-				st.partialText.WriteString(d)
+				appendText(d)
 			}
 		}
 	case method == "item/reasoning/summaryTextDelta" || method == "item/reasoning/textDelta":
@@ -2266,7 +2339,14 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 				itemType, _ := item["type"].(string)
 				done := method == "item/completed"
 				switch itemType {
+				case "agentMessage":
+					if done && st.partialText.Len() > 0 {
+						st.needTextBreak = true
+					}
 				case "mcpToolCall":
+					if st.partialText.Len() > 0 {
+						st.needTextBreak = true
+					}
 					toolName, _ := item["tool"].(string)
 					rawArgs, _ := json.Marshal(item["arguments"])
 					step := processStepForTool(toolName, string(rawArgs))
@@ -2276,6 +2356,9 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 					step.Done = done
 					upsertStep(step)
 				case "commandExecution":
+					if st.partialText.Len() > 0 {
+						st.needTextBreak = true
+					}
 					cmdStr, _ := item["command"].(string)
 					upsertStep(model.ProcessStep{
 						ID:       itemID,
@@ -2286,6 +2369,9 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 						Done:     done,
 					})
 				case "fileChange":
+					if st.partialText.Len() > 0 {
+						st.needTextBreak = true
+					}
 					upsertStep(model.ProcessStep{
 						ID:       itemID,
 						Kind:     model.ToolKindWrite,
@@ -2305,17 +2391,23 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 					isDelta = true
 					if content, ok := upd["content"].(map[string]any); ok {
 						if txt, ok := content["text"].(string); ok {
-							st.partialText.WriteString(txt)
+							appendText(txt)
 						}
 					}
 				case "agent_thought_chunk":
 					isDelta = true
+					if st.partialText.Len() > 0 {
+						st.needTextBreak = true
+					}
 					if content, ok := upd["content"].(map[string]any); ok {
 						if txt, ok := content["text"].(string); ok {
 							st.partialThink.WriteString(txt)
 						}
 					}
 				case "tool_call", "tool_call_update":
+					if st.partialText.Len() > 0 {
+						st.needTextBreak = true
+					}
 					toolID, _ := upd["toolCallId"].(string)
 					name, _ := upd["name"].(string)
 					title, _ := upd["title"].(string)

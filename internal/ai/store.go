@@ -106,6 +106,7 @@ type convRunState struct {
 	serial            uint64
 	turn              *assistantTurn
 	partialText       strings.Builder
+	needTextBreak     bool
 	partialThink      strings.Builder
 	partialSteps      []model.ProcessStep
 	sentDraft         *model.SentDraft
@@ -2321,6 +2322,7 @@ func (c *Controller) SendPrompt(text string) {
 		st.serial = turn.serial
 		st.streaming = true
 		st.partialText.Reset()
+		st.needTextBreak = false
 		st.partialThink.Reset()
 		st.partialSteps = nil
 	}
@@ -2385,6 +2387,7 @@ func (c *Controller) stopConvStreamingLocked(convID uint64) {
 	}
 	partial := st.partialText.String()
 	st.partialText.Reset()
+	st.needTextBreak = false
 	st.partialThink.Reset()
 	st.partialSteps = nil
 	if strings.TrimSpace(partial) != "" && convID != 0 {
