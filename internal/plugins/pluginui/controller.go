@@ -234,14 +234,19 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 		hasErr := c.sup.HasPluginError(app.Manifest.ID)
 		lit := app.Enabled && !hasErr
 		_, starting, _, _ := c.pluginVisualState(app.Manifest.ID, app)
+		disabledLabel := ""
+		if app.NeedsUpdate {
+			disabledLabel = pluginUpdateRequiredLabel()
+		}
 		entries = append(entries, modals.PluginNavEntry{
-			TabID:     modals.TabPluginPrefix + app.Manifest.ID,
-			Title:     app.Manifest.Name.Resolve(locale),
-			Beta:      app.Manifest.Beta,
-			Lit:       lit,
-			Starting:  starting,
-			StatusDot: app.Enabled,
-			HasError:  hasErr,
+			TabID:         modals.TabPluginPrefix + app.Manifest.ID,
+			Title:         app.Manifest.Name.Resolve(locale),
+			Beta:          app.Manifest.Beta,
+			Lit:           lit,
+			Starting:      starting,
+			StatusDot:     app.Enabled,
+			HasError:      hasErr,
+			DisabledLabel: disabledLabel,
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors, active bool) {
 				DrawDuoSpecAnimated(ctx, app.Manifest.Icon, size, colors, active)
 			},

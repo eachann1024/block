@@ -394,29 +394,31 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			ui.Box(ctx).Size(1, 14).Background(pal.BtnBorder).MarginX(theme.Space2).Shrink(0)
 		}
 
-		// ④ Light enable switch (28x16, same as settings rows). Reflects actual
-		// persisted enabled state; when startup failed, stays ON with error ring
-		// so toggling OFF disables cleanly.
-		switchVal := inst.Enabled
-		phase := bui.SwitchIdle
-		if starting {
-			phase = bui.SwitchBusy
-		} else if failed {
-			phase = bui.SwitchError
-		}
-		if bui.SwitchWithOptions(ctx, bui.SwitchOptions{
-			ID:          "plugin-hdr-enable-" + pluginID,
-			Label:       theme.Tr("启用插件", "Enable Plugin"),
-			Value:       &switchVal,
-			Size:        bui.SwitchHero,
-			Phase:       phase,
-			ErrorKey:    vs.Error,
-			AsyncEnable: !declarative,
-			Disabled:    pluginBusyAny || inst.NeedsUpdate,
-			Tooltip:     theme.Tr("启用或停用插件", "Enable or disable plugin"),
-		}) {
-			c.CloseTitlebarOverlays()
-			c.sup.SetPluginEnabled(pluginID, switchVal)
+		if !inst.NeedsUpdate {
+			// ④ Light enable switch (28x16, same as settings rows). Reflects actual
+			// persisted enabled state; when startup failed, stays ON with error ring
+			// so toggling OFF disables cleanly.
+			switchVal := inst.Enabled
+			phase := bui.SwitchIdle
+			if starting {
+				phase = bui.SwitchBusy
+			} else if failed {
+				phase = bui.SwitchError
+			}
+			if bui.SwitchWithOptions(ctx, bui.SwitchOptions{
+				ID:          "plugin-hdr-enable-" + pluginID,
+				Label:       theme.Tr("启用插件", "Enable Plugin"),
+				Value:       &switchVal,
+				Size:        bui.SwitchHero,
+				Phase:       phase,
+				ErrorKey:    vs.Error,
+				AsyncEnable: !declarative,
+				Disabled:    pluginBusyAny,
+				Tooltip:     theme.Tr("启用或停用插件", "Enable or disable plugin"),
+			}) {
+				c.CloseTitlebarOverlays()
+				c.sup.SetPluginEnabled(pluginID, switchVal)
+			}
 		}
 
 		// ⑤ Unified "⋯" More menu trigger (lightweight chrome icon button).
@@ -841,7 +843,7 @@ func (c *Controller) renderTitlebarErrorPopover(ctx *ui.Context, tab string, _ f
 	}
 	headline := shortPluginErrorLabel(failed, uninstErr != "", vs)
 	if detail == "" {
-		detail = theme.Tr("未能启动插件进程，请查看日志了解详情。", "Failed to start plugin process. Open logs for details.")
+		detail = theme.Tr("未能启动插件，请查看日志了解详情。", "Failed to start plugin. Open logs for details.")
 	}
 	headlineCol := theme.Ocean().Danger
 	if !failed && uninstErr == "" && vs.BackgroundError != nil && vs.BackgroundError.Severity == "warning" {
@@ -1118,7 +1120,7 @@ func (c *Controller) buildPluginMoreMenuItems(
 		},
 	})
 
-	// 4. Reload runtime (true process restart for enabled non-declarative plugins).
+	// 4. Restart the sandbox of an enabled runtime plugin.
 	if inst.Enabled && !declarative {
 		refIc := icons.Refresh
 		items = append(items, bui.MenuItemSpec{

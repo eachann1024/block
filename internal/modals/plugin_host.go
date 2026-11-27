@@ -23,15 +23,16 @@ func IsStoreTab(tab string) bool {
 
 // PluginNavEntry represents a lower-partition Settings sidebar row ("应用商店" or an installed app).
 type PluginNavEntry struct {
-	TabID     string
-	Title     string
-	CountText string
-	Beta      bool
-	Lit       bool
-	StatusDot bool
-	Starting  bool
-	HasError  bool
-	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors, active bool)
+	TabID         string
+	Title         string
+	CountText     string
+	DisabledLabel string
+	Beta          bool
+	Lit           bool
+	StatusDot     bool
+	Starting      bool
+	HasError      bool
+	DrawIcon      func(c *ui.Context, size float32, colors theme.IconColors, active bool)
 }
 
 // PluginCommandShortcut describes one enabled plugin command whose shortcut
@@ -45,7 +46,7 @@ type PluginCommandShortcut struct {
 	DefaultShortcut string
 }
 
-// PluginSettingsHost decouples Settings UI chrome from the App Store & out-of-process plugin runtime.
+// PluginSettingsHost decouples Settings UI chrome from the App Store and plugin sandbox.
 type PluginSettingsHost interface {
 	SettingsTabChanged(previous, current string)
 	StoreListing(tab string) bool
