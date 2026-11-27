@@ -29,15 +29,17 @@ type ScanOptions struct {
 }
 
 var ignoredCommonNames = map[string]bool{
-	"node_modules": true,
-	"dist":         true,
-	"build":        true,
-	"target":       true,
-	"__pycache__":  true,
-	".next":        true,
-	".nuxt":        true,
-	".venv":        true,
-	"venv":         true,
+	"node_modules":         true,
+	"dist":                 true,
+	"build":                true,
+	"target":               true,
+	"__pycache__":          true,
+	".next":                true,
+	".nuxt":                true,
+	".venv":                true,
+	"venv":                 true,
+	".block-sync-replaced": true,
+	".block-sync-recovery": true,
 }
 
 var markdownExtensions = map[string]bool{
