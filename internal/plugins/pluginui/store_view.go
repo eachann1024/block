@@ -10,6 +10,7 @@ import (
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
+	storedata "block/store"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -559,7 +560,7 @@ func buildStoreEntries(catalog *plugins.StoreIndex, installed []plugins.Installe
 	seen := make(map[string]bool)
 	if catalog != nil {
 		for _, app := range catalog.Apps {
-			if app.ID == "" || seen[app.ID] {
+			if app.ID == "" || seen[app.ID] || storedata.Blocklisted(app.ID, app.Repo) {
 				continue
 			}
 			seen[app.ID] = true
@@ -568,7 +569,7 @@ func buildStoreEntries(catalog *plugins.StoreIndex, installed []plugins.Installe
 	}
 	for _, inst := range installed {
 		id := inst.Manifest.ID
-		if id == "" || seen[id] {
+		if id == "" || seen[id] || storedata.Blocklisted(id, inst.Manifest.Repo) {
 			continue
 		}
 		seen[id] = true

@@ -5,13 +5,6 @@ import (
 	"sync"
 )
 
-// SupersededLanguagePluginIDs lists former official language extensions whose
-// grammars now ship built in; the store hides them.
-var SupersededLanguagePluginIDs = map[string]bool{
-	"block-lang-gomod": true,
-	"block-lang-plist": true,
-}
-
 //go:embed builtin_grammars/*.json
 var builtinGrammarFS embed.FS
 

@@ -106,9 +106,9 @@ func (p Palette) StoreCard() StoreCardColors {
 type StoreHeroTone string
 
 const (
-	StoreHeroToneFileIcons StoreHeroTone = "file-icons"
-	StoreHeroToneSync      StoreHeroTone = "sync"
-	StoreHeroToneTitlebar  StoreHeroTone = "titlebar"
+	StoreHeroToneOcean  StoreHeroTone = "ocean"
+	StoreHeroToneAmber  StoreHeroTone = "amber"
+	StoreHeroToneViolet StoreHeroTone = "violet"
 )
 
 // StoreHeroColors holds the atmospheric backdrop gradient, ambient blooms,
@@ -133,7 +133,7 @@ type StoreHeroColors struct {
 // StoreHero returns the themed atmospheric showcase palette for tone.
 func (p Palette) StoreHero(tone StoreHeroTone) StoreHeroColors {
 	switch tone {
-	case StoreHeroToneSync:
+	case StoreHeroToneAmber:
 		if p.Dark {
 			return StoreHeroColors{
 				BGStart:           ui.Hex("#162527"),
@@ -168,7 +168,7 @@ func (p Palette) StoreHero(tone StoreHeroTone) StoreHeroColors {
 			SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.96),
 			SurfaceBtnBorder:  ui.RGBA(120, 184, 172, 0.36),
 		}
-	case StoreHeroToneTitlebar:
+	case StoreHeroToneViolet:
 		if p.Dark {
 			return StoreHeroColors{
 				BGStart:           ui.Hex("#1d2028"),
@@ -203,7 +203,7 @@ func (p Palette) StoreHero(tone StoreHeroTone) StoreHeroColors {
 			SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.96),
 			SurfaceBtnBorder:  ui.RGBA(158, 170, 192, 0.36),
 		}
-	default: // StoreHeroToneFileIcons
+	default: // StoreHeroToneOcean
 		if p.Dark {
 			return StoreHeroColors{
 				BGStart:           ui.Hex("#231f2c"),

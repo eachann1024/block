@@ -311,14 +311,18 @@ func (m *readmeMedia) read(src string, limit int64) ([]byte, error) {
 			}
 		}
 	}
-	primaryCtx, primaryCancel := context.WithTimeout(m.ctx, 8*time.Second)
+	return fetchRepositoryMedia(m.ctx, ref, limit)
+}
+
+func fetchRepositoryMedia(ctx context.Context, ref *url.URL, limit int64) ([]byte, error) {
+	primaryCtx, primaryCancel := context.WithTimeout(ctx, 8*time.Second)
 	data, err := fetchReadmeMediaURL(primaryCtx, ref.String(), limit)
 	primaryCancel()
 	if err == nil {
 		return data, nil
 	}
 	if fallback := rawGitHubToJsDelivr(ref); fallback != "" {
-		cdnCtx, cdnCancel := context.WithTimeout(m.ctx, 8*time.Second)
+		cdnCtx, cdnCancel := context.WithTimeout(ctx, 8*time.Second)
 		defer cdnCancel()
 		return fetchReadmeMediaURL(cdnCtx, fallback, limit)
 	}

@@ -13,6 +13,7 @@ import (
 	"block/internal/app"
 	"block/internal/modals"
 	"block/internal/model"
+	"block/internal/plugins"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"block/internal/updater"
@@ -204,6 +205,19 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 	nbDir := filepath.Join(shotDir, "notebook")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return SceneShotResult{}, err
+	}
+	if scene == "store" {
+		catalog, err := os.ReadFile(filepath.Join("..", "..", "store", "store-index.json"))
+		if err != nil {
+			return SceneShotResult{}, err
+		}
+		cacheDir := plugins.NewStoreManager(dataDir).CacheRoot
+		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+			return SceneShotResult{}, err
+		}
+		if err := os.WriteFile(filepath.Join(cacheDir, "store-index.json"), catalog, 0o644); err != nil {
+			return SceneShotResult{}, err
+		}
 	}
 	if err := os.MkdirAll(filepath.Join(nbDir, "Projects"), 0o755); err != nil {
 		return SceneShotResult{}, err

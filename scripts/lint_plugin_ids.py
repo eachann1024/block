@@ -8,12 +8,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP_DIRS = {"testdata", "store", "docs", ".git", "node_modules", "dist", "build"}
-ALLOWED_LINES = {
-    # Hide historical sync recovery directories in existing notebooks. Their
-    # names are already on disk and may survive an upgrade or uninstall.
-    ("internal/files/scan.go", '".block-sync-replaced": true,'),
-    ("internal/files/scan.go", '".block-sync-recovery": true,'),
-}
 
 
 def iter_go_files():
@@ -34,6 +28,8 @@ def main():
     index = json.loads((ROOT / "store/store-index.json").read_text(encoding="utf-8"))
     verified = json.loads((ROOT / "store/verified.json").read_text(encoding="utf-8"))
     plugin_ids = set(verified)
+    blocklist = json.loads((ROOT / "store/blocklist.json").read_text(encoding="utf-8"))
+    plugin_ids.update(entry for entry in blocklist if "/" not in entry)
     for field in ("apps", "system_apps"):
         plugin_ids.update(app["id"] for app in index.get(field, []))
     if not plugin_ids:
@@ -50,8 +46,6 @@ def main():
             continue
         with path.open(encoding="utf-8") as source:
             for line_no, line in enumerate(source, 1):
-                if (name, line.strip()) in ALLOWED_LINES:
-                    continue
                 for plugin_id in sorted(set(pattern.findall(line))):
                     print(f"{name}:{line_no}: store plugin ID {plugin_id!r} in host Go source")
                     failed = True

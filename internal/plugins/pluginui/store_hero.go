@@ -1,17 +1,17 @@
 package pluginui
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
-	"sync"
 	"time"
 
-	"block/assets"
 	"block/internal/icons"
 	"block/internal/modals"
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
+	storedata "block/store"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -19,7 +19,6 @@ const storeHeroAutoAdvance = 5 * time.Second
 
 type storeHeroSpec struct {
 	PluginID string              `json:"id"`
-	HeroFile string              `json:"art"`
 	Tone     theme.StoreHeroTone `json:"tone"`
 }
 
@@ -31,60 +30,71 @@ type storeHeroSlide struct {
 var storeHeroCatalog = loadStoreHeroCatalog()
 
 func loadStoreHeroCatalog() []storeHeroSpec {
-	raw, err := assets.ReadStore("featured.json")
-	if err != nil {
-		return nil
-	}
 	var specs []storeHeroSpec
-	if err := json.Unmarshal(raw, &specs); err != nil {
+	if err := json.Unmarshal(storedata.FeaturedJSON, &specs); err != nil {
 		return nil
 	}
 	return specs
 }
 
-var (
-	storeArtMu    sync.RWMutex
-	storeArtCache = make(map[string]*ui.SVG)
-)
-
-func loadStoreArtSVG(filename string) *ui.SVG {
-	if filename == "" {
-		return nil
-	}
-	storeArtMu.RLock()
-	cached, ok := storeArtCache[filename]
-	storeArtMu.RUnlock()
-	if ok {
-		return cached
-	}
-	raw, err := assets.ReadStore(filename)
-	var parsed *ui.SVG
-	if err == nil && len(raw) > 0 {
-		if s, parseErr := ui.ParseSVG(raw); parseErr == nil {
-			parsed = s
-		}
-	}
-	storeArtMu.Lock()
-	storeArtCache[filename] = parsed
-	storeArtMu.Unlock()
-	return parsed
+type storeArtKey struct {
+	url     string
+	version string
 }
 
-// renderStorePluginIcon uses the bundled artwork for verified official plugins.
+var storeArtSlots = make(chan struct{}, 4)
+
+func (ctrl *Controller) storeArtSVG(c *ui.Context, entry plugins.StoreAppEntry, filename string) *ui.SVG {
+	ref := entry.ArtworkBaseURL()
+	if ref == nil {
+		return nil
+	}
+	ref.Path += filename
+	key := storeArtKey{url: ref.String(), version: entry.Version}
+	ctrl.storeArtMu.Lock()
+	defer ctrl.storeArtMu.Unlock()
+	if svg, found := ctrl.storeArt[key]; found {
+		return svg
+	}
+	if len(ctrl.storeArt) >= 256 {
+		return nil
+	}
+	if ctrl.storeArt == nil {
+		ctrl.storeArt = make(map[storeArtKey]*ui.SVG)
+	}
+	ctrl.storeArt[key] = nil
+	services := c.Services()
+	go func() {
+		storeArtSlots <- struct{}{}
+		defer func() { <-storeArtSlots }()
+		data, err := fetchRepositoryMedia(context.Background(), ref, 512<<10)
+		if err != nil {
+			return
+		}
+		svg, err := ui.ParseSVG(data)
+		if err != nil {
+			return
+		}
+		ctrl.storeArtMu.Lock()
+		ctrl.storeArt[key] = svg
+		ctrl.storeArtMu.Unlock()
+		services.Invalidate()
+	}()
+	return nil
+}
+
 func renderStorePluginIcon(
 	c *ui.Context,
+	ctrl *Controller,
 	entry plugins.StoreAppEntry,
-	official bool,
 	boxSize, glyphSize, radius float32,
 	fallbackBG, fallbackBorder ui.Color,
 	fallbackColors theme.IconColors,
 	active bool,
 ) {
-	if official {
-		if svg := loadStoreArtSVG("icon-" + entry.ID + ".svg"); svg != nil {
-			ui.Image(c, svg.WithDark(theme.IsDark())).Size(boxSize, boxSize).Shrink(0)
-			return
-		}
+	if svg := ctrl.storeArtSVG(c, entry, "icon.svg"); svg != nil {
+		ui.Image(c, svg.WithDark(theme.IsDark())).Size(boxSize, boxSize).Shrink(0)
+		return
 	}
 	box := ui.Box(c).Size(boxSize, boxSize).Shrink(0).Center().Radius(radius).Background(fallbackBG)
 	if fallbackBorder.A > 0 {
@@ -105,7 +115,7 @@ func resolveStoreHeroSlides(ctrl *Controller) []storeHeroSlide {
 	}
 	byID := make(map[string]storeBaseItem, len(base.items))
 	for _, it := range base.items {
-		if it.source == storeSourceOfficial {
+		if it.entry.DownloadURL != "" {
 			byID[it.entry.ID] = it
 		}
 	}
@@ -228,9 +238,9 @@ func renderStoreHero(
 
 		cardW := card.Bounds().W
 		showArt := cardW <= 0 || cardW >= theme.StoreHeroMinArtWidth
-		heroArt := loadStoreArtSVG(slide.spec.HeroFile)
-		if heroArt == nil {
-			showArt = false
+		var heroArt *ui.SVG
+		if showArt {
+			heroArt = ctrl.storeArtSVG(c, entry, "hero.svg")
 		}
 
 		actionHandled := false
@@ -254,7 +264,7 @@ func renderStoreHero(
 						ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 							sc := pal.StoreCard()
 							renderStorePluginIcon(
-								c, entry, true,
+								c, ctrl, entry,
 								theme.StoreHeroIconSize, theme.StoreIconGlyphSize, theme.RadiusLG,
 								sc.IconBG, sc.IconBorder, pal.DuoIconColors(pal.Text), false,
 							)
@@ -296,8 +306,7 @@ func renderStoreHero(
 					})
 				})
 
-				// Right bespoke vector illustration column.
-				if showArt && heroArt != nil {
+				if showArt {
 					artW := theme.StoreHeroArtMaxW
 					if cardW > 0 {
 						avail := cardW - theme.StoreHeroPadX*2 - theme.Space20 - theme.StoreHeroCopyMaxW
@@ -322,7 +331,11 @@ func renderStoreHero(
 						artBox.Translate(0, -2.5*artLift).Scale(1+0.02*artLift, 1+0.02*artLift)
 					}
 					artBox.Children(func() {
-						ui.Image(c, heroArt.WithDark(theme.IsDark())).Size(artW, artH)
+						if heroArt != nil {
+							ui.Image(c, heroArt.WithDark(theme.IsDark())).Size(artW, artH)
+							return
+						}
+						DrawDuoSpecAnimated(c, entry.Icon, min(artW, artH, theme.StoreHeroFallbackGlyph), pal.DuoIconColors(hc.AccentBG), false)
 					})
 				}
 			})

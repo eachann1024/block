@@ -29,6 +29,7 @@ import (
 
 	"block/internal/files"
 	"block/internal/plugins/wasmrt"
+	storedata "block/store"
 )
 
 // StoreAppEntry describes an entry in the Block App Store catalog index (topic: blockmd-plugin).
@@ -99,16 +100,9 @@ type builtinSeed struct {
 }
 
 var (
-	builtinMu             sync.RWMutex
-	builtinSeeds          = map[string]builtinSeed{}
-	embeddedFallbackIndex *StoreIndex
+	builtinMu    sync.RWMutex
+	builtinSeeds = map[string]builtinSeed{}
 )
-
-func setEmbeddedFallbackIndex(idx *StoreIndex) {
-	builtinMu.Lock()
-	embeddedFallbackIndex = idx
-	builtinMu.Unlock()
-}
 
 // RegisterBuiltinCatalogApp registers an embedded official catalog package so the App Store
 // works seamlessly offline (extracting into apps/<id> ONLY when the user clicks Install).
@@ -123,7 +117,7 @@ func DefaultSeedIndex() *StoreIndex {
 	defer builtinMu.RUnlock()
 	seedApps := make([]StoreAppEntry, 0, len(builtinSeeds))
 	for _, s := range builtinSeeds {
-		if hiddenCatalogID(s.Entry.ID) {
+		if hiddenCatalogEntry(s.Entry) {
 			continue
 		}
 		seedApps = append(seedApps, s.Entry)
@@ -134,33 +128,12 @@ func DefaultSeedIndex() *StoreIndex {
 		}
 		return seedApps[i].ID < seedApps[j].ID
 	})
-	var fallback *StoreIndex
-	if embeddedFallbackIndex != nil {
-		cp := *embeddedFallbackIndex
-		filtered := make([]StoreAppEntry, 0, len(embeddedFallbackIndex.Apps))
-		for _, a := range embeddedFallbackIndex.Apps {
-			if hiddenCatalogID(a.ID) {
-				continue
-			}
-			filtered = append(filtered, a)
-		}
-		cp.Apps = filtered
-		fallback = &cp
-	}
-	if len(seedApps) == 0 && fallback != nil {
-		return fallback
-	}
-	builtinIdx := &StoreIndex{
+	return &StoreIndex{
 		App:           TargetApp,
 		SchemaVersion: CurrentSchemaVersion,
 		Topic:         PluginTopic,
-		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 		Apps:          seedApps,
 	}
-	if fallback != nil {
-		return mergeStoreIndexes(fallback, builtinIdx)
-	}
-	return builtinIdx
 }
 
 func readBuiltinSeedReadme(id string, en bool) (PluginReadme, bool) {
@@ -555,8 +528,7 @@ func (s *StoreManager) EffectiveDownloads(entry StoreAppEntry) int {
 	return base + delta
 }
 
-// LoadCachedOrSeedCatalog returns the freshest available catalog between the
-// on-disk cache and the embedded seed index without resurrecting delisted apps.
+// LoadCachedOrSeedCatalog returns the on-disk catalog, with any registered built-in entries.
 func (s *StoreManager) LoadCachedOrSeedCatalog() *StoreIndex {
 	seed := DefaultSeedIndex()
 	raw, err := os.ReadFile(s.cacheIndexPath())
@@ -566,9 +538,6 @@ func (s *StoreManager) LoadCachedOrSeedCatalog() *StoreIndex {
 	parsed, err := ParseStoreIndex(raw)
 	if err != nil {
 		return seed
-	}
-	if seed != nil && indexNewerThan(seed.UpdatedAt, parsed.UpdatedAt) {
-		return filterStoreIndex(seed)
 	}
 	if hasRegisteredBuiltinSeeds() {
 		return mergeStoreIndexes(parsed, seed)
@@ -673,10 +642,8 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 	return baseline, lastErr
 }
 
-// hiddenCatalogID reports catalog entries the store never lists: empty IDs,
-// the built-in diagnostics window and language packs now shipped built in.
-func hiddenCatalogID(id string) bool {
-	return id == "" || id == DiagnosticsPluginID || SupersededLanguagePluginIDs[id]
+func hiddenCatalogEntry(entry StoreAppEntry) bool {
+	return entry.ID == "" || entry.ID == DiagnosticsPluginID || storedata.Blocklisted(entry.ID, entry.Repo)
 }
 
 func filterStoreIndex(idx *StoreIndex) *StoreIndex {
@@ -697,7 +664,7 @@ func mergeStoreIndexes(primary, fallback *StoreIndex) *StoreIndex {
 	seen := make(map[string]bool, len(primary.Apps))
 	merged := make([]StoreAppEntry, 0, capLen)
 	for _, a := range primary.Apps {
-		if hiddenCatalogID(a.ID) || seen[a.ID] {
+		if hiddenCatalogEntry(a) || seen[a.ID] {
 			continue
 		}
 		seen[a.ID] = true
@@ -705,7 +672,7 @@ func mergeStoreIndexes(primary, fallback *StoreIndex) *StoreIndex {
 	}
 	if fallback != nil {
 		for _, a := range fallback.Apps {
-			if hiddenCatalogID(a.ID) || seen[a.ID] {
+			if hiddenCatalogEntry(a) || seen[a.ID] {
 				continue
 			}
 			seen[a.ID] = true
@@ -2025,28 +1992,10 @@ func (inst InstalledApp) credentialScope() string {
 // MatchesOfficialSource reports whether an installed plugin was genuinely installed
 // from the catalog's verified official repository (not a spoofed local directory copy).
 func (s *StoreManager) MatchesOfficialSource(installed InstalledApp, entry StoreAppEntry) bool {
-	if SupersededLanguagePluginIDs[entry.ID] && installed.Manifest.ID == entry.ID {
-		entry = supersededLanguageCatalogEntry(entry.ID)
-	}
 	if !entry.Verified || !IsOfficialRepo(entry.Repo) {
 		return false
 	}
 	return s.matchesRepoSource(installed, entry, false)
-}
-
-// The final store entries still identify the origin of previously installed packages.
-func supersededLanguageCatalogEntry(id string) StoreAppEntry {
-	if !SupersededLanguagePluginIDs[id] {
-		return StoreAppEntry{}
-	}
-	const version = "v1.0.3"
-	repo := "blockmd-plugins/" + id
-	return StoreAppEntry{
-		ID:          id,
-		Repo:        repo,
-		DownloadURL: "https://github.com/" + repo + "/releases/download/" + version + "/" + id + "-" + version + ".tar.gz",
-		Verified:    true,
-	}
 }
 
 // MatchesReviewedSource reports whether an installed plugin was genuinely installed

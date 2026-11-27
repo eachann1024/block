@@ -37,6 +37,8 @@ type Controller struct {
 	storeHeroLastSwitch time.Time
 	storeHeroElapsed    time.Duration
 	storeHeroPaused     bool
+	storeArtMu          sync.Mutex
+	storeArt            map[storeArtKey]*ui.SVG
 	onSuggestPlugin     func(category plugins.Category)
 	onOpenStore         func()
 	isStoreVisibleFn    func() bool

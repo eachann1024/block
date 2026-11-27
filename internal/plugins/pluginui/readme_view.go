@@ -436,7 +436,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 
 		ui.Row(c.Key("app-store-detail-head")).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Center).Children(func() {
 			renderStorePluginIcon(
-				c, entry, source == storeSourceOfficial,
+				c, ctrl, entry,
 				theme.StoreDetailIconBox, theme.StoreDetailIconGlyph, theme.RadiusXL,
 				pal.Shell, ui.Transparent, pal.DuoIconColors(pal.Text), false,
 			)

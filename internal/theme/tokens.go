@@ -267,14 +267,15 @@ const (
 	StoreEmptyMaxWidth     float32 = 420 // copy column width in App Store empty states
 	StoreEmptyPadY         float32 = 64  // vertical padding for App Store empty states
 	// App Store featured hero showcase metrics.
-	StoreHeroHeight      float32 = 224 // featured showcase card height
-	StoreHeroPadX        float32 = 28  // horizontal padding inside hero content
-	StoreHeroPadY        float32 = 22  // vertical padding inside hero content
-	StoreHeroIconSize    float32 = 44  // bespoke plugin icon size inside hero header
-	StoreHeroCopyMaxW    float32 = 360 // max measure for hero title, summary, and actions
-	StoreHeroArtMaxW     float32 = 460 // max illustration width (460:220 native ratio)
-	StoreHeroArtH        float32 = 220 // illustration draw height inside hero
-	StoreHeroMinArtWidth float32 = 580 // minimum hero card width to display side artwork
+	StoreHeroHeight        float32 = 224 // featured showcase card height
+	StoreHeroPadX          float32 = 28  // horizontal padding inside hero content
+	StoreHeroPadY          float32 = 22  // vertical padding inside hero content
+	StoreHeroIconSize      float32 = 44  // plugin icon size inside hero header
+	StoreHeroFallbackGlyph float32 = 112 // large manifest icon when there is no illustration
+	StoreHeroCopyMaxW      float32 = 360 // max measure for hero title, summary, and actions
+	StoreHeroArtMaxW       float32 = 460 // max illustration width (460:220 native ratio)
+	StoreHeroArtH          float32 = 220 // illustration draw height inside hero
+	StoreHeroMinArtWidth   float32 = 580 // minimum hero card width to display side artwork
 	// Segmented control metrics.
 	SegmentedControlHeight = HeightControl
 	SegmentedInnerHeight   = HeightChrome

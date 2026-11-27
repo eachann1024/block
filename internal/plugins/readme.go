@@ -188,6 +188,15 @@ func (s *StoreManager) fetchGitHubReadme(ctx context.Context, repo, endpoint str
 	}
 }
 
+// ArtworkBaseURL returns the directory used to fetch optional App Store SVGs.
+func (e StoreAppEntry) ArtworkBaseURL() *url.URL {
+	repo := readmeRepo(e.Repo)
+	if repo == "" {
+		return nil
+	}
+	return &url.URL{Scheme: "https", Host: "raw.githubusercontent.com", Path: "/" + repo + "/HEAD/store/"}
+}
+
 func readmeRepo(repo string) string {
 	repo = strings.TrimSpace(repo)
 	owner, name, _ := strings.Cut(repo, "/")

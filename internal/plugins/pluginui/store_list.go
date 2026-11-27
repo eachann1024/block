@@ -114,7 +114,7 @@ func renderStoreRow(
 				FontWeight(theme.WeightTitle).TextColor(rankColor).SingleLine()
 		}
 		renderStorePluginIcon(
-			c, entry, card.source == storeSourceOfficial,
+			c, ctrl, entry,
 			theme.StoreIconBoxSize, theme.StoreIconGlyphSize, theme.RadiusLG,
 			iconBG, iconBorder, iconColors, hovered || pressed,
 		)
