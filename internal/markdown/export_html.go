@@ -8,6 +8,7 @@ import (
 
 	"block/internal/media"
 	"block/internal/model"
+	"block/internal/theme"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -25,6 +26,9 @@ type htmlRenderState struct {
 
 func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) string {
 	pal, legacy := resolveExportPaper(prefs)
+	if !legacy {
+		theme.EnsureExportFontsForFamilies(ThemeWebFontFamilies(pal.Theme))
+	}
 	width := resolveExportWidth(prefs)
 	showTitle := resolveShowTitle(prefs)
 	watermark := resolveWatermark(prefs)
@@ -32,17 +36,11 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	vars := newTemplateVars(notePath, title, time.Now().UTC())
 	css := buildHTMLStylesheet(pal, legacy, width, title, showTitle)
 
-	var out strings.Builder
-	out.WriteString("<!DOCTYPE html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\">")
-	out.WriteString(fmt.Sprintf("<meta name=\"viewport\" content=\"width=%d\">", width))
-	out.WriteString("<title>")
-	out.WriteString(escapeHTMLText(title))
-	out.WriteString(`</title><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>`)
-	out.WriteString(css)
-	out.WriteString("</style></head><body><div class=\"page\">")
+	var bodyOut strings.Builder
+	bodyOut.WriteString(`<div class="page">`)
 
 	if !legacy {
-		out.WriteString(renderHTMLOrnaments(pal, legacy, vars, showTitle))
+		bodyOut.WriteString(renderHTMLOrnaments(pal, legacy, vars, showTitle))
 	}
 
 	bodyBlocks := projectExportPreviews(exportBodyBlocks(doc.Blocks, title, showTitle))
@@ -56,69 +54,83 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		if hasIntro {
 			if showTitle && len(intro) == 0 {
 				padY := minFloat32(sec.PadY, 24)
-				out.WriteString(fmt.Sprintf(`<section class="paper-section" style="padding-top:%.0fpx;padding-bottom:%.0fpx">`, padY, padY))
+				bodyOut.WriteString(fmt.Sprintf(`<section class="paper-section" style="padding-top:%.0fpx;padding-bottom:%.0fpx">`, padY, padY))
 			} else {
-				out.WriteString(`<section class="paper-section">`)
+				bodyOut.WriteString(`<section class="paper-section">`)
 			}
 			if showTitle {
-				out.WriteString(renderHTMLMeta(pal, vars))
-				out.WriteString(renderHTMLHeader(pal, legacy, title, len(intro) == 0))
+				bodyOut.WriteString(renderHTMLMeta(pal, vars))
+				bodyOut.WriteString(renderHTMLHeader(pal, legacy, title, len(intro) == 0))
 			}
-			renderHTMLBlockSlice(&out, intro, notePath, pal, legacy, &st)
-			out.WriteString(`</section>`)
+			renderHTMLBlockSlice(&bodyOut, intro, notePath, pal, legacy, &st)
+			bodyOut.WriteString(`</section>`)
 		}
 		for _, run := range runs {
 			st.num = listNumbering{}
-			out.WriteString(`<section class="paper-section">`)
-			renderHTMLBlockSlice(&out, run, notePath, pal, legacy, &st)
-			out.WriteString(`</section>`)
+			bodyOut.WriteString(`<section class="paper-section">`)
+			renderHTMLBlockSlice(&bodyOut, run, notePath, pal, legacy, &st)
+			bodyOut.WriteString(`</section>`)
 		}
 		if watermark {
-			out.WriteString(renderHTMLFooter(pal, legacy, vars))
+			bodyOut.WriteString(renderHTMLFooter(pal, legacy, vars))
 		}
 
 	case !legacy && pal.Card != nil && pal.Card.BodyOnly:
 		if showTitle {
-			out.WriteString(renderHTMLMeta(pal, vars))
+			bodyOut.WriteString(renderHTMLMeta(pal, vars))
 		}
-		out.WriteString(`<article class="paper">`)
-		out.WriteString(renderHTMLCardLabel(pal, vars))
+		bodyOut.WriteString(`<article class="paper">`)
+		bodyOut.WriteString(renderHTMLCardLabel(pal, vars))
 		if showTitle {
-			out.WriteString(renderHTMLHeader(pal, legacy, title, false))
+			bodyOut.WriteString(renderHTMLHeader(pal, legacy, title, false))
 		} else {
-			out.WriteString(renderHTMLNoTitleBar(pal, legacy))
+			bodyOut.WriteString(renderHTMLNoTitleBar(pal, legacy))
 		}
-		renderHTMLBlockSlice(&out, bodyBlocks, notePath, pal, legacy, &st)
-		out.WriteString(renderHTMLRelocatedOrnaments(pal, legacy, vars, showTitle))
-		out.WriteString(`</article>`)
+		renderHTMLBlockSlice(&bodyOut, bodyBlocks, notePath, pal, legacy, &st)
+		bodyOut.WriteString(renderHTMLRelocatedOrnaments(pal, legacy, vars, showTitle))
+		bodyOut.WriteString(`</article>`)
 		if watermark {
-			out.WriteString(renderHTMLFooter(pal, legacy, vars))
+			bodyOut.WriteString(renderHTMLFooter(pal, legacy, vars))
 		}
 
 	default:
-		out.WriteString(`<article class="paper">`)
+		bodyOut.WriteString(`<article class="paper">`)
 		if !legacy {
-			out.WriteString(renderHTMLCardLabel(pal, vars))
+			bodyOut.WriteString(renderHTMLCardLabel(pal, vars))
 		}
 		if showTitle {
 			if !legacy {
-				out.WriteString(renderHTMLMeta(pal, vars))
+				bodyOut.WriteString(renderHTMLMeta(pal, vars))
 			}
-			out.WriteString(renderHTMLHeader(pal, legacy, title, false))
+			bodyOut.WriteString(renderHTMLHeader(pal, legacy, title, false))
 		} else {
-			out.WriteString(renderHTMLNoTitleBar(pal, legacy))
+			bodyOut.WriteString(renderHTMLNoTitleBar(pal, legacy))
 		}
-		renderHTMLBlockSlice(&out, bodyBlocks, notePath, pal, legacy, &st)
-		out.WriteString(renderHTMLRelocatedOrnaments(pal, legacy, vars, showTitle))
+		renderHTMLBlockSlice(&bodyOut, bodyBlocks, notePath, pal, legacy, &st)
+		bodyOut.WriteString(renderHTMLRelocatedOrnaments(pal, legacy, vars, showTitle))
 		if watermark {
-			out.WriteString(renderHTMLFooter(pal, legacy, vars))
+			bodyOut.WriteString(renderHTMLFooter(pal, legacy, vars))
 		} else {
-			out.WriteString(`<div style="height:16px"></div>`)
+			bodyOut.WriteString(`<div style="height:16px"></div>`)
 		}
-		out.WriteString(`</article>`)
+		bodyOut.WriteString(`</article>`)
 	}
 
-	out.WriteString("</div></body></html>\n")
+	bodyOut.WriteString("</div>")
+	bodyHTML := bodyOut.String()
+	embeddedFontCSS := buildHTMLEmbeddedFontsCSS(pal, legacy, bodyHTML)
+
+	var out strings.Builder
+	out.WriteString("<!DOCTYPE html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\">")
+	out.WriteString(fmt.Sprintf("<meta name=\"viewport\" content=\"width=%d\">", width))
+	out.WriteString("<title>")
+	out.WriteString(escapeHTMLText(title))
+	out.WriteString(`</title><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>`)
+	out.WriteString(embeddedFontCSS)
+	out.WriteString(css)
+	out.WriteString("</style></head><body>")
+	out.WriteString(bodyHTML)
+	out.WriteString("</body></html>\n")
 	return out.String()
 }
 

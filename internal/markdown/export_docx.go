@@ -13,6 +13,7 @@ import (
 
 	"block/internal/media"
 	"block/internal/model"
+	"block/internal/theme"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -140,6 +141,9 @@ func docxBorderSz(px float32) int {
 
 func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
 	pal, legacy := resolveExportPaper(prefs)
+	if !legacy {
+		theme.EnsureExportFontsForFamilies(ThemeWebFontFamilies(pal.Theme))
+	}
 	pageW := float32(resolveExportWidth(prefs))
 	showTitle := resolveShowTitle(prefs)
 	topM, rightM, bottomM, leftM := pal.Margins()
@@ -299,10 +303,23 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		xmlDecl, docxNS, docxHex(pal.InnerCanvas), body.String(),
 	)
 
+	fontBundle := buildDOCXEmbeddedFonts(docXML, pal)
 	stylesXML := buildDOCXStyles(pal, legacy)
+	embedSettings := ""
+	fontContentTypes := ""
+	fontTableRel := ""
+	if fontBundle.hasFonts() {
+		embedSettings = `<w:embedTrueTypeFonts/><w:saveSubsetFonts/>`
+		fontContentTypes = `<Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>` +
+			`<Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>`
+		fontTableRelID := fmt.Sprintf("rId%d", assets.nextRelID)
+		assets.nextRelID++
+		fontTableRel = fmt.Sprintf(`<Relationship Id="%s" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>`, fontTableRelID)
+	}
+
 	settingsXML := fmt.Sprintf(
-		`%s<w:settings %s><w:displayBackgroundShape/><w:autoHyphenation w:val="0"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`,
-		xmlDecl, docxNS,
+		`%s<w:settings %s><w:displayBackgroundShape/>%s<w:autoHyphenation w:val="0"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`,
+		xmlDecl, docxNS, embedSettings,
 	)
 	contentTypes := xmlDecl + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
 		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-officedocument.relationships+xml"/>` +
@@ -313,11 +330,12 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		`<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
 		`<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>` +
 		`<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>` +
+		fontContentTypes +
 		`</Types>`
 	rootRels := xmlDecl + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`
 	docRels := fmt.Sprintf(
-		`%s<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>%s</Relationships>`,
-		xmlDecl, strings.Join(assets.rels, ""),
+		`%s<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>%s%s</Relationships>`,
+		xmlDecl, fontTableRel, strings.Join(assets.rels, ""),
 	)
 
 	var zipBuf bytes.Buffer
@@ -341,8 +359,25 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		{"word/settings.xml", []byte(settingsXML)},
 		{"word/document.xml", []byte(docXML)},
 	}
+	if fontBundle.hasFonts() {
+		entries = append(entries,
+			struct {
+				name string
+				data []byte
+			}{"word/fontTable.xml", []byte(fontBundle.fontTableXML)},
+			struct {
+				name string
+				data []byte
+			}{"word/_rels/fontTable.xml.rels", []byte(fontBundle.fontTableRelsXML)},
+		)
+	}
 	for _, e := range entries {
 		if err := writeZipEntry(e.name, e.data); err != nil {
+			return nil, err
+		}
+	}
+	for _, fp := range fontBundle.parts {
+		if err := writeZipEntry(fp.path, fp.data); err != nil {
 			return nil, err
 		}
 	}

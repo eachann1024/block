@@ -32,8 +32,27 @@ const (
 type webFontFace struct {
 	family   string
 	fileName string
+	cdnPath  string
+	weight   int
+	italic   bool
 	size     int64
 	sha256   string
+}
+
+func (f webFontFace) remotePath() string {
+	if f.cdnPath != "" {
+		return f.cdnPath
+	}
+	return f.fileName
+}
+
+// CachedWebFontFace describes a locally cached, integrity-verified static font
+// file available for export subsetting without performing any network IO.
+type CachedWebFontFace struct {
+	Family string
+	Weight int
+	Italic bool
+	Data   []byte
 }
 
 type webFontFamilySource struct {
@@ -51,18 +70,21 @@ var harmonyUIFaces = []webFontFace{
 	{
 		family:   harmonyFontFamily,
 		fileName: "HarmonyOS_Sans_SC_Regular.ttf",
+		weight:   400,
 		size:     8261128,
 		sha256:   "297b088424be212207df2ce8b98e335468b782aa6b96832af0b8b773d711e2b1",
 	},
 	{
 		family:   harmonyFontFamily,
 		fileName: "HarmonyOS_Sans_SC_Medium.ttf",
+		weight:   500,
 		size:     8227312,
 		sha256:   "6ed1553edccddc48eb27ff25d134a4a715cf54211238d4840b3038576cba1944",
 	},
 	{
 		family:   harmonyFontFamily,
 		fileName: "HarmonyOS_Sans_SC_Bold.ttf",
+		weight:   700,
 		size:     8158996,
 		sha256:   "43a424b85e47fb53a17b3b32026a71801f86f8e022ca6798d186b47d39fa5f01",
 	},
@@ -71,6 +93,7 @@ var harmonyUIFaces = []webFontFace{
 var harmonyBlackFace = webFontFace{
 	family:   harmonyFontFamily,
 	fileName: "HarmonyOS_Sans_SC_Black.ttf",
+	weight:   900,
 	size:     8125608,
 	sha256:   "5de9560908e88820df2e0a5ed9465bc44644ae2ce1cd6c194b76f2ed8e8f186e",
 }
@@ -80,43 +103,54 @@ var lxgwWenKaiFaces = []webFontFace{
 	{
 		family:   lxgwWenKaiFontFamily,
 		fileName: "LXGWWenKai-Regular.ttf",
+		weight:   400,
 		size:     24744500,
 		sha256:   "8d6ba638ac9553413354cfaab97637c1cd778444e259441ea1e5f8fb2c697fba",
 	},
 	{
 		family:   lxgwWenKaiFontFamily,
 		fileName: "LXGWWenKai-Medium.ttf",
+		weight:   500,
 		size:     24289708,
 		sha256:   "d7a98ff8898087f019e5617d026c3f83158926ec9e657184920dc4bc7d7d97c8",
 	},
 }
 
-// Official Noto Serif SC v2.003 Subset OTF weights (notofonts/noto-cjk@Serif2.003).
+// Official Google Fonts Noto Serif SC static TrueType weights (@expo-google-fonts/noto-serif-sc@0.4.4).
+// TrueType outlines guarantee native compatibility across CoreText, DirectWrite, HTML WOFF2, and Word .odttf embedding.
 // Regular & Bold appear first so body and standard headings settle immediately.
 var notoSerifSCFaces = []webFontFace{
 	{
 		family:   notoSerifSCFontFamily,
-		fileName: "NotoSerifSC-Regular.otf",
-		size:     11625800,
-		sha256:   "e8f396decc1f0963a016a989c3d8852e863d1350996f573860a80767c83a1cd3",
+		fileName: "NotoSerifSC_400Regular.ttf",
+		cdnPath:  "400Regular/NotoSerifSC_400Regular.ttf",
+		weight:   400,
+		size:     14807636,
+		sha256:   "c358a69de3df5f423a8946a7b03e3126fb6ba116f1130a463455b4e39e1f0742",
 	},
 	{
 		family:   notoSerifSCFontFamily,
-		fileName: "NotoSerifSC-Bold.otf",
-		size:     12094336,
-		sha256:   "24693d48bdb9152f0a06b02af625638a1097abd6de4010ebba027f6e82710527",
+		fileName: "NotoSerifSC_700Bold.ttf",
+		cdnPath:  "700Bold/NotoSerifSC_700Bold.ttf",
+		weight:   700,
+		size:     14806580,
+		sha256:   "9c6a2ba736e4b499c84f65ce366bd3625c0401885fd3e585ace50fb738b96ff6",
 	},
 	{
 		family:   notoSerifSCFontFamily,
-		fileName: "NotoSerifSC-SemiBold.otf",
-		size:     11771476,
-		sha256:   "517d9736136b3b4e9aea742a7e1acda1922aea91a4425bd8db79281934055bf5",
+		fileName: "NotoSerifSC_600SemiBold.ttf",
+		cdnPath:  "600SemiBold/NotoSerifSC_600SemiBold.ttf",
+		weight:   600,
+		size:     14807044,
+		sha256:   "5d19e0f438d4a30371f584d34a87c9232dba0a85237db63fe5337fe743487def",
 	},
 	{
 		family:   notoSerifSCFontFamily,
-		fileName: "NotoSerifSC-Black.otf",
-		size:     11862600,
-		sha256:   "91dde57622845beeb663f300813999febdb7fcd5e451bde199d7c954a9740cb4",
+		fileName: "NotoSerifSC_900Black.ttf",
+		cdnPath:  "900Black/NotoSerifSC_900Black.ttf",
+		weight:   900,
+		size:     14807620,
+		sha256:   "092e71a70c744be3cc33999eb4edcb10fbe95c1b4cff6c2d7f04d6ff15d031e2",
 	},
 }
 
@@ -137,12 +171,13 @@ var lxgwCDNBaseURLs = []string{
 const lxgwTarballMirrorURL = "https://registry.npmmirror.com/@fontpkg/lxgw-wen-kai/-/lxgw-wen-kai-1.520.0.tgz"
 
 var notoSerifCDNBaseURLs = []string{
-	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@Serif2.003/Serif/SubsetOTF/SC/",
-	"https://fastly.jsdelivr.net/gh/notofonts/noto-cjk@Serif2.003/Serif/SubsetOTF/SC/",
-	"https://gcore.jsdelivr.net/gh/notofonts/noto-cjk@Serif2.003/Serif/SubsetOTF/SC/",
-	"https://testingcf.jsdelivr.net/gh/notofonts/noto-cjk@Serif2.003/Serif/SubsetOTF/SC/",
-	"https://raw.githubusercontent.com/notofonts/noto-cjk/Serif2.003/Serif/SubsetOTF/SC/",
+	"https://cdn.jsdelivr.net/npm/@expo-google-fonts/noto-serif-sc@0.4.4/",
+	"https://fastly.jsdelivr.net/npm/@expo-google-fonts/noto-serif-sc@0.4.4/",
+	"https://gcore.jsdelivr.net/npm/@expo-google-fonts/noto-serif-sc@0.4.4/",
+	"https://unpkg.com/@expo-google-fonts/noto-serif-sc@0.4.4/",
 }
+
+const notoSerifTarballMirrorURL = "https://registry.npmmirror.com/@expo-google-fonts/noto-serif-sc/-/noto-serif-sc-0.4.4.tgz"
 
 var (
 	harmonyExportSource = webFontFamilySource{
@@ -160,9 +195,11 @@ var (
 		faces:            lxgwWenKaiFaces,
 	}
 	notoSerifExportSource = webFontFamilySource{
-		family:      notoSerifSCFontFamily,
-		cdnBaseURLs: notoSerifCDNBaseURLs,
-		faces:       notoSerifSCFaces,
+		family:           notoSerifSCFontFamily,
+		cdnBaseURLs:      notoSerifCDNBaseURLs,
+		tarballMirrorURL: notoSerifTarballMirrorURL,
+		tarballMaxBytes:  96 << 20,
+		faces:            notoSerifSCFaces,
 	}
 	exportWebFontSources = map[string]webFontFamilySource{
 		strings.ToLower(harmonyFontFamily):     harmonyExportSource,
@@ -177,13 +214,48 @@ var (
 )
 
 func buildManagedWebFontFileSet() map[string]bool {
-	set := make(map[string]bool, len(harmonyExportSource.faces)+len(lxgwWenKaiFaces)+len(notoSerifSCFaces))
+	set := make(map[string]bool, len(harmonyExportSource.faces)+len(lxgwWenKaiFaces)+len(notoSerifSCFaces)+4)
 	for _, src := range []webFontFamilySource{harmonyExportSource, lxgwExportSource, notoSerifExportSource} {
 		for _, face := range src.faces {
 			set[strings.ToLower(face.fileName)] = true
 		}
 	}
+	// Legacy OTF filenames from prior cache layout remain treated as managed.
+	for _, legacy := range []string{
+		"notoserifsc-regular.otf",
+		"notoserifsc-semibold.otf",
+		"notoserifsc-bold.otf",
+		"notoserifsc-black.otf",
+	} {
+		set[legacy] = true
+	}
 	return set
+}
+
+// ReadCachedWebFontFaces returns all locally cached, SHA256-verified static
+// font faces for family without triggering any network IO or system scans.
+func ReadCachedWebFontFaces(dataDir, family string) []CachedWebFontFace {
+	src, ok := exportWebFontSources[strings.ToLower(strings.TrimSpace(family))]
+	if !ok {
+		return nil
+	}
+	if dataDir == "" {
+		dataDir = AppDataDir()
+	}
+	out := make([]CachedWebFontFace, 0, len(src.faces))
+	for _, face := range src.faces {
+		data, ok := readCachedWebFontBytes(dataDir, face)
+		if !ok {
+			continue
+		}
+		out = append(out, CachedWebFontFace{
+			Family: face.family,
+			Weight: face.weight,
+			Italic: face.italic,
+			Data:   data,
+		})
+	}
+	return out
 }
 
 // IsManagedWebFontFile reports whether name matches one of the exact filenames
@@ -772,7 +844,7 @@ func downloadMissingWebFontSource(dataDir string, src webFontFamilySource, onUpd
 					break
 				}
 				reqCtx, reqCancel := context.WithTimeout(ctx, faceDownloadTimeout(face.size))
-				data, err := fetchFontBytes(reqCtx, client, base+face.fileName, face.size+1024)
+				data, err := fetchFontBytes(reqCtx, client, base+face.remotePath(), face.size+1024)
 				reqCancel()
 				if err != nil {
 					continue
