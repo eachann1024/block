@@ -1,10 +1,74 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T20:35:11.649Z",
-  "latest_version": "1.0.973",
-  "latest_tag": "v1.0.973",
+  "updated_at": "2026-11-27T20:54:17.335Z",
+  "latest_version": "1.0.974",
+  "latest_tag": "v1.0.974",
   "releases": [
+    {
+      "version": "1.0.974",
+      "tag": "v1.0.974",
+      "published_at": "2026-11-27T20:54:16Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.974",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "AI 对话：结构化回复在首轮对话中默认使用深度 UI。",
+          "导入导出：导出 HTML 和 DOCX 时会嵌入子集 TrueType 字体，支持 WOFF2 和 ODTTF 格式。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "思维导图：节点文字现在会在框内垂直居中。",
+          "插件页面：面包屑中的斜杠与文字现在会垂直对齐。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "AI Chat: Structured replies now use the deep UI by default on the first turn.",
+          "Import & Export: HTML and DOCX exports now embed subsets of TrueType fonts in WOFF2 or ODTTF format."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Mind Map: Node text is now vertically centered inside its box.",
+          "Plugin Page: The breadcrumb slash and text are now vertically aligned."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.974/block-macos-arm64.dmg",
+          "size": 20645058,
+          "sha256": "0193e56cdb0496d09174154bb6c42c86f61936499b2c49fc069d832ae9145f34"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.974/block-macos-x64.dmg",
+          "size": 22731158,
+          "sha256": "793b501a9bc504930f9dc3e60d86e6b433eb4700c8790d2579c600fe8d36222b"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.974/block-windows-x64-setup.exe",
+          "size": 18031387,
+          "sha256": "7f92011965e83b88634b268b5493520f2393a1f15f535035dd09768b40fcceff"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.974/block-linux-x64.deb",
+          "size": 14425762,
+          "sha256": "e2405ed78a7ec2f2714d9357f444199d7fdfa2e8ce2fe7bb170941a3f0405c17"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.974/block-linux-x64.AppImage",
+          "size": 28105208,
+          "sha256": "7c3f9e22a350e191fe294192ffcdf2f7dfe984bfdde5d39e625ad491a5ab4de6"
+        }
+      ]
+    },
     {
       "version": "1.0.973",
       "tag": "v1.0.973",
@@ -40,38 +104,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-macos-arm64.dmg",
-          "size": 19181890,
-          "sha256": "00596a465358cf777911e190aa99db57db7842c66f1505ad2ec7dbeea9c185db"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-macos-x64.dmg",
-          "size": 21191797,
-          "sha256": "7b9bee92f9ea16a44643746c0777bdbbc69de5775bd4cd061ec5ae3c791dd92d"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-windows-x64-setup.exe",
-          "size": 16638097,
-          "sha256": "93abcb8e50a363b4845d6b16127da2e82957d0d5d278fdf279cbdb847e70944c"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-linux-x64.deb",
-          "size": 13505896,
-          "sha256": "db63246390dd5e518a99b7d86fbb26f207d4a7311f193aa540fc857f32063222"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-linux-x64.AppImage",
-          "size": 26819064,
-          "sha256": "6bb52534c0003cbcd38ee5322d84a89ae77324b07152dadf1cef253971229186"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.972",
@@ -1716,31 +1749,6 @@
         "fixes": [
           "Sidebar: The selected tint swatch ring is cleaned up.",
           "Sidebar: The selected tint swatch is marked with a check instead of a ring."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.921",
-      "tag": "v1.0.921",
-      "published_at": "2026-11-24T04:59:16Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.921",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "侧边栏：图标选择面板现在会与点击的行保持平齐。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Sidebar: The icon picker now opens level with the clicked row."
         ],
         "other": []
       },
