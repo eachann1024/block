@@ -229,8 +229,8 @@ const aiWorkflowScene = makeScene2D(function* (view) {
   const specDock = createRef<Rect>();
   const specUrlText = () =>
     isEn()
-      ? "docs.block.cooool.top/en/plugin-dev-for-ai.md"
-      : "docs.block.cooool.top/plugin-dev-for-ai.md";
+      ? "docs.block.cooool.top/plugin-dev-for-ai.md"
+      : "docs.block.cooool.top/zh/plugin-dev-for-ai.md";
   const btnCopied = createSignal(false);
 
   view.add(
@@ -529,8 +529,8 @@ const aiWorkflowScene = makeScene2D(function* (view) {
                       fill: () => pal().accentStrong,
                       text: () =>
                         isEn()
-                          ? "en/plugin-dev-for-ai.md"
-                          : "plugin-dev-for-ai.md",
+                          ? "plugin-dev-for-ai.md"
+                          : "zh/plugin-dev-for-ai.md",
                     }),
                   ],
                 }),

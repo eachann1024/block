@@ -1,72 +1,72 @@
-# Block 设计语言与配色规范（Ocean Paper）
+# Block Design Language & Color Specification (Ocean Paper)
 
-> 内容优先、紧凑克制、严格对齐、精准轮廓、全局一致。本文是 Block 桌面端 MyGo 实现的强制视觉与交互基线，与 `internal/theme/theme.go` 完全对齐。
-
----
-
-## 1. 视觉基调与克制原则
-
-安静紧凑的桌面写作工具：文字为主体，导航贴边退让，控件按需响应。浅色如干净纸面，深色采用中性石墨灰分层；以 `1px` 精准内轮廓（`inset 0 0 0 1px`）配合轻量选中底色指示选中状态，不靠大面积浓色、发光阴影或渐变吸引注意力。
-
-- **独立视图不平铺**：设置界面为独立整窗视图（左侧为设置分类侧栏 `260px`，右侧为当前选中分类的设置画布），点击左侧分类切换对应单页内容，**严禁将所有设置分类平铺堆叠在同一长页**。
-- **文案极简克制**：设置项与菜单只保留承载信息的名称标签，**不添加冗余小字副标题、常识解释或装饰角标（eyebrow）**；正文不小于 `14px`。
-- **扁平纯色表面**：卡片、按钮、输入框与分段控制器均采用单层细边框与纯色表面，禁止彩色外发光、重投影或渐变背景。
+> Content-first, compact and restrained, strictly aligned, crisp outlines, globally consistent. This document is the mandatory visual and interaction baseline for the Block desktop MyGo implementation and stays strictly aligned with `internal/theme/theme.go`.
 
 ---
 
-## 2. Ocean Paper 语义色板（与 `internal/theme/theme.go` 一致）
+## 1. Visual Tone & Restraint Principles
 
-所有设计稿（`.dc.html`）与 Go MyGo 组件（`internal/theme/theme.go`）必须严格使用以下语义颜色，禁止私自硬编码偏离色相（如深海军蓝底或高饱和蓝框）：
+A quiet, compact desktop writing tool: text takes center stage, navigation recedes to the edges, and controls respond on demand. Light mode reads like clean paper; dark mode uses layered neutral graphite. Selection is indicated with a crisp `1px` inner outline (`inset 0 0 0 1px`) paired with a subtle tinted fill—never heavy color blocks, glowing shadows, or gradients.
 
-| 语义角色 | Token 名称 | 浅色（Ocean Light） | 深色（Ocean Dark） | 用途说明 |
+- **Dedicated views, never stacked**: Settings is a standalone full-window view (left category sidebar `260px`, right canvas for the active category). Clicking a category switches to that single page; **never stack all settings categories into one long scrollable page**.
+- **Minimal copy**: Settings items and menus keep only informative labels—**no redundant subtitle text, obvious explanations, or decorative eyebrow badges**. Body text is never smaller than `14px`.
+- **Flat solid surfaces**: Cards, buttons, inputs, and segmented controls use single-layer hairline borders and solid fills; colored outer glows, heavy drop shadows, and gradient backgrounds are forbidden.
+
+---
+
+## 2. Ocean Paper Semantic Palette (Aligned with `internal/theme/theme.go`)
+
+All design canvases (`.dc.html`) and Go MyGo components (`internal/theme/theme.go`) must use these semantic tokens exclusively. Hardcoding off-palette hues (such as deep navy fills or oversaturated blue borders) is prohibited:
+
+| Semantic Role | Token | Ocean Light | Ocean Dark | Usage |
 | --- | --- | --- | --- | --- |
-| 安静壳层 | `shell` | `#f1f1f1` | `#262626` | 顶部标题栏、分段槽底、次级输入底 |
-| 侧栏表面 | `sidebar` | `#fafafa` | `#222222` | 左侧文件树、独立设置分类侧栏 |
-| 设置画布 | `settings-bg` | `#f8f8f8` | `#181818` | 设置主内容区画布背景 |
-| 阅读纸面 / 卡片 | `paper` | `#ffffff` | `#181818`（浮层/卡片 `#222222`） | 正文纸面、设置分组卡片、白底按钮 |
-| 菜单表面 | `menu` | `#ffffff` | `#222222` | 下拉菜单、右键菜单、浮层面板 |
-| 主要文字 | `text-primary` | `#20242c`（编辑器 `#1f1e1d`） | `#ececec` | 标题、正文、表单主标签 |
-| 次级文字 | `text-secondary` | `#526071`（编辑器 `#52514e`） | `#b4b4b4` | 辅助信息、快捷键提示、未选中标签 |
-| Ocean 强调轮廓 | `accent` | `#547dd0`（悬停 `#3d63b0`） | `#779de8` | 光标、文本选区、链接、拖拽插入线、输入框聚焦、主按钮与开关 |
-| 双色图标填充 | `icon-fill` | `#dcdcd9` | `#474747` | Duo 图标体系的中性灰填充面 |
-| 轻悬停底 | `hover` | `#f0f0ef` | `#2c2c2c` | 列表行、按钮、菜单项悬停反馈 |
-| 选中表面 | `selected` | `#e5e5e3` | `#3a3a3a` | 选中列表行、分段项、选中卡片底色 |
-| 选中轮廓 | `selected-border` | `rgba(0,0,0,.10)` | `rgba(255,255,255,.12)` | 需要与悬停区分的选中项 `1px` 中性内轮廓 |
-| 细分割线 / 卡片边 | `hairline` / `border` | `#e4e6ea`（壳层分隔 `#e6e6e6`） | `#292929`（壳层分隔 `#292929`） | 设置卡片外框、区域分隔线 |
-| 按钮与控件边框 | `btn-border` | `#dcdcdc` | `#444444` | 次级按钮、输入框、键帽边框 |
-| 代码块背景 | `code-bg` | `#f3f1ec` | `#242424` | 行内代码与代码块底色 |
-| 引用竖条 | `quote-bar` | `#dbd9d4` | `#484848` | 引用块左侧竖条 |
-| 文本选区 | `selection` | `#cde2fb`（字 `#184f95`） | `#2d426b`（字 `#9dbcf5`） | 编辑器与输入框文本选区 |
+| Quiet shell | `shell` | `#f1f1f1` | `#262626` | Top titlebar, segmented track fill, secondary input fill |
+| Sidebar surface | `sidebar` | `#fafafa` | `#222222` | Left file tree, standalone settings category sidebar |
+| Settings canvas | `settings-bg` | `#f8f8f8` | `#181818` | Settings main content canvas background |
+| Reading paper / card | `paper` | `#ffffff` | `#181818` (popover/card `#222222`) | Editor paper, settings group cards, white buttons |
+| Menu surface | `menu` | `#ffffff` | `#222222` | Dropdown menus, context menus, popover panels |
+| Primary text | `text-primary` | `#20242c` (editor `#1f1e1d`) | `#ececec` | Headings, body copy, primary form labels |
+| Secondary text | `text-secondary` | `#526071` (editor `#52514e`) | `#b4b4b4` | Helper info, shortcut hints, inactive tabs |
+| Ocean accent | `accent` | `#547dd0` (hover `#3d63b0`) | `#779de8` | Caret, text selection, links, drag drop-line, input focus, primary buttons & switches |
+| Duo icon fill | `icon-fill` | `#dcdcd9` | `#474747` | Neutral gray fill surface in the Duo icon system |
+| Subtle hover fill | `hover` | `#f0f0ef` | `#2c2c2c` | Hover feedback for list rows, buttons, and menu items |
+| Selected surface | `selected` | `#e5e5e3` | `#3a3a3a` | Selected list rows, segmented items, and selected cards |
+| Selected outline | `selected-border` | `rgba(0,0,0,.10)` | `rgba(255,255,255,.12)` | `1px` neutral inner outline for selected items distinguished from hover |
+| Hairline / card border | `hairline` / `border` | `#e4e6ea` (shell divider `#e6e6e6`) | `#292929` (shell divider `#292929`) | Settings card borders and section dividers |
+| Button & control border | `btn-border` | `#dcdcdc` | `#444444` | Secondary buttons, inputs, and keycap borders |
+| Code block background | `code-bg` | `#f3f1ec` | `#242424` | Inline code and code block surface |
+| Blockquote bar | `quote-bar` | `#dbd9d4` | `#484848` | Left vertical bar for blockquotes |
+| Text selection | `selection` | `#cde2fb` (text `#184f95`) | `#2d426b` (text `#9dbcf5`) | Text selection highlight in editor and inputs |
 
 ---
 
-## 3. 字体、字重与几何尺度
+## 3. Typography, Weights & Geometry Scale
 
-| 角色 | 字体栈 | 尺寸与行高 | 字重 |
+| Role | Font Stack | Size / Line Height | Weight |
 | --- | --- | --- | --- |
-| UI 界面与控件 | macOS `SF Pro`（`.SystemUIFont`），中文回退 `PingFang SC`；Windows `Segoe UI` | `14px / 20px`（基线） | 常规 `400`、控件/导航 `460`、分组标题 `560` |
-| 设置页大标题 | 同 UI 字体栈 | `24px / 32px` | `560` |
-| 设置卡片标题 | 同 UI 字体栈 | `15px / 22px` | `560` |
-| 编辑器正文 | 无衬线 `.SystemUIFont`；衬线 `LXGW WenKai` / `Songti SC` | `16px`（标准版心净宽 `672px`–`720px`） | `400` |
-| 等宽代码与键帽 | `JetBrains Mono, Menlo, ui-monospace, monospace` | 代码 `13px–14px`；键帽 `12px / 14px` | `400` / `500` |
+| UI & controls | macOS `SF Pro` (`.SystemUIFont`), CJK fallback `PingFang SC`; Windows `Segoe UI` | `14px / 20px` (baseline) | Regular `400`, controls/nav `460`, group headings `560` |
+| Settings page title | Same as UI stack | `24px / 32px` | `560` |
+| Settings card title | Same as UI stack | `15px / 22px` | `560` |
+| Editor body | Sans `.SystemUIFont`; Serif `LXGW WenKai` / `Songti SC` | `16px` (standard reading measure `672px`–`720px`) | `400` |
+| Monospace code & keycaps | `JetBrains Mono, Menlo, ui-monospace, monospace` | Code `13px–14px`; keycaps `12px / 14px` | `400` / `500` |
 
-### 布局与控件尺寸基线
+### Layout & Control Baselines
 
-- **顶栏高度**：`40px`，左列宽 `260px`（与侧栏对齐，含窗口红黄绿控制点与侧栏收起按钮）。
-- **左侧栏宽度**：`260px`，列表项高度 `32px`、圆角引用 `theme.RadiusControl`（`8px`）、内边距 `0 8px`。
-- **设置内容区**：背景为 `settings-bg`（`#f8f8f8` / `#181818`），居中容器 `max-width: 720px`，内边距 `40px 28px 64px`。
-- **设置分组卡片**：背景为 `paper`（`#ffffff` / `#222222`），边框 `1px solid border`（`#e4e6ea` / `#292929`），圆角引用 `theme.RadiusSurface`（`14px`），内边距 `18px 20px`，行间距 `14px–16px`。
-- **分段控制器（Segmented Control）**：外槽 `background: shell; border: 1px solid border; padding: 3px; gap: 2px`，外槽与内部按钮 `.seg`（高 `32px–34px`）圆角统一引用 `theme.RadiusControl`（`8px`），选中态 `background: selected; color: text-primary; box-shadow: inset 0 0 0 1px accent`。
-- **三联直选卡片（AI 服务商方案 C）**：仅保留 **DeepSeek**、**OpenAI 协议**、**Claude 协议** 三项，横排等宽，默认态 `background: shell; border: 1px solid border`，选中态 `background: selected; border: 1px solid accent; box-shadow: inset 0 0 0 1px accent`。
-- **全局拨弦开关（Pluck Switch）**：全应用所有布尔开关统一调用 `internal/ui.Switch` / `SwitchWithOptions` / `TogglePill`（禁止在业务包直调 `ui.SwitchBase`）。所有尺寸共用轻量轨道 `28×16`：开启为浅强调色底（`Accent` 24% 透明度）+ `12px` 强调色圆点，关闭为 `SwitchTrackOff` 浅灰底 + `10px` `SwitchKnobOff` 灰点，圆点无阴影无描边；主控位（如插件页顶栏）用 `SwitchHero`（同款轨道，仅点击高度 `44px`），不再配文字状态标签或 `PluckDivider`。完整覆盖停用、悬停、双向按压拉伸、启动中转圈、失败红框抖动、禁用与键盘焦点环，静止零重绘且遵守减弱动态效果。
-- **插件顶栏轻量操作（Titlebar Ghost Actions）**：所有插件（含第三方）在设置顶栏的主操作、重试、运行中与「⋯」按钮统一由宿主锁定为轻量幽灵样式（`HeightChrome` `26px`、圆角 `RadiusSM` `6px`、透明底、悬停 `ShellChrome().Hover`、按压 `Selected`），与开关之间以 `1×14px` 竖线分隔；正常闲置状态不平铺冗长描述（仅保留极简 `HH:MM` 时间并悬停显示完整信息），仅在告警或出错时展示红色错误胶囊与详情浮层。
-- **复选列表行（插件 checklist）**：选中状态只由强调色复选框表达，行本身保持透明底与 `1px solid border`，悬停/按下才用 `hover` 底色，**禁止选中后整行铺 `selected` 灰底**。
+- **Top bar height**: `40px`, with a `260px` left column (aligned with the sidebar, containing window traffic lights and the sidebar toggle button).
+- **Left sidebar width**: `260px`; list row height `32px`, radius referencing `theme.RadiusControl` (`8px`), horizontal padding `0 8px`.
+- **Settings content area**: Background `settings-bg` (`#f8f8f8` / `#181818`), centered container `max-width: 720px`, padding `40px 28px 64px`.
+- **Settings group card**: Background `paper` (`#ffffff` / `#222222`), border `1px solid border` (`#e4e6ea` / `#292929`), radius referencing `theme.RadiusSurface` (`14px`), padding `18px 20px`, row gap `14px–16px`.
+- **Segmented control**: Outer track `background: shell; border: 1px solid border; padding: 3px; gap: 2px`; both the outer track and inner `.seg` items (height `32px–34px`) reference `theme.RadiusControl` (`8px`); active state uses `background: selected; color: text-primary; box-shadow: inset 0 0 0 1px accent`.
+- **Three-way provider cards (AI Provider Plan C)**: Keep only **DeepSeek**, **OpenAI Protocol**, and **Claude Protocol** in an equal-width horizontal row; default state `background: shell; border: 1px solid border`; selected state `background: selected; border: 1px solid accent; box-shadow: inset 0 0 0 1px accent`.
+- **Global Pluck Switch**: Every boolean switch across the app must call `internal/ui.Switch` / `SwitchWithOptions` / `TogglePill` (never call `ui.SwitchBase` directly from feature packages). All sizes share a lightweight `28×16` track: ON uses a tinted accent fill (`Accent` at 24% opacity) with a `12px` accent knob; OFF uses `SwitchTrackOff` light gray with a `10px` `SwitchKnobOff` gray knob (no knob shadow or stroke). Primary slots (such as plugin settings titlebars) use `SwitchHero` (same track, `44px` hit height) without text status labels or `PluckDivider`. Covers idle, hover, bidirectional press stretch, starting spinner, error red-outline shake, disabled, and keyboard focus ring—zero idle repaints and respects reduced motion.
+- **Plugin Titlebar Ghost Actions**: Primary action, retry, running, and `⋯` buttons in plugin settings titlebars (including third-party plugins) are locked by the host to lightweight ghost styling (`HeightChrome` `26px`, radius `RadiusSM` `6px`, transparent fill, hover `ShellChrome().Hover`, pressed `Selected`), separated from the switch by a `1×14px` vertical divider. Idle state omits verbose descriptions (showing only a compact `HH:MM` timestamp with full details on hover) and surfaces a red error pill with a detail popover only on warning or error.
+- **Checklist rows (plugin checklists)**: Selection is conveyed solely by the accent checkbox; the row itself keeps a transparent fill with `1px solid border` and uses `hover` only on hover/press—**never fill the entire selected row with `selected` gray**.
 
 ---
 
-## 4. 双色语义图标体系（Scheme A Duo Icons）
+## 4. Scheme A Two-Tone Semantic Icons (Duo Icons)
 
-全局菜单、侧栏与设置分组图标采用 **Scheme A 双色语义线稿**：
-- **主轮廓线**：`1.5px–1.6px` 圆端描边，颜色继承 `currentColor`（随正文/次级文字色变化）。
-- **语义填充面**：`#c9d8f3`（深色 `#31456a`），用于标示文档面、面板面或核心几何体。
-- **强调点睛笔触**：`#547dd0`（深色 `#779de8`），用于指示箭头、加号、光标或状态焦点。
+Global menus, sidebars, and settings group icons use **Scheme A two-tone semantic line icons**:
+- **Primary stroke**: `1.5px–1.6px` round-cap stroke inheriting `currentColor` (adapts to primary/secondary text color).
+- **Semantic fill**: `#c9d8f3` (dark `#31456a`), marking document surfaces, panel surfaces, or core geometry.
+- **Accent detail stroke**: `#547dd0` (dark `#779de8`), highlighting arrows, plus marks, carets, or active focus cues.

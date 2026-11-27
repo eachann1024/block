@@ -11,7 +11,7 @@ on:
       - '.ai-map.md'
       - 'docs/**'
       - 'README.md'
-      - 'README.en.md'
+      - 'README.zh-CN.md'
       - 'AGENTS.md'
       - 'DESIGN.md'
       - '.github/pull_request_template.md'

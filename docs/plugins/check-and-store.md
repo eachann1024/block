@@ -1,47 +1,46 @@
 <!-- ai-guide:skip-start -->
-# 本地协议检查与发布到应用商店
+# Local Protocol Check & App Store Publishing
 
-> [← 语言扩展](languages.md) · [文档中心](../README.md) · [AI 单文件全量规范](../plugin-dev-for-ai.md)
+> [← Language Extensions](languages.md) · [Docs Home](../README.md) · [Self-Contained AI Spec](../plugin-dev-for-ai.md)
 
 ---
 <!-- ai-guide:skip-end -->
 
-## 9. 本地协议检查命令
+## 9. Local Protocol Check (`block-plugin-check`)
 
 ```bash
-CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check [-bilingual] /绝对路径/到你的插件目录
+CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check [-bilingual] /abs/path/to/plugin
 ```
 
-`-bilingual` 须放在目录路径之前，单次只接收一个插件目录。终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。若清单声明了已默认放行的权限（如 `storage`、`ui:*`、`system:notify`、`system:badge`），校验器会输出 `[WARN]` 提示删减（不阻断通过；注意 `titlebar_manager`、`block_decorators`、`themes`、`stages` 在清单校验阶段仍需要对应 `ui:*` 权限，勿据此误删）。
+Place `-bilingual` before the plugin directory path; the CLI accepts a single plugin directory per run. Exit code `0` with `[PASS] Plugin "<id>" passed all Block App Store checks.` confirms the local check passed. Default-allowed permissions in `manifest.permissions` produce non-blocking `[WARN]` messages (note: keep required `ui:*` declarations for `titlebar_manager`, `block_decorators`, `themes`, and `stages`).
 
-- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `network_domains`、`exec_allowlist`、`permission_reasons` 键匹配、字数与禁 Emoji 规则，以及 `ignored_dirs` 的权限与目录名约束）、`languages` / `file_icons` / `themes` / `stages`（含 `web/` 静态外网字面量与体积校验）、目录安装（含纯声明式语言包）、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无运行时入口，只校验清单、目录安装、双语文档与语法编译；`entry.js` / `entry.wasm` 在内置 `wazero` + `quickjs-ng` 沙盒中实跑验证）。
-- **双语门禁**：当 `manifest.repo` 属于官方组织（`blockmd-plugins/*`）时，校验器会自动启用双语检查（`verified.json` 1:1 绑定由商店采集器执行；官方仓库 CI 建议显式追加 `-bilingual`，避免清单漏写 `repo` 时跳过检查；社区插件也可追加 `-bilingual` 主动开启）：
-  1. 校验清单中 `name.en`、`summary.en`、`contributes.*.en` 及已声明的 `permission_reasons[*].en` 均为非空纯英文且不含中文字符或中文标点；
-  2. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；若 README 引用了本地图片或 SVG，本地资产须存在，位图与含中文资源须为中英文版本分别提供独立路径，纯英文 UTF-8 `.svg`（零中文字符及全角标点）可由 `README.md` 与 `README.en.md` 共用同一路径（英文版引用的 `.svg` 不得包含中文字符或全角标点）；
-  3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下选定的界面字段及动作返回的 `status`/`page` 零中文残留，并在存在渲染表面时校验中英文初始渲染输出不同（注意：CLI 不扫描按钮动态状态标签或部分时间轴扩展字段，无表面的纯命令插件也没有渲染差异可比，且不自动调用 `plugin.command`，命令返回文案需在桌面端英文模式下复测）。
-- **CLI 边界说明**：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `ContribHost`、系统集成、AI 或 `GetPerfSnapshot` 后端（`host.perf.snapshot` 返回 `-32005`；`store_changelog` 虽出现在 `ui_capabilities` 中，但在 CLI 下调用会返回 `-32601`；`stages` 仅做静态校验）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端进一步验证。
+- **Automated Pipeline**: Runs in a temporary notebook and data directory (20s per-locale RPC budget after install, with a 15s `plugin.initialize` budget): validates `manifest.json` (`network_domains`, `exec_allowlist`, `permission_reasons`, lengths, zero Emoji, and `ignored_dirs` names and permission), `languages` / `file_icons` / `themes` / `stages` (static `web/` offline & size checks), directory installation (including pure declarative packs), initialization, empty and default-value rendering, single-control value sweeps across top-level and `group` `segmented`/`select`/`switch` controls (no multi-control cartesian product; `checklist` not swept), invocation of all initial `header_actions` and top-level `actions` buttons (ignoring `visible_when` and collapsed state; `open_path`/`reveal_path` checked via `os.Stat`; `ok: false` still passes), direct `note.saved` dispatch when `"events:note_saved"` is declared, and `plugin.shutdown`. Interactive `entry.js` / `entry.wasm` packages execute inside the real embedded `wazero` + `quickjs-ng` sandbox.
+- **Bilingual Gate**: Automatically enabled when `manifest.repo` is under `blockmd-plugins/*` (official CI should still pass `-bilingual` explicitly; community plugins may opt in with `-bilingual`; `verified.json` 1:1 binding is enforced by the store crawler):
+  1. Validates `name.en`, `summary.en`, `contributes.*.en`, and declared `permission_reasons[*].en` are non-empty English with no Chinese characters or punctuation.
+  2. Requires root `README.md` (`<= 512 KiB` UTF-8, contains Chinese) and `README.en.md` (`<= 512 KiB` UTF-8, no Chinese characters/punctuation, distinct from `README.md`). Local image assets must exist; bitmaps and Chinese assets require separate paths per language, while pure-English UTF-8 `.svg` files may be shared.
+  3. Runs interactive plugins under both `locale="zh"` and `locale="en"`, verifying zero Chinese characters in scanned English UI fields and action `status`/`page` outputs and verifying different initial renders when a render surface exists (the CLI does not scan button state labels or some timeline fields, surface-less command plugins have no render diff, and `plugin.command` must be verified in the desktop app).
+- **CLI Coverage Limits**: Uses a single temporary notebook, does not test default-disabled state or dirty-editor protection, and does not wire `ContribHost`, system integration, AI, or `GetPerfSnapshot` (`host.perf.snapshot` returns `-32005`; `store_changelog` is advertised in `ui_capabilities` but returns `-32601` in CLI; `stages` is checked statically only). Verify real sync, uploads, commands, and desktop UI in Block itself.
 
 ---
 
-## 10. 发布到应用商店（`blockmd-plugin` 自动采集）
+## 10. Publishing to the App Store (`blockmd-plugin` Crawling)
 
-Block 应用商店采用无审批自动采集机制。**硬门槛与采集上限**：采集器抓取 `topic:blockmd-plugin fork:false archived:false` 按 stars 降序的**前 100 个公开、非 Fork、未归档 GitHub 仓库**（无分页；`verified.json` 中未落入前 100 的官方仓库会单独拉取），并自动跳过内置保留 ID（`block-diagnostics`）；桌面端通过本地目录、`owner/repo` 或 HTTPS 压缩包手动安装不受此 100 仓库上限限制。
+Block's App Store uses approval-free automatic crawling. **Threshold & Cap**: The crawler queries `topic:blockmd-plugin fork:false archived:false` and takes the **top 100 public, non-fork, unarchived GitHub repositories sorted by stars** (no pagination; official repos in `verified.json` outside the top 100 are fetched separately) while filtering reserved IDs (`block-diagnostics`). Desktop manual installation via local folder, `owner/repo`, or HTTPS archive has no 100-repo cap.
 
-发布步骤：
+Publishing steps:
 
-1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过「本地协议检查命令」检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，其上架认证以 `verified.json` 为准）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），README 引用的位图及含中文资源须提供独立的中英文版本（纯英文 `.svg` 可共用），交互式插件还须支持 `locale="en"` 英文界面**；已审核作者（`eachann1024/*`）与社区插件同样建议提供双语文档、双语配图与 `permission_reasons`。
-2. 在 GitHub 仓库主页右侧 **About -> Topics** 添加标签：**`blockmd-plugin`**。
-3. 推荐发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致；若暂未发布合适 Release，采集器会回退到固定提交 SHA 的默认分支源码包）：
-   - **自动化发布实践**：可在仓库配置定时或手动触发的 GitHub Actions 发布工作流，在打包前执行清单/双语门禁与冒烟检查，通过后按 SemVer 生成新版本号（如基于主次版本基线递增补丁号）写入归档产物并发布 Release，不向 `main` 回写提交。
-   - **手动发版**：也可直接推送 `vX.Y.Z` Tag 触发打包并发布对应版本的 Release。
+1. Push your plugin to a public, non-fork, unarchived GitHub repository with a validated `manifest.json` (`"app": "blockmd"`, `repo` matching `owner/repo` if set) at the root or single top-level archive folder. Official plugins (`blockmd-plugins/*`, verified via `verified.json`) must include bilingual `README.md` / `README.en.md`, separate non-English assets, and `locale="en"` UI support; community plugins are also encouraged to provide bilingual docs and `permission_reasons`.
+2. Add the **`blockmd-plugin`** topic under **About → Topics** on GitHub.
+3. Publishing a standard **GitHub Release** (non-draft, non-prerelease, tag matching `manifest.version`) is recommended (when no suitable Release exists, the crawler falls back to a commit-pinned default-branch tarball):
+   - **Automated Releases**: You can configure a scheduled or `workflow_dispatch` GitHub Actions workflow that runs manifest/bilingual smoke checks before packaging, computes a monotonically increasing SemVer version into the archive artifact, and publishes a Release without pushing commits back to `main`.
+   - **Manual Releases**: Push a `vX.Y.Z` tag or create a GitHub Release directly.
 
-4. **线上采集与校验规则**（由 `blockmd-plugins/store-index` 仓库的采集任务及 `cmd/block-store-crawler` 执行）：
-   - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包，且会先解析默认分支当前提交 SHA 并固定到不可变归档地址（`codeload.github.com/{repo}/tar.gz/{commit_sha}`），防止后续推送导致索引 `sha256` 失效。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。
-   - **索引校验与同步字段**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）、双语无 Emoji 清单与显式商店分类（`category` 必填且不得为已停用的 `sync` / `publish`）校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 处理（若上一版索引中已有归属仓库则保留原归属，否则全部剔除），并将 `category`、`permission_reasons` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
-   - **更新日志采集与对外接口**：采集器在拉取插件 Releases 时，自动提取最近版本的结构化双语更新日志（解析 `## 中文` / `## English` 与 `新增功能` / `体验优化` / `问题修复` / `其他改动`），在 `store-index.json` 的每个插件条目中内联最近 5 条 `changelog` 与 `changelog_url`，同时在 `blockmd-plugins/store-index` 仓库的 `changelogs/<id>.json`（附带 jsDelivr 镜像）对外提供最多 20 条完整版本历史的只读 JSON API。Block 应用商店详情页提供「说明 / 更新日志」标签页展示版本变更，插件亦可通过 `host.store.changelog` RPC 读取同源更新日志。
-   - **商店排序规则**：索引 `downloads` 为该仓库各 Release 附件下载次数之和，采集时更新。应用商店列表默认按 `downloads` 从高到低排列并标注名次，下载量相同时按名称、再按 `id` 排列；有搜索词时先按匹配度排列，再按下载量；筛选菜单选「按名称」时不按下载量排列、不标名次。本机安装只计入展示数字，不改变名次，直到下次索引更新。
-   - **桌面端不同安装来源的校验力度与权限确认**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会先暂存并校验清单与打包上限，但不做商店 `sha256`/索引比对。无论商店还是手动来源，首次安装请求 5 类敏感权限任一项或更新新增敏感权限时，桌面端均会先弹出权限确认卡片，用户确认后才落盘；「全部更新」会先自动更新无新增敏感权限的插件，将新增敏感权限的插件留待用户逐项确认（若此时已离开商店页，则通过右上角通知横幅引导返回确认）。
+4. **Crawler & Desktop Verification Rules** (executed by `blockmd-plugins/store-index` and `cmd/block-store-crawler`):
+   - **Package Selection**: Picks the first non-draft, non-prerelease Release, preferring its first `.tar.gz`/`.tgz`/`.zip` asset, then its `tarball_url`. Only when no Release URL is selected does it fall back to a commit-pinned default-branch archive (`codeload.github.com/{repo}/tar.gz/{commit_sha}`) so `sha256` stays immutable. Download/parse failure skips the repository without falling back further.
+   - **Index Validation & Synced Fields**: Computes `sha256` on raw archive bytes, extracts `manifest.json` (version comes from `manifest.version`), checks `app == "blockmd"`, `id`, reserved/blocklist rules, `verified.json` 1:1 binding, official bilingual docs/manifest/explicit category, `repo` match, grammar compilation, and cross-repo duplicate `id` conflicts, then syncs `category`, `permission_reasons`, and `file_extensions` (`<= 6` tags). Any official verified entry failure fails the crawl run.
+   - **Changelogs**: Extracts structured bilingual release notes (`## 中文` / `## English`), inlines the latest 5 in `store-index.json`, and publishes up to 20 releases in `changelogs/<id>.json` (with jsDelivr mirror), consumed by the Store detail view and `host.store.changelog`.
+   - **Ranking**: Sorted by total Release asset `downloads` (tie-break by name, then `id`); search ranks by match score then downloads.
+   - **Desktop Install Verification**: Store installs enforce HTTPS (`<= 4096` bytes, no credentials/fragment, restricted redirect hosts), `sha256`, and manifest `id`/`version`/`permissions`/`repo` match. Manual `owner/repo`, HTTPS archive URL, or local folder installs validate manifest and archive limits without store `sha256` matching. All sources prompt a permission confirmation card whenever sensitive permissions are first granted or added on update.
 
-- 索引通过 `system_apps` 提供带系统权限的发行包，通过 `apps` 提供其余发行包。支持 `system_apps` 的 Block 会合并两组条目。
-- **商店索引和离线缓存**：桌面端从 GitHub 或 jsDelivr 加载 `store-index.json`，把 `system_apps` 合入 `apps`，并缓存到 `<BlockAppData>/apps-cache/`。桌面商店和采集器都使用 `store/blocklist.json` 按插件 ID 或仓库过滤。首次离线打开且没有索引缓存时，商店只显示已安装条目。外部插件在独立仓库发布。
-- **可选商店美术**：插件仓库根目录放 `store/icon.svg`（图标）和 `store/hero.svg`（轮播图）即可，无需在 manifest 声明，每个文件最多 512 KiB。发版包会带上这两个文件：已安装的插件直接读包内文件，商店和设置侧栏「已安装」都显示同一个图标；未安装时从仓库默认分支获取（GitHub 失败回退 jsDelivr），本次运行内缓存。缺少图标时使用 `manifest.icon`，缺少轮播图时在色调背景上显示放大的 `manifest.icon`。轮播内容由 `store/featured.json` 的插件 ID 列表决定，色调按顺序自动轮换。
+- **Catalog and offline cache.** Block fetches `store-index.json` from GitHub or jsDelivr, merges `system_apps` over `apps`, and caches it under `<BlockAppData>/apps-cache/`. The crawler and desktop Store both filter by plugin ID or repository using `store/blocklist.json`. With no catalog cache, the Store shows only installed entries while offline. External plugins are published in independent repositories.
+- **Optional artwork.** Put `store/icon.svg` (icon) and `store/hero.svg` (featured art) in the repository root; no manifest field is needed, and each file can be up to 512 KiB. Release packages include both files: installed plugins read them from the package, so the Store and the Settings sidebar show the same icon. Plugins that are not installed fetch them from the default branch (GitHub with a jsDelivr fallback) and cache them for the session. The icon falls back to `manifest.icon`. A featured card without artwork shows a large `manifest.icon` on a colored background. Featured cards come from the plugin ID list in `store/featured.json`; tones rotate automatically in order.

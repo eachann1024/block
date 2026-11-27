@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	pluginDevGuideURLZh = "https://docs.block.cooool.top/"
-	pluginDevGuideURLEn = "https://docs.block.cooool.top/en/"
+	pluginDevGuideURLZh = "https://docs.block.cooool.top/zh/"
+	pluginDevGuideURLEn = "https://docs.block.cooool.top/"
 )
 
 func pluginDevGuideURL() string {

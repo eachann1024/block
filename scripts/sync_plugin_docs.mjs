@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Composes bilingual self-contained AI specs from modular plugin chapters:
- *   - docs/plugin-dev-for-ai.md    from docs/plugins/*.md
- *   - docs/en/plugin-dev-for-ai.md from docs/en/plugins/*.md
+ *   - docs/plugin-dev-for-ai.md    from docs/plugins/*.md    (English, primary)
+ *   - docs/zh/plugin-dev-for-ai.md from docs/zh/plugins/*.md (Chinese)
  *
  * Usage:
  *   node scripts/sync_plugin_docs.mjs          # regenerate both outputs
@@ -28,26 +28,26 @@ const CHAPTER_FILES = [
 
 const TARGETS = [
   {
-    name: "zh",
+    name: "en",
     output: "docs/plugin-dev-for-ai.md",
     chapterDir: "docs/plugins",
     siteBase: "https://docs.block.cooool.top/plugins",
-    header: `# Block 应用商店插件开发指南（AI 自包含规范 v1 · \`blockmd\`）
-
-> 本文由 \`bun run docs:sync\` 自动从 [\`docs/plugins/\`](https://github.com/eachann1024/block/tree/main/docs/plugins) 各章节拼装生成，与 GitHub 仓库文档及在线文档站 [docs.block.cooool.top/plugins](https://docs.block.cooool.top/plugins/) 保持同源同步。英文版见 [en/plugin-dev-for-ai.md](https://docs.block.cooool.top/en/plugin-dev-for-ai.md)。
-
-本文是开发、校验与发布 **Block** 应用商店插件的**唯一权威规范**。AI 或开发者无需阅读 Block 宿主源码，仅凭本文即可从零构建可安装、渲染原生 Ocean Paper 设置页、并通过本地协议检查的插件。`,
-  },
-  {
-    name: "en",
-    output: "docs/en/plugin-dev-for-ai.md",
-    chapterDir: "docs/en/plugins",
-    siteBase: "https://docs.block.cooool.top/en/plugins",
     header: `# Block App Store Plugin Developer Guide (Self-Contained AI Spec v1 · \`blockmd\`)
 
-> Generated automatically by \`bun run docs:sync\` from [\`docs/en/plugins/\`](https://github.com/eachann1024/block/tree/main/docs/en/plugins) and kept in sync with the documentation site at [docs.block.cooool.top/en/plugins/](https://docs.block.cooool.top/en/plugins/). Chinese version: [plugin-dev-for-ai.md](https://docs.block.cooool.top/plugin-dev-for-ai.md).
+> Generated automatically by \`bun run docs:sync\` from [\`docs/plugins/\`](https://github.com/eachann1024/block/tree/main/docs/plugins) and kept in sync with the documentation site at [docs.block.cooool.top/plugins/](https://docs.block.cooool.top/plugins/). Chinese version: [zh/plugin-dev-for-ai.md](https://docs.block.cooool.top/zh/plugin-dev-for-ai.md).
 
 This document is the authoritative self-contained specification for building, validating, and publishing **Block** App Store plugins. Developers and AI coding assistants can build an installable plugin with native Ocean Paper settings UI that passes \`block-plugin-check\` from this file alone.`,
+  },
+  {
+    name: "zh",
+    output: "docs/zh/plugin-dev-for-ai.md",
+    chapterDir: "docs/zh/plugins",
+    siteBase: "https://docs.block.cooool.top/zh/plugins",
+    header: `# Block 应用商店插件开发指南（AI 自包含规范 v1 · \`blockmd\`）
+
+> 本文由 \`bun run docs:sync\` 自动从 [\`docs/zh/plugins/\`](https://github.com/eachann1024/block/tree/main/docs/zh/plugins) 各章节拼装生成，与 GitHub 仓库文档及在线文档站 [docs.block.cooool.top/zh/plugins](https://docs.block.cooool.top/zh/plugins/) 保持同源同步。英文版见 [plugin-dev-for-ai.md](https://docs.block.cooool.top/plugin-dev-for-ai.md)。
+
+本文是开发、校验与发布 **Block** 应用商店插件的**唯一权威规范**。AI 或开发者无需阅读 Block 宿主源码，仅凭本文即可从零构建可安装、渲染原生 Ocean Paper 设置页、并通过本地协议检查的插件。`,
   },
 ];
 
