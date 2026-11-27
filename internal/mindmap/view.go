@@ -3651,24 +3651,39 @@ func (st *BlockState) renderLinkHoverTooltip(c *ui.Context, id string, n *Node, 
 		scale = 1
 	}
 
-	label := n.Link
-	prefix := "↗ "
-	fg := pal.Text
-	bg := pal.TooltipBG
-	border := pal.TooltipBorder
-	switch status {
-	case LinkStatusBroken:
-		prefix = "! "
-		label = theme.Tr("目标笔记不存在 · 点击重连：", "Missing note · click to reconnect: ") + n.Link
-		fg = pal.Warning
-		bg = pal.WarningSurface
-		border = pal.Warning.Alpha(0.55)
-	case LinkStatusValid:
-		prefix = "↳ "
+	// Split link into a readable title (file name without extension) and a dim directory hint.
+	link := strings.TrimSpace(n.Link)
+	title := strings.TrimSuffix(filepath.Base(link), filepath.Ext(link))
+	if title == "" || title == "." {
+		title = link
+	}
+	dir := filepath.Dir(link)
+	for strings.HasPrefix(dir, "../") {
+		dir = strings.TrimPrefix(dir, "../")
+	}
+	if dir == "." || dir == ".." || dir == "/" {
+		dir = ""
 	}
 
-	const maxTipW float32 = 260
-	const tipH float32 = 28
+	glyph := icons.Note
+	fg := pal.Text
+	sub := pal.TextSecondary
+	icCol := pal.Accent
+	bg := pal.TooltipBG
+	border := pal.TooltipBorder
+	hint := dir
+	if status == LinkStatusBroken {
+		glyph = icons.LinkOff
+		fg = pal.Warning
+		sub = pal.Warning.Alpha(0.75)
+		icCol = pal.Warning
+		bg = pal.WarningSurface
+		border = pal.Warning.Alpha(0.55)
+		hint = theme.Tr("笔记不存在 · 点击重连", "Missing · click to relink")
+	}
+
+	const maxTipW float32 = 280
+	const tipH float32 = 30
 	tx := clampFloat32(sx-40, theme.Space8, max(theme.Space8, cw-maxTipW-theme.Space8))
 	ty := sy - lb.r*scale - tipH - theme.Space8
 	if ty < theme.Space8 {
@@ -3677,12 +3692,17 @@ func (st *BlockState) renderLinkHoverTooltip(c *ui.Context, id string, n *Node, 
 	ty = clampFloat32(ty, theme.Space8, max(theme.Space8, ch-tipH-theme.Space8))
 
 	tip := ui.Row(c.Key("mm-link-tip-"+id)).Absolute().Left(tx).Top(ty).
-		MaxWidth(maxTipW).Height(tipH).PaddingX(theme.Space8).AlignItems(ui.Center).Gap(theme.Space4).
+		MaxWidth(maxTipW).Height(tipH).PaddingX(theme.Space8).AlignItems(ui.Center).Gap(theme.Space6).
 		Radius(theme.RadiusMD).Background(bg).Border(1, border).IgnoreInput(true)
 	bui.Elevate(tip, theme.ElevationPopover)
 	tip.Children(func() {
-		ui.Text(c, prefix+label).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
-			TextColor(fg).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		icons.Draw(c, glyph, theme.IconMicro, pal.DuoIconColors(icCol))
+		ui.Text(c, title).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
+			TextColor(fg).SingleLine().Ellipsis("…").Shrink(0).MaxWidth(maxTipW * 0.55)
+		if hint != "" {
+			ui.Text(c, hint).FontSize(theme.FontMeta).TextColor(sub).
+				SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		}
 	})
 }
 
