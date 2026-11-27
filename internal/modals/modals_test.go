@@ -1247,22 +1247,49 @@ func TestUpdaterModalAllStatesAndEnglishWidth(t *testing.T) {
 
 	upToDateSnap := updaterTestSnapshot()
 	upToDateSnap.Status = updater.StatusUpToDate
-	upToDateSnap.LatestVersion = "1.0.940"
-	upToDateSnap.Notes = updater.AggregateReleases(updaterTestReleases(), "1.0.942", "")
+	upToDateSnap.CurrentVersion = "1.0.942"
+	upToDateSnap.LatestVersion = "1.0.942"
+	upToDateSnap.Notes = updater.AggregateReleases(updaterTestReleases(), "1.0.942", "1.0.940")
 	renderSnap(upToDateSnap)
-	if !tt.HasText("检查更新") || tt.HasText("稍后") {
-		t.Fatalf("expected UpToDate check-only footer, texts=%v", tt.Texts())
+	if !tt.HasText("已是最新版本") || !tt.HasText("v1.0.942") || !tt.HasText("检查更新") || tt.HasText("稍后") {
+		t.Fatalf("expected UpToDate zh title/version/footer, texts=%v", tt.Texts())
+	}
+	for _, txt := range tt.Texts() {
+		if strings.Contains(txt, "→") {
+			t.Fatalf("did not expect upgrade arrow in UpToDate subtitle, got %q", txt)
+		}
 	}
 	if _, ok := internalui.TargetBounds("updater-cancel"); ok {
 		t.Fatal("did not expect updater-cancel probe in UpToDate")
+	}
+
+	theme.SetLanguage(model.LangEn)
+	renderSnap(upToDateSnap)
+	if !tt.HasText("Up to Date") || !tt.HasText("v1.0.942") {
+		t.Fatalf("expected UpToDate en title and current version, texts=%v", tt.Texts())
+	}
+	for _, txt := range tt.Texts() {
+		if strings.Contains(txt, "→") {
+			t.Fatalf("did not expect upgrade arrow in UpToDate en subtitle, got %q", txt)
+		}
+	}
+	theme.SetLanguage(model.LangZh)
+
+	// Historical LastUpdatedFrom notes in non-UpToDate state when HasNewer is false must also omit the arrow.
+	histIdleSnap := idleSnap
+	histIdleSnap.CurrentVersion = "1.0.942"
+	histIdleSnap.LatestVersion = "1.0.942"
+	histIdleSnap.Notes = upToDateSnap.Notes
+	if got := updaterVersionLabel(histIdleSnap); got != "v1.0.942" {
+		t.Fatalf("expected historical notes without HasNewer to show current version only, got %q", got)
 	}
 
 	// 2. Available variants: normal InPlace, PackageManaged, DownloadPath && !InPlace.
 	availSnap := updaterTestSnapshot()
 	availSnap.Status = updater.StatusAvailable
 	renderSnap(availSnap)
-	if !tt.HasText("发现新版本") || !tt.HasText("稍后") || !tt.HasText("立即更新") {
-		t.Fatalf("expected Available InPlace actions, texts=%v", tt.Texts())
+	if !tt.HasText("发现新版本") || !tt.HasText("v1.0.940 → v1.0.942") || !tt.HasText("稍后") || !tt.HasText("立即更新") {
+		t.Fatalf("expected Available InPlace actions and version arrow, texts=%v", tt.Texts())
 	}
 	if err := tt.Click("稍后"); err != nil {
 		t.Fatal(err)
@@ -1342,8 +1369,8 @@ func TestUpdaterModalAllStatesAndEnglishWidth(t *testing.T) {
 	readySnap := updaterTestSnapshot()
 	renderSnap(readySnap)
 	assertNoDates("ViewMerged")
-	if !tt.HasText("新版本已就绪") || !tt.HasText("稍后") || !tt.HasText("重启并更新") {
-		t.Fatalf("expected Ready actions, texts=%v", tt.Texts())
+	if !tt.HasText("新版本已就绪") || !tt.HasText("v1.0.940 → v1.0.942") || !tt.HasText("稍后") || !tt.HasText("重启并更新") {
+		t.Fatalf("expected Ready actions and version arrow, texts=%v", tt.Texts())
 	}
 	toggleBtn, ok := internalui.TargetBounds("updater-view-toggle")
 	if !ok {

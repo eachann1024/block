@@ -77,13 +77,18 @@ func updaterModalTitle(snap updater.Snapshot, showEn bool) string {
 		return updaterTr(showEn, "新版本已就绪", "Update Ready")
 	case updater.StatusAvailable, updater.StatusDownloading, updater.StatusInstalling:
 		return updaterTr(showEn, "发现新版本", "Update Available")
+	case updater.StatusUpToDate:
+		return updaterTr(showEn, "已是最新版本", "Up to Date")
 	default:
 		return updaterTr(showEn, "检查更新", "App Updates")
 	}
 }
 
 func updaterVersionLabel(snap updater.Snapshot) string {
-	if snap.Notes.FromVersion != "" && snap.Notes.ToVersion != "" &&
+	if snap.Status == updater.StatusUpToDate {
+		return fmt.Sprintf("v%s", snap.CurrentVersion)
+	}
+	if snap.Notes.HasNewer && snap.Notes.FromVersion != "" && snap.Notes.ToVersion != "" &&
 		updater.CompareVersion(snap.Notes.FromVersion, snap.Notes.ToVersion) < 0 {
 		return fmt.Sprintf("v%s → v%s", snap.Notes.FromVersion, snap.Notes.ToVersion)
 	}
