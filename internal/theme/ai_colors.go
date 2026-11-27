@@ -32,17 +32,33 @@ type AISurfaceColors struct {
 
 // AISurface returns the AI surface colour set for p.
 func (p Palette) AISurface() AISurfaceColors {
+	if skinActive() {
+		return AISurfaceColors{
+			RailBG:              p.Shell,
+			ComposerBG:          p.Card,
+			ComposerBorder:      p.BtnBorder,
+			ComposerFocusBorder: p.Accent.Alpha(0.75),
+			MediaFrameBG:        p.CodeBG,
+			CapsuleBG:           p.CodeBG,
+			CapsuleBorder:       p.BtnBorder,
+			WellBG:              p.Card,
+			UserBubbleBG:        p.Selected,
+			HoverBG:             p.Hover,
+			SelectedBG:          p.Selected,
+			TintedSelectedBG:    p.SelectionBG,
+		}
+	}
 	if p.Dark {
 		return AISurfaceColors{
-			RailBG:              ui.Hex("#1b1b1b"),
+			RailBG:              ui.Hex("#1a1a1a"),
 			ComposerBG:          ui.Hex("#222222"),
-			ComposerBorder:      ui.Hex("#363636"),
+			ComposerBorder:      ui.Hex("#3b3b3b"),
 			ComposerFocusBorder: p.Accent.Alpha(0.75),
 			MediaFrameBG:        ui.Hex("#1e1e1e"),
 			CapsuleBG:           ui.Hex("#2a2a2a"),
-			CapsuleBorder:       ui.Hex("#3d3d3d"),
+			CapsuleBorder:       ui.Hex("#424242"),
 			WellBG:              ui.Hex("#222222"),
-			UserBubbleBG:        ui.Hex("#282c34"),
+			UserBubbleBG:        ui.Hex("#262b36"),
 			HoverBG:             ui.Hex("#313131"),
 			SelectedBG:          ui.Hex("#363940"),
 			TintedSelectedBG:    ui.Hex("#233148"),

@@ -28,14 +28,16 @@ func SourceSoftWrap() bool { return sourceSoftWrap }
 func ToggleSourceSoftWrap() { sourceSoftWrap = !sourceSoftWrap }
 
 var (
-	sourceThemeCache     *codeed.Theme
-	sourceThemeCacheDark bool
-	sourceThemeCacheSet  bool
+	sourceThemeCache    *codeed.Theme
+	sourceThemeCachePal theme.Palette
+	sourceThemeCacheSet bool
 )
 
 // sourceEditorTheme maps the Ocean Paper palette onto the code editor theme.
 func sourceEditorTheme(pal theme.Palette) *codeed.Theme {
-	if sourceThemeCacheSet && sourceThemeCacheDark == pal.Dark && sourceThemeCache != nil {
+	// Key on the exact palette used to build the theme so a skin swap or an
+	// in-place recolor can never leave stale token colors cached.
+	if sourceThemeCacheSet && sourceThemeCache != nil && sourceThemeCachePal == pal {
 		return sourceThemeCache
 	}
 	ct := &codeed.Theme{
@@ -80,7 +82,7 @@ func sourceEditorTheme(pal theme.Palette) *codeed.Theme {
 	ct.Tokens[codeed.TokenHeading].Bold = true
 	ct.Tokens[codeed.TokenStrong].Bold = true
 	ct.Tokens[codeed.TokenEmphasis].Italic = true
-	sourceThemeCache, sourceThemeCacheDark, sourceThemeCacheSet = ct, pal.Dark, true
+	sourceThemeCache, sourceThemeCachePal, sourceThemeCacheSet = ct, pal, true
 	return ct
 }
 

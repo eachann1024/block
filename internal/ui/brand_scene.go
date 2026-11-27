@@ -57,6 +57,8 @@ type BrandScenePaintOpts struct {
 	Motion     BrandMotion
 	PauseAnim  bool
 	Now        time.Time
+	SkinChrome bool     // a plugin theme skin overrides chrome ground/accents
+	SkinAccent ui.Color // accent color of the active theme skin
 }
 
 // ResolveBrandMotion converts persisted BrandDeco preferences into runtime motion settings.

@@ -178,13 +178,14 @@ func renderStoreSkeleton(c *ui.Context) {
 		alpha = float32(0.75 + 0.25*math.Cos(2*math.Pi*phase))
 		c.Invalidate()
 	}
+	skelBG := pal.Selected
 	bar := func(width, height float32) ui.Element {
-		return ui.Box(c).Size(width, height).Radius(theme.RadiusXS).Background(pal.Selected).Opacity(alpha)
+		return ui.Box(c).Size(width, height).Radius(theme.RadiusXS).Background(skelBG).Opacity(alpha)
 	}
 	ui.Column(c.Key("app-store-skeleton")).FillWidth().MinWidth(0).Gap(theme.Space24).Role(ui.RoleStatus).
 		Label(theme.Tr("正在加载插件目录", "Loading plugin catalog")).Children(func() {
 		ui.Box(c).FillWidth().Height(theme.StoreHeroHeight).Radius(theme.RadiusXL).
-			Background(pal.Selected).Opacity(alpha)
+			Background(skelBG).Opacity(alpha)
 		ui.Column(c).FillWidth().Gap(theme.Space12).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
 				for range 1 + len(plugins.StoreCategories()) {

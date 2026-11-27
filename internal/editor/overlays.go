@@ -777,9 +777,13 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 			}
 			anchorX, anchorY := appUi.ResolveOrigin(spec, estW, 38, winW, winH)
 
+			toolbarBorder := pal.Hairline
+			if pal.Dark || theme.IsSkinActive() {
+				toolbarBorder = pal.MenuBorder
+			}
 			bar := appUi.Elevate(ui.Row(c.Key("selection-toolbar")).Absolute().Left(anchorX).Top(anchorY).
 				Height(38).Padding(theme.Space4, theme.Space6).Gap(theme.Space2).AlignItems(ui.Center).
-				Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).
+				Radius(theme.RadiusXL).Background(pal.Menu).Border(1, toolbarBorder).
 				Transition(appUi.PopoverSpringTransition()), theme.ElevationPopover)
 			bar.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 				s.toolbarRect = r
@@ -1011,7 +1015,7 @@ type localMenuCursorKey struct{}
 
 func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
-	dark := theme.IsDark()
+	dark := pal.Dark
 	menuW := float32(196)
 	spec := s.toolbarDropSpec("tb-palette", appUi.AlignLeft, 4, vp)
 	curFG, curBG := s.selectionColors()
@@ -1431,7 +1435,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 		return
 	}
 	pal := theme.Ocean()
-	dark := theme.IsDark()
+	dark := pal.Dark
 	b := &s.doc.Blocks[idx]
 	curKind := b.Callout
 	if curKind == "" {

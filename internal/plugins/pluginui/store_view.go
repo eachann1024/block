@@ -318,6 +318,8 @@ func renderManualInstallRow(c *ui.Context, ctrl *Controller, installingID string
 			MinWidth(0)
 		if in.Focused() {
 			in.Background(pal.Card).Border(1, pal.Accent)
+		} else if pal.Dark || theme.IsSkinActive() {
+			in.Background(pal.Shell).Border(1, pal.Hairline)
 		} else {
 			in.Background(pal.Shell).Border(1, ui.Transparent)
 		}

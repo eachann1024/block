@@ -496,13 +496,20 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 		trackBG = pal.Shell
 	}
 	labelSize, labelLine := theme.FontBody, theme.LineBody
+	darkOrSkin := pal.Dark || theme.IsSkinActive()
 	if opts.Quiet {
 		trackBG = ui.Transparent
+		if darkOrSkin {
+			trackBG = pal.Card
+		}
 		labelSize, labelLine = theme.FontSmall, theme.LineSmall
 	}
 	seg := ui.SegmentedBase(c, active, len(options))
 	track := seg.Track.Height(trackH).Padding(trackPad).Gap(theme.Space2).AlignItems(ui.Center).Radius(theme.RadiusMD).
 		Background(trackBG)
+	if opts.Quiet && darkOrSkin {
+		track.Border(1, pal.Hairline)
+	}
 	if opts.FillWidth {
 		track.FillWidth()
 	}
@@ -528,14 +535,20 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 			pressed := item.Pressed() && !disabled
 			isAct := i == *active
 			bg := ui.Transparent
+			bd := ui.Transparent
+			hasBd := false
 			if isAct {
 				bg = pal.Selected
+				if darkOrSkin {
+					bd = pal.SelectedBorder
+					hasBd = true
+				}
 			} else if pressed {
 				bg = pal.Selected
 			} else if hovered {
 				bg = pal.Hover
 			}
-			AnimateSurfaceColors(item, bg, ui.Transparent, false)
+			AnimateSurfaceColors(item, bg, bd, hasBd)
 			TactileCard(item, hovered, pressed, isAct, disabled)
 			if opt.ID != "" {
 				Probe(item, opt.ID)

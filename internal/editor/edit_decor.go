@@ -156,7 +156,8 @@ func blockCodeRanges(b *model.Block, baseSize float32) []appUi.RichCodeRange {
 		return nil
 	}
 	_, _, padX, padY, radius := inlineCodeStyle(baseSize)
-	dark := theme.IsDark()
+	pal := theme.Ocean()
+	dark := pal.Dark
 	var out []appUi.RichCodeRange
 	pos := 0
 	for _, sp := range b.Spans {

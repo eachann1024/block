@@ -1605,7 +1605,7 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 			ui.Text(c, b.Code).Font(resolvedCodeFont()).FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text).FillWidth()
 		})
 	case model.BlockCallout:
-		st := calloutTone(b.Callout, theme.IsDark())
+		st := calloutTone(b.Callout, pal.Dark)
 		card := ui.Box(c.Key(fmt.Sprintf("aip-callout-%d", idx))).FillWidth().
 			Padding(38, theme.Space16, theme.Space12, 44).Radius(theme.RadiusLG).Background(st.BG).Border(1, st.Border)
 		card.Children(func() {
@@ -1758,9 +1758,13 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 		WithAlignX(appUi.AlignX{Kind: appUi.AlignPinLeft}).WithGap(10).WithMargin(12)
 	x, y := appUi.ResolveOrigin(spec, panelW, estH, winW, winH)
 
+	panelBorder := pal.Hairline
+	if pal.Dark || theme.IsSkinActive() {
+		panelBorder = pal.MenuBorder
+	}
 	ui.Overlay(c, func() {
 		shell := ui.Column(c.Key("inline-ai")).Absolute().Left(x).Top(y).Width(panelW).
-			Gap(0).Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).
+			Gap(0).Radius(theme.RadiusXL).Background(pal.Menu).Border(1, panelBorder).
 			Transition(appUi.PopupTransition())
 		appUi.Elevate(shell, theme.ElevationPopover)
 		appUi.Probe(shell, "inline-ai")

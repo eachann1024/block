@@ -7,17 +7,35 @@ import (
 )
 
 type sceneRenderCtx struct {
-	p            *ui.Painter
-	ox, oy, w, h float32
-	alpha        float32 // overall scene opacity [0..1] for smooth crossfades
-	t            float64 // tempo-scaled scene clock in seconds; 0 means "hold the rest pose"
-	wm           float32 // motion envelope [0..1]; hides come-and-go elements while still
-	dCalm, dRich float32 // density envelopes [0..1] for the calm and rich element tiers
-	orbAlpha     float32 // smooth orb visibility [0..1]
-	orbExtraDY   float32 // gentle rise/set during scene or sidebar transitions
-	layerShiftY  float32 // gentle vertical settle during scene transitions
-	showCat      bool
-	vars         sceneTimeVars
+	p              *ui.Painter
+	ox, oy, w, h   float32
+	alpha          float32 // overall scene opacity [0..1] for smooth crossfades
+	t              float64 // tempo-scaled scene clock in seconds; 0 means "hold the rest pose"
+	wm             float32 // motion envelope [0..1]; hides come-and-go elements while still
+	dCalm, dRich   float32 // density envelopes [0..1] for the calm and rich element tiers
+	orbAlpha       float32 // smooth orb visibility [0..1]
+	orbExtraDY     float32 // gentle rise/set during scene or sidebar transitions
+	layerShiftY    float32 // gentle vertical settle during scene transitions
+	showCat        bool
+	vars           sceneTimeVars
+	dstGround      ui.Color
+	hasGroundRemap bool
+	skinChrome     bool
+	skinAccent     ui.Color
+}
+
+func (rc *sceneRenderCtx) adaptGround(c ui.Color) ui.Color {
+	if !rc.hasGroundRemap {
+		return c
+	}
+	return c.Mix(rc.dstGround, 0.72)
+}
+
+func (rc *sceneRenderCtx) adaptAccent(c ui.Color, w float32) ui.Color {
+	if !rc.skinChrome || rc.skinAccent.A == 0 {
+		return c
+	}
+	return c.Mix(rc.skinAccent, w)
 }
 
 // tier returns the visibility of an element tier: 0 is always drawn, 1 needs calm density or
@@ -112,8 +130,9 @@ func (rc *sceneRenderCtx) fillTerrain(path *ui.Path, c ui.Color) {
 	if rc.alpha <= 0.002 {
 		return
 	}
+	col := rc.adaptGround(c).Alpha(rc.alpha)
 	rc.p.Transform(ui.Translation(rc.ox, rc.oy+rc.layerShiftY), 0, 0, func() {
-		rc.p.FillPath(path, c.Alpha(rc.alpha))
+		rc.p.FillPath(path, col)
 	})
 }
 
@@ -122,6 +141,7 @@ func (rc *sceneRenderCtx) strokeRim(path *ui.Path, width float32, c ui.Color, mi
 	if a <= 0.002 {
 		return
 	}
+	c = rc.adaptAccent(c, 0.72)
 	rc.p.Transform(ui.Translation(rc.ox, rc.oy+rc.layerShiftY), 0, 0, func() {
 		rc.p.StrokePathGradient(path, width, ui.LinearGradient{
 			Angle: 90,
@@ -194,10 +214,14 @@ func (rc *sceneRenderCtx) paintStarField(stars []sceneStar, groupOp, dx, maxX fl
 	if len(stars) == 0 || groupOp*rc.alpha <= 0.002 {
 		return
 	}
+	limitX := maxX
+	if dx > 0 && rc.skinChrome {
+		limitX = min(maxX, dx+76)
+	}
 	for i := range stars {
 		st := &stars[i]
 		x := st.x + dx
-		if x >= maxX {
+		if x >= limitX {
 			continue
 		}
 		if avoidNav && st.y > 8 && st.y < 32 && x > rc.w-54 {
@@ -217,12 +241,16 @@ func (rc *sceneRenderCtx) paintStarField(stars []sceneStar, groupOp, dx, maxX fl
 			}
 		}
 		a := op * st.dim * vis * groupOp * rc.alpha
+		if dx > 0 && rc.skinChrome {
+			edgeT := 1 - clampF(st.x/76, 0, 1)
+			a *= edgeT * edgeT * 0.55
+		}
 		if a <= 0.004 {
 			continue
 		}
 		var dot ui.Path
 		dot.Circle(rc.ox+x, rc.oy+st.y, st.r)
-		rc.p.FillPath(&dot, st.color.Alpha(a))
+		rc.p.FillPath(&dot, rc.adaptAccent(st.color, 0.55).Alpha(a))
 	}
 }
 
@@ -1329,7 +1357,7 @@ func (rc *sceneRenderCtx) paintDaybreak(sc *compiledScene, tr *sceneTerrainCache
 	rc.layer(rc.dCalm, func() {
 		rc.paintSmoke(hx, hy, sceneColor("#8c93a6"))
 	})
-	rc.paintHouse(hx, hy, sceneColor("#1f2027"), sceneColor("#1a1b21"), sceneColor("#ffc97e"), true, true, 2, 8.3)
+	rc.paintHouse(hx, hy, rc.adaptGround(sceneColor("#1f2027")), rc.adaptGround(sceneColor("#1a1b21")), sceneColor("#ffc97e"), true, true, 2, 8.3)
 	for _, pn := range [5][2]float32{{92, 0}, {116, 0}, {121, 1}, {198, 1}, {204, 1}} {
 		vis := rc.tier(uint8(pn[1])) * rc.fit(pn[0]+3) * rc.alpha
 		if vis <= 0.004 {
@@ -1338,7 +1366,7 @@ func (rc *sceneRenderCtx) paintDaybreak(sc *compiledScene, tr *sceneTerrainCache
 		tx, ty := rc.ox+pn[0], rc.oy+sc.far.y(float64(pn[0]))+0.4+rc.layerShiftY
 		var pp ui.Path
 		pp.MoveTo(tx-2.2, ty+0.6).LineTo(tx, ty-8).LineTo(tx+2.2, ty+0.6).Close()
-		rc.p.FillPath(&pp, sceneColor("#2a2a33").Alpha(vis))
+		rc.p.FillPath(&pp, rc.adaptGround(sceneColor("#2a2a33")).Alpha(vis))
 	}
 	rc.paintCat(sc.cat)
 	rc.paintMist(sc.mists[0])
@@ -1393,10 +1421,10 @@ func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache)
 	fillEllipse(&pond, func(x, y float32) (float32, float32) {
 		return rc.ox + x, rc.oy + y + sy
 	}, 176, 60, 44, 3.2)
-	rc.p.FillPath(&pond, sceneColor("#1b232d").Alpha(rc.alpha))
+	rc.p.FillPath(&pond, rc.adaptGround(sceneColor("#1b232d")).Alpha(rc.alpha))
 	var rim ui.Path
 	rim.MoveTo(rc.ox+134, rc.oy+59.4+sy).QuadTo(rc.ox+176, rc.oy+56.4+sy, rc.ox+218, rc.oy+59.4+sy)
-	rc.p.StrokePath(&rim, 0.5, sceneColor("#37475a").Alpha(0.7*rc.alpha))
+	rc.p.StrokePath(&rim, 0.5, rc.adaptAccent(sceneColor("#37475a"), 0.55).Alpha(0.7*rc.alpha))
 
 	if rc.wm > 0.002 {
 		ripCol := sceneColor("#63788c")
@@ -1568,11 +1596,11 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 				lp.LineTo(rc.ox+pts[closeTo][0], rc.oy+pts[closeTo][1])
 			}
 			lp.Join(ui.RoundJoin)
-			rc.p.StrokePath(&lp, 0.45, sceneColor("#8ea4d8").Alpha(0.30*a))
+			rc.p.StrokePath(&lp, 0.45, rc.adaptAccent(sceneColor("#8ea4d8"), 0.70).Alpha(0.30*a))
 			for _, pt := range pts {
 				var dot ui.Path
 				dot.Circle(rc.ox+pt[0], rc.oy+pt[1], 0.7)
-				rc.p.FillPath(&dot, sceneColor("#eef2fb").Alpha(a))
+				rc.p.FillPath(&dot, rc.adaptAccent(sceneColor("#eef2fb"), 0.65).Alpha(a))
 			}
 		}
 		constellation(dip[:], 3, vis*rc.alpha)
@@ -1580,7 +1608,7 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 	}
 	// Flare stars
 	rc.layer(rc.dCalm, func() {
-		flareCol := sceneColor("#f4f7ff")
+		flareCol := rc.adaptAccent(sceneColor("#f4f7ff"), 0.65)
 		for _, fl := range sc.flares {
 			fit := rc.fit(fl.x + fl.size)
 			if fit <= 0.004 {
@@ -1637,7 +1665,7 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 		if vis <= 0.004 {
 			continue
 		}
-		pineCol := sceneColor("#1c2029").Alpha(vis)
+		pineCol := rc.adaptGround(sceneColor("#1c2029")).Alpha(vis)
 		px, py := rc.ox+pn[0], rc.oy+sc.far.y(float64(pn[0]))+0.4+rc.layerShiftY
 		rc.p.Transform(ui.Scaling(pn[1], pn[1]).Then(ui.Translation(px, py)), 0, 0, func() {
 			var pp ui.Path
@@ -1665,9 +1693,9 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 		body.MoveTo(-6.5, 0).LineTo(0, -7).LineTo(6.5, 0).Close()
 		lit.MoveTo(0, -7).LineTo(6.5, 0).LineTo(2.2, 0).Close()
 		door.MoveTo(-1.5, 0).LineTo(0, -3.8).LineTo(1.5, 0).Close()
-		rc.p.FillPath(&body, sceneColor("#30374a").Alpha(rc.alpha))
-		rc.p.FillPath(&lit, sceneColor("#3a4258").Alpha(rc.alpha))
-		rc.p.FillPath(&door, sceneColor("#191c24").Alpha(rc.alpha))
+		rc.p.FillPath(&body, rc.adaptGround(sceneColor("#30374a")).Alpha(rc.alpha))
+		rc.p.FillPath(&lit, rc.adaptGround(sceneColor("#3a4258")).Alpha(rc.alpha))
+		rc.p.FillPath(&door, rc.adaptGround(sceneColor("#191c24")).Alpha(rc.alpha))
 	})
 
 	// Campfire logs, dancing flames, sparks
@@ -1737,6 +1765,9 @@ func (rc *sceneRenderCtx) paintMoon(sc *compiledScene, tr *sceneTerrainCache) {
 
 	// Crescent moon + earthshine dark disc + soft moonlight halo
 	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
+		if rc.skinChrome {
+			oa *= 0.86
+		}
 		cy := rc.oy + 37.5 + rc.vars.orbDy + rc.orbExtraDY
 		haloOp, haloScale := float32(0.75), float32(1.0)
 		if rc.t > 0 {
@@ -1746,17 +1777,19 @@ func (rc *sceneRenderCtx) paintMoon(sc *compiledScene, tr *sceneTerrainCache) {
 		}
 		r := 15 * haloScale
 		hcx := rc.ox + 189
+		haloCol := rc.adaptAccent(sceneColor("#9fb4e6"), 0.78)
+		moonCol := rc.adaptAccent(sceneColor("#e7ecf8"), 0.65)
 		rc.p.FillRadialGradient(ui.Rect{X: hcx - r, Y: cy - r, W: 2 * r, H: 2 * r}, ui.RadialGradient{
 			Radius: r,
 			Stops: []ui.GradientStop{
-				{Color: sceneColor("#9fb4e6").Alpha(0.26 * haloOp * oa), At: 0},
-				{Color: sceneColor("#9fb4e6").Alpha(0), At: 1},
+				{Color: haloCol.Alpha(0.26 * haloOp * oa), At: 0},
+				{Color: haloCol.Alpha(0), At: 1},
 			},
 		}, r)
 		var earthshine ui.Path
 		earthshine.Circle(rc.ox+brandOrbX, cy, 4.5)
-		rc.p.FillPath(&earthshine, sceneColor("#e7ecf8").Alpha(0.09*oa))
-		paintCrescentMoon(rc.p, rc.ox+brandOrbX, cy, 4.5, sceneColor("#e7ecf8").Alpha(oa))
+		rc.p.FillPath(&earthshine, moonCol.Alpha(0.09*oa))
+		paintCrescentMoon(rc.p, rc.ox+brandOrbX, cy, 4.5, moonCol.Alpha(oa))
 	}
 
 	rc.paintMeteors(sc.meteors)
@@ -1772,8 +1805,8 @@ func (rc *sceneRenderCtx) paintMoon(sc *compiledScene, tr *sceneTerrainCache) {
 			continue
 		}
 		x := rc.w + 10 - (rc.w+110)*modPos(rc.t+float64(mw.delaySec), float64(mw.durSec))
-		wispBody := sceneColor("#343c50").Alpha(0.5 * vis)
-		wispRim := sceneColor("#8fa0c8").Alpha(0.3 * vis)
+		wispBody := rc.adaptGround(sceneColor("#343c50")).Alpha(0.5 * vis)
+		wispRim := rc.adaptAccent(sceneColor("#8fa0c8"), 0.65).Alpha(0.3 * vis)
 		rc.p.Transform(ui.Scaling(mw.scale, mw.scale).Then(ui.Translation(rc.ox+x, rc.oy+mw.y)), 0, 0, func() {
 			rc.p.Fill(ui.Rect{X: 0, Y: 3, W: 150, H: 5}, wispBody, 2.5)
 			rc.p.Fill(ui.Rect{X: 28, Y: 0, W: 92, H: 5}, wispBody, 2.5)
@@ -1790,7 +1823,7 @@ func (rc *sceneRenderCtx) paintMoon(sc *compiledScene, tr *sceneTerrainCache) {
 	// Bare tree with blinking owl at x=58
 	tx := float32(58)
 	ty := sc.far.y(float64(tx)) + 0.6 + rc.layerShiftY
-	treeCol := sceneColor("#1d2029").Alpha(rc.alpha)
+	treeCol := rc.adaptGround(sceneColor("#1d2029")).Alpha(rc.alpha)
 	rc.p.Transform(ui.Translation(rc.ox+tx, rc.oy+ty), 0, 0, func() {
 		var trunk ui.Path
 		trunk.MoveTo(0, 0.6).CubeTo(0.5, -5, -0.6, -9, 0, -14.5).Cap(ui.RoundCap)

@@ -231,11 +231,19 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 
 			// 1. Full-window sky backdrop gradient, fading horizontally toward the right edge.
 			skyRect := ui.Rect{X: bandRect.X, Y: bandRect.Y, W: bandRect.W, H: BrandBandHeight}
+			skyScale := float32(1)
+			if opts.SkinChrome {
+				skyScale = 0.72
+			}
+			// Only skins recolor the dark art onto their own ground; stock themes keep
+			// the original art, including during light <-> dark transitions.
+			prevRemap := opts.SkinChrome && prevSc != nil && prevSc.dark && prevSc.ground != effGround
+			curRemap := opts.SkinChrome && curSc != nil && curSc.dark && curSc.ground != effGround
 			if prevSc != nil && alphaOut > 0.002 {
-				paintSceneSky(p, prevSc, skyRect, alphaOut)
+				paintSceneSky(p, prevSc, skyRect, alphaOut*skyScale, effGround, prevRemap)
 			}
 			if curSc != nil && alphaIn > 0.002 {
-				paintSceneSky(p, curSc, skyRect, alphaIn)
+				paintSceneSky(p, curSc, skyRect, alphaIn*skyScale, effGround, curRemap)
 			}
 			hasSky := (prevSc != nil && alphaOut > 0.002 && len(prevSc.skyStops) > 0) ||
 				(curSc != nil && alphaIn > 0.002 && len(curSc.skyStops) > 0)
@@ -262,26 +270,34 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 
 			// 2. Sidebar-only illustrated scene artwork, softly feathered on its right edge.
 			artW := min(st.artW, bandRect.W)
+			artMult := float32(1)
+			if opts.SkinChrome {
+				artMult = 0.78
+			}
 			if artEase > 0.002 && artW > 0 {
 				artRect := ui.Rect{X: bandRect.X, Y: bandRect.Y, W: artW, H: bandRect.H}
 				p.Clip(artRect, 0, func() {
 					if prevSc != nil && alphaOut > 0.002 {
 						paintSceneArt(p, prevSc, sceneRenderCtx{
-							p:           p,
-							ox:          bandRect.X,
-							oy:          bandRect.Y,
-							w:           artW,
-							h:           BrandBandHeight,
-							alpha:       alphaOut * artEase,
-							t:           t,
-							wm:          wm,
-							dCalm:       dCalm,
-							dRich:       dRich,
-							orbAlpha:    orbEase,
-							orbExtraDY:  orbSettleDY + 6.0*u,
-							layerShiftY: 3.5 * u,
-							showCat:     opts.ShowCat,
-							vars:        evalSceneTimeVars(prevSc.id, sceneProgress(prevSc.id, nowClock)),
+							p:              p,
+							ox:             bandRect.X,
+							oy:             bandRect.Y,
+							w:              artW,
+							h:              BrandBandHeight,
+							alpha:          alphaOut * artEase * artMult,
+							t:              t,
+							wm:             wm,
+							dCalm:          dCalm,
+							dRich:          dRich,
+							orbAlpha:       orbEase,
+							orbExtraDY:     orbSettleDY + 6.0*u,
+							layerShiftY:    3.5 * u,
+							showCat:        opts.ShowCat,
+							vars:           evalSceneTimeVars(prevSc.id, sceneProgress(prevSc.id, nowClock)),
+							dstGround:      effGround,
+							hasGroundRemap: prevRemap,
+							skinChrome:     opts.SkinChrome,
+							skinAccent:     opts.SkinAccent,
 						})
 					}
 					if curSc != nil && alphaIn > 0.002 {
@@ -292,21 +308,25 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 							shiftY = 3.5 * (1 - u)
 						}
 						paintSceneArt(p, curSc, sceneRenderCtx{
-							p:           p,
-							ox:          bandRect.X,
-							oy:          bandRect.Y,
-							w:           artW,
-							h:           BrandBandHeight,
-							alpha:       alphaIn * artEase,
-							t:           t,
-							wm:          wm,
-							dCalm:       dCalm,
-							dRich:       dRich,
-							orbAlpha:    orbEase,
-							orbExtraDY:  orbDY,
-							layerShiftY: shiftY,
-							showCat:     opts.ShowCat,
-							vars:        evalSceneTimeVars(curSc.id, sceneProgress(curSc.id, nowClock)),
+							p:              p,
+							ox:             bandRect.X,
+							oy:             bandRect.Y,
+							w:              artW,
+							h:              BrandBandHeight,
+							alpha:          alphaIn * artEase * artMult,
+							t:              t,
+							wm:             wm,
+							dCalm:          dCalm,
+							dRich:          dRich,
+							orbAlpha:       orbEase,
+							orbExtraDY:     orbDY,
+							layerShiftY:    shiftY,
+							showCat:        opts.ShowCat,
+							vars:           evalSceneTimeVars(curSc.id, sceneProgress(curSc.id, nowClock)),
+							dstGround:      effGround,
+							hasGroundRemap: curRemap,
+							skinChrome:     opts.SkinChrome,
+							skinAccent:     opts.SkinAccent,
 						})
 					}
 
@@ -326,10 +346,10 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 							t := (y0 + stripH*0.5) / BrandBandHeight
 							col := effGround
 							if prevSc != nil && alphaOut > 0.002 && len(prevSc.skyStops) > 0 {
-								col = sampleSkyOver(prevSc.skyStops, t, alphaOut, col)
+								col = sampleSkyOver(adaptedSkyStops(prevSc.skyStops, effGround, prevRemap), t, alphaOut*skyScale, col)
 							}
 							if curSc != nil && alphaIn > 0.002 && len(curSc.skyStops) > 0 {
-								col = sampleSkyOver(curSc.skyStops, t, alphaIn, col)
+								col = sampleSkyOver(adaptedSkyStops(curSc.skyStops, effGround, curRemap), t, alphaIn*skyScale, col)
 							}
 							p.FillGradient(ui.Rect{X: fx, Y: bandRect.Y + y0, W: featherW, H: stripH}, ui.LinearGradient{
 								Angle: 90,
@@ -342,7 +362,8 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 			}
 
 			// 3. A few stars trail past the sidebar edge into the titlebar as a quiet accent.
-			if artEase > 0.002 && artW > 0 && bandRect.W > artW {
+			// Suppressed when a custom skin owns chrome so dots never clutter skin breadcrumbs.
+			if !opts.SkinChrome && artEase > 0.002 && artW > 0 && bandRect.W > artW {
 				spill := func(sc *compiledScene, a float32) {
 					if sc == nil || len(sc.spill) == 0 || a <= 0.002 {
 						return
@@ -482,16 +503,34 @@ func paintScene(p *ui.Painter, sc *compiledScene, rc sceneRenderCtx) {
 	if rc.alpha <= 0.002 {
 		return
 	}
-	paintSceneSky(p, sc, ui.Rect{X: rc.ox, Y: rc.oy, W: rc.w, H: rc.h}, rc.alpha)
+	paintSceneSky(p, sc, ui.Rect{X: rc.ox, Y: rc.oy, W: rc.w, H: rc.h}, rc.alpha, sc.ground, false)
 	paintSceneArt(p, sc, rc)
 }
 
-func paintSceneSky(p *ui.Painter, sc *compiledScene, r ui.Rect, alpha float32) {
+func adaptedSkyStops(raw []ui.GradientStop, ground ui.Color, remap bool) []ui.GradientStop {
+	if !remap || len(raw) == 0 {
+		return raw
+	}
+	out := make([]ui.GradientStop, len(raw))
+	for i, st := range raw {
+		col := st.Color
+		if col.A == 0 {
+			col = ground.Alpha(0)
+		} else {
+			col = col.Mix(ground, 0.60)
+		}
+		out[i] = ui.GradientStop{Color: col, At: st.At}
+	}
+	return out
+}
+
+func paintSceneSky(p *ui.Painter, sc *compiledScene, r ui.Rect, alpha float32, ground ui.Color, remap bool) {
 	if alpha <= 0.002 || len(sc.skyStops) == 0 {
 		return
 	}
-	stops := make([]ui.GradientStop, len(sc.skyStops))
-	for i, st := range sc.skyStops {
+	src := adaptedSkyStops(sc.skyStops, ground, remap)
+	stops := make([]ui.GradientStop, len(src))
+	for i, st := range src {
 		stops[i] = ui.GradientStop{
 			Color: st.Color.Alpha((float32(st.Color.A) / 255.0) * alpha),
 			At:    st.At,

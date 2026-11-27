@@ -293,6 +293,11 @@ func skinActive() bool {
 	return activeSkin != nil
 }
 
+// IsSkinActive reports whether a theme skin is currently active.
+func IsSkinActive() bool {
+	return skinActive()
+}
+
 // ActiveSkinOwner returns the plugin ID that owns the currently active theme skin.
 func ActiveSkinOwner() string {
 	skinMu.RLock()

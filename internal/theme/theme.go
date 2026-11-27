@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -277,7 +278,7 @@ var OceanDark = Palette{
 	Menu:           ui.Hex("#222222"),
 	Text:           ui.Hex("#ececec"),
 	TextSecondary:  ui.Hex("#b4b4b4"),
-	Placeholder:    ui.Hex("#767676"),
+	Placeholder:    ui.Hex("#7e7e7a"),
 	Accent:         ui.Hex("#779de8"),
 	AccentHover:    ui.Hex("#88aae9"),
 	AccentPressed:  ui.Hex("#638ad8"),
@@ -290,12 +291,12 @@ var OceanDark = Palette{
 	IconLitDetail:  ui.Hex("#8ea6d4"),
 	Hover:          ui.Hex("#2c2c2c"),
 	Selected:       ui.Hex("#3a3a3a"),
-	SelectedBorder: ui.RGBA(0xff, 0xff, 0xff, 0.12),
-	Hairline:       ui.Hex("#292929"),
-	SidebarBorder:  ui.Hex("#292929"),
-	BtnBorder:      ui.Hex("#444444"),
+	SelectedBorder: ui.RGBA(0xff, 0xff, 0xff, 0.14),
+	Hairline:       ui.Hex("#333333"),
+	SidebarBorder:  ui.Hex("#303030"),
+	BtnBorder:      ui.Hex("#464646"),
 	CodeBG:         ui.Hex("#242424"),
-	QuoteBar:       ui.Hex("#484848"),
+	QuoteBar:       ui.Hex("#525252"),
 	SelectionBG:    ui.Hex("#2d426b"),
 	SelectionFG:    ui.Hex("#9dbcf5"),
 	Danger:         ui.Hex("#ef6b6b"),
@@ -309,10 +310,10 @@ var OceanDark = Palette{
 	DiffDelBG:      ui.Hex("#3b1f21"),
 	DiffDelFG:      ui.Hex("#f59393"),
 
-	MenuBorder:          ui.Hex("#383838"),
+	MenuBorder:          ui.Hex("#404040"),
 	MenuIcon:            ui.Hex("#b4b4b4"),
-	MenuMuted:           ui.Hex("#8e8d88"),
-	MenuHover:           ui.RGBA(0xff, 0xff, 0xff, 0x12/255.0),
+	MenuMuted:           ui.Hex("#989792"),
+	MenuHover:           ui.RGBA(0xff, 0xff, 0xff, 0x16/255.0),
 	MenuSeparator:       ui.RGBA(0xff, 0xff, 0xff, 0x1a/255.0),
 	MenuDangerFG:        ui.Hex("#f28b82"),
 	MenuDangerHoverBG:   ui.Hex("#d03b3b"),
@@ -324,41 +325,41 @@ var OceanDark = Palette{
 	SwitchKnobOff:       ui.Hex("#8e8d88"),
 	SwitchKnobBorder:    ui.RGBA(0, 0, 0, 0.22),
 	SwitchKnobShadow:    ui.RGBA(0, 0, 0, 0.36),
-	TooltipBG:           ui.Hex("#262626"),
-	TooltipBorder:       ui.Hex("#3a3a3a"),
-	TooltipDivider:      ui.Hex("#343434"),
+	TooltipBG:           ui.Hex("#292a2e"),
+	TooltipBorder:       ui.Hex("#44464d"),
+	TooltipDivider:      ui.Hex("#3a3c42"),
 	TooltipMuted:        ui.Hex("#b4b4b4"),
 	TooltipAccent:       ui.Hex("#8bb0f9"),
 	TooltipDanger:       ui.Hex("#ff8f8f"),
 	TooltipDangerBorder: ui.Hex("#5a3238"),
-	TooltipPillBG:       ui.Hex("#303030"),
-	TooltipPillBorder:   ui.Hex("#444444"),
+	TooltipPillBG:       ui.Hex("#33353b"),
+	TooltipPillBorder:   ui.Hex("#494c55"),
 	TooltipPillFG:       ui.Hex("#e0e0e0"),
 	ScrollThumb:         ui.RGBA(0xff, 0xff, 0xff, 0.26),
 	ScrollThumbHover:    ui.RGBA(0xff, 0xff, 0xff, 0.45),
 	Link:                ui.Hex("#8bb0f9"),
-	InlineCodeFG:        ui.Hex("#ff7369"),
-	InlineCodeBG:        ui.RGBA(255, 255, 255, 0.094),
-	InlineCodeHoverBG:   ui.RGBA(255, 255, 255, 0.14),
-	InlineCodeEditBG:    ui.RGBA(255, 255, 255, 0.15),
+	InlineCodeFG:        ui.Hex("#f08a80"),
+	InlineCodeBG:        ui.RGBA(255, 255, 255, 0.085),
+	InlineCodeHoverBG:   ui.RGBA(255, 255, 255, 0.11),
+	InlineCodeEditBG:    ui.RGBA(255, 255, 255, 0.13),
 	CodeBlockBG:         ui.Hex("#242424"),
 	HintBand:            ui.Hex("#242424"),
-	ListGuide:           ui.Hex("#333333"),
-	ListBullet:          ui.Hex("#a9a8a4"),
-	TodoBG:              ui.Hex("#242424"),
-	TodoRing:            ui.Hex("#3a3a3a"),
-	TodoRingHover:       ui.Hex("#5a5a5a"),
+	ListGuide:           ui.Hex("#3c3c3c"),
+	ListBullet:          ui.Hex("#aeada9"),
+	TodoBG:              ui.Hex("#1f1f1f"),
+	TodoRing:            ui.Hex("#707070"),
+	TodoRingHover:       ui.Hex("#8c8c8c"),
 	AnnotationBG:        ui.Hex("#4a3c21"),
 	AnnotationActive:    ui.Hex("#81611e"),
 	AnnotationDone:      ui.Hex("#2d426b"),
 	AnnotSendFG:         ui.Hex("#e6eefc"),
 	AnnotSendDot:        ui.Hex("#f5c84c"),
-	FindMatch:           ui.Hex("#40361e"),
-	FindActive:          ui.Hex("#59451c"),
-	FindRing:            ui.Hex("#c9971c"),
-	SearchHighlight:     ui.Hex("#5c4813"),
+	FindMatch:           ui.Hex("#43371a"),
+	FindActive:          ui.Hex("#684c17"),
+	FindRing:            ui.Hex("#dfa928"),
+	SearchHighlight:     ui.Hex("#634b16"),
 	OutlineBarLit:       ui.Hex("#c6c6c6"),
-	OutlineBarDim:       ui.Hex("#464646"),
+	OutlineBarDim:       ui.Hex("#505050"),
 
 	CodeLine:       ui.Hex("#222222"),
 	GutterText:     ui.Hex("#767676"),
@@ -902,6 +903,59 @@ func Ocean() Palette {
 	surface := surfaceOverlay
 	surfaceMu.RUnlock()
 	return ApplySkinPalette(base, surface)
+}
+
+// relLuminance returns the WCAG relative luminance of c (alpha ignored).
+func relLuminance(c ui.Color) float64 {
+	ch := func(v uint8) float64 {
+		x := float64(v) / 255.0
+		if x <= 0.03928 {
+			return x / 12.92
+		}
+		return math.Pow((x+0.055)/1.055, 2.4)
+	}
+	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
+}
+
+// contrastRatio returns the WCAG contrast ratio between two opaque colors.
+func contrastRatio(a, b ui.Color) float64 {
+	la, lb := relLuminance(a), relLuminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+// tooltipGround is the tooltip fill composited over the shell, i.e. what is seen.
+func (p Palette) tooltipGround() ui.Color {
+	bg := p.TooltipBG
+	if bg.A < 255 {
+		bg = bg.Over(p.Shell)
+	}
+	return bg
+}
+
+// readableOn keeps preferred when it reaches 4.5:1 over bg, else picks the
+// higher-contrast of the two fallbacks.
+func readableOn(bg, preferred, light, dark ui.Color) ui.Color {
+	if contrastRatio(preferred, bg) >= 4.5 {
+		return preferred
+	}
+	if contrastRatio(light, bg) >= contrastRatio(dark, bg) {
+		return light
+	}
+	return dark
+}
+
+// TooltipPrimaryFG returns a readable primary text color over p.TooltipBG,
+// preventing dark text on a dark-surface tooltip in mixed light/dark skins.
+func (p Palette) TooltipPrimaryFG() ui.Color {
+	return readableOn(p.tooltipGround(), p.Text, ui.Hex("#ffffff"), ui.Hex("#1e1e1e"))
+}
+
+// TooltipSecondaryFG returns a readable muted text color over p.TooltipBG.
+func (p Palette) TooltipSecondaryFG() ui.Color {
+	return readableOn(p.tooltipGround(), p.TooltipMuted, ui.Hex("#c3cad6"), ui.Hex("#4a5260"))
 }
 
 func SetThemeMode(m model.ThemeMode, systemDark bool) {

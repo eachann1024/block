@@ -24,11 +24,17 @@ func (p Palette) ShellChrome() ShellChromeColors {
 	// A plugin theme skin repaints the shell from its own palette so the window
 	// ground, sidebar, and titlebar follow the skin instead of fixed greys.
 	if skinActive() {
+		cardBorder := p.Hairline
+		pathBorder := p.Hairline
+		if p.Dark {
+			cardBorder = p.BtnBorder
+			pathBorder = p.SidebarBorder
+		}
 		return ShellChromeColors{
 			Ground:           p.Shell,
 			Card:             p.Paper,
-			CardBorder:       p.Hairline,
-			PathBarBorder:    p.Hairline,
+			CardBorder:       cardBorder,
+			PathBarBorder:    pathBorder,
 			TabBorder:        p.SelectedBorder,
 			Hover:            p.Hover,
 			FieldBG:          p.Card,
@@ -42,13 +48,13 @@ func (p Palette) ShellChrome() ShellChromeColors {
 		return ShellChromeColors{
 			Ground:           ui.Hex("#222222"),
 			Card:             ui.Hex("#181818"),
-			CardBorder:       ui.Hex("#2e2e2e"),
-			PathBarBorder:    ui.RGBA(0xff, 0xff, 0xff, 0.07),
-			TabBorder:        ui.RGBA(0xff, 0xff, 0xff, 0.08),
+			CardBorder:       ui.Hex("#343434"),
+			PathBarBorder:    ui.RGBA(0xff, 0xff, 0xff, 0.09),
+			TabBorder:        ui.RGBA(0xff, 0xff, 0xff, 0.10),
 			Hover:            ui.RGBA(0xff, 0xff, 0xff, 0.07),
-			FieldBG:          ui.Hex("#2a2a2a"),
-			FieldBorder:      ui.Hex("#3a3a3a"),
-			FieldBorderHover: ui.Hex("#4c4c4c"),
+			FieldBG:          ui.Hex("#292929"),
+			FieldBorder:      ui.Hex("#3f3f3f"),
+			FieldBorderHover: ui.Hex("#545454"),
 			KbdBG:            ui.Hex("#303030"),
 			BadgeFG:          ui.Hex("#b9cdf5"),
 		}
@@ -87,20 +93,36 @@ type StoreCardColors struct {
 
 // StoreCard returns the tinted App Store card token set for p.
 func (p Palette) StoreCard() StoreCardColors {
+	if skinActive() {
+		return StoreCardColors{
+			BG:                 p.Card,
+			Border:             p.Hairline,
+			HoverBG:            p.Hover.Over(p.Card),
+			HoverBorder:        p.BtnBorder,
+			IconBG:             p.Paper,
+			IconBorder:         p.Hairline,
+			OfficialIconBG:     p.SelectionBG.Alpha(0.32).Over(p.Card),
+			OfficialIconBorder: p.SelectedBorder,
+			Divider:            p.Hairline,
+			CategoryBG:         p.Hover.Over(p.Card),
+			ExtBG:              p.Card,
+			ExtBorder:          p.BtnBorder,
+		}
+	}
 	if p.Dark {
 		return StoreCardColors{
-			BG:                 ui.Hex("#1f1f1f"),
-			Border:             ui.Hex("#2d2d2d"),
-			HoverBG:            ui.Hex("#252525"),
-			HoverBorder:        ui.Hex("#434343"),
+			BG:                 ui.Hex("#1e1e1e"),
+			Border:             ui.Hex("#313131"),
+			HoverBG:            ui.Hex("#242424"),
+			HoverBorder:        ui.Hex("#484848"),
 			IconBG:             ui.Hex("#181818"),
-			IconBorder:         ui.Hex("#303030"),
+			IconBorder:         ui.Hex("#323232"),
 			OfficialIconBG:     ui.Hex("#1e2a3f"),
 			OfficialIconBorder: ui.Hex("#2f4569"),
-			Divider:            ui.Hex("#2a2a2a"),
-			CategoryBG:         ui.Hex("#292929"),
-			ExtBG:              ui.Hex("#282828"),
-			ExtBorder:          ui.Hex("#353535"),
+			Divider:            ui.Hex("#2e2e2e"),
+			CategoryBG:         ui.Hex("#2a2a2a"),
+			ExtBG:              ui.Hex("#272727"),
+			ExtBorder:          ui.Hex("#393939"),
 		}
 	}
 	return StoreCardColors{

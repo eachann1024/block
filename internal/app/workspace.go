@@ -6514,6 +6514,8 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 			Motion:     blockui.ResolveBrandMotion(stSnap.BrandDeco),
 			PauseAnim:  pauseBrandAnim,
 			Now:        now,
+			SkinChrome: theme.IsSkinActive(),
+			SkinAccent: pal.Accent,
 		})
 	}
 
@@ -6861,10 +6863,14 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 				}
 				ui.Row(c.Key("workspace-panel-slot")).Grow(1).MinWidth(0).FillHeight().
 					Padding(0, 8, 8, cardLeft).Children(func() {
+					cardElev := theme.ElevationCard
+					if theme.IsSkinActive() && pal.Dark {
+						cardElev = theme.ElevationDialog
+					}
 					panelCard := blockui.Elevate(
 						ui.Row(c.Key("workspace-panel-card")).Fill().Radius(theme.RadiusLG).Clip().
 							Background(chrome.Card).Border(1, chrome.CardBorder),
-						theme.ElevationCard,
+						cardElev,
 					)
 					blockui.Probe(panelCard, "workspace-panel-card")
 					panelCard.Children(func() {

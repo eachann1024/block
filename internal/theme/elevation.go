@@ -35,7 +35,10 @@ func (p Palette) Shadows(e Elevation) []Shadow {
 		return []Shadow{{0, 1, 2, 0, black(0.12)}}
 	case ElevationCard:
 		if p.Dark {
-			return []Shadow{{0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.22)}}
+			if skinActive() {
+				return []Shadow{{0, 4, 14, 0, ui.RGBA(0, 0, 0, 0.42)}}
+			}
+			return []Shadow{{0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.30)}}
 		}
 		return []Shadow{{0, 1, 3, 0, ui.RGBA(0x20, 0x24, 0x2c, 0.05)}}
 	case ElevationCardHover:
@@ -44,6 +47,9 @@ func (p Palette) Shadows(e Elevation) []Shadow {
 		}
 		return []Shadow{{0, 4, 14, 0, ui.RGBA(0x14, 0x18, 0x20, 0.06)}}
 	case ElevationDialog:
+		if p.Dark {
+			return []Shadow{{0, 3, 10, 0, ui.RGBA(0, 0, 0, 0.24)}, {0, 14, 36, 0, ui.RGBA(0, 0, 0, 0.40)}}
+		}
 		return []Shadow{{0, 2, 6, 0, black(0.08)}, {0, 12, 32, 0, black(0.14)}}
 	case ElevationDrawer:
 		return []Shadow{{8, 0, 28, 0, black(0.18)}}

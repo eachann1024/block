@@ -77,6 +77,9 @@ func styleTooltipSurface(tip, anchor ui.Element, pal theme.Palette, spec Tooltip
 		Enter:    &ui.Motion{},
 		Exit:     &ui.Motion{},
 	}).Radius(radius).Background(pal.TooltipBG).Clip()
+	if pal.Dark || theme.IsSkinActive() {
+		tip.Border(1, pal.TooltipBorder)
+	}
 	Elevate(tip, theme.ElevationPopover)
 	if spec.Placement == TooltipAbove {
 		tip.AttachTo(anchor, ui.AnchorTop, ui.AnchorBottom).Margin(0, 0, theme.TooltipOffset, 0)
@@ -91,13 +94,13 @@ func renderTooltipShortcutPill(c *ui.Context, pal theme.Palette, shortcut string
 		FontSize:   theme.FontMeta,
 		LineHeight: theme.LineMeta,
 		FontWeight: theme.WeightMono,
-		Color:      pal.TooltipMuted,
+		Color:      pal.TooltipSecondaryFG(),
 		IsShortcut: true,
 	})
 }
 
 func renderTooltipRow(c *ui.Context, pal theme.Palette, row TooltipRow, pill bool) {
-	triggerCol := pal.Text
+	triggerCol := pal.TooltipPrimaryFG()
 	switch row.TriggerTone {
 	case TooltipToneAccent:
 		triggerCol = pal.TooltipAccent
@@ -121,7 +124,7 @@ func renderTooltipRow(c *ui.Context, pal theme.Palette, row TooltipRow, pill boo
 			FontSize:   theme.FontSmall,
 			LineHeight: theme.LineSmall,
 			FontWeight: theme.WeightRegular,
-			Color:      pal.TooltipMuted,
+			Color:      pal.TooltipSecondaryFG(),
 		})
 	}
 	if row.Shortcut != "" {
@@ -207,7 +210,7 @@ func WrappedTooltip(c *ui.Context, anchor ui.Element, text string) {
 		tip.MaxWidth(maxWidth).Padding(5, 11)
 		tip.Children(func() {
 			ui.Text(c, text).MinWidth(0).FontSize(theme.FontSmall).
-				FixedLineHeight(theme.LineSmall).TextColor(pal.Text)
+				FixedLineHeight(theme.LineSmall).TextColor(pal.TooltipPrimaryFG())
 		})
 	})
 }
@@ -280,22 +283,22 @@ func TooltipCard(c *ui.Context, anchor ui.Element, spec TooltipCardSpec) ui.Elem
 					ui.Row(c).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space6).Wrap().Children(func() {
 						if title != "" {
 							ui.Text(c, title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-								FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+								FontWeight(theme.WeightControl).TextColor(pal.TooltipPrimaryFG()).SingleLine()
 						}
 						if code != "" {
 							ui.Text(c, code).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-								FontWeight(theme.WeightMono).TextColor(pal.TooltipMuted).SingleLine()
+								FontWeight(theme.WeightMono).TextColor(pal.TooltipSecondaryFG()).SingleLine()
 						}
 					})
 				}
 				if body != "" {
 					ui.Text(c, body).MinWidth(0).FontSize(theme.FontSmall).
-						FixedLineHeight(theme.LineSmall).TextColor(pal.Text)
+						FixedLineHeight(theme.LineSmall).TextColor(pal.TooltipPrimaryFG())
 				}
 				if note != "" {
 					ui.Box(c).FillWidth().Height(1).Background(pal.TooltipDivider).Margin(theme.Space2, 0, theme.Space2, 0)
 					ui.Text(c, note).MinWidth(0).FontSize(theme.FontMeta).
-						FixedLineHeight(theme.LineMeta).TextColor(pal.TooltipMuted)
+						FixedLineHeight(theme.LineMeta).TextColor(pal.TooltipSecondaryFG())
 				}
 			})
 		})

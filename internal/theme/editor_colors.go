@@ -15,8 +15,9 @@ type SyntaxColors struct {
 
 // Syntax returns the code block syntax highlighting palette.
 func (p Palette) Syntax() SyntaxColors {
+	var syn SyntaxColors
 	if p.Dark {
-		return SyntaxColors{
+		syn = SyntaxColors{
 			Keyword: ui.Hex("#ff7b72"),
 			String:  ui.Hex("#a5d6ff"),
 			Comment: ui.Hex("#8b949e"),
@@ -25,16 +26,38 @@ func (p Palette) Syntax() SyntaxColors {
 			Func:    ui.Hex("#d2a8ff"),
 			Default: p.Text,
 		}
+	} else {
+		syn = SyntaxColors{
+			Keyword: ui.Hex("#cf222e"),
+			String:  ui.Hex("#0a3069"),
+			Comment: ui.Hex("#6e7781"),
+			Number:  ui.Hex("#0550ae"),
+			Type:    ui.Hex("#953800"),
+			Func:    ui.Hex("#8250df"),
+			Default: p.Text,
+		}
 	}
-	return SyntaxColors{
-		Keyword: ui.Hex("#cf222e"),
-		String:  ui.Hex("#0a3069"),
-		Comment: ui.Hex("#6e7781"),
-		Number:  ui.Hex("#0550ae"),
-		Type:    ui.Hex("#953800"),
-		Func:    ui.Hex("#8250df"),
-		Default: p.Text,
+	if skinActive() {
+		if p.SyntaxKeyword.A > 0 {
+			syn.Keyword = p.SyntaxKeyword
+		}
+		if p.SyntaxString.A > 0 {
+			syn.String = p.SyntaxString
+		}
+		if p.SyntaxComment.A > 0 {
+			syn.Comment = p.SyntaxComment
+		}
+		if p.SyntaxNumber.A > 0 {
+			syn.Number = p.SyntaxNumber
+		}
+		if p.SyntaxType.A > 0 {
+			syn.Type = p.SyntaxType
+		}
+		if p.SyntaxFunction.A > 0 {
+			syn.Func = p.SyntaxFunction
+		}
 	}
+	return syn
 }
 
 // TableColors holds border, header, edge-pill handle, selection ring and tint colours for tables.
@@ -105,6 +128,30 @@ func (p Palette) Table() TableColors {
 			SwatchRose:      ui.Hex("#663438"),
 		}
 	}
+	if skinActive() && !p.Dark {
+		return TableColors{
+			Border:          p.Hairline,
+			HeaderBG:        p.CodeBlockBG,
+			SelectedTint:    p.Hover,
+			OuterSelectRing: p.Accent.Alpha(0.22),
+			HandleBG:        p.Paper,
+			HandleHoverBG:   p.Hover,
+			HandleBorder:    p.BtnBorder,
+			HandleFG:        p.TextSecondary,
+			HandleActiveBG:  p.AccentHover,
+			HandleActiveFG:  p.AccentText,
+			TintSlate:       ui.Hex("#e7e2d7"),
+			TintOcean:       ui.Hex("#dde4eb"),
+			TintEmerald:     ui.Hex("#dde7dc"),
+			TintAmber:       ui.Hex("#f1e4c6"),
+			TintRose:        ui.Hex("#f0dad4"),
+			SwatchSlate:     ui.Hex("#d5cfbe"),
+			SwatchOcean:     ui.Hex("#bfd0e4"),
+			SwatchEmerald:   ui.Hex("#bad2bd"),
+			SwatchAmber:     ui.Hex("#e6cb8e"),
+			SwatchRose:      ui.Hex("#e3b9b0"),
+		}
+	}
 	return TableColors{
 		Border:          p.Hairline,
 		HeaderBG:        ui.Hex("#fafaf9"),
@@ -147,6 +194,15 @@ func (p Palette) CodeBlock() CodeBlockColors {
 			PillHoverFG: p.Text,
 			PillBG:      ui.Hex("#2a2a2a"),
 			PillHoverBG: p.Selected,
+		}
+	}
+	if skinActive() {
+		return CodeBlockColors{
+			TextFG:      p.Text,
+			PillFG:      p.TextSecondary,
+			PillHoverFG: p.Text,
+			PillBG:      p.Card,
+			PillHoverBG: p.Hover.Over(p.Card),
 		}
 	}
 	return CodeBlockColors{
