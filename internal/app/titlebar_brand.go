@@ -13,7 +13,7 @@ const (
 	// brandMarkGap separates the brand wordmark from the sidebar toggle.
 	brandMarkGap = 2
 	// brandMenuHeaderH is the brand menu's single-line identity header (mark + name + version).
-	brandMenuHeaderH = theme.HeightControl
+	brandMenuHeaderH = theme.MenuItemHeight
 )
 
 // renderBrandMark draws the "cooool.top" brand button after the sidebar toggle;
@@ -73,7 +73,7 @@ func brandVersionLabel(p TitlebarProps) string {
 // buildBrandMenuItems lists where the app comes from and how to keep it current.
 func buildBrandMenuItems(c *ui.Context, p TitlebarProps) []blockui.MenuItemSpec {
 	icSite := icons.LinkOpen
-	icUpdate := icons.UpdateTangle
+	icUpdate := icons.Refresh
 	if p.HasUpdate {
 		icUpdate = icons.Download
 	}
@@ -117,15 +117,17 @@ func renderBrandMenu(c *ui.Context, p TitlebarProps, scrim ui.Element) {
 	renderTitlebarAnchoredMenu(c, p, scrim, titlebarMenuSpec{
 		Key:     "brand-menu",
 		Anchor:  p.MenuState.BrandMenuAnchor,
-		Width:   232,
+		Width:   SidebarDefaultW,
 		Items:   buildBrandMenuItems(c, p),
-		HeaderH: brandMenuHeaderH + 7,
+		HeaderH: brandMenuHeaderH + 7 + theme.MenuGap*2,
 		Header: func() {
 			ui.Row(c.Key("brand-menu-header")).FillWidth().Height(brandMenuHeaderH).Shrink(0).
 				PaddingX(theme.Space10).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-				blockui.AppMarkImage(c, theme.IconRow)
+				ui.Box(c).Size(theme.IconRow, theme.IconRow).Shrink(0).Center().Children(func() {
+					blockui.AppMarkImage(c, theme.IconAction)
+				})
 				ui.Text(c, "Block").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-					FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine()
+					FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine()
 				if p.AppVersion != "" {
 					ui.Text(c, "v"+p.AppVersion).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 						TextColor(pal.MenuMuted).SingleLine().Shrink(0)
