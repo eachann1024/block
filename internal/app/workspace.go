@@ -6413,7 +6413,7 @@ func (w *Workspace) Render(c *ui.Context) {
 										w.headlessMainMu.Lock()
 									}
 									activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
-									activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
+									activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.RightOpen())
 									activeSess.SetBackground(w.pluginEditorBackground())
 									activeSess.SetMindMapConfig(w.pluginMindMapConfig())
 									activeSess.SetNotifyFunc(func(msg, tone string) {
