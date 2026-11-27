@@ -1,0 +1,1850 @@
+{
+  "schema_version": 1,
+  "repo": "eachann1024/block",
+  "updated_at": "2026-11-27T20:35:11.649Z",
+  "latest_version": "1.0.973",
+  "latest_tag": "v1.0.973",
+  "releases": [
+    {
+      "version": "1.0.973",
+      "tag": "v1.0.973",
+      "published_at": "2026-11-27T20:35:11Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.973",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "导入导出：纸张主题导出时可以按需加载适用于中日韩文字和拉丁文字的网页字体。",
+          "AI 对话：新增隐藏的深度 AI 模式，支持组合式原生回复组件。"
+        ],
+        "improvements": [
+          "侧边栏：侧边栏和标题栏现在会显示窗口材质，并以渐隐的品牌色带和列表边缘淡出效果呈现。",
+          "设置：新用户默认关闭侧边栏装饰，并开启窗口半透明效果。"
+        ],
+        "fixes": [
+          "思维导图：窗口进入或退出全屏后，思维导图现在会保持垂直居中。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Import & Export: Paper theme exports can now load unified CJK and Latin webfonts on demand.",
+          "AI Chat: A hidden deep AI mode now supports composable native reply components."
+        ],
+        "improvements": [
+          "Sidebar: The sidebar and titlebar now show the window material, with a softly fading brand band and edge-fading lists.",
+          "Settings: New users now start with sidebar decoration off and window translucency on."
+        ],
+        "fixes": [
+          "Mind Map: The map now stays vertically centered after the window enters or exits fullscreen."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-macos-arm64.dmg",
+          "size": 19181890,
+          "sha256": "00596a465358cf777911e190aa99db57db7842c66f1505ad2ec7dbeea9c185db"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-macos-x64.dmg",
+          "size": 21191797,
+          "sha256": "7b9bee92f9ea16a44643746c0777bdbbc69de5775bd4cd061ec5ae3c791dd92d"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-windows-x64-setup.exe",
+          "size": 16638097,
+          "sha256": "93abcb8e50a363b4845d6b16127da2e82957d0d5d278fdf279cbdb847e70944c"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-linux-x64.deb",
+          "size": 13505896,
+          "sha256": "db63246390dd5e518a99b7d86fbb26f207d4a7311f193aa540fc857f32063222"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-linux-x64.AppImage",
+          "size": 26819064,
+          "sha256": "6bb52534c0003cbcd38ee5322d84a89ae77324b07152dadf1cef253971229186"
+        }
+      ]
+    },
+    {
+      "version": "1.0.972",
+      "tag": "v1.0.972",
+      "published_at": "2026-11-27T20:15:25Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.972",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "笔记本与插件：现在会校验笔记本根目录句柄、限制插件数据删除范围，并更安全地处理恢复过程。",
+          "编辑器：全屏编辑器背景现在限制在编辑区域内，并与边框对齐。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Notebooks & Plugins: The app now verifies notebook root handles, limits plugin data deletion, and handles recovery more safely.",
+          "Editor: The full editor backdrop now stays within the editor canvas and aligns with its border."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.971",
+      "tag": "v1.0.971",
+      "published_at": "2026-11-27T19:58:33Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.971",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "编辑器：支持将背景应用于整个窗口，同时保持浮层独立。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Editor: Users can apply a backdrop across the entire window while keeping overlays isolated."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.970",
+      "tag": "v1.0.970",
+      "published_at": "2026-11-27T19:44:23Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.970",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "导入导出：导出的文件现在会直接保存到“下载”文件夹，并在文件管理器中显示。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "思维导图：导出菜单和链接弹出框中的项目现在改为左对齐。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Import & Export: Exported files are now saved directly to Downloads and revealed in the file manager."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Mind Maps: Items in the export menu and link popover are now left aligned."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.969",
+      "tag": "v1.0.969",
+      "published_at": "2026-11-27T19:31:37Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.969",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "设置：应用商店导航项现在会显示待更新插件的数量。",
+          "全局搜索：可以通过文件夹选择器排除搜索范围内的子文件夹。",
+          "思维导图：聚焦或全屏显示导图时，可以用快捷键切换视图、进入全屏和更改布局。",
+          "外观：可以开启窗口半透明效果，让系统材质显示在侧边栏和标题栏后方。"
+        ],
+        "improvements": [
+          "自动更新：更新弹窗加宽，窗口最小尺寸也有所增大。",
+          "思维导图：优化了链接悬停提示的外观。",
+          "思维导图：快捷栏中的“编辑链接”操作现在采用中性样式。",
+          "思维导图：悬停节点时才会显示折叠和添加按钮。",
+          "思维导图：优化了快捷栏胶囊按钮的内边距，并恢复了链接节点的高亮效果。",
+          "思维导图：快捷栏移除了多余的“子节点”按钮。",
+          "主题：优化了深色模式对比度、皮肤界面、工具提示和品牌场景。",
+          "思维导图：折叠标记改为胶囊形状，折叠和添加操作也调整为常见的导图交互方式。",
+          "大纲：大纲栏现已移至左侧，弹出提示也会显示在大纲栏上方。"
+        ],
+        "fixes": [
+          "编辑器：修复了 macOS 上中日韩标点影响行内代码间距的问题，并收紧了标签块内边距。",
+          "主题：插件皮肤现在可以重绘应用背景、侧边栏和标题栏。",
+          "插件接口：加强了笔记本身份校验和文件安全保护，并新增了供插件删除数据的接口。",
+          "插件：插件网络请求和商店现在支持 macOS 系统代理。",
+          "插件商店：更新结果现在只会通过右上角的提示显示。",
+          "插件权限：权限弹窗底部操作栏会保持固定；只有新增权限时才会提示更新。",
+          "插件：使用系统代理前会先执行 IP 策略检查，并遵循环境变量中的 NO_PROXY 设置。",
+          "编辑器：代码高亮和提示框现在会沿用纸张表面及当前皮肤的颜色。",
+          "主题：启用皮肤时，深色模式下的书写区域会保持深色。",
+          "插件商店：目录会自动刷新，因此打开商店前就能看到更新数量提示。",
+          "表格：单元格内容仍可容纳时，行内样式或文本变化不会再导致列宽不稳定。",
+          "窗口：系统窗口材质现在可以透过应用外壳显示。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Settings: The App Store navigation item now shows the number of pending plugin updates.",
+          "Global Search: You can exclude nested folders from search using a folder picker.",
+          "Mind Map: New shortcuts switch views, enter fullscreen, and change the layout when a mind map is focused or fullscreen.",
+          "Appearance: You can enable window translucency to show system material behind the sidebar and titlebar."
+        ],
+        "improvements": [
+          "Updater: The updater modal is wider, and the minimum window size is larger.",
+          "Mind Map: Link hover tooltips have a refined appearance.",
+          "Mind Map: The Edit Link quick bar action now uses a neutral style.",
+          "Mind Map: Fold and add buttons appear only when you hover over a node.",
+          "Mind Map: The quick bar has improved pill spacing and restores the linked node highlight.",
+          "Mind Map: The quick bar no longer includes a redundant Child button.",
+          "Theme: Dark mode contrast, skin chrome, tooltips, and the brand scene have been refined.",
+          "Mind Map: Fold badges use a capsule shape, and fold and add actions align with common mind map conventions.",
+          "Outline: The outline rail is now on the left, and popup tooltips appear above it."
+        ],
+        "fixes": [
+          "Editor: CJK punctuation no longer affects inline code spacing on macOS, and chip padding is tighter.",
+          "Themes: Plugin skins can repaint the shell background, sidebar, and titlebar.",
+          "Plugin API: Notebook identity checks and file safety guards have been strengthened, and plugins can delete data through the host API.",
+          "Plugins: Plugin HTTP requests and the store now support the macOS system proxy.",
+          "Plugin Store: Update results now appear only in the top right toast.",
+          "Plugin Permissions: The permission modal footer stays in place, and update prompts appear only when new permissions are added.",
+          "Plugins: IP policy checks run before system proxy use, and the environment’s NO_PROXY setting is honored.",
+          "Editor: Code highlights and callouts now follow the paper surface and active skin colors.",
+          "Themes: The writing surface stays dark in dark mode when a skin is active.",
+          "Plugin Store: The catalog refreshes automatically so the update badge appears before you open the store.",
+          "Tables: Column widths stay stable when inline styles or text change in cells that still fit.",
+          "Window: System window material now shows through the shell."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.968",
+      "tag": "v1.0.968",
+      "published_at": "2026-11-27T18:02:14Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.968",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "性能：打开性能窗口时，应用会保持空闲，并通过原生方式读取内存用量。",
+          "自动更新：更新程序会探测可用来源、自动选择下载路径，并提供诊断反馈。"
+        ],
+        "fixes": [
+          "笔记本：改进笔记本身份校验、清理、暂存恢复和同步性能。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Performance: The app stays idle while the Performance modal is open, and memory usage is read natively.",
+          "Updates: The updater probes available sources, routes downloads automatically, and provides diagnostic feedback."
+        ],
+        "fixes": [
+          "Notebooks: Notebook identity checks, cleanup, stash recovery, and sync performance are improved."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.967",
+      "tag": "v1.0.967",
+      "published_at": "2026-11-27T17:19:00Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.967",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "笔记本：每个笔记本现在都有持久化 ID，被替换的暂存内容会存储在笔记本之外。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Notebooks: Each notebook now has a durable ID, and replaced stashes are stored outside the notebook."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.966",
+      "tag": "v1.0.966",
+      "published_at": "2026-11-27T16:59:28Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.966",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "自动更新：macOS 更新会在后台预先准备，重启后安装更快。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Updates: macOS updates now prepare in the background, making restart-to-update faster."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.965",
+      "tag": "v1.0.965",
+      "published_at": "2026-11-27T16:45:26Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.965",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：插件查询标题栏项时，现在还能获取每个项的分组和预览图标。"
+        ],
+        "improvements": [
+          "插件：闲置的插件运行时会自动释放，轮询改为事件通知，并调整了内存上限，插件占用的资源更少。"
+        ],
+        "fixes": [
+          "标题栏：插件标题栏项的分组和预览图标显示一致，顺序符合预期，被隐藏的槽位也会正确隐藏。",
+          "标题栏：退出 Markdown 模式时，标题栏胶囊收起过程中发送区域不再消失。"
+        ],
+        "other": [
+          "其他：新增内部内存处理代码，应用界面没有可见变化。",
+          "其他：插件文档同步改为解析源码提取宿主方法，生成的文档保持准确。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Plugins that query titlebar items now also receive each item's group and preview icon."
+        ],
+        "improvements": [
+          "Plugins: Idle plugin runtimes are now released, polling is replaced with events, and memory limits are tuned, so plugins use fewer resources."
+        ],
+        "fixes": [
+          "Titlebar: Plugin titlebar items now show their groups and preview icons consistently, keep the intended order, and hidden slots are properly hidden.",
+          "Titlebar: The send segment stays visible while the titlebar pill collapses when you leave Markdown mode."
+        ],
+        "other": [
+          "Other: Internal memory handling code was added, with no visible change in the app.",
+          "Other: Plugin documentation sync now extracts dispatched host methods by parsing the source, so the generated docs stay accurate."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.964",
+      "tag": "v1.0.964",
+      "published_at": "2026-11-27T16:04:13Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.964",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "编辑器：色块图中间层会按内容保底高度并裁切溢出，避免文字超出区域。",
+          "编辑器：明细列表按最高分类固定高度，悬停切换分类时不再抖动。",
+          "编辑器：色块图底排加宽并每行排列三个，大小改用紧凑格式显示，避免内容被截断。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Editor: Treemap middle layers now maintain a minimum height based on their content and clip overflow to prevent text from spilling out.",
+          "Editor: The detail list now keeps a consistent height based on the tallest category, preventing it from shifting when hovering between categories.",
+          "Editor: Treemap bottom row items are wider and wrap three per row; compact size formatting prevents values from being cut off."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.963",
+      "tag": "v1.0.963",
+      "published_at": "2026-11-27T15:22:47Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.963",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件：启用的插件可以排除工作区目录，避免扫描其中的文件。",
+          "工作区：Block 会跟踪移出应用的文件夹，并在应用重新获得焦点或唤醒时同步。",
+          "插件商店：开发者条目会链接到文档首页，AI 功能也会在悬停时显示提示。"
+        ],
+        "improvements": [
+          "插件商店：商店插画改用仓库素材和共享目录数据。",
+          "应用：退出过程更加顺畅，状态更新对界面响应的影响也更小。",
+          "插件商店：现在会优先从 jsDelivr 加载插画。"
+        ],
+        "fixes": [
+          "表格：跨单元格拖动选择时不再闪烁。",
+          "插件商店：现在可以正确显示打包内置的图标，精选列表也更加简洁。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugins: Enabled plugins can exclude workspace directories from file scanning.",
+          "Workspace: Block tracks folders moved outside the app and syncs them when the app regains focus or wakes.",
+          "Plugin Store: Developer entries link to the documentation home, and AI features show a hint on hover."
+        ],
+        "improvements": [
+          "Plugin Store: Store artwork now comes from repository assets and shared catalog data.",
+          "App: Quitting is more responsive, and state updates cause less delay in the interface.",
+          "Plugin Store: Artwork now loads from jsDelivr first."
+        ],
+        "fixes": [
+          "Tables: Drag selections no longer flicker when crossing cells.",
+          "Plugin Store: Packaged icons now display correctly, and the featured list is simpler."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.962",
+      "tag": "v1.0.962",
+      "published_at": "2026-11-27T14:13:21Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.962",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：插件现在可以启用表单自动保存并添加链接按钮。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Plugins can now enable form autosave and add link buttons."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.961",
+      "tag": "v1.0.961",
+      "published_at": "2026-11-27T13:48:18Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.961",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "隐私设置：关于与隐私卡片已移除重复的副标题。",
+          "使用数据：每日遥测现在会包含经过隐私保护的使用情况和稳定性字段。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Privacy Settings: The About & Privacy card no longer shows redundant subtitles.",
+          "Usage Data: Daily telemetry now includes privacy-safe usage and stability fields."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.960",
+      "tag": "v1.0.960",
+      "published_at": "2026-11-27T13:34:48Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.960",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件接口：运行时现在可以正确处理插件发起的文件复制请求。"
+        ],
+        "other": [
+          "其他：发版检查现在可以正确处理取消忽略规则。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugin API: The runtime now dispatches file copy requests from plugins correctly."
+        ],
+        "other": [
+          "Other: Release checks now account for negated ignore rules correctly."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.959",
+      "tag": "v1.0.959",
+      "published_at": "2026-11-27T13:17:56Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.959",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "设置：新增「关于与隐私」设置标签页，并简化了「关于」弹窗。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Settings: The About and Privacy options are now available in a settings tab, and the About modal has been simplified."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.958",
+      "tag": "v1.0.958",
+      "published_at": "2026-11-27T11:34:13Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.958",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：插件现在可以通过流式主机文件系统调用复制文件。"
+        ],
+        "improvements": [
+          "设置：匿名使用统计的位置已调整，「关于 Block」中新增隐私政策链接。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Plugins can now copy files through a streaming host filesystem call."
+        ],
+        "improvements": [
+          "Settings: Anonymous usage statistics have been moved, and About Block now includes a link to the privacy policy."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.956",
+      "tag": "v1.0.956",
+      "published_at": "2026-11-27T10:23:19Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.956",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "表格：列和行手柄菜单更加简洁易用。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Tables: The column and row handle menus are simpler to use."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.955",
+      "tag": "v1.0.955",
+      "published_at": "2026-11-27T10:14:46Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.955",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件商店：应用现在会拦截 Python 窗口程序，并支持升级已停止维护的插件。",
+          "编辑器：多行批注改写内容现在会按带相对缩进的 Markdown 块解析。",
+          "编辑器：按 Tab 键会让焦点留在编辑器中，并缩进选中的多个列表块。"
+        ],
+        "other": [
+          "插件接口：插件 ID 检查现在会在 CI 中运行，也能在不含 Git 元数据的检出目录中执行。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugin Store: The app now blocks Python windowed executables and can upgrade plugins installed before they were retired.",
+          "Editor: Multi-line annotation rewrites now parse as Markdown blocks with relative indentation.",
+          "Editor: Pressing Tab keeps focus in the editor and indents selected blocks in multi-block lists."
+        ],
+        "other": [
+          "Plugin API: Plugin ID checks now run in CI and work in checkouts without Git metadata."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.954",
+      "tag": "v1.0.954",
+      "published_at": "2026-11-27T10:05:35Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.954",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "插件接口：文件列表方法现在会报告结果是否被截断。",
+          "设置：不再显示侧边栏丰富装饰选项。"
+        ],
+        "fixes": [
+          "插件商店：已停止维护的插件安装现在会标记为需要更新。",
+          "插件商店：已停止维护插件的操作控件和状态说明更加清晰。"
+        ],
+        "other": [
+          "插件接口：已移除外部插件运行环境。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Plugin API: The filesystem listing method now reports when its results are truncated.",
+          "Settings: The rich sidebar decoration option is no longer shown."
+        ],
+        "fixes": [
+          "Plugin Store: Retired plugin installations are now marked as needing updates.",
+          "Plugin Store: Controls and status for retired plugins are now clearer."
+        ],
+        "other": [
+          "Plugin API: The external plugin runtime has been removed."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.953",
+      "tag": "v1.0.953",
+      "published_at": "2026-11-27T08:52:25Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.953",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "编辑器：修复了自动换行时文本选区不一致的问题，并统一了各平台下的制表符宽度。",
+          "源码模式：统一了各操作系统下的代码字体回退机制，并修复了制表符箭头的状态监听问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Editor: Fixed text selection inconsistencies across soft-wrapped lines and unified tab character widths across platforms.",
+          "Source Mode: Unified code font fallback behavior across operating systems and fixed an issue with tab arrow state observation."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.952",
+      "tag": "v1.0.952",
+      "published_at": "2026-11-27T08:18:38Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.952",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "编辑器：修复了滚动时可能导致应用崩溃的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Editor: Scrolling no longer causes the application to crash."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.951",
+      "tag": "v1.0.951",
+      "published_at": "2026-11-27T07:55:54Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.951",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "代码编辑器：制表符空白现在支持显示全宽箭头指示符号。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "源码编辑器：制表符全宽箭头现在可以在源码与文档源码编辑器中正常渲染。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Code Editor: Tab whitespace now supports displaying full-width arrow indicators."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Source Editor: Full-width tab arrows now render correctly in source and markdown source editors."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.950",
+      "tag": "v1.0.950",
+      "published_at": "2026-11-27T07:46:16Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.950",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "滚动条：滚动条滑块现在以 1 像素内缩的方式更贴近边缘。"
+        ],
+        "fixes": [],
+        "other": [
+          "插件接口：进一步限制了插件的文件和网络访问边界，并改进了 Web 视图暂存对并发操作的处理。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Scrollbars: The scrollbar thumb now sits closer to the edge with a 1 px inset."
+        ],
+        "fixes": [],
+        "other": [
+          "Plugin API: The plugin file and network access boundaries are more strictly enforced, and webview staging handles concurrent operations more safely."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.949",
+      "tag": "v1.0.949",
+      "published_at": "2026-11-27T07:09:47Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.949",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "主题：应用现已支持通用主题皮肤，并移除了内置的塔罗模块。",
+          "插件接口：插件现可使用离线 WebView 阶段并访问 AI 宿主接口。"
+        ],
+        "improvements": [
+          "滚动条：应用内的滚动专用滚动条现采用统一样式，并统一悬停和边缘唤醒行为。",
+          "源码编辑器：源码和 Markdown 源码编辑器现使用滚动专用滚动条。",
+          "大纲：切换刻度后会重新打开大纲，全局视图开关也会保存。"
+        ],
+        "fixes": [],
+        "other": [
+          "速记：为皮肤徽标颜色添加了设计检查标注。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Theme: The app now supports generic theme skins, and the built-in tarot module has been removed.",
+          "Plugin API: Plugins can use an offline WebView stage and access the AI host."
+        ],
+        "improvements": [
+          "Scrollbars: Scroll-only scrollbars now share consistent styling and hover and edge-wake behavior across the app.",
+          "Source Editors: Source and Markdown source editors now use scroll-only scrollbars.",
+          "Outline: Switching ticks reopens the outline, and the global view toggle is saved."
+        ],
+        "fixes": [],
+        "other": [
+          "Quick Notes: The skin badge colours are now annotated for design lint."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.948",
+      "tag": "v1.0.948",
+      "published_at": "2026-11-27T06:31:31Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.948",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "侧边栏：扫描文件时始终忽略旧版同步恢复目录。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Sidebar: The app now always ignores legacy sync recovery directories during file scanning."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.947",
+      "tag": "v1.0.947",
+      "published_at": "2026-11-27T06:22:46Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.947",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：Block 现在内置沙箱，可运行 JavaScript 和 WebAssembly 插件。",
+          "插件接口：插件可使用 JavaScript 和 WebAssembly 入口，并通过宿主能力访问文件、加密、网络和进程功能。",
+          "插件接口：插件可提供主题外观、使用离线暂存，并访问 AI 功能。"
+        ],
+        "improvements": [
+          "插件接口：插件集成现在支持统一的背景、块装饰和标题栏管理，思维导图也与原生处理逻辑解耦。",
+          "插件接口：插件集成现在支持任务调度、后台错误报告、带标签的操作和同步文件拖放，图片托管不再写死。"
+        ],
+        "fixes": [
+          "自动更新：只有在没有待处理更新时，更新器才会显示当前版本和已是最新版本的标题。",
+          "编辑器：大纲弹窗淡出时会保持原位。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Block now runs JavaScript and WebAssembly plugins in a built-in sandbox.",
+          "Plugin API: Plugins can use JavaScript and WebAssembly entry points, with host access to file, cryptography, network, and process capabilities.",
+          "Plugin API: Plugins can provide theme skins, use offline staging, and access AI features."
+        ],
+        "improvements": [
+          "Plugin API: Plugin integrations now support shared backgrounds, block decorations, and title bar management, while mind maps are decoupled from native handling.",
+          "Plugin API: Plugin integrations now support scheduling, background error reporting, labeled actions, and synchronized file drops without hardcoded image hosting."
+        ],
+        "fixes": [
+          "Updates: The updater shows the current version and an up-to-date title only when no update is pending.",
+          "Editor: The outline popup stays in place during its exit fade."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.946",
+      "tag": "v1.0.946",
+      "published_at": "2026-11-27T04:32:21Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.946",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "主界面搜索：支持在扫描和搜索时检索并显示隐藏文件与文件夹。",
+          "设置：新增显示或隐藏文件与文件夹的切换开关。",
+          "编辑器：在编辑器右侧新增垂直居中的大纲导航轨，方便快速浏览与定位文档结构。"
+        ],
+        "improvements": [
+          "标题栏：将品牌菜单的布局细节与文件夹切换器对齐，并将操作图标更换为刷新图标。"
+        ],
+        "fixes": [
+          "编辑器：打开右侧面板时会自动隐藏右侧大纲导航轨，避免界面内容重叠。",
+          "快捷键：按下 Esc 键现在可以正常关闭打开的下拉选择菜单。",
+          "自动更新：修复了关闭更新源下拉菜单时会导致更新弹窗被意外关闭的问题。"
+        ],
+        "other": [
+          "图标资源：清理了应用中未使用的更新图标资源。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Search: Added support for scanning and displaying hidden files and folders in search results.",
+          "Settings: Added a toggle switch to show or hide hidden files and folders across the workspace.",
+          "Editor: Added a vertically centered outline rail on the right side of the editor for quick document navigation."
+        ],
+        "improvements": [
+          "Title Bar: Aligned the brand menu layout details with the folder switcher and updated the action icon to a refresh icon."
+        ],
+        "fixes": [
+          "Editor: The right-side outline rail now automatically hides when the right edge panel opens to avoid interface overlap.",
+          "Shortcuts: Pressing the Escape key now properly closes open select dropdown menus.",
+          "Updates: Fixed an issue where closing the update source dropdown would unintentionally dismiss the updater dialog."
+        ],
+        "other": [
+          "Icons: Removed unused update icon assets from the application."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.945",
+      "tag": "v1.0.945",
+      "published_at": "2026-11-26T17:20:28Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.945",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "下拉菜单：支持向上方展开并与左侧对齐展示。",
+          "自动更新：更新弹窗采用更轻量的单页设计，移除了工具栏与卡片分隔，将更新源选择移入底部下拉菜单，并在主按钮内直接展示更新进度。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Dropdown Menus: Pop-up menus now support opening upward and aligning to the left.",
+          "Updates: The update dialog now features a lighter, single-sheet layout without toolbars or card dividers, moves the source selector to a footer dropdown, and displays progress directly on the primary button."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.944",
+      "tag": "v1.0.944",
+      "published_at": "2026-11-26T17:00:42Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.944",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "标题栏：品牌菜单头部调整为单行展示，移除了网址链接。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Title Bar: The brand menu header is now displayed on a single line with the website link removed."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.943",
+      "tag": "v1.0.943",
+      "published_at": "2026-11-26T14:43:10Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.943",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "关于窗口：采用更紧凑的布局，并新增 GitHub 按钮和版本号复制功能。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "About Dialog: The compact layout adds a GitHub button and lets you copy the app version."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.942",
+      "tag": "v1.0.942",
+      "published_at": "2026-11-26T14:10:54Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.942",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "图标：新增 GitHub 品牌图标。"
+        ],
+        "improvements": [
+          "关于：简化关于对话框中的操作和仓库按钮。",
+          "标题栏：品牌菜单中移除了 GitHub 发布说明入口。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Icons: The GitHub brand icon is now available."
+        ],
+        "improvements": [
+          "About: The dialog’s actions and repository button are simpler.",
+          "Titlebar: The brand menu no longer includes a GitHub release notes item."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.941",
+      "tag": "v1.0.941",
+      "published_at": "2026-11-26T13:57:35Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.941",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件：更可靠地查找 Python 3 执行环境，并保留被截断的错误输出以便排查问题。",
+          "插件：记录了插件启动失败的错误日志，及时清理异常退出的运行时实例，并对齐了插件 RPC 状态码。"
+        ],
+        "other": [
+          "持续集成：修复了 Linux 环境下命令键的映射记录，并将冒烟测试界面固定为中文以避免自动化测试失败。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugins: The Python 3 executable is now resolved more reliably, and truncated error output is properly preserved for troubleshooting.",
+          "Plugins: Startup failures are now recorded in logs, crashed runtime instances are cleaned up promptly, and plugin RPC status codes have been aligned."
+        ],
+        "other": [
+          "CI: Fixed shortcut command key mappings on Linux and pinned the smoke test interface to Chinese to prevent automated test failures."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.938",
+      "tag": "v1.0.938",
+      "published_at": "2026-11-26T12:26:32Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.938",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件商店：新增支持 YAML 的笔记标签管理插件。"
+        ],
+        "improvements": [
+          "插件商店：提供可离线安装的内置标签管理插件。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin Store: A new Tag Manager plugin supporting YAML is now available."
+        ],
+        "improvements": [
+          "Plugin Store: The built-in Tag Manager plugin is now available for offline installation."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.937",
+      "tag": "v1.0.937",
+      "published_at": "2026-11-24T17:29:54Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.937",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "思维导图：进入和恢复全屏时现在会播放过渡动画。",
+          "思维导图：全屏过渡现在与编辑器生命周期衔接，并安全处理回调。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Mind Map: Full-screen entry and restoration now animate their transitions.",
+          "Mind Map: Full-screen transitions now follow the editor lifecycle, with callbacks handled safely."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.936",
+      "tag": "v1.0.936",
+      "published_at": "2026-11-24T16:22:06Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.936",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件商店：插件说明文档现已支持播放动态 SVG 图像。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "标题栏：通过标题栏按钮打开 HTML 与 SVG 文件时，现在会正确调用系统默认浏览器，而不是重新激活 Block 窗口。",
+          "编辑器：解决了自动换行快捷键与标题栏按钮的状态冲突，确保按钮的高亮状态与文本的实际换行效果保持同步。",
+          "插件商店：插件说明文档现已支持共享仅有英文版本的 SVG 图片，确保在各语言界面下都能正常显示插图。"
+        ],
+        "other": [
+          "主题：补充了内置字体的底层数据定义。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin Store: Plugin READMEs now support playing animated SVG images."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Titlebar: Opening HTML and SVG files from the titlebar button now correctly launches the system default browser instead of reactivating Block.",
+          "Editor: Resolved a state conflict between the soft wrap shortcut and the titlebar button, ensuring the toggle highlight stays in sync with actual line wrapping.",
+          "Plugin Store: Plugin READMEs now support sharing English-only SVG images, ensuring illustrations display properly in localized views."
+        ],
+        "other": [
+          "Themes: Added underlying data definitions for built-in fonts."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.935",
+      "tag": "v1.0.935",
+      "published_at": "2026-11-24T14:47:11Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.935",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "AI 对话：移除了内置与命令行智能体的对话轮数、工具调用次数及上下文大小限制。",
+          "AI 对话：移除了附件数量、文件大小以及长文本截断的限制。",
+          "编辑器：移除了行内编辑、速记和批注中的 AI 使用限制。",
+          "AI 对话：优化了流式 Markdown 墨水渐显动效、处理过程摘要以及输入框 1 像素边框的视觉呈现。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "AI Chat: Limits on turn count, tool calls, and context size have been removed for built-in and CLI agents.",
+          "AI Chat: Limits on attachment count, file size, and text truncation have been removed.",
+          "Editor: AI usage limits have been removed for inline editing, quick notes, and annotations.",
+          "AI Chat: The streaming Markdown ink-reveal animation, process summary display, and 1px composer border have been polished."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.934",
+      "tag": "v1.0.934",
+      "published_at": "2026-11-24T14:15:55Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.934",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "AI 对话：当前服务商不可用时，应用会切换到最新可用的服务商和模型。",
+          "编辑器：预览和多行代码块中不再显示无效的文本轮次项。",
+          "侧边栏：统一了「显示文件」标签，并将插件上下文菜单项分开展示。",
+          "页面菜单：移除了描述不准确的「复制为 Markdown」操作。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "AI Chat: When a provider is unavailable, the app now falls back to the latest available provider and model.",
+          "Editor: Invalid text turn items are hidden in previews and multiline code blocks.",
+          "Sidebar: The reveal file label is consistent, and plugin context items are shown separately.",
+          "Page Menu: Inaccurate copy as Markdown actions have been removed."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.933",
+      "tag": "v1.0.933",
+      "published_at": "2026-11-24T13:47:55Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.933",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：新增笔记与文件夹删除事件的派发支持，并提供自动重试机制。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "工作区：删除笔记前不再触发多余的保存操作，并确保正常发送笔记删除通知。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: The plugin system now dispatches note and folder deletion events with automatic retry support."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Workspace: Deleting a note no longer triggers an unnecessary save before removal, and note deletion notifications are now reliably sent."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.932",
+      "tag": "v1.0.932",
+      "published_at": "2026-11-24T13:32:23Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.932",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "AI 对话：对话、后台响应和页面上下文现在按笔记本隔离。",
+          "AI 对话：切换笔记本时，AI 控制器现在会同步响应。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "AI Chat: AI conversations, background responses, and page context are now scoped to each notebook.",
+          "AI Chat: The AI controller now responds to notebook switches."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.931",
+      "tag": "v1.0.931",
+      "published_at": "2026-11-24T12:49:32Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.931",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "编辑器：在源码模式下编辑时，改动会同步写入文档，撤销可以一次回退整段修改。",
+          "源码视图：笔记的源码视图现在可以直接编辑，改动会完整写回磁盘，不会丢失内容。",
+          "元数据标签：新增紧凑的徽标样式，用于展示元数据标签。"
+        ],
+        "improvements": [
+          "页面菜单：格式项改为以紧凑徽标展示，并去掉了重复的分隔线。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Editor: Editing in source mode now syncs the changes into the document, and undo reverts the whole edit in a single step.",
+          "Source View: The note source view is now directly editable, and changes are written back to disk without losing content.",
+          "Metadata Tags: Added a compact badge style for displaying metadata tags."
+        ],
+        "improvements": [
+          "Page Menu: Format entries are now shown as compact badges, and duplicate separators are removed."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.930",
+      "tag": "v1.0.930",
+      "published_at": "2026-11-24T12:21:00Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.930",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "侧边栏与标签栏：现在可以为笔记本自定义图标。",
+          "思维导图：大纲视图支持直接编辑，并提供该视图专用的控件。",
+          "AI 方案审阅：待应用的 AI 修改会以细边距线直接显示在笔记中，悬停或用光标聚焦时出现浮动栏，可查看差异、预览原始内容、拒绝、重试或接受；整份方案可接受或拒绝，过期方案只能拒绝或重试，接受后可作为一步撤销。",
+          "思维导图：新增链接状态、查找辅助和任务统计，徽标布局会随缩放调整。",
+          "思维导图：大纲视图支持链接跳转，会标出失效链接，并为每一行提供快捷操作。"
+        ],
+        "improvements": [
+          "插件商店：自定义图标功能现在以原创插件插画的形式展示。",
+          "插件商店：精选轮播加入方向滑动和背景动画。",
+          "代码编辑器：查找栏改为更紧凑的样式，与笔记查找保持一致。",
+          "插件商店：精选轮播改为每 5 秒切换，并显示实时倒计时条。",
+          "AI 对话：每篇笔记只保留一个待审方案，新方案会关闭尚未审阅的旧方案；重试会重新发送原始请求，接受的修改可作为一步撤销，方案卡片不再重复完整差异。",
+          "插件商店：block-tarot 插件现在有专门设计的图标。",
+          "思维导图：画布交互、链接弹窗、HUD、查找栏和导出菜单均经过重新设计。",
+          "编辑器：思维导图链接检查和查找路由已接入，撤销状态会得到跟踪，块手柄菜单可供使用。",
+          "导出：纸张主题的页眉、无标题布局、章节卡片和 cooool.top 水印均经过重新设计。",
+          "侧边栏：自定义图标选择器移除了搜索框。"
+        ],
+        "fixes": [
+          "思维导图：Markdown 中的空白主题和换行不再丢失。",
+          "快捷键：查找命令会定位到当前活动的编辑器，桌面端快捷键绑定也已补全。",
+          "AI 对话：助手可以分页读取长页面，笔记搜索会返回片段，未转义 JSON 也能正确处理。",
+          "AI 对话：流式响应会检测长度截断，Anthropic 模型的最大输出长度已提高。",
+          "AI 对话：应用替换时会要求匹配唯一，HTML 表格的预检查更严格。",
+          "AI 对话：上下文注入或命令行历史被截断时会显示明确提示。",
+          "代码编辑器：查找栏的匹配计数前不再保留固定宽度的空隙。",
+          "编辑器：笔记查找的匹配计数前不再保留固定宽度的空隙。",
+          "代码编辑器：代码字体查找已恢复，代码会按设置的字体显示。",
+          "标签栏：AI 生成过程中仍可切换标签页和导航。",
+          "导出：主题缩略图的边角光晕已修正，窄窗口下的预览也能完整适配。",
+          "搜索：输入框的光标宽度和占位文字起始位置已对齐。"
+        ],
+        "other": [
+          "插件商店：误并入的精选区与圆点分页器改动已撤销。",
+          "插件商店：双语插件说明中的图片和 SVG 现在会经过校验。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Sidebar and Tabs: Notebooks can now use custom icons.",
+          "Mindmap: The outline view now supports direct editing and provides controls specific to that view.",
+          "AI Plan Review: Pending AI changes render in place with a thin margin rule, and a floating bar appears on hover or caret focus with diff, original-content peek, reject, retry, and accept actions; whole plans can be accepted or rejected, stale plans can only be rejected or retried, and accepting a plan is a single undo step.",
+          "Mindmap: Link status, find helpers, task statistics, and a badge layout that scales with zoom are now available.",
+          "Mindmap: The outline view now supports link jumping, marks broken links, and offers quick actions for each row."
+        ],
+        "improvements": [
+          "Plugin Store: The Custom Icons feature is now presented with original plugin artwork.",
+          "Plugin Store: The featured carousel has directional slide and backdrop animations.",
+          "Code Editor: The find bar is slimmer and matches the note find experience.",
+          "Plugin Store: The featured carousel advances every five seconds and shows a live countdown bar.",
+          "AI Chat: Each note keeps only one pending plan; a newer plan dismisses the unreviewed one, Retry resends the original request, accepted edits land as a single undo step, and the chat plan card no longer duplicates the full diff.",
+          "Plugin Store: The block-tarot plugin now has a bespoke icon.",
+          "Mindmap: Canvas interactions, the link popover, HUD, find bar, and export menu have been overhauled.",
+          "Editor: Mindmap link checks and find routing are now integrated, undo state is tracked, and the block handle menu is available.",
+          "Export: Paper theme headers, the titleless layout, section cards, and cooool.top watermarks have been redesigned.",
+          "Sidebar: The custom icon picker no longer includes a search box."
+        ],
+        "fixes": [
+          "Mindmap: Blank topics and line breaks are preserved in Markdown.",
+          "Shortcuts: Find now targets the active editor, and desktop key bindings are complete.",
+          "AI Chat: The assistant can page through long pages, note search returns snippets, and unescaped JSON is handled correctly.",
+          "AI Chat: Streamed responses now detect length truncation, and Anthropic models use a higher output token limit.",
+          "AI Chat: Search-and-replace edits now require a unique match, and HTML table preflight checks are stricter.",
+          "AI Chat: Explicit notices now appear when context injection or command-line history is truncated.",
+          "Code Editor: The find bar no longer leaves a fixed-width gap before the match count.",
+          "Editor: Note search no longer leaves a fixed-width gap before the match count.",
+          "Code Editor: Code font lookup is restored, so code uses the configured font.",
+          "Tabs: Tab switching and navigation remain available while AI is generating.",
+          "Export: Theme thumbnails no longer show a corner halo, and previews fit correctly in narrow windows.",
+          "Search: Input caret width and placeholder starting position are now aligned."
+        ],
+        "other": [
+          "Plugin Store: Accidental changes to the featured area and dot pager were reverted.",
+          "Plugin Store: Images and SVGs in bilingual plugin descriptions are now validated."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.929",
+      "tag": "v1.0.929",
+      "published_at": "2026-11-24T09:56:44Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.929",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "AI 对话：展开内容时固定视窗底部，防止对话界面意外跳转至顶部。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "AI Chat: Pinned the bottom of the chat view to prevent it from jumping to the top when expanding content."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.928",
+      "tag": "v1.0.928",
+      "published_at": "2026-11-24T09:43:14Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.928",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "自动更新：Windows 版本默认按当前用户交付更新，并能在不显示任何安装界面的情况下完成更新。",
+          "安装包：安装程序默认只为当前用户安装，仅在需要时才请求管理员权限。",
+          "自动更新：Windows 更新可以不显示任何界面直接完成，条件不满足时自动回退到原有流程。",
+          "思维导图：思维导图支持原生快捷键、拖动节点调整层级、剪贴板操作，并可直接在画布上输入文字。",
+          "界面语言：Block 现在能在 macOS、Windows 和 Linux 上直接读取系统的首选语言。"
+        ],
+        "improvements": [
+          "模型选择器：模型选择器改为更轻量的单列浮层，搜索、后端标签和 AI 设置共用同一行标题栏。",
+          "模型选择器：列表在不同后端之间保持固定高度，切换到尚未缓存模型的后端时显示加载骨架，标题行不再跳动。",
+          "图标：190 个图标按新的五层风格重新绘制。",
+          "图标：图标改为五层渲染，并加入错落的海蓝色高光。",
+          "图标：复选框、标签、键帽、下拉菜单和空状态等通用控件同步使用五层图标高光。",
+          "插件商店：插件图标与设置导航加入错落式高光。",
+          "侧边栏：标题栏、工作区外框和侧边栏图标改用五层高光。",
+          "编辑器：编辑器浮层、列表标记和表格控制点改用五层图标。",
+          "AI 对话：AI 面板与模型选择器的图标改用五层高光。",
+          "弹窗：弹窗、导出和思维导图相关图标改用五层高光。",
+          "AI 对话：应用启动时会预热各后端模型，打开 AI 面板或模型选择器时再刷新，切换标签时很少再等待加载。",
+          "思维导图：移除了撤销提示，并更新了底部快捷键栏。",
+          "本地代理：添加本地代理弹窗一打开就列出全部受支持的本地代理，不再把部分代理藏在「显示更多」后面。",
+          "思维导图：选中节点改用柔和的选中底色，叶子节点两侧留白更对称。",
+          "安装包：自定义安装窗口会跟随系统语言显示。",
+          "安装包：Windows 安装程序与卸载程序会按系统语言显示对应语言。",
+          "思维导图：正在编辑的节点会显示编辑光晕，并随输入实时测量尺寸。",
+          "思维导图：节点内联编辑和输入法预览改为原位无缝编辑，不再弹出单独的浮层输入框。",
+          "界面动效：文字支持流光效果，步骤切换以实时过渡的方式替换。",
+          "AI 对话：最新步骤以更轻量的过程块实时显示。",
+          "文件选择：macOS 打开文件对话框增加缓存与预热，弹出更快。",
+          "文件选择：应用启动时预热文件对话框，首次打开选择器不再等待。",
+          "思维导图：在内联节点编辑器中按 Shift+Enter 可插入换行。",
+          "AI 对话：回复下方的来源卡片已移除。",
+          "文件选择：macOS 保存面板加入预热，各类文件选择流程更稳定。"
+        ],
+        "fixes": [
+          "自动更新：准备更新和重启应用的过程中会显示转圈的加载动画。",
+          "思维导图：工具栏操作按钮带有悬停提示。",
+          "思维导图：选中节点的边框不再透出叶子节点下划线的痕迹。",
+          "思维导图：指针离开画布后会清除残留的节点悬停状态。",
+          "图片查看：图片区域增加了内边距，不再被顶部工具栏和底部缩略图条遮挡。",
+          "安装包：Windows 可执行文件内嵌了应用图标，Linux 安装时把图标放入系统标准图标主题。",
+          "安装包：Windows 全机器安装会对安装目录应用受管理员保护的权限设置。",
+          "自动更新：更新前会先确认 Windows 的安装范围再执行卸载步骤，出现错误时也会向用户提示。",
+          "安装包：Windows 安装流程更稳妥，安装步骤更原子，权限检查更严格，自定义安装路径处理正确，并会检查卸载程序是否被占用。",
+          "反馈：响应和上传卡住时会超时结束，重复发送相同内容会复用原来的请求。",
+          "安装包：Windows 安装时把本机管理员组成员视为受信任的权限所有者。",
+          "界面语言：在 POSIX 系统上按语言环境变量的标准优先级选择界面语言。",
+          "安装包：语言判断会优先采用明确的中文文字子标签，并规范化 POSIX 语言标签。",
+          "安装包：Windows 安装语言会从完整的首选界面语言列表中选择。",
+          "安装包：macOS 磁盘映像窗口不再固定显示英文的应用程序文件夹标签。",
+          "安装包：Linux 安装包的描述改为中性表述，桌面入口注释按语言本地化。",
+          "思维导图：多行节点的换行现在会在 Markdown 输出和导图布局中保留。",
+          "AI 对话：发送消息以及回复流式输出期间，对话保持固定在底部。"
+        ],
+        "other": [
+          "界面语言：macOS 应用包声明了所支持的本地化语言，系统会把这些语言列为应用可用语言。",
+          "发布流程：发布时会先挂载生成的 macOS 磁盘映像并严格校验代码签名。",
+          "发布流程：反馈地址为空时会回退到本地配置，发布构建中必须设置该地址。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Updates: Windows updates can now be delivered per user by default and complete without any installer interface.",
+          "Installer: Setup now installs for the current user by default and only requests administrator rights when they are needed.",
+          "Updates: Windows updates now run seamlessly with no interface and fall back to the previous flow when that is not possible.",
+          "Mindmap: The mind map now supports native shortcuts, dragging nodes to re-parent them, clipboard operations, and typing directly on the canvas.",
+          "Interface Language: Block now detects the operating system's preferred languages natively on macOS, Windows, and Linux."
+        ],
+        "improvements": [
+          "Model Picker: The model picker is now a lighter single-column popover, with search, backend tabs, and AI settings sharing one header row.",
+          "Model Picker: The list keeps a fixed height across providers and shows a loading skeleton while an uncached backend's models are fetched, so the header no longer shifts.",
+          "Icons: 190 icons were redrawn in the new five-layer style.",
+          "Icons: Icons are now rendered in five layers with staggered ocean-blue lighting.",
+          "Icons: Shared controls such as checkboxes, chips, keycaps, dropdowns, and empty states now use the five-layer icon lighting.",
+          "Plugin Store: Plugin icons and the settings navigation now use the staggered lighting.",
+          "Sidebar: The titlebar, workspace chrome, and sidebar icons now use the five-layer lighting.",
+          "Editor: Editor overlays, list markers, and table handles now use five-layer icons.",
+          "AI Chat: The AI panel and model picker icons now use the five-layer lighting.",
+          "Modals: Modal, export, and mind map icons now use the five-layer lighting.",
+          "AI Chat: Backend models are prewarmed at launch and refreshed when the AI panel or model picker opens, so switching tabs rarely waits on the loading skeleton.",
+          "Mindmap: The undo hint was removed and the bottom shortcut bar was updated.",
+          "Local Agents: The Add Local Agent dialog now lists all supported local agents as soon as it opens instead of hiding some behind a \"Show more\" toggle.",
+          "Mindmap: Selected nodes now use a soft selection tint, and leaf nodes get symmetric padding.",
+          "Installer: The custom setup window is now shown in the system language.",
+          "Installer: The Windows setup and uninstaller are now localized to the system language.",
+          "Mind Map: The node you are editing now shows an editing halo, and its size is measured live as you type.",
+          "Mind Map: Inline node editing and the IME preview now happen seamlessly in place instead of in a separate overlay box.",
+          "UI Motion: Text can now render with a shimmer effect, and step changes swap in with a live transition.",
+          "AI Chat: The latest step is now shown live in a lighter-weight process block.",
+          "File Dialogs: macOS open dialogs are cached and prewarmed, so they come up faster.",
+          "File Dialogs: File dialogs are prewarmed when the app starts, so the first picker opens without delay.",
+          "Mind Map: Pressing Shift+Enter in the inline node editor inserts a line break.",
+          "AI Chat: The sources card under replies has been removed.",
+          "File Dialogs: macOS save panels are prewarmed, and all file picker flows are more reliable."
+        ],
+        "fixes": [
+          "Updates: A spinner now animates while the update is prepared and the app restarts.",
+          "Mindmap: Toolbar action buttons now show tooltips.",
+          "Mindmap: A leaf node's underline no longer shows through the border of a selected node.",
+          "Mindmap: Node hover highlighting is now cleared when the pointer leaves the canvas.",
+          "Lightbox: The image stage now has inset padding, so it is no longer covered by the top toolbar and bottom filmstrip.",
+          "Installer: The Windows executable now embeds the app icon, and Linux installs place icons in the standard system icon theme.",
+          "Installer: Machine-wide Windows installs now enforce administrator-protected permissions on the install directory.",
+          "Updates: The Windows install scope is now checked before the uninstall step, and update errors are surfaced to the user.",
+          "Installer: Windows installation is more robust, with atomic install steps, stricter permission checks, correct handling of custom install paths, and a check for a locked uninstaller.",
+          "Feedback: Stalled responses and uploads now time out instead of hanging, and resending identical content reuses the original request.",
+          "Installer: Members of the local Administrators group are now treated as privileged owners during Windows installs.",
+          "Interface Language: On POSIX systems, the interface language is now chosen with the standard priority order of locale variables.",
+          "Installer: Language detection now prefers an explicit Chinese script subtag and normalizes POSIX language tags.",
+          "Installer: The Windows setup language is now chosen from the full list of preferred interface languages.",
+          "Installer: The macOS disk image window no longer shows a hardcoded English applications folder label.",
+          "Installer: The Linux package description is now neutral, and desktop entry comments are localized.",
+          "Mind Map: Line breaks in multiline nodes are now preserved in Markdown output and in the mind map layout.",
+          "AI Chat: The conversation stays pinned to the bottom when you send a message and while a reply is streaming."
+        ],
+        "other": [
+          "Interface Language: The macOS app bundle now declares its supported localizations, so the system lists them for the app.",
+          "Release: Generated macOS disk images are now mounted and strictly verified for code signing during the release process.",
+          "Release: An empty feedback address now falls back to the local configuration, and release builds require the address to be set."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.927",
+      "tag": "v1.0.927",
+      "published_at": "2026-11-24T07:07:53Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.927",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "安装包：Windows 安装程序改用自定义安装窗口，不再显示系统默认向导。"
+        ],
+        "improvements": [
+          "安装包：macOS 磁盘映像的安装窗口换上自定义背景，拖拽安装的布局更整齐。"
+        ],
+        "fixes": [
+          "自动更新：Windows 上更新改为就地安装，已有安装会直接升级，不再要求重新选择安装位置。"
+        ],
+        "other": [
+          "安装包：发版打包时，Windows 安装流程改由自定义安装窗口处理。",
+          "安装包：Windows 安装包的校验步骤改为读取 32 位注册表视图，已安装项能被正确检查。",
+          "安装包：自定义窗口完成安装后，安装程序以成功状态退出。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Installer: The Windows installer now opens a custom setup window instead of the default system wizard."
+        ],
+        "improvements": [
+          "Installer: The macOS disk image now uses a styled drag-to-install window with a custom background and tidier layout."
+        ],
+        "fixes": [
+          "Updates: On Windows, updates are now installed in place, so an existing installation is upgraded directly without asking for a new install location."
+        ],
+        "other": [
+          "Installer: Release packaging now hands the Windows installation off to the custom setup window.",
+          "Installer: The Windows installer verification step now reads the 32-bit registry view, so installed entries are checked correctly.",
+          "Installer: Setup now exits with a success status once the custom window has finished the installation."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.926",
+      "tag": "v1.0.926",
+      "published_at": "2026-11-24T06:31:29Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.926",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "思维导图：修复了切换全屏模式时可能导致应用崩溃的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Mind Map: Fixed a crash that could occur when toggling full-screen mode."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.925",
+      "tag": "v1.0.925",
+      "published_at": "2026-11-24T06:13:52Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.925",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "主题：新增海洋纸思维导图分支配色方案。",
+          "思维导图：内置原生思维导图引擎与矢量渲染器，并支持六种数据格式的解析与导出。",
+          "编辑器：支持插入原生思维导图代码块，并提供全屏编辑模式与统一的撤销历史。",
+          "插件接口：新增思维导图状态接口，支持插件与工作区中的思维导图进行状态交互。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Themes: The theme options now include an Ocean Paper color palette for mind map branches.",
+          "Mind Maps: A native mind map engine provides vector rendering and supports six data formats.",
+          "Editor: The editor now supports native mind map code blocks with fullscreen editing and unified undo history.",
+          "Plugin API: New mind map state interfaces allow plugins to interact with workspace mind maps."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.924",
+      "tag": "v1.0.924",
+      "published_at": "2026-11-24T06:04:43Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.924",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件商店：插件暂存安装流程强化了包完整性与来源校验，并加固了权限确认弹窗。",
+          "插件接口：菜单栏扩展项现在严格执行剪贴板权限检查，并加固了提示通知中的交互操作。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugin Store: The staged plugin installation workflow now enforces stricter package integrity and provenance checks, and hardens the permission confirmation modal.",
+          "Plugin API: The app now enforces clipboard permissions for menu bar contributions and hardens interactive toast notification actions."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.923",
+      "tag": "v1.0.923",
+      "published_at": "2026-11-24T05:42:34Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.923",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "菜单栏：执行菜单栏命令时，图标旁现在会即时显示运行状态与执行结果。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "菜单栏：修复了 macOS 下向菜单栏图标拖拽内容时未能正常接收拖拽事件的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Menu Bar: Command execution status and results are now displayed in real time next to the menu bar icon."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Menu Bar: The menu bar icon now reliably receives drag-and-drop events on macOS."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.922",
+      "tag": "v1.0.922",
+      "published_at": "2026-11-24T05:23:24Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.922",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "侧边栏：优化了图标选择器中已选色调色块的圆环显示。",
+          "侧边栏：已选色调色块改为显示勾选标记，不再显示圆环。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Sidebar: The selected tint swatch ring is cleaned up.",
+          "Sidebar: The selected tint swatch is marked with a check instead of a ring."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.921",
+      "tag": "v1.0.921",
+      "published_at": "2026-11-24T04:59:16Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.921",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "侧边栏：图标选择面板现在会与点击的行保持平齐。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Sidebar: The icon picker now opens level with the clicked row."
+        ],
+        "other": []
+      },
+      "assets": []
+    }
+  ]
+}

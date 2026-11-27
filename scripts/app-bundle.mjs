@@ -127,6 +127,20 @@ export function buildVersion(root = repoRoot) {
   return resolveLocalBuildVersion(root, readAppVersion(root));
 }
 
+export function resolveBuildChannel(root = repoRoot) {
+  const envCh = String(process.env.BLOCK_RELEASE_CHANNEL || "").trim().toLowerCase();
+  if (envCh === "nightly" || envCh === "stable") return envCh;
+  const planPath = join(root, "release-plan.json");
+  if (existsSync(planPath)) {
+    try {
+      const plan = JSON.parse(readFileSync(planPath, "utf8"));
+      const planCh = String(plan?.channel || "").trim().toLowerCase();
+      if (planCh === "nightly" || planCh === "stable") return planCh;
+    } catch {}
+  }
+  return "stable";
+}
+
 export function plist(version = buildVersion()) {
   const assoc = loadFileAssociations(repoRoot);
   const body = buildPlistKeys(version, assoc)
@@ -271,6 +285,7 @@ export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fas
   const feedbackCfg = resolveFeedbackBuildConfig(root);
   const ldflags = [
     `-X block/internal/updater.BuildVersion=${buildVersion(root)}`,
+    `-X block/internal/updater.BuildChannel=${resolveBuildChannel(root)}`,
     ...feedbackLdflags(root),
     "-s",
     "-w",

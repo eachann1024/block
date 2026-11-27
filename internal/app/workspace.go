@@ -218,13 +218,24 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.modals = modals.NewManager(actualDir, w)
 	go feedback.CleanTemp() // compressed copies a previous run left behind
 	w.updater = updater.NewService(updater.Config{
-		DataDir:           actualDir,
-		InitialSourceMode: updater.NormalizeSourceMode(st.UpdateSource),
-		LastUpdatedFrom:   st.LastUpdatedFrom,
-		IsEn:              theme.IsEn,
+		DataDir:               actualDir,
+		InitialSourceMode:     updater.NormalizeSourceMode(st.UpdateSource),
+		InitialReleaseChannel: updater.NormalizeReleaseChannel(st.UpdateChannel),
+		ChannelChosen:         st.UpdateChannel != "",
+		LastUpdatedFrom:       st.LastUpdatedFrom,
+		IsEn:                  theme.IsEn,
 		OnSourceModeChanged: func(mode updater.SourceMode) {
 			if next, err := w.updateStateSync(func(s *model.AppState) {
 				s.UpdateSource = string(mode)
+			}); err == nil {
+				w.mu.Lock()
+				w.state = next
+				w.mu.Unlock()
+			}
+		},
+		OnReleaseChannelChanged: func(ch updater.ReleaseChannel) {
+			if next, err := w.updateStateSync(func(s *model.AppState) {
+				s.UpdateChannel = string(ch)
 			}); err == nil {
 				w.mu.Lock()
 				w.state = next

@@ -12,6 +12,32 @@ const devBuildVersion = "1.0.379"
 // BuildVersion is injected at link time via -ldflags "-X block/internal/updater.BuildVersion=1.0.xxx".
 var BuildVersion = devBuildVersion
 
+// BuildChannel is injected at link time via -ldflags "-X block/internal/updater.BuildChannel=nightly|stable".
+var BuildChannel = "stable"
+
+// ReleaseChannel controls whether the updater follows stable or nightly releases.
+type ReleaseChannel string
+
+const (
+	ReleaseStable  ReleaseChannel = "stable"
+	ReleaseNightly ReleaseChannel = "nightly"
+)
+
+// NormalizeReleaseChannel normalizes persisted or build-time strings into ReleaseStable or ReleaseNightly.
+func NormalizeReleaseChannel(raw string) ReleaseChannel {
+	switch ReleaseChannel(strings.ToLower(strings.TrimSpace(raw))) {
+	case ReleaseNightly:
+		return ReleaseNightly
+	default:
+		return ReleaseStable
+	}
+}
+
+// BuildReleaseChannel returns the release channel embedded into this binary at build time.
+func BuildReleaseChannel() ReleaseChannel {
+	return NormalizeReleaseChannel(BuildChannel)
+}
+
 // IsPackagedBuild reports whether the build script injected a real version.
 func IsPackagedBuild() bool {
 	return BuildVersion != devBuildVersion

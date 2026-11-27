@@ -245,6 +245,7 @@ type AppState struct {
 	QuickWindowBounds    *SavedWindowBounds             `json:"quick_window_bounds,omitempty"`
 	FeedbackDraft        *FeedbackDraft                 `json:"feedback_draft,omitempty"`
 	UpdateSource         string                         `json:"update_source,omitempty"`
+	UpdateChannel        string                         `json:"update_channel,omitempty"`
 	LastUpdatedFrom      string                         `json:"last_updated_from,omitempty"`
 	TelemetryOff         bool                           `json:"telemetry_off,omitempty"`
 	BrandDeco            BrandDeco                      `json:"brand_deco,omitzero"`

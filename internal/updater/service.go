@@ -35,32 +35,36 @@ const (
 
 // Snapshot is an immutable, UI-ready view of the updater state.
 type Snapshot struct {
-	Status             Status
-	CurrentVersion     string
-	LatestVersion      string
-	PublishedAt        string
-	ReleaseURL         string
-	SourceMode         SourceMode
-	ActiveChannel      string // "mirror" | "github" | ""
-	FetchLatencyMs     int64
-	MirrorProbe        ChannelProbe
-	GitHubProbe        ChannelProbe
-	ProbingChannels    bool
-	RetestingTarget    bool
-	LastPhase          string
-	LastErrorSanitized string
-	SpeedMBps          float64
-	ViewMode           ViewMode
-	DownloadedBytes    int64
-	TotalBytes         int64
-	Percent            int
-	Preparing          bool
-	DownloadPath       string
-	LogPath            string
-	InPlace            bool
-	PackageManaged     bool
-	ErrorMessage       string
-	Notes              AggregatedNotes
+	Status              Status
+	CurrentVersion      string
+	LatestVersion       string
+	PublishedAt         string
+	ReleaseURL          string
+	SourceMode          SourceMode
+	ReleaseChannel      ReleaseChannel
+	InstalledChannel    ReleaseChannel
+	LatestStableVersion string
+	WaitingForStable    bool
+	ActiveChannel       string // "mirror" | "github" | ""
+	FetchLatencyMs      int64
+	MirrorProbe         ChannelProbe
+	GitHubProbe         ChannelProbe
+	ProbingChannels     bool
+	RetestingTarget     bool
+	LastPhase           string
+	LastErrorSanitized  string
+	SpeedMBps           float64
+	ViewMode            ViewMode
+	DownloadedBytes     int64
+	TotalBytes          int64
+	Percent             int
+	Preparing           bool
+	DownloadPath        string
+	LogPath             string
+	InPlace             bool
+	PackageManaged      bool
+	ErrorMessage        string
+	Notes               AggregatedNotes
 }
 
 // ProbeFor returns the latest probe snapshot for channel ("mirror" or "github").
@@ -131,25 +135,30 @@ func (s Snapshot) HasActionableUpdate() bool {
 
 // Config wires workspace persistence, flush-before-quit, and redraw callbacks into Service.
 type Config struct {
-	DataDir             string
-	InitialSourceMode   SourceMode
-	LastUpdatedFrom     string
-	IsEn                func() bool
-	OnSourceModeChanged func(SourceMode)
-	FlushBeforeUpdate   func(fromVersion string) error
-	QuitApp             func(startInstaller func() error) error
-	OnChange            func()
+	DataDir               string
+	InitialSourceMode     SourceMode
+	InitialReleaseChannel ReleaseChannel
+	// ChannelChosen is true once the user has explicitly picked a channel (persisted value present).
+	ChannelChosen           bool
+	LastUpdatedFrom         string
+	IsEn                    func() bool
+	OnSourceModeChanged     func(SourceMode)
+	OnReleaseChannelChanged func(ReleaseChannel)
+	FlushBeforeUpdate       func(fromVersion string) error
+	QuitApp                 func(startInstaller func() error) error
+	OnChange                func()
 }
 
 // Service coordinates silent background checks, multi-source downloads, staging, and installation.
 type Service struct {
 	cfg Config
 
-	mu                 sync.Mutex
-	status             Status
-	sourceMode         SourceMode
-	activeChannel      string
-	fetchLatencyMs     int64
+	mu                    sync.Mutex
+	status                Status
+	sourceMode            SourceMode
+	releaseChannel        ReleaseChannel
+	activeChannel         string
+	fetchLatencyMs        int64
 	mirrorProbe           ChannelProbe
 	githubProbe           ChannelProbe
 	lastStableMirrorProbe ChannelProbe
@@ -162,34 +171,39 @@ type Service struct {
 	githubProbeCancel     context.CancelFunc
 	retestingTarget       bool
 	retestGen             uint64
-	highestKnownVersion   string
+	highestStableVersion  string
+	highestNightlyVersion string
+	nightlyKnownStable    string
+	channelChosen         bool
 	lastPhase             string
 	lastErrorSanitized    string
-	speedMBps          float64
-	viewMode           ViewMode
-	lastUpdatedFrom    string
-	releases           []ReleaseEntry
-	notes              AggregatedNotes
-	latestEntry        *ReleaseEntry
-	targetAsset        *ReleaseAsset
-	readyRecord        *VerifiedRecord
-	inPlace            bool
-	pkgManaged         bool
-	downloadedBytes    int64
-	totalBytes         int64
-	percent            int
-	preparing          bool
-	downloadPath       string
-	errorMsg           string
-	checkGen           uint64
-	checkRunning       bool
-	downloadGen        uint64
-	downloadRunning    bool
-	downloadCancel     context.CancelFunc
-	downloadDone       chan struct{}
-	installRunning     bool
-	autoStarted        bool
-	stopCh             chan struct{}
+	speedMBps             float64
+	viewMode              ViewMode
+	lastUpdatedFrom       string
+	releases              []ReleaseEntry
+	stableReleases        []ReleaseEntry
+	nightlyReleases       []ReleaseEntry
+	notes                 AggregatedNotes
+	latestEntry           *ReleaseEntry
+	targetAsset           *ReleaseAsset
+	readyRecord           *VerifiedRecord
+	inPlace               bool
+	pkgManaged            bool
+	downloadedBytes       int64
+	totalBytes            int64
+	percent               int
+	preparing             bool
+	downloadPath          string
+	errorMsg              string
+	checkGen              uint64
+	checkRunning          bool
+	downloadGen           uint64
+	downloadRunning       bool
+	downloadCancel        context.CancelFunc
+	downloadDone          chan struct{}
+	installRunning        bool
+	autoStarted           bool
+	stopCh                chan struct{}
 }
 
 // NewService constructs a Service and immediately loads bundled/cached feeds and staged ready.json.
@@ -201,6 +215,8 @@ func NewService(cfg Config) *Service {
 		cfg:             cfg,
 		status:          StatusIdle,
 		sourceMode:      NormalizeSourceMode(string(cfg.InitialSourceMode)),
+		releaseChannel:  NormalizeReleaseChannel(string(cfg.InitialReleaseChannel)),
+		channelChosen:   cfg.ChannelChosen,
 		mirrorProbe:     DefaultChannelProbe(ChannelMirror),
 		githubProbe:     DefaultChannelProbe(ChannelGitHub),
 		lastPhase:       "idle",
@@ -215,24 +231,31 @@ func NewService(cfg Config) *Service {
 	}
 
 	if len(updates.BundledFeed) > 0 {
-		if entries, pErr := ParseFeedBytes(updates.BundledFeed); pErr == nil {
-			s.releases = entries
-			s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
-			if len(entries) > 0 {
-				s.highestKnownVersion = entries[0].Version
-			}
+		if entries, pErr := ParseFeedBytesForChannel(updates.BundledFeed, ReleaseStable); pErr == nil && len(entries) > 0 {
+			s.stableReleases = entries
+			s.highestStableVersion = entries[0].Version
 		}
 	}
 	if cfg.DataDir != "" {
-		if raw, err := os.ReadFile(feedCachePath(cfg.DataDir)); err == nil {
-			if entries, pErr := ParseFeedBytes(raw); pErr == nil {
-				if len(entries) > 0 && (s.highestKnownVersion == "" || CompareVersion(entries[0].Version, s.highestKnownVersion) >= 0) {
-					s.releases = entries
-					s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
-					s.highestKnownVersion = entries[0].Version
+		if raw, err := os.ReadFile(feedCachePathForChannel(cfg.DataDir, ReleaseStable)); err == nil {
+			if entries, pErr := ParseFeedBytesForChannel(raw, ReleaseStable); pErr == nil && len(entries) > 0 {
+				if s.highestStableVersion == "" || CompareVersion(entries[0].Version, s.highestStableVersion) >= 0 {
+					s.stableReleases = entries
+					s.highestStableVersion = entries[0].Version
 				}
 			}
 		}
+		if raw, err := os.ReadFile(feedCachePathForChannel(cfg.DataDir, ReleaseNightly)); err == nil {
+			if entries, pErr := ParseFeedBytesForChannel(raw, ReleaseNightly); pErr == nil && len(entries) > 0 {
+				s.nightlyReleases = entries
+				s.highestNightlyVersion = entries[0].Version
+				s.absorbStableFromEntriesLocked(entries)
+			}
+		}
+	}
+	s.releases = s.releasesForChannelLocked(s.releaseChannel)
+	if len(s.releases) > 0 {
+		s.notes = AggregateReleases(s.releases, cur, s.lastUpdatedFrom)
 	}
 	if os.Getenv("BLOCK_MOCK_UPDATE") == "1" {
 		s.installMockUpdate()
@@ -296,6 +319,200 @@ func (s *Service) syncActiveChannelFromProbesLocked() {
 	}
 }
 
+func (s *Service) releasesForChannelLocked(ch ReleaseChannel) []ReleaseEntry {
+	if NormalizeReleaseChannel(string(ch)) == ReleaseNightly && len(s.nightlyReleases) > 0 {
+		return s.nightlyReleases
+	}
+	return s.stableReleases
+}
+
+// absorbStableFromEntriesLocked only remembers which stable version the nightly feed knows about.
+// It never replaces the stable list or the stable anti-rollback floor: nightly feed entries for
+// older versions carry no installers, so they must not overwrite stable download metadata.
+func (s *Service) absorbStableFromEntriesLocked(entries []ReleaseEntry) {
+	for _, e := range entries {
+		if e.IsNightly() {
+			continue
+		}
+		if s.nightlyKnownStable == "" || CompareVersion(e.Version, s.nightlyKnownStable) > 0 {
+			s.nightlyKnownStable = e.Version
+		}
+		return
+	}
+}
+
+func (s *Service) isVersionKnownStableLocked(version string) bool {
+	if version == "" {
+		return false
+	}
+	for _, r := range s.stableReleases {
+		if !r.IsNightly() && CompareVersion(r.Version, version) == 0 {
+			return true
+		}
+	}
+	for _, r := range s.nightlyReleases {
+		if !r.IsNightly() && CompareVersion(r.Version, version) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) installedChannelLocked(cur string) ReleaseChannel {
+	if BuildReleaseChannel() == ReleaseStable {
+		return ReleaseStable
+	}
+	// 从没主动选过通道的用户只会拿到稳定版（官网下载的也是升稳后的同一安装包），
+	// 离线时清单可能还没包含这一版，不能据此标成每夜版。
+	if !s.channelChosen && s.releaseChannel == ReleaseStable {
+		return ReleaseStable
+	}
+	if s.isVersionKnownStableLocked(cur) {
+		return ReleaseStable
+	}
+	return ReleaseNightly
+}
+
+func (s *Service) latestStableVersionLocked() string {
+	latest := ""
+	if len(s.stableReleases) > 0 {
+		latest = s.stableReleases[0].Version
+	}
+	if s.nightlyKnownStable != "" && (latest == "" || CompareVersion(s.nightlyKnownStable, latest) > 0) {
+		latest = s.nightlyKnownStable
+	}
+	return latest
+}
+
+func (s *Service) waitingForStableLocked(cur string) bool {
+	if s.releaseChannel != ReleaseStable {
+		return false
+	}
+	if s.installedChannelLocked(cur) != ReleaseNightly {
+		return false
+	}
+	latestStable := s.latestStableVersionLocked()
+	if latestStable == "" {
+		return false
+	}
+	return CompareVersion(cur, latestStable) > 0
+}
+
+func (s *Service) highestKnownForChannelLocked(ch ReleaseChannel) string {
+	if NormalizeReleaseChannel(string(ch)) == ReleaseNightly {
+		return s.highestNightlyVersion
+	}
+	return s.highestStableVersion
+}
+
+func (s *Service) setHighestKnownForChannelLocked(ch ReleaseChannel, ver string) {
+	if ver == "" {
+		return
+	}
+	if NormalizeReleaseChannel(string(ch)) == ReleaseNightly {
+		if s.highestNightlyVersion == "" || CompareVersion(ver, s.highestNightlyVersion) > 0 {
+			s.highestNightlyVersion = ver
+		}
+		return
+	}
+	if s.highestStableVersion == "" || CompareVersion(ver, s.highestStableVersion) > 0 {
+		s.highestStableVersion = ver
+	}
+}
+
+// readyAllowedForChannelLocked reports whether a staged update may be installed on the current channel.
+func (s *Service) readyAllowedForChannelLocked(rec *VerifiedRecord) bool {
+	if rec == nil {
+		return false
+	}
+	if s.releaseChannel == ReleaseNightly {
+		return true
+	}
+	return rec.EffectiveReleaseChannel() == ReleaseStable || s.isVersionKnownStableLocked(rec.Version)
+}
+
+func (s *Service) dropReadyLocked() {
+	s.readyRecord = nil
+	if s.status == StatusReady {
+		s.status = StatusIdle
+	}
+	if s.cfg.DataDir != "" {
+		_ = os.Remove(readyRecordPath(s.cfg.DataDir))
+		discardPreparedStage(s.cfg.DataDir)
+	}
+}
+
+func (s *Service) currentReleaseChannel() ReleaseChannel {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.releaseChannel
+}
+
+func (s *Service) reapplyActiveChannelReleasesLocked() {
+	cur := CurrentVersion()
+	entries := s.releasesForChannelLocked(s.releaseChannel)
+	s.releases = entries
+	s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
+	s.errorMsg = ""
+	s.lastErrorSanitized = ""
+
+	if !s.notes.HasNewer || len(s.notes.Versions) == 0 {
+		if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, cur) > 0 &&
+			(s.releaseChannel == ReleaseNightly || s.isVersionKnownStableLocked(s.readyRecord.Version)) {
+			s.status = StatusReady
+		} else {
+			s.latestEntry = nil
+			s.targetAsset = nil
+			s.readyRecord = nil
+			s.status = StatusUpToDate
+		}
+		return
+	}
+
+	var picked *ReleaseEntry
+	var asset *ReleaseAsset
+	var inPlace bool
+	_, _, pkgManaged := PickPlatformAsset(s.notes.Versions[0].Assets, runtime.GOOS, runtime.GOARCH)
+	for i := range s.notes.Versions {
+		cand := s.notes.Versions[i]
+		a, ip, pm := PickPlatformAsset(cand.Assets, runtime.GOOS, runtime.GOARCH)
+		if pm {
+			pkgManaged = true
+		}
+		if a != nil {
+			c := cand
+			picked = &c
+			asset = a
+			inPlace = ip
+			break
+		}
+	}
+	if picked == nil {
+		latest := s.notes.Versions[0]
+		picked = &latest
+	}
+	s.latestEntry = picked
+	s.targetAsset = asset
+	s.inPlace = inPlace
+	s.pkgManaged = pkgManaged
+
+	if s.readyRecord != nil && asset != nil && inPlace && s.readyRecord.Version == picked.Version &&
+		s.readyRecord.Tag == picked.Tag && s.readyRecord.AssetName == asset.Name &&
+		s.readyRecord.DownloadURL == asset.DownloadURL && s.readyRecord.SHA256 == asset.EffectiveSHA256() {
+		s.status = StatusReady
+	} else if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, cur) > 0 &&
+		(s.releaseChannel == ReleaseNightly || s.isVersionKnownStableLocked(s.readyRecord.Version)) &&
+		(asset == nil || CompareVersion(s.readyRecord.Version, picked.Version) > 0) {
+		s.status = StatusReady
+	} else {
+		s.readyRecord = nil
+		s.status = StatusAvailable
+		if asset != nil {
+			s.totalBytes = asset.Size
+		}
+	}
+}
+
 // Snapshot returns a thread-safe copy of the current updater state.
 func (s *Service) Snapshot() Snapshot {
 	s.mu.Lock()
@@ -327,32 +544,36 @@ func (s *Service) Snapshot() Snapshot {
 	}
 
 	return Snapshot{
-		Status:             s.status,
-		CurrentVersion:     cur,
-		LatestVersion:      latest,
-		PublishedAt:        pubAt,
-		ReleaseURL:         relURL,
-		SourceMode:         s.sourceMode,
-		ActiveChannel:      s.activeChannel,
-		FetchLatencyMs:     s.fetchLatencyMs,
-		MirrorProbe:        s.mirrorProbe.Clone(),
-		GitHubProbe:        s.githubProbe.Clone(),
-		ProbingChannels:    s.mirrorProbing || s.githubProbing,
-		RetestingTarget:    s.retestingTarget,
-		LastPhase:          s.lastPhase,
-		LastErrorSanitized: s.lastErrorSanitized,
-		SpeedMBps:          s.speedMBps,
-		ViewMode:           s.viewMode,
-		DownloadedBytes:    s.downloadedBytes,
-		TotalBytes:         s.totalBytes,
-		Percent:            s.percent,
-		Preparing:          s.preparing,
-		DownloadPath:       s.downloadPath,
-		LogPath:            LogFilePath(s.cfg.DataDir),
-		InPlace:            s.inPlace,
-		PackageManaged:     s.pkgManaged,
-		ErrorMessage:       s.errorMsg,
-		Notes:              s.notes,
+		Status:              s.status,
+		CurrentVersion:      cur,
+		LatestVersion:       latest,
+		PublishedAt:         pubAt,
+		ReleaseURL:          relURL,
+		SourceMode:          s.sourceMode,
+		ReleaseChannel:      s.releaseChannel,
+		InstalledChannel:    s.installedChannelLocked(cur),
+		LatestStableVersion: s.latestStableVersionLocked(),
+		WaitingForStable:    s.waitingForStableLocked(cur),
+		ActiveChannel:       s.activeChannel,
+		FetchLatencyMs:      s.fetchLatencyMs,
+		MirrorProbe:         s.mirrorProbe.Clone(),
+		GitHubProbe:         s.githubProbe.Clone(),
+		ProbingChannels:     s.mirrorProbing || s.githubProbing,
+		RetestingTarget:     s.retestingTarget,
+		LastPhase:           s.lastPhase,
+		LastErrorSanitized:  s.lastErrorSanitized,
+		SpeedMBps:           s.speedMBps,
+		ViewMode:            s.viewMode,
+		DownloadedBytes:     s.downloadedBytes,
+		TotalBytes:          s.totalBytes,
+		Percent:             s.percent,
+		Preparing:           s.preparing,
+		DownloadPath:        s.downloadPath,
+		LogPath:             LogFilePath(s.cfg.DataDir),
+		InPlace:             s.inPlace,
+		PackageManaged:      s.pkgManaged,
+		ErrorMessage:        s.errorMsg,
+		Notes:               s.notes,
 	}
 }
 
@@ -388,6 +609,46 @@ func (s *Service) SetSourceMode(mode SourceMode) {
 		}
 		s.notify()
 	}
+}
+
+// SetReleaseChannel switches between stable and nightly update channels, persists it, and checks for updates.
+func (s *Service) SetReleaseChannel(ch ReleaseChannel) {
+	norm := NormalizeReleaseChannel(string(ch))
+	s.mu.Lock()
+	if s.releaseChannel == norm {
+		s.mu.Unlock()
+		return
+	}
+	s.releaseChannel = norm
+	s.channelChosen = true
+	var dlCancel context.CancelFunc
+	if norm == ReleaseStable && s.downloadRunning && s.latestEntry != nil && s.latestEntry.IsNightly() {
+		dlCancel = s.downloadCancel
+		s.downloadCancel = nil
+		s.downloadGen++
+		s.downloadRunning = false
+		s.preparing = false
+		s.speedMBps = 0
+		s.percent = 0
+		s.downloadedBytes = 0
+	}
+	if s.readyRecord != nil && !s.readyAllowedForChannelLocked(s.readyRecord) {
+		s.dropReadyLocked()
+	}
+	s.checkGen++
+	s.checkRunning = false
+	s.reapplyActiveChannelReleasesLocked()
+	s.mu.Unlock()
+
+	if dlCancel != nil {
+		dlCancel()
+	}
+	logInfo("config.release_channel_changed", "channel", norm)
+	if s.cfg.OnReleaseChannelChanged != nil {
+		s.cfg.OnReleaseChannelChanged(norm)
+	}
+	s.notify()
+	s.CheckAsync(false)
 }
 
 func setChannelProbing(cp *ChannelProbe) {
@@ -560,7 +821,7 @@ func (s *Service) startProbeChannelsAsync(channels []string, retestGen uint64) {
 			go func(run channelRun) {
 				defer wg.Done()
 				defer run.cancel()
-				finalCP, _, _ := ProbeChannel(run.ctx, run.channel, run.hint, true, func(upd ChannelProbe) {
+				finalCP, _, _ := ProbeChannelForReleaseChannel(run.ctx, run.channel, s.currentReleaseChannel(), run.hint, true, func(upd ChannelProbe) {
 					s.mu.Lock()
 					if (run.channel == ChannelMirror && run.seq != s.mirrorSeq) ||
 						(run.channel == ChannelGitHub && run.seq != s.githubSeq) {
@@ -683,11 +944,19 @@ func (s *Service) StartAutomatic() {
 		if dataDir != "" {
 			s.mu.Lock()
 			lastUpdatedFrom := s.lastUpdatedFrom
+			relCh := s.releaseChannel
 			s.mu.Unlock()
 			acknowledgeStartupAndClean(dataDir, cur, lastUpdatedFrom)
-			if rec, ok := RestoreReady(dataDir, cur); ok {
+			if rec, ok := RestoreReadyForChannel(dataDir, cur, relCh); ok {
 				_ = PrepareInstall(dataDir, rec, true)
 				s.mu.Lock()
+				if s.releaseChannel != relCh || !s.readyAllowedForChannelLocked(rec) {
+					// 恢复期间用户切换了通道：丢弃切换前的结果。
+					s.readyRecord = rec
+					s.dropReadyLocked()
+					s.mu.Unlock()
+					goto scheduled
+				}
 				s.readyRecord = rec
 				s.status = StatusReady
 				s.inPlace = rec.InPlace
@@ -706,6 +975,7 @@ func (s *Service) StartAutomatic() {
 			}
 		}
 
+	scheduled:
 		select {
 		case <-time.After(12 * time.Second):
 			s.runScheduledCycle()
@@ -783,6 +1053,7 @@ func (s *Service) checkAsyncInternal(manual bool, onDone func(), retestGen uint6
 	s.checkRunning = true
 	s.lastPhase = "check"
 	mode := s.sourceMode
+	relCh := s.releaseChannel
 	mirrorHint := s.stableProbeHintLocked(ChannelMirror)
 	githubHint := s.stableProbeHintLocked(ChannelGitHub)
 	wasReady := s.status == StatusReady && s.readyRecord != nil
@@ -803,7 +1074,7 @@ func (s *Service) checkAsyncInternal(manual bool, onDone func(), retestGen uint6
 		ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
 		defer cancel()
 
-		res, err := FetchReleasesRouted(ctx, mode, mirrorHint, githubHint, func(ch string, cp ChannelProbe) {
+		res, err := FetchReleasesRoutedForChannel(ctx, mode, relCh, mirrorHint, githubHint, func(ch string, cp ChannelProbe) {
 			s.mu.Lock()
 			if ch == ChannelMirror {
 				if s.mirrorSeq != mSeq || s.mirrorProbing {
@@ -825,7 +1096,7 @@ func (s *Service) checkAsyncInternal(manual bool, onDone func(), retestGen uint6
 
 		var probeOtherChannel string
 		s.mu.Lock()
-		if gen != s.checkGen {
+		if gen != s.checkGen || relCh != s.releaseChannel {
 			if retestGen > 0 && retestGen == s.retestGen {
 				s.retestingTarget = false
 			}
@@ -881,13 +1152,14 @@ func (s *Service) checkAsyncInternal(manual bool, onDone func(), retestGen uint6
 			return
 		}
 
-		// Anti-rollback guard: do not let a stale mirror feed downgrade a higher already-known release.
+		// Anti-rollback guard: do not let a stale mirror feed downgrade a higher already-known release in the same channel.
 		fetchedLatest := ""
 		if len(res.Entries) > 0 {
 			fetchedLatest = res.Entries[0].Version
 		}
-		knownFloor := s.highestKnownVersion
-		if s.readyRecord != nil && (knownFloor == "" || CompareVersion(s.readyRecord.Version, knownFloor) > 0) {
+		knownFloor := s.highestKnownForChannelLocked(relCh)
+		if s.readyRecord != nil && (relCh == ReleaseNightly || s.readyRecord.EffectiveReleaseChannel() == ReleaseStable) &&
+			(knownFloor == "" || CompareVersion(s.readyRecord.Version, knownFloor) > 0) {
 			knownFloor = s.readyRecord.Version
 		}
 		isMirrorRollback := res.Channel == ChannelMirror && knownFloor != "" && fetchedLatest != "" &&
@@ -912,80 +1184,24 @@ func (s *Service) checkAsyncInternal(manual bool, onDone func(), retestGen uint6
 			return
 		}
 
-		if fetchedLatest != "" && (s.highestKnownVersion == "" || CompareVersion(fetchedLatest, s.highestKnownVersion) > 0) {
-			s.highestKnownVersion = fetchedLatest
+		s.setHighestKnownForChannelLocked(relCh, fetchedLatest)
+		if relCh == ReleaseNightly {
+			s.nightlyReleases = res.Entries
+			s.absorbStableFromEntriesLocked(res.Entries)
+		} else {
+			s.stableReleases = res.Entries
 		}
 		if s.cfg.DataDir != "" && len(res.RawFeed) > 0 {
 			_ = os.MkdirAll(updatesRoot(s.cfg.DataDir), 0o700)
-			_ = os.WriteFile(feedCachePath(s.cfg.DataDir), res.RawFeed, 0o600)
+			_ = os.WriteFile(feedCachePathForChannel(s.cfg.DataDir, relCh), res.RawFeed, 0o600)
 		}
 
 		cur := CurrentVersion()
-		s.releases = res.Entries
 		s.activeChannel = res.Channel
 		s.fetchLatencyMs = res.LatencyMs
-		s.notes = AggregateReleases(res.Entries, cur, s.lastUpdatedFrom)
-		s.errorMsg = ""
-		s.lastErrorSanitized = ""
+		s.reapplyActiveChannelReleasesLocked()
 
 		logInfo("check.summary", "manual", manual, "current", cur, "latest", s.notes.ToVersion, "has_newer", s.notes.HasNewer, "aggregated_versions", s.notes.VersionCount, "channel", res.Channel, "latency_ms", res.LatencyMs)
-
-		if !s.notes.HasNewer || len(s.notes.Versions) == 0 {
-			if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, cur) > 0 {
-				s.status = StatusReady
-			} else {
-				s.latestEntry = nil
-				s.targetAsset = nil
-				s.readyRecord = nil
-				s.status = StatusUpToDate
-			}
-			s.mu.Unlock()
-			s.notify()
-			return
-		}
-
-		var picked *ReleaseEntry
-		var asset *ReleaseAsset
-		var inPlace bool
-		_, _, pkgManaged := PickPlatformAsset(s.notes.Versions[0].Assets, runtime.GOOS, runtime.GOARCH)
-		for i := range s.notes.Versions {
-			cand := s.notes.Versions[i]
-			a, ip, pm := PickPlatformAsset(cand.Assets, runtime.GOOS, runtime.GOARCH)
-			if pm {
-				pkgManaged = true
-			}
-			if a != nil {
-				c := cand
-				picked = &c
-				asset = a
-				inPlace = ip
-				break
-			}
-		}
-		if picked == nil {
-			latest := s.notes.Versions[0]
-			picked = &latest
-		}
-		s.latestEntry = picked
-		s.targetAsset = asset
-		s.inPlace = inPlace
-		s.pkgManaged = pkgManaged
-
-		if s.readyRecord != nil && asset != nil && inPlace && s.readyRecord.Version == picked.Version &&
-			s.readyRecord.Tag == picked.Tag && s.readyRecord.AssetName == asset.Name &&
-			s.readyRecord.DownloadURL == asset.DownloadURL && s.readyRecord.SHA256 == asset.EffectiveSHA256() {
-			s.status = StatusReady
-		} else if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, cur) > 0 &&
-			(asset == nil || CompareVersion(s.readyRecord.Version, picked.Version) > 0) {
-			// Keep an already verified local package when the feed lags behind it or lacks a platform asset.
-			s.status = StatusReady
-		} else {
-			s.readyRecord = nil
-			s.status = StatusAvailable
-			if asset != nil {
-				s.totalBytes = asset.Size
-			}
-		}
 		s.mu.Unlock()
 		s.notify()
 	}()
@@ -1162,6 +1378,14 @@ func (s *Service) InstallNow() {
 		s.mu.Unlock()
 		return
 	}
+	if !s.readyAllowedForChannelLocked(s.readyRecord) {
+		// 用户已切回稳定版：不允许装切换前下载好的每夜版。
+		s.dropReadyLocked()
+		s.reapplyActiveChannelReleasesLocked()
+		s.mu.Unlock()
+		s.notify()
+		return
+	}
 	rec := *s.readyRecord
 	dataDir := s.cfg.DataDir
 	s.installRunning = true
@@ -1304,6 +1528,8 @@ func (s *Service) installMockUpdate() {
 	}
 	s.mu.Lock()
 	s.releases = entries
+	s.stableReleases = entries
+	s.nightlyReleases = entries
 	s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
 	s.latestEntry = &r1
 	s.targetAsset = &asset

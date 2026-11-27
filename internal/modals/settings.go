@@ -1268,13 +1268,24 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 
 func (m *Manager) renderSettingsAboutTab(c *ui.Context) {
 	pal := theme.Ocean()
+	uPal := pal.UpdaterColors()
 	st := m.currentState()
 
 	curVer := updater.CurrentVersion()
+	relCh := updater.NormalizeReleaseChannel(st.UpdateChannel)
+	instCh := updater.BuildReleaseChannel()
+	waitingForStable := false
 	var snap updater.Snapshot
 	if m.Updater != nil {
 		snap = m.Updater.Snapshot()
 		curVer = snap.CurrentVersion
+		if snap.ReleaseChannel != "" {
+			relCh = snap.ReleaseChannel
+		}
+		if snap.InstalledChannel != "" {
+			instCh = snap.InstalledChannel
+		}
+		waitingForStable = snap.WaitingForStable
 	}
 
 	ui.Column(c.Key("settings-about-body")).FillWidth().Gap(theme.SettingsSectionGap).Children(func() {
@@ -1290,41 +1301,61 @@ func (m *Manager) renderSettingsAboutTab(c *ui.Context) {
 						ui.Text(c, "Block").FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).
 							FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 
-						copied := !m.aboutCopiedAt.IsZero() && time.Since(m.aboutCopiedAt) < 1400*time.Millisecond
-						verLabel := fmt.Sprintf("v%s", curVer)
-						verFG := pal.TextSecondary
-						verBG := pal.Shell
-						verBD := pal.Hairline
-						if copied {
-							verLabel = fmt.Sprintf("%s v%s", theme.Tr("已复制", "Copied"), curVer)
-							verFG = pal.Success
-							verBG = pal.SuccessSurface
-							verBD = ui.Transparent
-						}
-						verBtn := ui.ButtonBase(c.Key("settings-about-version")).Height(theme.HeightMicro).PaddingX(theme.Space8).
-							MaxWidthPercent(100).MinWidth(0).AlignItems(ui.Center).Justify(ui.Center).
-							Radius(theme.RadiusPill).Cursor(ui.CursorPointer).Label(verLabel)
-						verHover := verBtn.Hovered()
-						verPress := verBtn.Pressed()
-						if !copied {
-							if verPress {
-								verBG = pal.Selected
-							} else if verHover {
-								verBG = pal.Hover
+						ui.Row(c).MaxWidthPercent(100).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+							copied := !m.aboutCopiedAt.IsZero() && time.Since(m.aboutCopiedAt) < 1400*time.Millisecond
+							verLabel := fmt.Sprintf("v%s", curVer)
+							verFG := pal.TextSecondary
+							verBG := pal.Shell
+							verBD := pal.Hairline
+							if copied {
+								verLabel = fmt.Sprintf("%s v%s", theme.Tr("已复制", "Copied"), curVer)
+								verFG = pal.Success
+								verBG = pal.SuccessSurface
+								verBD = ui.Transparent
 							}
-						}
-						internalui.AnimateSurfaceColors(verBtn, verBG, verBD, true)
-						internalui.TactileButton(verBtn, verHover, verPress, false)
-						internalui.Probe(verBtn, "settings-about-version")
-						verBtn.Children(func() {
-							ui.Text(c, verLabel).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-								FontWeight(theme.WeightMono).TextColor(verFG).MaxWidthPercent(100).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+							verBtn := ui.ButtonBase(c.Key("settings-about-version")).Height(theme.HeightMicro).PaddingX(theme.Space8).
+								MinWidth(0).Shrink(1).AlignItems(ui.Center).Justify(ui.Center).
+								Radius(theme.RadiusPill).Cursor(ui.CursorPointer).Label(verLabel)
+							verHover := verBtn.Hovered()
+							verPress := verBtn.Pressed()
+							if !copied {
+								if verPress {
+									verBG = pal.Selected
+								} else if verHover {
+									verBG = pal.Hover
+								}
+							}
+							internalui.AnimateSurfaceColors(verBtn, verBG, verBD, true)
+							internalui.TactileButton(verBtn, verHover, verPress, false)
+							internalui.Probe(verBtn, "settings-about-version")
+							verBtn.Children(func() {
+								ui.Text(c, verLabel).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+									FontWeight(theme.WeightMono).TextColor(verFG).MaxWidthPercent(100).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+							})
+							if verBtn.Clicked() {
+								c.Services().WriteClipboard("v" + curVer)
+								m.aboutCopiedAt = time.Now()
+								time.AfterFunc(1450*time.Millisecond, m.requestRedraw)
+							}
+
+							badgeLabel := theme.Tr("稳定版", "Stable")
+							badgeBG := uPal.BadgeAccentBG
+							badgeFG := uPal.BadgeAccentFG
+							if instCh == updater.ReleaseNightly {
+								badgeLabel = theme.Tr("每夜版", "Nightly")
+								badgeBG = uPal.BadgeWarnBG
+								badgeFG = uPal.BadgeWarnFG
+							}
+							badge := ui.Row(c.Key("settings-about-channel-badge")).
+								Height(theme.Space20).PaddingX(theme.Space8).
+								AlignItems(ui.Center).Justify(ui.Center).
+								Radius(theme.RadiusPill).Background(badgeBG).Shrink(0)
+							internalui.Probe(badge, "settings-about-channel-badge")
+							badge.Children(func() {
+								ui.Text(c, badgeLabel).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+									FontWeight(theme.WeightControl).TextColor(badgeFG).SingleLine()
+							})
 						})
-						if verBtn.Clicked() {
-							c.Services().WriteClipboard("v" + curVer)
-							m.aboutCopiedAt = time.Now()
-							time.AfterFunc(1450*time.Millisecond, m.requestRedraw)
-						}
 					})
 				})
 
@@ -1375,6 +1406,65 @@ func (m *Manager) renderSettingsAboutTab(c *ui.Context) {
 					}
 				})
 			})
+
+			chModes := []updater.ReleaseChannel{updater.ReleaseStable, updater.ReleaseNightly}
+			chIdx := max(slices.Index(chModes, relCh), 0)
+			internalui.SettingsRow(c, theme.Tr("更新通道", "Update Channel"), func() {
+				if internalui.SettingsSegmented(c, "settings-update-channel-seg", &chIdx, []internalui.SegmentOption{
+					{ID: "settings-upd-ch-stable", Label: theme.Tr("稳定版", "Stable")},
+					{ID: "settings-upd-ch-nightly", Label: theme.Tr("每夜版", "Nightly")},
+				}) {
+					picked := chModes[chIdx]
+					if m.Updater != nil {
+						m.Updater.SetReleaseChannel(picked)
+					} else {
+						m.mutateState(func(s *model.AppState) {
+							s.UpdateChannel = string(picked)
+						})
+					}
+				}
+			})
+
+			hintText := ""
+			showStayNightly := false
+			switch {
+			case relCh == updater.ReleaseNightly:
+				hintText = theme.Tr("每次改动都会推送新版本，可能不稳定", "Every change pushes a new build and may be unstable.")
+			case waitingForStable:
+				hintText = fmt.Sprintf(theme.Tr("已切回稳定版，等稳定版追上 v%s 后再更新", "Switched to Stable; updates resume once Stable reaches v%s"), curVer)
+				showStayNightly = true
+			}
+			if hintText != "" {
+				hintRow := ui.Row(c.Key("settings-update-channel-hint")).
+					FillWidth().MinWidth(0).Margin(0, 0, theme.Space12, 0).
+					Padding(theme.Space10, theme.Space12).Gap(theme.Space12).
+					AlignItems(ui.Center).Justify(ui.SpaceBetween).
+					Radius(theme.RadiusLG).Background(pal.Shell)
+				internalui.Probe(hintRow, "settings-update-channel-hint")
+				hintRow.Children(func() {
+					ui.Text(c, hintText).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
+					if showStayNightly {
+						stayBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+							ID:          "settings-stay-nightly",
+							Label:       theme.Tr("留在每夜版", "Stay on Nightly"),
+							Style:       internalui.ButtonSecondary,
+							Height:      theme.HeightCompact,
+							PaddingX:    theme.Space10,
+							CompactText: true,
+						})
+						if stayBtn.Clicked() {
+							if m.Updater != nil {
+								m.Updater.SetReleaseChannel(updater.ReleaseNightly)
+							} else {
+								m.mutateState(func(s *model.AppState) {
+									s.UpdateChannel = string(updater.ReleaseNightly)
+								})
+							}
+						}
+					}
+				})
+			}
 
 			srcMode := updater.NormalizeSourceMode(st.UpdateSource)
 			if m.Updater != nil {

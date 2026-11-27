@@ -43,17 +43,23 @@ func markMacNeverIndex(dir string) {
 
 // VerifiedRecord persists a verified, staged update in <dataDir>/app-updates/ready.json.
 type VerifiedRecord struct {
-	Version     string `json:"version"`
-	Tag         string `json:"tag"`
-	AssetName   string `json:"asset_name"`
-	DownloadURL string `json:"download_url"`
-	SHA256      string `json:"sha256"`
-	Size        int64  `json:"size"`
-	ArchivePath string `json:"archive_path"`
-	PublishedAt string `json:"published_at,omitempty"`
-	ReleaseURL  string `json:"release_url,omitempty"`
-	Channel     string `json:"channel,omitempty"`
-	InPlace     bool   `json:"in_place"`
+	Version        string         `json:"version"`
+	Tag            string         `json:"tag"`
+	AssetName      string         `json:"asset_name"`
+	DownloadURL    string         `json:"download_url"`
+	SHA256         string         `json:"sha256"`
+	Size           int64          `json:"size"`
+	ArchivePath    string         `json:"archive_path"`
+	PublishedAt    string         `json:"published_at,omitempty"`
+	ReleaseURL     string         `json:"release_url,omitempty"`
+	Channel        string         `json:"channel,omitempty"`
+	ReleaseChannel ReleaseChannel `json:"release_channel,omitempty"`
+	InPlace        bool           `json:"in_place"`
+}
+
+// EffectiveReleaseChannel returns the normalized release channel associated with this staged record.
+func (r VerifiedRecord) EffectiveReleaseChannel() ReleaseChannel {
+	return NormalizeReleaseChannel(string(r.ReleaseChannel))
 }
 
 type installStageRecord struct {
@@ -155,6 +161,13 @@ func PrepareInstall(dataDir string, rec *VerifiedRecord, alreadyVerified bool) e
 }
 
 func feedCachePath(dataDir string) string {
+	return feedCachePathForChannel(dataDir, ReleaseStable)
+}
+
+func feedCachePathForChannel(dataDir string, ch ReleaseChannel) string {
+	if NormalizeReleaseChannel(string(ch)) == ReleaseNightly {
+		return filepath.Join(updatesRoot(dataDir), "feed-cache-nightly.json")
+	}
 	return filepath.Join(updatesRoot(dataDir), "feed-cache.json")
 }
 
@@ -292,14 +305,22 @@ func verifyAssetDigestAgainstOfficialGitHub(ctx context.Context, entry ReleaseEn
 	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(entry.Tag)), "v") {
 		lookupTags = append(lookupTags, "v"+entry.Version)
 	}
+	relCh := ReleaseStable
+	if entry.IsNightly() {
+		relCh = ReleaseNightly
+	}
 	expectedSHA := asset.EffectiveSHA256()
 	for _, tag := range lookupTags {
 		verifyCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-		rel, err := FetchReleaseByTag(verifyCtx, tag)
+		rel, err := FetchReleaseByTagForChannel(verifyCtx, tag, relCh)
 		cancel()
 		if err != nil {
 			if errors.Is(err, errReleaseNotFound) {
 				continue
+			}
+			if errors.Is(err, errReleaseRejected) {
+				logError("download.official_release_rejected", "version", entry.Version, "tag", tag, "err", err.Error())
+				return fmt.Errorf("%w: release is not published on this update channel", errStagedIntegrity)
 			}
 			// Network-level failure reaching GitHub API: log and allow mirror fallback so
 			// users without direct GitHub connectivity are not hard-blocked.
@@ -417,18 +438,23 @@ func downloadAndStageInternal(
 		}
 	}
 
+	recRelCh := ReleaseStable
+	if entry.IsNightly() {
+		recRelCh = ReleaseNightly
+	}
 	rec := &VerifiedRecord{
-		Version:     entry.Version,
-		Tag:         entry.Tag,
-		AssetName:   asset.Name,
-		DownloadURL: asset.DownloadURL,
-		SHA256:      expectedSHA,
-		Size:        asset.Size,
-		ArchivePath: finalPath,
-		PublishedAt: entry.PublishedAt,
-		ReleaseURL:  entry.HTMLURL,
-		Channel:     usedChannel,
-		InPlace:     inPlace,
+		Version:        entry.Version,
+		Tag:            entry.Tag,
+		AssetName:      asset.Name,
+		DownloadURL:    asset.DownloadURL,
+		SHA256:         expectedSHA,
+		Size:           asset.Size,
+		ArchivePath:    finalPath,
+		PublishedAt:    entry.PublishedAt,
+		ReleaseURL:     entry.HTMLURL,
+		Channel:        usedChannel,
+		ReleaseChannel: recRelCh,
+		InPlace:        inPlace,
 	}
 	doCommit := func() error {
 		if ctx.Err() != nil {
@@ -877,6 +903,11 @@ func acknowledgeStartupAndClean(dataDir, runningVersion, lastUpdatedFrom string)
 
 // RestoreReady validates a persisted ready.json across restarts without re-downloading.
 func RestoreReady(dataDir, runningVersion string) (*VerifiedRecord, bool) {
+	return RestoreReadyForChannel(dataDir, runningVersion, ReleaseStable)
+}
+
+// RestoreReadyForChannel validates a persisted ready.json across restarts against ch.
+func RestoreReadyForChannel(dataDir, runningVersion string, ch ReleaseChannel) (*VerifiedRecord, bool) {
 	raw, err := os.ReadFile(readyRecordPath(dataDir))
 	if err != nil {
 		return nil, false
@@ -887,7 +918,8 @@ func RestoreReady(dataDir, runningVersion string) (*VerifiedRecord, bool) {
 		_ = os.Remove(readyRecordPath(dataDir))
 		return nil, false
 	}
-	if err := validateReadyFromOfficialSource(dataDir, runningVersion, &rec); err != nil {
+	relCh := NormalizeReleaseChannel(string(ch))
+	if err := validateReadyFromOfficialSourceForChannel(dataDir, runningVersion, &rec, relCh); err != nil {
 		logWarn("restore.untrusted_update", "err", err)
 		return nil, false
 	}
@@ -954,6 +986,11 @@ var errStagedIntegrity = errors.New("staged update integrity failed")
 
 // A ready record is a hint about a local download. GitHub remains authoritative.
 func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *VerifiedRecord) error {
+	return validateReadyFromOfficialSourceForChannel(dataDir, runningVersion, rec, rec.EffectiveReleaseChannel())
+}
+
+func validateReadyFromOfficialSourceForChannel(dataDir, runningVersion string, rec *VerifiedRecord, relCh ReleaseChannel) error {
+	relCh = NormalizeReleaseChannel(string(relCh))
 	version, _, _, valid := ParseReleaseTag(rec.Version)
 	if !valid || version != rec.Version || CompareVersion(rec.Version, runningVersion) <= 0 {
 		return fmt.Errorf("%w: staged update version is invalid", errStagedIntegrity)
@@ -983,7 +1020,7 @@ func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *Verifi
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
 	defer cancel()
-	releases, _, _, _, fetchErr := FetchReleases(ctx, SourceGitHub)
+	releases, _, _, _, fetchErr := FetchReleasesForChannel(ctx, SourceGitHub, relCh)
 	checkedPlatformAsset := false
 	if fetchErr == nil {
 		for _, release := range releases {
@@ -1010,9 +1047,12 @@ func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *Verifi
 		var transientErr error
 		for _, tag := range lookupTags {
 			tagCtx, tagCancel := context.WithTimeout(context.Background(), 15*time.Second)
-			rel, tagErr := FetchReleaseByTag(tagCtx, tag)
+			rel, tagErr := FetchReleaseByTagForChannel(tagCtx, tag, relCh)
 			tagCancel()
 			if tagErr != nil {
+				if errors.Is(tagErr, errReleaseRejected) {
+					return fmt.Errorf("%w: %v", errStagedIntegrity, tagErr)
+				}
 				if !errors.Is(tagErr, errReleaseNotFound) {
 					transientErr = tagErr
 				}

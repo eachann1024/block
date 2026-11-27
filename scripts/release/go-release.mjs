@@ -4,7 +4,21 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { feedbackBuildHash, feedbackLdflags, resolveFeedbackBuildConfig } from "../app-bundle.mjs";
 import { ensureWindowsIconSyso } from "./gen-windows-syso.mjs";
-import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
+import { applyReleasePlanVersion, normalizeReleaseChannel, readPackageVersion, ROOT } from "./select-release.mjs";
+
+function resolveReleaseChannel() {
+  const envCh = process.env.BLOCK_RELEASE_CHANNEL?.trim();
+  if (envCh) return normalizeReleaseChannel(envCh);
+  const planPath = resolve(ROOT, "release-plan.json");
+  if (existsSync(planPath)) {
+    try {
+      const plan = JSON.parse(readFileSync(planPath, "utf8"));
+      if (plan?.channel) return normalizeReleaseChannel(plan.channel);
+    } catch {}
+  }
+  if (process.env.BLOCK_RELEASE_VERSION?.trim()) return "nightly";
+  return "stable";
+}
 
 function redactCmdArg(arg) {
   return String(arg).startsWith("-ldflags=") ? "-ldflags=<redacted>" : String(arg);
@@ -55,13 +69,14 @@ function currentHeadSha() {
   }
 }
 
-export function canReuseReleaseBinary({ goos, goarch, version, outFile = releaseBinaryPath(goos, goarch) }) {
+export function canReuseReleaseBinary({ goos, goarch, version, channel = resolveReleaseChannel(), outFile = releaseBinaryPath(goos, goarch) }) {
   if (!existsSync(outFile)) return false;
   const metaPath = releaseBinaryMetaPath(outFile);
   if (!existsSync(metaPath)) return false;
   try {
     const meta = JSON.parse(readFileSync(metaPath, "utf8"));
     return meta?.version === version
+      && (meta?.channel || "stable") === channel
       && meta?.goos === goos
       && meta?.goarch === goarch
       && meta?.sha === currentHeadSha()
@@ -77,11 +92,13 @@ export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goar
     ensureWindowsIconSyso();
   }
   const version = readPackageVersion(ROOT);
+  const channel = resolveReleaseChannel();
   const ldflagParts = [
     "-s",
     "-w",
     ...(goos === "windows" ? ["-H=windowsgui"] : []),
     `-X block/internal/updater.BuildVersion=${version}`,
+    `-X block/internal/updater.BuildChannel=${channel}`,
     ...feedbackLdflags(ROOT),
   ];
   run("go", ["build", `-ldflags=${ldflagParts.join(" ")}`, "-o", outFile, "./cmd/block"], {
@@ -94,7 +111,7 @@ export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goar
   });
   writeFileSync(
     releaseBinaryMetaPath(outFile),
-    `${JSON.stringify({ version, goos, goarch, sha: currentHeadSha(), feedbackHash: feedbackBuildHash(ROOT) }, null, 2)}\n`,
+    `${JSON.stringify({ version, channel, goos, goarch, sha: currentHeadSha(), feedbackHash: feedbackBuildHash(ROOT) }, null, 2)}\n`,
   );
   return outFile;
 }

@@ -199,12 +199,15 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 		snap = m.Updater.Snapshot()
 	default:
 		cur := updater.CurrentVersion()
+		st := m.currentState()
 		snap = updater.Snapshot{
-			Status:         updater.StatusUpToDate,
-			CurrentVersion: cur,
-			LatestVersion:  cur,
-			SourceMode:     updater.NormalizeSourceMode(m.currentState().UpdateSource),
-			ViewMode:       updater.ViewMerged,
+			Status:           updater.StatusUpToDate,
+			CurrentVersion:   cur,
+			LatestVersion:    cur,
+			SourceMode:       updater.NormalizeSourceMode(st.UpdateSource),
+			ReleaseChannel:   updater.NormalizeReleaseChannel(st.UpdateChannel),
+			InstalledChannel: updater.BuildReleaseChannel(),
+			ViewMode:         updater.ViewMerged,
 			Notes: updater.AggregatedNotes{
 				FromVersion: cur,
 				ToVersion:   cur,
@@ -303,6 +306,39 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 							TextColor(pal.Danger).FillWidth().SingleLine().Ellipsis("…")
 						internalui.WrappedTooltip(c, errEl, errMsg)
 					}
+				}
+
+				if snap.WaitingForStable && !snap.HasActionableUpdate() &&
+					snap.Status != updater.StatusChecking && snap.Status != updater.StatusError {
+					hintRow := ui.Row(c.Key("updater-waiting-stable-hint")).
+						FillWidth().MinWidth(0).Padding(theme.Space10, theme.Space12).Gap(theme.Space12).
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).
+						Radius(theme.RadiusLG).Background(pal.Shell)
+					internalui.Probe(hintRow, "updater-waiting-stable-hint")
+					hintRow.Children(func() {
+						msg := fmt.Sprintf(
+							updaterTr(showEn, "已切回稳定版，等稳定版追上 v%s 后再更新", "Switched to Stable; updates resume once Stable reaches v%s"),
+							snap.CurrentVersion,
+						)
+						ui.Text(c, msg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+							TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
+						stayBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+							ID:          "updater-stay-nightly",
+							Label:       updaterTr(showEn, "留在每夜版", "Stay on Nightly"),
+							Style:       internalui.ButtonSecondary,
+							Height:      theme.HeightCompact,
+							PaddingX:    theme.Space10,
+							CompactText: true,
+						})
+						if stayBtn.Clicked() {
+							if m.updaterPreview != nil {
+								m.updaterPreview.ReleaseChannel = updater.ReleaseNightly
+								m.updaterPreview.WaitingForStable = false
+							} else if m.Updater != nil {
+								m.Updater.SetReleaseChannel(updater.ReleaseNightly)
+							}
+						}
+					})
 				}
 
 				if snap.ViewMode == updater.ViewByVersion && len(snap.Notes.Versions) > 0 {

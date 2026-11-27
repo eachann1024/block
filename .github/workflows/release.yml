@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths-ignore:
       - 'updates/feed.json'
+      - 'updates/nightly-feed.json'
       - '.ai-map.md'
       - 'docs/**'
       - 'README.md'
@@ -18,6 +19,7 @@ on:
       - '.github/workflows/ci.yml'
       - '.github/workflows/pr-media.yml'
       - '.github/workflows/prune-release-assets.yml'
+      - '.github/workflows/promote-stable.yml'
       - 'scripts/lint_design.py'
       - 'scripts/gen_ai_map.py'
       - 'scripts/dump_ai_state.py'
@@ -29,6 +31,13 @@ on:
     - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
+      channel:
+        description: Release channel (nightly or stable)
+        type: choice
+        default: nightly
+        options:
+          - nightly
+          - stable
       publish:
         description: Publish GitHub Release after building installers
         type: boolean
@@ -71,6 +80,7 @@ jobs:
     outputs:
       should_build: ${{ steps.check.outputs.should_build || steps.preflight.outputs.should_build || 'no' }}
       publish: ${{ steps.check.outputs.publish || steps.preflight.outputs.publish || 'no' }}
+      channel: ${{ steps.check.outputs.channel || steps.preflight.outputs.channel || 'nightly' }}
       version: ${{ steps.check.outputs.version || steps.preflight.outputs.version }}
       release_tag: ${{ steps.check.outputs.release_tag || steps.preflight.outputs.release_tag }}
       auto_bump: ${{ steps.check.outputs.auto_bump || 'false' }}
@@ -88,6 +98,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'nightly' }}
           PUBLISH: ${{ github.event_name == 'push' || github.event_name == 'schedule' || inputs.publish == true }}
           FORCE: ${{ inputs.force == true }}
           BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
@@ -148,6 +159,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'nightly' }}
           PUBLISH: ${{ github.event_name == 'push' || github.event_name == 'schedule' || inputs.publish == true }}
           FORCE: ${{ inputs.force == true }}
           BLOCK_USE_PREFLIGHT: "1"
@@ -200,6 +212,7 @@ jobs:
         env:
           BLOCK_ARCHES: arm64,x64
           BLOCK_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          BLOCK_RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
           BLOCK_FEEDBACK_URL: ${{ secrets.BLOCK_FEEDBACK_URL }}
           BLOCK_FEEDBACK_CLIENT_TOKEN: ${{ secrets.BLOCK_FEEDBACK_CLIENT_TOKEN }}
           BLOCK_REQUIRE_FEEDBACK_URL: "1"
@@ -348,6 +361,7 @@ jobs:
         env:
           BLOCK_ARCH: x64
           BLOCK_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          BLOCK_RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
           BLOCK_FEEDBACK_URL: ${{ secrets.BLOCK_FEEDBACK_URL }}
           BLOCK_FEEDBACK_CLIENT_TOKEN: ${{ secrets.BLOCK_FEEDBACK_CLIENT_TOKEN }}
           BLOCK_REQUIRE_FEEDBACK_URL: "1"
@@ -482,7 +496,7 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: node scripts/release/prune-release-assets.mjs
       - name: Update AUR block-bin
-        if: needs.prepare.outputs.publish == 'yes'
+        if: needs.prepare.outputs.publish == 'yes' && needs.prepare.outputs.channel == 'stable'
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -507,13 +521,15 @@ jobs:
           persist-credentials: false
       - name: Setup Node 22
         run: bash scripts/ci/setup-node.sh 22
-      - name: Sync version manifests and updates/feed.json
+      - name: Sync version manifests and feed files
+        id: sync
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare.outputs.sync_only_tag }}
         run: node scripts/release/publish-release.mjs --sync-only --tag "$RELEASE_TAG"
       - name: Update AUR block-bin
+        if: steps.sync.outputs.is_stable == 'yes'
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           RELEASE_TAG: ${{ needs.prepare.outputs.sync_only_tag }}

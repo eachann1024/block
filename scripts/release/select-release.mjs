@@ -19,6 +19,10 @@ export function gh(args, input) {
   });
 }
 
+export function normalizeReleaseChannel(raw) {
+  return String(raw || "").trim().toLowerCase() === "stable" ? "stable" : "nightly";
+}
+
 export function versionFromTag(tag) {
   return /^v?(\d+\.\d+\.\d+)(?:-[0-9a-f]{7,40})?$/.exec(tag || "")?.[1] || null;
 }
@@ -283,7 +287,7 @@ function preflightPath() {
   return custom ? resolve(custom) : resolve(ROOT, "release-preflight.json");
 }
 
-function loadPreflight(headSha, force) {
+function loadPreflight(headSha, force, channel) {
   if (process.env.BLOCK_USE_PREFLIGHT !== "1") return null;
   const path = preflightPath();
   if (!existsSync(path)) {
@@ -294,6 +298,7 @@ function loadPreflight(headSha, force) {
     && data.headSha === headSha
     && typeof data.force === "boolean"
     && data.force === Boolean(force)
+    && normalizeReleaseChannel(data.channel) === channel
     && typeof data.currentVersion === "string"
     && /^\d+\.\d+\.\d+$/.test(data.currentVersion)
     && typeof data.version === "string"
@@ -305,12 +310,12 @@ function loadPreflight(headSha, force) {
   return data;
 }
 
-function feedHasReleaseTag(tag) {
+function feedHasReleaseTag(tag, feedRelPath = "updates/feed.json") {
   if (!tag) return true;
   let raw = null;
   for (const ref of ["origin/main", "HEAD"]) {
     try {
-      raw = execFileSync("git", ["show", `${ref}:updates/feed.json`], {
+      raw = execFileSync("git", ["show", `${ref}:${feedRelPath}`], {
         cwd: ROOT,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
@@ -320,11 +325,11 @@ function feedHasReleaseTag(tag) {
   }
   if (raw === null) {
     try {
-      const data = JSON.parse(gh(["api", `repos/${REPO}/contents/updates/feed.json?ref=main`]));
+      const data = JSON.parse(gh(["api", `repos/${REPO}/contents/${feedRelPath}?ref=main`]));
       raw = Buffer.from(String(data.content).replaceAll("\n", ""), "base64").toString("utf8");
     } catch (err) {
       if (/\b404\b|Not Found/i.test(String(err?.stderr || err?.message || ""))) return false;
-      throw new Error(`Failed to read updates/feed.json while verifying ${tag}: ${err?.message || err}`);
+      throw new Error(`Failed to read ${feedRelPath} while verifying ${tag}: ${err?.message || err}`);
     }
   }
   const parsed = JSON.parse(raw);
@@ -337,12 +342,13 @@ function feedHasReleaseTag(tag) {
   return true;
 }
 
-function writeSkipPlan({ currentVersion, tag, headSha, extraPlan = {}, extraOutputs = {} }) {
-  const plan = { shouldBuild: false, publish: false, version: currentVersion, tag, commit: headSha, ...extraPlan };
+function writeSkipPlan({ currentVersion, tag, headSha, channel, extraPlan = {}, extraOutputs = {} }) {
+  const plan = { shouldBuild: false, publish: false, channel, version: currentVersion, tag, commit: headSha, ...extraPlan };
   writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
   writeOutputs({
     should_build: outputFlag(false),
     publish: outputFlag(false),
+    channel,
     version: currentVersion,
     release_tag: tag,
     ...extraOutputs,
@@ -355,9 +361,10 @@ async function main() {
     || execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
   const force = process.env.FORCE === "true";
   const publishInput = process.env.PUBLISH !== "false";
+  const channel = normalizeReleaseChannel(process.env.RELEASE_CHANNEL);
   const onMain = !process.env.GITHUB_REF || process.env.GITHUB_REF === "refs/heads/main";
 
-  const cached = preflightOnly ? null : loadPreflight(headSha, force);
+  const cached = preflightOnly ? null : loadPreflight(headSha, force, channel);
   let currentVersion;
   let version;
   let previous;
@@ -372,21 +379,23 @@ async function main() {
     const releases = getReleases();
     const tagVersions = listGitTagVersions(ROOT);
     version = nextReleaseVersion({ currentVersion, releases, tagVersions, headSha });
-    const stable = releases
-      .filter((r) => !r.draft && !r.prerelease && versionFromTag(r.tag_name))
+    const eligiblePrevious = releases
+      .filter((r) => !r.draft && (channel === "nightly" || !r.prerelease) && versionFromTag(r.tag_name))
       .sort((a, b) => compareVersions(versionFromTag(a.tag_name), versionFromTag(b.tag_name)));
-    previous = stable.at(-1) || null;
-    const previousMissingFeed = Boolean(previous && !feedHasReleaseTag(previous.tag_name));
+    previous = eligiblePrevious.at(-1) || null;
+    const feedRelPath = channel === "nightly" ? "updates/nightly-feed.json" : "updates/feed.json";
+    const previousMissingFeed = Boolean(previous && !feedHasReleaseTag(previous.tag_name, feedRelPath));
 
     const previousSha = resolveTagCommit(previous);
     const canSyncPostPublish = Boolean(onMain && publishInput);
     if (previousSha && previousSha === headSha && !force) {
       if (previousMissingFeed && canSyncPostPublish) {
-        summary(`最新 Release ${previous.tag_name} 已发布但 updates/feed.json 尚未回写，触发发布后同步补偿。`);
+        summary(`最新 Release ${previous.tag_name} 已发布但 ${feedRelPath} 尚未回写，触发发布后同步补偿。`);
         writeSkipPlan({
           currentVersion,
           tag: previous.tag_name,
           headSha,
+          channel,
           extraOutputs: {
             ...(preflightOnly ? { needs_release: outputFlag(false) } : {}),
             sync_only_tag: previous.tag_name,
@@ -399,6 +408,7 @@ async function main() {
         currentVersion,
         tag: previous.tag_name,
         headSha,
+        channel,
         extraOutputs: preflightOnly ? { needs_release: outputFlag(false) } : {},
       });
       return;
@@ -417,11 +427,12 @@ async function main() {
     const userCommits = commits.filter((commit) => !isExcludedCommit(commit));
     if (previous && userCommits.length === 0 && !force) {
       if (previousMissingFeed && canSyncPostPublish) {
-        summary(`无面向用户的新提交，但 ${previous.tag_name} 尚未写入 updates/feed.json，触发发布后同步补偿。`);
+        summary(`无面向用户的新提交，但 ${previous.tag_name} 尚未写入 ${feedRelPath}，触发发布后同步补偿。`);
         writeSkipPlan({
           currentVersion,
           tag: previous.tag_name,
           headSha,
+          channel,
           extraOutputs: {
             ...(preflightOnly ? { needs_release: outputFlag(false) } : {}),
             sync_only_tag: previous.tag_name,
@@ -434,6 +445,7 @@ async function main() {
         currentVersion,
         tag: previous.tag_name,
         headSha,
+        channel,
         extraOutputs: preflightOnly ? { needs_release: outputFlag(false) } : {},
       });
       return;
@@ -444,14 +456,15 @@ async function main() {
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(
         target,
-        `${JSON.stringify({ headSha, force, currentVersion, version, previous, rangeSpec, commits }, null, 2)}\n`,
+        `${JSON.stringify({ headSha, force, channel, currentVersion, version, previous, rangeSpec, commits }, null, 2)}\n`,
       );
       writeOutputs({
         needs_release: outputFlag(true),
+        channel,
         version,
         release_tag: `v${version}`,
       });
-      summary(`预检通过：准备为 Block v${version} 生成更新说明（面向用户提交 ${userCommits.length} 条）。`);
+      summary(`预检通过：准备为 Block v${version} (${channel}) 生成更新说明（面向用户提交 ${userCommits.length} 条）。`);
       return;
     }
   }
@@ -466,13 +479,14 @@ async function main() {
     const plan = {
       shouldBuild: false,
       publish: false,
+      channel,
       version: currentVersion,
       tag: previous.tag_name,
       commit: headSha,
       ...(notes.generationFailed ? { notesSource: "fallback", generationFailed: true, generationFailure: notes.reason || "" } : {}),
     };
     writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous.tag_name });
+    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), channel, version: currentVersion, release_tag: previous.tag_name });
     return;
   }
 
@@ -486,13 +500,14 @@ async function main() {
       const plan = {
         shouldBuild: false,
         publish: false,
+        channel,
         version,
         tag: `v${version}`,
         commit: headSha,
         ...(notes.generationFailed ? { notesSource: "fallback", generationFailed: true, generationFailure: notes.reason || "" } : {}),
       };
       writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version, release_tag: `v${version}` });
+      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), channel, version, release_tag: `v${version}` });
       return;
     }
   }
@@ -502,6 +517,7 @@ async function main() {
   const plan = {
     shouldBuild: true,
     publish: shouldPublish,
+    channel,
     autoBump,
     version,
     tag,
@@ -517,6 +533,7 @@ async function main() {
   writeOutputs({
     should_build: outputFlag(true),
     publish: outputFlag(shouldPublish),
+    channel,
     version,
     release_tag: tag,
     auto_bump: autoBump,
@@ -524,7 +541,7 @@ async function main() {
   const notesLabel = notes.source === "polished" && notes.model
     ? `AI 模型 ${notes.model}`
     : (notes.source || "none");
-  summary(`准备发布 Block ${tag}（autoBump=${autoBump}, notes=${notesLabel}）`);
+  summary(`准备发布 Block ${tag} (${channel}, autoBump=${autoBump}, notes=${notesLabel})`);
 }
 
 const isMain =

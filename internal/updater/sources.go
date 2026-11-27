@@ -119,10 +119,11 @@ var allowlistedInstallers = map[string]bool{
 
 // LabeledURL pairs a candidate endpoint URL with its display channel kind ("mirror" | "github").
 type LabeledURL struct {
-	URL     string
-	Host    string
-	Channel string // "mirror" | "github"
-	Kind    string // "feed" | "github-api" | "asset"
+	URL            string
+	Host           string
+	Channel        string // "mirror" | "github"
+	Kind           string // "feed" | "github-api" | "asset"
+	ReleaseChannel ReleaseChannel
 }
 
 // IsTrustedReleaseAsset verifies that an installer belongs to the official repo & allowlist and carries a valid SHA-256.
@@ -165,7 +166,15 @@ type ghAPIRawRelease struct {
 var mirrorHosts = []string{"gh-proxy.com", "ghproxy.net"}
 
 func rawFeedURL() string {
-	return fmt.Sprintf("https://raw.githubusercontent.com/%s/main/updates/feed.json?t=%d", PublicRepo, time.Now().Unix())
+	return rawFeedURLForChannel(ReleaseStable)
+}
+
+func rawFeedURLForChannel(ch ReleaseChannel) string {
+	path := "updates/feed.json"
+	if NormalizeReleaseChannel(string(ch)) == ReleaseNightly {
+		path = "updates/nightly-feed.json"
+	}
+	return fmt.Sprintf("https://raw.githubusercontent.com/%s/main/%s?t=%d", PublicRepo, path, time.Now().Unix())
 }
 
 func orderedMirrorHosts(hint ChannelProbe) []string {
@@ -237,24 +246,40 @@ func DefaultChannelProbe(channel string) ChannelProbe {
 }
 
 func mirrorFeedCandidates(hint ChannelProbe) []LabeledURL {
-	raw := rawFeedURL()
+	return mirrorFeedCandidatesForChannel(hint, ReleaseStable)
+}
+
+func mirrorFeedCandidatesForChannel(hint ChannelProbe, ch ReleaseChannel) []LabeledURL {
+	relCh := NormalizeReleaseChannel(string(ch))
+	raw := rawFeedURLForChannel(relCh)
 	hosts := orderedMirrorHosts(hint)
 	out := make([]LabeledURL, 0, len(hosts))
 	for _, h := range hosts {
 		out = append(out, LabeledURL{
-			URL:     "https://" + h + "/" + raw,
-			Host:    h,
-			Channel: ChannelMirror,
-			Kind:    "feed",
+			URL:            "https://" + h + "/" + raw,
+			Host:           h,
+			Channel:        ChannelMirror,
+			Kind:           "feed",
+			ReleaseChannel: relCh,
 		})
 	}
 	return out
 }
 
 func githubFeedCandidates() []LabeledURL {
+	return githubFeedCandidatesForChannel(ReleaseStable)
+}
+
+func githubFeedCandidatesForChannel(ch ReleaseChannel) []LabeledURL {
+	relCh := NormalizeReleaseChannel(string(ch))
+	// 稳定版兜底时多取一些，避免最近一页全是每夜版而找不到稳定版。
+	perPage := 30
+	if relCh == ReleaseStable {
+		perPage = 100
+	}
 	return []LabeledURL{
-		{URL: rawFeedURL(), Host: "raw.githubusercontent.com", Channel: ChannelGitHub, Kind: "feed"},
-		{URL: fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=30", PublicRepo), Host: "api.github.com", Channel: ChannelGitHub, Kind: "github-api"},
+		{URL: rawFeedURLForChannel(relCh), Host: "raw.githubusercontent.com", Channel: ChannelGitHub, Kind: "feed", ReleaseChannel: relCh},
+		{URL: fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=%d", PublicRepo, perPage), Host: "api.github.com", Channel: ChannelGitHub, Kind: "github-api", ReleaseChannel: relCh},
 	}
 }
 
@@ -372,7 +397,12 @@ func isTrustedMetadataRedirect(cand LabeledURL, reqURL, nextURL *url.URL) bool {
 	}
 	nextHost := strings.ToLower(nextURL.Hostname())
 	reqHost := strings.ToLower(reqURL.Hostname())
-	officialFeedPath := "/" + PublicRepo + "/main/updates/feed.json"
+	// 跳转只能落到与原请求同一通道的清单，避免稳定版请求被引到每夜版清单（反之亦然）。
+	feedSuffix := "/updates/feed.json"
+	if strings.Contains(reqURL.Path, "/updates/nightly-feed.json") {
+		feedSuffix = "/updates/nightly-feed.json"
+	}
+	officialFeedPath := "/" + PublicRepo + "/main" + feedSuffix
 	officialAPIPathPrefix := "/repos/" + PublicRepo + "/releases"
 
 	if nextHost == "raw.githubusercontent.com" {
@@ -386,7 +416,7 @@ func isTrustedMetadataRedirect(cand LabeledURL, reqURL, nextURL *url.URL) bool {
 		if !sameOrSub {
 			return false
 		}
-		return strings.Contains(nextURL.Path, PublicRepo+"/main/updates/feed.json")
+		return strings.Contains(nextURL.Path, PublicRepo+"/main"+feedSuffix)
 	}
 	return false
 }
@@ -431,11 +461,14 @@ func fetchOneCandidateDetailed(ctx context.Context, cand LabeledURL, timeout tim
 	req.Header.Set("User-Agent", "Block-Updater/"+CurrentVersion())
 	req.Header.Set("Cache-Control", "no-cache")
 
+	relCh := NormalizeReleaseChannel(string(cand.ReleaseChannel))
+	etagKey := cand.URL + "#" + string(relCh)
+
 	var cached cachedAPIEntry
 	hasCached := false
 	if useETag && cand.Kind == "github-api" {
 		apiETagMu.Lock()
-		cached, hasCached = apiETagCache[cand.URL]
+		cached, hasCached = apiETagCache[etagKey]
 		apiETagMu.Unlock()
 		if hasCached && cached.etag != "" && len(cached.entries) > 0 && len(cached.rawFeed) > 0 {
 			req.Header.Set("If-None-Match", cached.etag)
@@ -496,7 +529,7 @@ func fetchOneCandidateDetailed(ctx context.Context, cand LabeledURL, timeout tim
 	var feedBytes []byte
 	if cand.Kind == "feed" {
 		var parseErr error
-		entries, parseErr = ParseFeedBytes(raw)
+		entries, parseErr = ParseFeedBytesForChannel(raw, relCh)
 		if parseErr != nil {
 			node.LatencyMs = elapsedMs
 			node.ProbedAt = time.Now()
@@ -506,7 +539,7 @@ func fetchOneCandidateDetailed(ctx context.Context, cand LabeledURL, timeout tim
 		feedBytes = raw
 	} else {
 		var parseErr error
-		entries, parseErr = parseGitHubAPIReleases(raw)
+		entries, parseErr = parseGitHubAPIReleasesForChannel(raw, relCh)
 		if parseErr != nil {
 			node.LatencyMs = elapsedMs
 			node.ProbedAt = time.Now()
@@ -523,7 +556,7 @@ func fetchOneCandidateDetailed(ctx context.Context, cand LabeledURL, timeout tim
 		})
 		if etag := strings.TrimSpace(resp.Header.Get("ETag")); etag != "" && len(entries) > 0 {
 			apiETagMu.Lock()
-			apiETagCache[cand.URL] = cachedAPIEntry{etag: etag, entries: entries, rawFeed: feedBytes}
+			apiETagCache[etagKey] = cachedAPIEntry{etag: etag, entries: entries, rawFeed: feedBytes}
 			apiETagMu.Unlock()
 		}
 	}
@@ -539,6 +572,15 @@ func fetchOneCandidateDetailed(ctx context.Context, cand LabeledURL, timeout tim
 
 // ParseFeedBytes validates and decodes updates/feed.json bytes.
 func ParseFeedBytes(raw []byte) ([]ReleaseEntry, error) {
+	return parseFeedBytes(raw, false)
+}
+
+// ParseFeedBytesForChannel validates and decodes feed bytes filtered for ch.
+func ParseFeedBytesForChannel(raw []byte, ch ReleaseChannel) ([]ReleaseEntry, error) {
+	return parseFeedBytes(raw, NormalizeReleaseChannel(string(ch)) == ReleaseStable)
+}
+
+func parseFeedBytes(raw []byte, stableOnly bool) ([]ReleaseEntry, error) {
 	var doc FeedDocument
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, err
@@ -548,6 +590,9 @@ func ParseFeedBytes(raw []byte) ([]ReleaseEntry, error) {
 	}
 	out := make([]ReleaseEntry, 0, len(doc.Releases))
 	for idx, r := range doc.Releases {
+		if stableOnly && r.IsNightly() {
+			continue
+		}
 		ver, tag, _, ok := ParseReleaseTag(r.Tag)
 		if !ok {
 			ver, tag, _, ok = ParseReleaseTag(r.Version)
@@ -597,13 +642,18 @@ func ParseFeedBytes(raw []byte) ([]ReleaseEntry, error) {
 }
 
 func parseGitHubAPIReleases(raw []byte) ([]ReleaseEntry, error) {
+	return parseGitHubAPIReleasesForChannel(raw, ReleaseStable)
+}
+
+func parseGitHubAPIReleasesForChannel(raw []byte, ch ReleaseChannel) ([]ReleaseEntry, error) {
+	stableOnly := NormalizeReleaseChannel(string(ch)) == ReleaseStable
 	var list []ghAPIRawRelease
 	if err := json.Unmarshal(raw, &list); err != nil {
 		return nil, err
 	}
 	out := make([]ReleaseEntry, 0, len(list))
 	for _, item := range list {
-		if item.Draft || item.Prerelease {
+		if item.Draft || (stableOnly && item.Prerelease) {
 			continue
 		}
 		ver, tag, _, ok := ParseReleaseTag(item.TagName)
@@ -622,11 +672,17 @@ func parseGitHubAPIReleases(raw []byte) ([]ReleaseEntry, error) {
 		if htmlURL == "" {
 			htmlURL = fmt.Sprintf("https://github.com/%s/releases/tag/%s", PublicRepo, url.PathEscape(tag))
 		}
+		entryCh := string(ReleaseStable)
+		if item.Prerelease {
+			entryCh = string(ReleaseNightly)
+		}
 		out = append(out, ReleaseEntry{
 			Version:     ver,
 			Tag:         tag,
 			PublishedAt: item.PublishedAt,
 			HTMLURL:     htmlURL,
+			Prerelease:  item.Prerelease,
+			Channel:     entryCh,
 			Zh:          zh,
 			En:          en,
 			Assets:      filtered,
@@ -643,8 +699,16 @@ func parseGitHubAPIReleases(raw []byte) ([]ReleaseEntry, error) {
 
 var errReleaseNotFound = errors.New("release tag not found")
 
-// FetchReleaseByTag retrieves one authoritative published release directly from GitHub by exact tag.
+// errReleaseRejected means GitHub answered but the release is a draft or belongs to another channel.
+var errReleaseRejected = errors.New("release rejected by official metadata")
+
+// FetchReleaseByTag retrieves one authoritative stable release directly from GitHub by exact tag.
 func FetchReleaseByTag(ctx context.Context, tag string) (*ReleaseEntry, error) {
+	return FetchReleaseByTagForChannel(ctx, tag, ReleaseStable)
+}
+
+// FetchReleaseByTagForChannel retrieves one authoritative published release directly from GitHub by exact tag.
+func FetchReleaseByTagForChannel(ctx context.Context, tag string, ch ReleaseChannel) (*ReleaseEntry, error) {
 	cleanTag := strings.TrimSpace(tag)
 	if cleanTag == "" {
 		return nil, errReleaseNotFound
@@ -689,12 +753,13 @@ func FetchReleaseByTag(ctx context.Context, tag string) (*ReleaseEntry, error) {
 	if err := json.Unmarshal(raw, &item); err != nil {
 		return nil, err
 	}
-	if item.Draft || item.Prerelease {
-		return nil, errors.New("release is not published")
+	stableOnly := NormalizeReleaseChannel(string(ch)) == ReleaseStable
+	if item.Draft || (stableOnly && item.Prerelease) {
+		return nil, fmt.Errorf("%w: release is not published for this channel", errReleaseRejected)
 	}
 	ver, parsedTag, _, ok := ParseReleaseTag(item.TagName)
 	if !ok {
-		return nil, errors.New("release tag is invalid")
+		return nil, fmt.Errorf("%w: release tag is invalid", errReleaseRejected)
 	}
 	zh, en := ParseReleaseBody(item.Body)
 	filtered := make([]ReleaseAsset, 0, len(item.Assets))
@@ -708,11 +773,17 @@ func FetchReleaseByTag(ctx context.Context, tag string) (*ReleaseEntry, error) {
 	if htmlURL == "" {
 		htmlURL = fmt.Sprintf("https://github.com/%s/releases/tag/%s", PublicRepo, url.PathEscape(parsedTag))
 	}
+	entryCh := string(ReleaseStable)
+	if item.Prerelease {
+		entryCh = string(ReleaseNightly)
+	}
 	return &ReleaseEntry{
 		Version:     ver,
 		Tag:         parsedTag,
 		PublishedAt: item.PublishedAt,
 		HTMLURL:     htmlURL,
+		Prerelease:  item.Prerelease,
+		Channel:     entryCh,
 		Zh:          zh,
 		En:          en,
 		Assets:      filtered,
@@ -787,11 +858,23 @@ func ProbeChannel(
 	useETag bool,
 	onUpdate func(ChannelProbe),
 ) (ChannelProbe, []ReleaseEntry, []byte) {
+	return ProbeChannelForReleaseChannel(ctx, channel, ReleaseStable, hint, useETag, onUpdate)
+}
+
+// ProbeChannelForReleaseChannel concurrently probes every endpoint node configured for transport channel and release channel.
+func ProbeChannelForReleaseChannel(
+	ctx context.Context,
+	channel string,
+	relCh ReleaseChannel,
+	hint ChannelProbe,
+	useETag bool,
+	onUpdate func(ChannelProbe),
+) (ChannelProbe, []ReleaseEntry, []byte) {
 	var cands []LabeledURL
 	if channel == ChannelMirror {
-		cands = mirrorFeedCandidates(hint)
+		cands = mirrorFeedCandidatesForChannel(hint, relCh)
 	} else {
-		cands = githubFeedCandidates()
+		cands = githubFeedCandidatesForChannel(relCh)
 	}
 
 	nodes := make([]NodeProbe, len(cands))
@@ -866,14 +949,15 @@ func ProbeChannel(
 func fetchChannelSequential(
 	ctx context.Context,
 	channel string,
+	relCh ReleaseChannel,
 	hint ChannelProbe,
 	useETag bool,
 ) (ChannelProbe, []ReleaseEntry, []byte, error) {
 	var cands []LabeledURL
 	if channel == ChannelMirror {
-		cands = mirrorFeedCandidates(hint)
+		cands = mirrorFeedCandidatesForChannel(hint, relCh)
 	} else {
-		cands = githubFeedCandidates()
+		cands = githubFeedCandidatesForChannel(relCh)
 	}
 
 	cp := DefaultChannelProbe(channel)
@@ -908,7 +992,12 @@ func fetchChannelSequential(
 
 // FetchReleases retrieves authoritative release metadata for mode without prior probe hints.
 func FetchReleases(ctx context.Context, mode SourceMode) (entries []ReleaseEntry, channel string, latencyMs int64, rawFeed []byte, err error) {
-	res, err := FetchReleasesRouted(ctx, mode, ChannelProbe{}, ChannelProbe{}, nil)
+	return FetchReleasesForChannel(ctx, mode, ReleaseStable)
+}
+
+// FetchReleasesForChannel retrieves authoritative release metadata for mode and release channel without prior probe hints.
+func FetchReleasesForChannel(ctx context.Context, mode SourceMode, relCh ReleaseChannel) (entries []ReleaseEntry, channel string, latencyMs int64, rawFeed []byte, err error) {
+	res, err := FetchReleasesRoutedForChannel(ctx, mode, relCh, ChannelProbe{}, ChannelProbe{}, nil)
 	if err != nil {
 		return nil, "", 0, nil, err
 	}
@@ -923,12 +1012,24 @@ func FetchReleasesRouted(
 	mirrorHint, githubHint ChannelProbe,
 	onProbeUpdate func(channel string, cp ChannelProbe),
 ) (FeedFetchResult, error) {
+	return FetchReleasesRoutedForChannel(ctx, mode, ReleaseStable, mirrorHint, githubHint, onProbeUpdate)
+}
+
+// FetchReleasesRoutedForChannel fetches release metadata honoring source mode and release channel.
+func FetchReleasesRoutedForChannel(
+	ctx context.Context,
+	mode SourceMode,
+	relCh ReleaseChannel,
+	mirrorHint, githubHint ChannelProbe,
+	onProbeUpdate func(channel string, cp ChannelProbe),
+) (FeedFetchResult, error) {
 	norm := NormalizeSourceMode(string(mode))
-	logInfo("check.fetch_start", "mode", norm)
+	relCh = NormalizeReleaseChannel(string(relCh))
+	logInfo("check.fetch_start", "mode", norm, "channel", relCh)
 
 	switch norm {
 	case SourceGitHub:
-		cp, entries, raw, err := fetchChannelSequential(ctx, ChannelGitHub, githubHint, false)
+		cp, entries, raw, err := fetchChannelSequential(ctx, ChannelGitHub, relCh, githubHint, false)
 		if onProbeUpdate != nil {
 			onProbeUpdate(ChannelGitHub, cp)
 		}
@@ -946,7 +1047,7 @@ func FetchReleasesRouted(
 		}, nil
 
 	case SourceMirror:
-		cp, entries, raw := ProbeChannel(ctx, ChannelMirror, mirrorHint, false, func(upd ChannelProbe) {
+		cp, entries, raw := ProbeChannelForReleaseChannel(ctx, ChannelMirror, relCh, mirrorHint, false, func(upd ChannelProbe) {
 			if onProbeUpdate != nil {
 				onProbeUpdate(ChannelMirror, upd)
 			}
@@ -1003,7 +1104,7 @@ func FetchReleasesRouted(
 					}
 					chCtx, chCancel = context.WithTimeout(ctx, budget)
 				}
-				cp, entries, raw, err := fetchChannelSequential(chCtx, ch, hint, false)
+				cp, entries, raw, err := fetchChannelSequential(chCtx, ch, relCh, hint, false)
 				if chCancel != nil {
 					chCancel()
 				}
@@ -1058,9 +1159,9 @@ func FetchReleasesRouted(
 		runChannel := func(ch string, hint ChannelProbe) {
 			var cands []LabeledURL
 			if ch == ChannelMirror {
-				cands = mirrorFeedCandidates(hint)
+				cands = mirrorFeedCandidatesForChannel(hint, relCh)
 			} else {
-				cands = githubFeedCandidates()
+				cands = githubFeedCandidatesForChannel(relCh)
 			}
 			nodes := make([]NodeProbe, len(cands))
 			for i, cand := range cands {

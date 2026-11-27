@@ -9,13 +9,14 @@ import {
   compareVersions,
   getReleases,
   gh,
+  normalizeReleaseChannel,
   REPO,
   ROOT,
   setMyGoJsonVersion,
   setPackageJsonVersion,
   versionFromTag,
 } from "./select-release.mjs";
-import { fetchGithubReleaseByTag, syncFeedFromGithub } from "./update-feed.mjs";
+import { fetchGithubReleaseByTag, syncBothFeedsFromGithub, syncFeedFromGithub } from "./update-feed.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 
@@ -51,7 +52,7 @@ function sha256File(filePath) {
   });
 }
 
-function sha256RemoteAsset(assetId) {
+export function sha256RemoteAsset(assetId) {
   return new Promise((resolveHash, rejectHash) => {
     const hash = createHash("sha256");
     const child = spawn(
@@ -70,7 +71,7 @@ function sha256RemoteAsset(assetId) {
   });
 }
 
-function resolveRemoteTagCommit(tag) {
+export function resolveRemoteTagCommit(tag) {
   let refData;
   try {
     refData = JSON.parse(gh(["api", `repos/${REPO}/git/ref/tags/${encodeURIComponent(tag)}`]));
@@ -113,7 +114,7 @@ function ensureTagRefMatches(tag, commit) {
   );
 }
 
-function fetchReleaseById(id) {
+export function fetchReleaseById(id) {
   return JSON.parse(gh(["api", `repos/${REPO}/releases/${id}`]));
 }
 
@@ -133,7 +134,7 @@ function uploadReleaseAsset(releaseId, name, filePath) {
   );
 }
 
-async function verifyReleaseAssets(release, assets, assetSizes, fallbackHashes, tag) {
+export async function verifyReleaseAssets(release, assets, assetSizes, fallbackHashes, tag) {
   const remoteAssets = release?.assets ?? [];
   assert.equal(
     remoteAssets.length,
@@ -199,9 +200,9 @@ function feedLatestVersion(jsonText) {
   }
 }
 
-function writebackVersionCommit(version, tag, { buildFeed, sourceCommit = "" }) {
+export function writebackVersionCommit(version, tag, { buildFeeds, buildFeed, sourceCommit = "", subject = "" }) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const feedState = buildFeed();
+    const feeds = buildFeeds ? buildFeeds() : { stable: buildFeed() };
     const head = JSON.parse(gh(["api", `repos/${REPO}/git/ref/heads/main`])).object.sha;
     const commit = JSON.parse(gh(["api", `repos/${REPO}/git/commits/${head}`]));
     const files = {};
@@ -217,13 +218,19 @@ function writebackVersionCommit(version, tag, { buildFeed, sourceCommit = "" }) 
       files["mygo.json"] = setMyGoJsonVersion(mygoText, version);
     }
 
-    const headFeedText = readFileAtRef(head, "updates/feed.json", { allowMissing: true });
-    const headFeedVer = feedLatestVersion(headFeedText);
-    const nextFeedVer = versionFromTag(feedState.feed?.latest_version || feedState.feed?.latest_tag);
-    const shouldWriteFeed = (!headFeedVer || !nextFeedVer || compareVersions(nextFeedVer, headFeedVer) >= 0)
-      && feedContentSignature(headFeedText) !== feedContentSignature(feedState.json);
-    if (shouldWriteFeed) {
-      files["updates/feed.json"] = feedState.json;
+    for (const [feedFile, feedState] of [
+      ["updates/feed.json", feeds?.stable],
+      ["updates/nightly-feed.json", feeds?.nightly],
+    ]) {
+      if (!feedState?.json) continue;
+      const headFeedText = readFileAtRef(head, feedFile, { allowMissing: true });
+      const headFeedVer = feedLatestVersion(headFeedText);
+      const nextFeedVer = versionFromTag(feedState.feed?.latest_version || feedState.feed?.latest_tag);
+      const shouldWriteFeed = (!headFeedVer || !nextFeedVer || compareVersions(nextFeedVer, headFeedVer) >= 0)
+        && feedContentSignature(headFeedText) !== feedContentSignature(feedState.json);
+      if (shouldWriteFeed) {
+        files[feedFile] = feedState.json;
+      }
     }
 
     if (Object.keys(files).length === 0) return;
@@ -237,8 +244,9 @@ function writebackVersionCommit(version, tag, { buildFeed, sourceCommit = "" }) 
       trailers.push(`Release-Source-SHA: ${sourceCommit}`);
     }
     trailers.push("[skip ci]");
+    const title = subject || `chore(release): ${tag}`;
     const next = JSON.parse(gh(["api", "--method", "POST", `repos/${REPO}/git/commits`, "--input", "-"], JSON.stringify({
-      message: `chore(release): ${tag}\n\n${trailers.join("\n")}`,
+      message: `${title}\n\n${trailers.join("\n")}`,
       tree: tree.sha,
       parents: [head],
     })));
@@ -255,11 +263,21 @@ function writebackVersionCommit(version, tag, { buildFeed, sourceCommit = "" }) 
   }
 }
 
+export function buildFeedsForTag(tag, fallbackHashes) {
+  // 每次重试都重新读取远端发布状态，避免并发升稳后用过期的 prerelease 标记回写清单。
+  const fresh = fetchGithubReleaseByTag(tag);
+  assert.ok(fresh && !fresh.draft, `Published release ${tag} not found`);
+  return fresh.prerelease
+    ? { nightly: syncFeedFromGithub({ includePrerelease: true, write: false, tagRelease: fresh, fallbackHashes }) }
+    : syncBothFeedsFromGithub({ write: false, tagRelease: fresh, fallbackHashes });
+}
+
 export async function syncPublishedRelease(tag) {
   const version = versionFromTag(tag);
   assert.ok(version, `Invalid release tag for sync-only: ${tag}`);
   const publishedRelease = fetchGithubReleaseByTag(tag);
   assert.ok(publishedRelease && !publishedRelease.draft, `Published release ${tag} not found`);
+  const isNightly = Boolean(publishedRelease.prerelease);
   const fallbackHashes = {};
   for (const asset of publishedRelease.assets ?? []) {
     if (!asset?.name || !RELEASE_ASSETS.includes(asset.name)) continue;
@@ -271,9 +289,12 @@ export async function syncPublishedRelease(tag) {
   const sourceCommit = resolveRemoteTagCommit(tag) || "";
   writebackVersionCommit(version, tag, {
     sourceCommit,
-    buildFeed: () => syncFeedFromGithub({ tagRelease: publishedRelease, fallbackHashes }),
+    buildFeeds: () => buildFeedsForTag(tag, fallbackHashes),
   });
-  const line = `已补齐 ${tag} 的版本与 updates/feed.json 回写。`;
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `is_stable=${isNightly ? "no" : "yes"}\n`);
+  }
+  const line = `已补齐 ${tag} (${isNightly ? "nightly" : "stable"}) 的版本与 feed 回写。`;
   console.log(line);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
 }
@@ -288,6 +309,8 @@ export async function publishRelease({ skipWriteback = false } = {}) {
   }
 
   const { version, tag, commit, releaseNotes } = plan;
+  const channel = normalizeReleaseChannel(plan.channel);
+  const isNightly = channel === "nightly";
   assert.ok(version && tag && commit && releaseNotes, "Incomplete release-plan.json");
   assert.equal(tag, `v${version}`);
   assert.notEqual(tag, "v0.1.0");
@@ -361,7 +384,7 @@ export async function publishRelease({ skipWriteback = false } = {}) {
               name: title,
               body: releaseNotes,
               draft: true,
-              prerelease: false,
+              prerelease: isNightly,
             }),
           ),
         );
@@ -394,7 +417,7 @@ export async function publishRelease({ skipWriteback = false } = {}) {
 
       ensureTagRefMatches(tag, commit);
       const latestReleases = getReleases();
-      const hasNewerPublished = latestReleases.some((r) => {
+      const hasNewerStable = latestReleases.some((r) => {
         if (!r || r.draft || r.prerelease) return false;
         const other = versionFromTag(r.tag_name);
         return Boolean(other && compareVersions(other, version) > 0);
@@ -408,7 +431,8 @@ export async function publishRelease({ skipWriteback = false } = {}) {
             body: releaseNotes,
             target_commitish: commit,
             draft: false,
-            make_latest: hasNewerPublished ? "false" : "true",
+            prerelease: isNightly,
+            make_latest: !isNightly && !hasNewerStable ? "true" : "false",
           }),
         ),
       );
@@ -440,15 +464,11 @@ export async function publishRelease({ skipWriteback = false } = {}) {
   if (!skipWriteback) {
     writebackVersionCommit(version, tag, {
       sourceCommit: commit,
-      buildFeed: () =>
-        syncFeedFromGithub({
-          tagRelease: publishedRelease,
-          fallbackHashes,
-        }),
+      buildFeeds: () => buildFeedsForTag(tag, fallbackHashes),
     });
   }
 
-  const summary = `已发布 ${title} (${tag})\n\n${releaseNotes}\n`;
+  const summary = `已发布 ${title} (${tag}, ${channel})\n\n${releaseNotes}\n`;
   console.log(summary);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
 }

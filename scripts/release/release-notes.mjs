@@ -38,6 +38,7 @@ const VERSION_BUMP = /^chore\(release\):\s*v\d+\.\d+\.\d+\s*$/i;
 const INTERNAL_COMMIT = /^(?:chore|ci|docs|test)(?:\([^)]*\))?!?:\s|^Update README\.md$|^(?:feat|fix)\((?:src|assets|scripts|deps|designs)\):\s*(?:add|update|remove)\b/i;
 const NON_SHIPPABLE_EXACT = new Set([
   "updates/feed.json",
+  "updates/nightly-feed.json",
   ".ai-map.md",
   "README.md",
   "README.en.md",
@@ -46,6 +47,7 @@ const NON_SHIPPABLE_EXACT = new Set([
   ".github/pull_request_template.md",
   ".github/workflows/ci.yml",
   ".github/workflows/prune-release-assets.yml",
+  ".github/workflows/promote-stable.yml",
   "scripts/lint_design.py",
   "scripts/gen_ai_map.py",
   "scripts/dump_ai_state.py",

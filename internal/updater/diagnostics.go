@@ -541,6 +541,7 @@ func BuildDiagnosticsReport(snap Snapshot, dataDir string, showEn bool) string {
 	b.WriteString(header)
 	b.WriteString("--- Updater Diagnostics ---\n")
 	fmt.Fprintf(&b, "app_version: %s\n", snap.CurrentVersion)
+	fmt.Fprintf(&b, "release_channel: %s | installed_channel: %s\n", snap.ReleaseChannel, snap.InstalledChannel)
 	fmt.Fprintf(&b, "target_version: %s\n", targetVer)
 	fmt.Fprintf(&b, "os_arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&b, "status: %s | phase: %s\n", snap.Status, phase)

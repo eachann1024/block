@@ -12,6 +12,7 @@ import {
 } from "./select-release.mjs";
 
 export const FEED_PATH = resolve(ROOT, "updates/feed.json");
+export const NIGHTLY_FEED_PATH = resolve(ROOT, "updates/nightly-feed.json");
 export const MAX_FEED_RELEASES = 50;
 
 const ASSET_ORDER = new Map(RELEASE_ASSETS.map((name, index) => [name, index]));
@@ -168,11 +169,17 @@ function releasePreferenceScore(release, version, fallbackHashes = {}, fallbackH
 
 export function buildFeedFromReleases(
   rawReleases,
-  { repo = REPO, updatedAt = new Date().toISOString(), fallbackHashes = {}, fallbackHashesTag = "" } = {},
+  {
+    repo = REPO,
+    updatedAt = new Date().toISOString(),
+    fallbackHashes = {},
+    fallbackHashesTag = "",
+    includePrerelease = false,
+  } = {},
 ) {
   const byVersion = new Map();
   for (const release of rawReleases || []) {
-    if (!release || release.draft || release.prerelease) continue;
+    if (!release || release.draft || (!includePrerelease && release.prerelease)) continue;
     const version = versionFromTag(release.tag_name);
     if (!version || !/^\d+\.\d+\.\d+$/.test(version)) continue;
     const existing = byVersion.get(version);
@@ -205,15 +212,22 @@ export function buildFeedFromReleases(
       keptAssets = formattedAssets.filter((a) => a.sha256 && !coveredPlatforms.has(a.name));
       for (const a of keptAssets) coveredPlatforms.add(a.name);
     }
-    return {
+    const entry = {
       version,
       tag,
       published_at: String(release.published_at || release.created_at || ""),
       html_url: String(release.html_url || `https://github.com/${repo}/releases/tag/${encodeURIComponent(tag)}`),
+      ...(includePrerelease
+        ? {
+            prerelease: Boolean(release.prerelease),
+            channel: release.prerelease ? "nightly" : "stable",
+          }
+        : {}),
       zh: parsed.zh,
       en: parsed.en,
       assets: keptAssets,
     };
+    return entry;
   });
 
   const latest = releases[0] || null;
@@ -231,14 +245,23 @@ export function formatFeedJson(feed) {
   return `${JSON.stringify(feed, null, 2)}\n`;
 }
 
-export function fetchGithubReleases(repo = REPO) {
+export function fetchGithubReleases(repo = REPO, { includePrerelease = false, preserveStableTop = false } = {}) {
   const byVersion = new Map();
   const trimToTop = () => {
     if (byVersion.size <= MAX_FEED_RELEASES * 2) return;
-    const keep = Array.from(byVersion.keys())
-      .sort((a, b) => compareVersions(b, a))
-      .slice(0, MAX_FEED_RELEASES);
-    const keepSet = new Set(keep);
+    const allVersions = Array.from(byVersion.keys()).sort((a, b) => compareVersions(b, a));
+    const keepSet = new Set(allVersions.slice(0, MAX_FEED_RELEASES));
+    if (preserveStableTop) {
+      let stableKept = 0;
+      for (const ver of allVersions) {
+        const rel = byVersion.get(ver);
+        if (rel && !rel.prerelease) {
+          keepSet.add(ver);
+          stableKept += 1;
+          if (stableKept >= MAX_FEED_RELEASES) break;
+        }
+      }
+    }
     for (const key of byVersion.keys()) {
       if (!keepSet.has(key)) byVersion.delete(key);
     }
@@ -247,7 +270,7 @@ export function fetchGithubReleases(repo = REPO) {
     const batch = fetchReleasePage(repo, page);
     if (batch.length === 0) break;
     for (const release of batch) {
-      if (!release || release.draft || release.prerelease) continue;
+      if (!release || release.draft || (!includePrerelease && release.prerelease)) continue;
       const version = versionFromTag(release.tag_name);
       if (!version || !/^\d+\.\d+\.\d+$/.test(version)) continue;
       const existing = byVersion.get(version);
@@ -273,8 +296,10 @@ export function syncFeedFromGithub({
   tagRelease = null,
   fallbackHashes = {},
   updatedAt = new Date().toISOString(),
+  includePrerelease = false,
 } = {}) {
-  const releases = fetchGithubReleases(repo);
+  const targetPath = outPath === FEED_PATH && includePrerelease ? NIGHTLY_FEED_PATH : outPath;
+  const releases = fetchGithubReleases(repo, { includePrerelease });
   if (tagRelease?.tag_name) {
     const merged = releases.filter((item) => item?.tag_name !== tagRelease.tag_name);
     merged.unshift(tagRelease);
@@ -285,13 +310,57 @@ export function syncFeedFromGithub({
     updatedAt,
     fallbackHashes,
     fallbackHashesTag: tagRelease?.tag_name || "",
+    includePrerelease,
   });
   const json = formatFeedJson(feed);
   if (write) {
-    mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, json, "utf8");
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, json, "utf8");
   }
   return { feed, json };
+}
+
+export function syncBothFeedsFromGithub({
+  repo = REPO,
+  stableOutPath = FEED_PATH,
+  nightlyOutPath = NIGHTLY_FEED_PATH,
+  write = true,
+  tagRelease = null,
+  fallbackHashes = {},
+  updatedAt = new Date().toISOString(),
+} = {}) {
+  const releases = fetchGithubReleases(repo, { includePrerelease: true, preserveStableTop: true });
+  if (tagRelease?.tag_name) {
+    const merged = releases.filter((item) => item?.tag_name !== tagRelease.tag_name);
+    merged.unshift(tagRelease);
+    releases.splice(0, releases.length, ...merged);
+  }
+  const stableFeed = buildFeedFromReleases(releases, {
+    repo,
+    updatedAt,
+    fallbackHashes,
+    fallbackHashesTag: tagRelease?.tag_name || "",
+    includePrerelease: false,
+  });
+  const stableJson = formatFeedJson(stableFeed);
+  const nightlyFeed = buildFeedFromReleases(releases, {
+    repo,
+    updatedAt,
+    fallbackHashes,
+    fallbackHashesTag: tagRelease?.tag_name || "",
+    includePrerelease: true,
+  });
+  const nightlyJson = formatFeedJson(nightlyFeed);
+  if (write) {
+    mkdirSync(dirname(stableOutPath), { recursive: true });
+    writeFileSync(stableOutPath, stableJson, "utf8");
+    mkdirSync(dirname(nightlyOutPath), { recursive: true });
+    writeFileSync(nightlyOutPath, nightlyJson, "utf8");
+  }
+  return {
+    stable: { feed: stableFeed, json: stableJson },
+    nightly: { feed: nightlyFeed, json: nightlyJson },
+  };
 }
 
 const isMain =
@@ -301,14 +370,29 @@ const isMain =
 if (isMain) {
   const args = process.argv.slice(2);
   if (!args.includes("--sync-from-github")) {
-    console.error("Usage: node scripts/release/update-feed.mjs --sync-from-github [--out <path>]");
+    console.error("Usage: node scripts/release/update-feed.mjs --sync-from-github [--channel stable|nightly|all] [--out <path>]");
     process.exit(1);
   }
   const outIdx = args.indexOf("--out");
-  const outPath = outIdx >= 0 && args[outIdx + 1] ? resolve(ROOT, args[outIdx + 1]) : FEED_PATH;
-  const { feed } = syncFeedFromGithub({ outPath, write: true });
-  if (!existsSync(outPath)) {
-    throw new Error(`Failed to write feed file: ${outPath}`);
+  const chIdx = args.indexOf("--channel");
+  const channel = chIdx >= 0 && args[chIdx + 1] ? args[chIdx + 1].trim().toLowerCase() : "all";
+  if (outIdx >= 0 && args[outIdx + 1]) {
+    const outPath = resolve(ROOT, args[outIdx + 1]);
+    const includePrerelease = channel === "nightly";
+    const { feed } = syncFeedFromGithub({ outPath, write: true, includePrerelease });
+    if (!existsSync(outPath)) {
+      throw new Error(`Failed to write feed file: ${outPath}`);
+    }
+    console.log(`Synced ${feed.releases.length} releases to ${outPath} (latest: ${feed.latest_tag || "none"})`);
+  } else if (channel === "stable" || channel === "nightly") {
+    const includePrerelease = channel === "nightly";
+    const outPath = includePrerelease ? NIGHTLY_FEED_PATH : FEED_PATH;
+    const { feed } = syncFeedFromGithub({ outPath, write: true, includePrerelease });
+    console.log(`Synced ${feed.releases.length} ${channel} releases to ${outPath} (latest: ${feed.latest_tag || "none"})`);
+  } else {
+    const { stable, nightly } = syncBothFeedsFromGithub({ write: true });
+    console.log(
+      `Synced ${stable.feed.releases.length} stable (${stable.feed.latest_tag || "none"}) and ${nightly.feed.releases.length} nightly (${nightly.feed.latest_tag || "none"}) releases.`,
+    );
   }
-  console.log(`Synced ${feed.releases.length} releases to ${outPath} (latest: ${feed.latest_tag || "none"})`);
 }

@@ -1,0 +1,57 @@
+name: Promote Stable
+
+on:
+  schedule:
+    # 每天检查一次；脚本按上次稳定版时间判断是否已满 3 天。
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Specific nightly release tag to promote (leave empty for latest healthy nightly)
+        type: string
+        default: ''
+      force:
+        description: Promote even if CI check on that commit is pending or missing (still requires all 5 valid assets)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: block-promote-stable
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote healthy nightly to stable
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Node 22
+        run: bash scripts/ci/setup-node.sh 22
+      - name: Promote nightly release to stable
+        id: promote
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PROMOTE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+          FORCE_PROMOTE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
+          PROMOTE_SCHEDULED: ${{ github.event_name == 'schedule' }}
+        run: node scripts/release/promote-stable.mjs
+      - name: Update AUR block-bin
+        if: steps.promote.outputs.promoted == 'yes'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ steps.promote.outputs.release_tag }}
+        run: bash scripts/release/publish-aur.sh
