@@ -1068,8 +1068,9 @@ func validBackdropTint(t string) bool {
 // ---------------------------------------------------------------------------
 // Titlebar slots
 
-// Built-in titlebar slot ids. TitlebarSlotMore is the page "…" button and can
-// never be hidden.
+// Built-in titlebar slot ids and surface groups. TitlebarSlotMore is the page
+// "…" button and can never be hidden. TitlebarSlotPlugins marks where enabled
+// plugin titlebar buttons expand in the right rail's left-to-right order.
 const (
 	TitlebarSlotFeedback = "feedback"
 	TitlebarSlotAI       = "ai"
@@ -1078,21 +1079,78 @@ const (
 	TitlebarSlotZoom     = "zoom"
 	TitlebarSlotReveal   = "reveal"
 	TitlebarSlotMore     = "more"
+
+	TitlebarSlotPlugins = "plugin:"
+
+	TitlebarGroupMarkdown = "markdown"
+	TitlebarGroupSource   = "source"
 )
 
 // TitlebarSlot describes one titlebar item for host.titlebar.get_items.
 type TitlebarSlot struct {
-	ID     string  `json:"id"`
-	Label  string  `json:"label"`
-	Locked bool    `json:"locked"`
-	Hidden bool    `json:"hidden"`
-	Plugin string  `json:"plugin,omitempty"`
-	Icon   *UIIcon `json:"icon,omitempty"`
+	ID      string   `json:"id"`
+	Label   string   `json:"label"`
+	Locked  bool     `json:"locked"`
+	Hidden  bool     `json:"hidden"`
+	Plugin  string   `json:"plugin,omitempty"`
+	Icon    *UIIcon  `json:"icon,omitempty"`
+	Group   string   `json:"group"`
+	Preview []UIIcon `json:"preview"`
+}
+
+// TitlebarGroup describes one titlebar mode group and its left-to-right slot order.
+type TitlebarGroup struct {
+	ID    string   `json:"id"`
+	Label string   `json:"label"`
+	Order []string `json:"order"`
 }
 
 // PluginTitlebarSlotID is the slot id for a plugin button: "plugin:<pluginID>/<buttonID>".
 func PluginTitlebarSlotID(pluginID, buttonID string) string {
 	return "plugin:" + pluginID + "/" + buttonID
+}
+
+type titlebarGroupDef struct {
+	id    string
+	zh    string
+	en    string
+	order []string
+}
+
+var titlebarGroupDefs = []titlebarGroupDef{
+	{
+		id:    TitlebarGroupMarkdown,
+		zh:    "Markdown",
+		en:    "Markdown",
+		order: []string{TitlebarSlotPlugins, TitlebarSlotFeedback, TitlebarSlotAI, TitlebarSlotSendAll, TitlebarSlotMore},
+	},
+	{
+		id:    TitlebarGroupSource,
+		zh:    "源码模式",
+		en:    "Source Mode",
+		order: []string{TitlebarSlotWrap, TitlebarSlotZoom, TitlebarSlotPlugins, TitlebarSlotFeedback, TitlebarSlotAI, TitlebarSlotMore},
+	},
+}
+
+// ForEachTitlebarTailSlot invokes fn for each slot id in group's canonical
+// left-to-right titlebar tail order without allocating.
+func ForEachTitlebarTailSlot(group string, fn func(slotID string)) {
+	for _, g := range titlebarGroupDefs {
+		if g.id != group {
+			continue
+		}
+		for _, id := range g.order {
+			fn(id)
+		}
+		return
+	}
+}
+
+func previewIconsFromSingle(ic *UIIcon) []UIIcon {
+	if ic == nil {
+		return []UIIcon{}
+	}
+	return []UIIcon{*ic}
 }
 
 func builtinTitlebarSlots(en bool) []TitlebarSlot {
@@ -1103,13 +1161,56 @@ func builtinTitlebarSlots(en bool) []TitlebarSlot {
 		return zh
 	}
 	return []TitlebarSlot{
-		{ID: TitlebarSlotFeedback, Label: tr("反馈", "Feedback"), Icon: &UIIcon{Name: "message-square"}},
-		{ID: TitlebarSlotAI, Label: tr("AI Agent", "AI Agent"), Icon: &UIIcon{Name: "sparkles"}},
-		{ID: TitlebarSlotSendAll, Label: tr("统一发送批注", "Send All Annotations"), Icon: &UIIcon{Chip: tr("统一发送", "Send all"), Dot: true}},
-		{ID: TitlebarSlotWrap, Label: tr("自动换行", "Word Wrap"), Icon: &UIIcon{Name: "wrap"}},
-		{ID: TitlebarSlotZoom, Label: tr("缩放", "Zoom"), Icon: &UIIcon{Name: "tb-plus"}},
-		{ID: TitlebarSlotReveal, Label: tr("在文件夹中显示", "Reveal in Folder"), Icon: &UIIcon{Name: "folder-reveal"}},
-		{ID: TitlebarSlotMore, Label: tr("页面操作", "Page Actions"), Locked: true, Icon: &UIIcon{Name: "more"}},
+		{
+			ID:      TitlebarSlotFeedback,
+			Label:   tr("反馈", "Feedback"),
+			Icon:    &UIIcon{Name: "message-square"},
+			Group:   TitlebarGroupMarkdown,
+			Preview: []UIIcon{{Name: "message-square"}},
+		},
+		{
+			ID:      TitlebarSlotAI,
+			Label:   tr("AI Agent", "AI Agent"),
+			Icon:    &UIIcon{Name: "sparkles"},
+			Group:   TitlebarGroupMarkdown,
+			Preview: []UIIcon{{Name: "sparkles"}},
+		},
+		{
+			ID:      TitlebarSlotSendAll,
+			Label:   tr("统一发送批注", "Send All Annotations"),
+			Icon:    &UIIcon{Chip: tr("统一发送", "Send all"), Dot: true},
+			Group:   TitlebarGroupMarkdown,
+			Preview: []UIIcon{{Chip: tr("统一发送", "Send all"), Dot: true}},
+		},
+		{
+			ID:      TitlebarSlotWrap,
+			Label:   tr("自动换行", "Word Wrap"),
+			Icon:    &UIIcon{Name: "wrap"},
+			Group:   TitlebarGroupSource,
+			Preview: []UIIcon{{Name: "wrap"}},
+		},
+		{
+			ID:      TitlebarSlotZoom,
+			Label:   tr("缩放", "Zoom"),
+			Icon:    &UIIcon{Name: "tb-plus"},
+			Group:   TitlebarGroupSource,
+			Preview: []UIIcon{{Name: "tb-minus"}, {Chip: "100%"}, {Name: "tb-plus"}},
+		},
+		{
+			ID:      TitlebarSlotReveal,
+			Label:   tr("在文件夹中显示", "Reveal in Folder"),
+			Icon:    &UIIcon{Name: "folder-reveal"},
+			Group:   TitlebarGroupSource,
+			Preview: []UIIcon{},
+		},
+		{
+			ID:      TitlebarSlotMore,
+			Label:   tr("页面操作", "Page Actions"),
+			Locked:  true,
+			Icon:    &UIIcon{Name: "more"},
+			Group:   TitlebarGroupMarkdown,
+			Preview: []UIIcon{{Name: "more"}},
+		},
 	}
 }
 
@@ -2003,11 +2104,14 @@ func (s *Supervisor) TitlebarSlots() []TitlebarSlot {
 	slots := builtinTitlebarSlots(en)
 	for _, a := range s.enabledContribs() {
 		for _, b := range a.Manifest.Contributes.TitlebarButtons {
+			ic := IconFromSpec(b.Icon)
 			slots = append(slots, TitlebarSlot{
-				ID:     PluginTitlebarSlotID(a.Manifest.ID, b.ID),
-				Label:  b.Tooltip.Resolve(loc),
-				Plugin: a.Manifest.ID,
-				Icon:   IconFromSpec(b.Icon),
+				ID:      PluginTitlebarSlotID(a.Manifest.ID, b.ID),
+				Label:   b.Tooltip.Resolve(loc),
+				Plugin:  a.Manifest.ID,
+				Icon:    ic,
+				Group:   TitlebarGroupMarkdown,
+				Preview: previewIconsFromSingle(ic),
 			})
 		}
 	}
@@ -2015,6 +2119,57 @@ func (s *Supervisor) TitlebarSlots() []TitlebarSlot {
 		slots[i].Hidden = s.TitlebarHidden(slots[i].ID)
 	}
 	return slots
+}
+
+// TitlebarGroups returns localized titlebar groups with their real left-to-right
+// slot order (expanding TitlebarSlotPlugins into active plugin button slot ids).
+func (s *Supervisor) TitlebarGroups() []TitlebarGroup {
+	en := strings.HasPrefix(strings.ToLower(s.Locale()), "en")
+	var pluginSlots []string
+	for _, a := range s.enabledContribs() {
+		for _, b := range a.Manifest.Contributes.TitlebarButtons {
+			pluginSlots = append(pluginSlots, PluginTitlebarSlotID(a.Manifest.ID, b.ID))
+		}
+	}
+	groups := make([]TitlebarGroup, 0, len(titlebarGroupDefs))
+	for _, def := range titlebarGroupDefs {
+		label := def.zh
+		if en {
+			label = def.en
+		}
+		order := make([]string, 0, len(def.order)+len(pluginSlots))
+		for _, id := range def.order {
+			if id == TitlebarSlotPlugins {
+				order = append(order, pluginSlots...)
+			} else {
+				order = append(order, id)
+			}
+		}
+		groups = append(groups, TitlebarGroup{
+			ID:    def.id,
+			Label: label,
+			Order: order,
+		})
+	}
+	return groups
+}
+
+// HiddenTitlebarSlots returns the set of currently hidden, non-locked slot ids.
+func (s *Supervisor) HiddenTitlebarSlots() map[string]bool {
+	if s == nil {
+		return nil
+	}
+	var hidden map[string]bool
+	for _, sl := range s.TitlebarSlots() {
+		if sl.Locked || !sl.Hidden {
+			continue
+		}
+		if hidden == nil {
+			hidden = make(map[string]bool)
+		}
+		hidden[sl.ID] = true
+	}
+	return hidden
 }
 
 // TitlebarButtons returns visible plugin titlebar buttons in install order.
@@ -2839,7 +2994,10 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if !m.HasPermission(PermUITitlebar) {
 			return nil, missingPerm(PermUITitlebar), true
 		}
-		return map[string]any{"items": s.TitlebarSlots()}, nil, true
+		return map[string]any{
+			"items":  s.TitlebarSlots(),
+			"groups": s.TitlebarGroups(),
+		}, nil, true
 
 	case "host.titlebar.set_hidden":
 		if !m.HasPermission(PermUITitlebar) {
@@ -2894,7 +3052,11 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		}
 		s.contrib.mu.Unlock()
 		s.mu.RUnlock()
-		return map[string]any{"ok": true, "items": s.TitlebarSlots()}, nil, true
+		return map[string]any{
+			"ok":     true,
+			"items":  s.TitlebarSlots(),
+			"groups": s.TitlebarGroups(),
+		}, nil, true
 
 	case "host.titlebar.set_button":
 		if !m.HasPermission(PermUITitlebar) {

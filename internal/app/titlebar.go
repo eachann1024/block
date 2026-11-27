@@ -542,14 +542,12 @@ func renderSourceStatusText(c *ui.Context, status string, isError bool) {
 	}
 }
 
-func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind, availW float32) {
+func renderNonNoteTitlebarChrome(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind, availW float32) {
 	vpW, _ := c.Size()
 	isReadOnlyHint := p.SourceStatus == theme.Tr("只读预览", "Read-only")
 	isSaveError := p.SourceStatus != "" && !isReadOnlyHint
 	showStatus := isSaveError || (p.SourceStatus != "" && (vpW <= 0 || (vpW >= 860 && (availW <= 0 || availW >= 620))))
 	switch surface {
-	case SurfaceImagePreview:
-		renderZoomCluster(c, "tb-img-zoom", p, availW)
 	case SurfaceSVG:
 		if showStatus {
 			renderSourceStatusText(c, p.SourceStatus, isSaveError)
@@ -565,22 +563,37 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		}) && p.OnSelectSVGSource != nil {
 			p.OnSelectSVGSource(svgIdx == 1)
 		}
-		if !p.SVGShowSource {
-			renderZoomCluster(c, "tb-svg-zoom", p, availW)
-		} else {
-			renderSourceWrapButton(c, p, availW)
-		}
 	case SurfaceHTML:
 		if showStatus {
 			renderSourceStatusText(c, p.SourceStatus, isSaveError)
 		}
 		renderOpenInBrowserButton(c, p, availW)
-		renderSourceWrapButton(c, p, availW)
 	case SurfaceCode:
 		if showStatus {
 			renderSourceStatusText(c, p.SourceStatus, isSaveError)
 		}
+	}
+}
+
+func renderSurfaceWrapSlot(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind, availW float32) {
+	switch surface {
+	case SurfaceHTML, SurfaceCode:
 		renderSourceWrapButton(c, p, availW)
+	case SurfaceSVG:
+		if p.SVGShowSource {
+			renderSourceWrapButton(c, p, availW)
+		}
+	}
+}
+
+func renderSurfaceZoomSlot(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind, availW float32) {
+	switch surface {
+	case SurfaceImagePreview:
+		renderZoomCluster(c, "tb-img-zoom", p, availW)
+	case SurfaceSVG:
+		if !p.SVGShowSource {
+			renderZoomCluster(c, "tb-svg-zoom", p, availW)
+		}
 	}
 }
 

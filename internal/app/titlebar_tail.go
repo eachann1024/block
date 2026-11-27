@@ -53,20 +53,36 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset, availW float
 			c.After(16 * time.Millisecond)
 		}
 	}
+	group := plugins.TitlebarGroupMarkdown
+	if surface != SurfaceNote {
+		group = plugins.TitlebarGroupSource
+	}
 	tail.Children(func() {
 		if surface != SurfaceNote {
-			renderNonNoteTitlebarTools(c, p, surface, availW)
+			renderNonNoteTitlebarChrome(c, p, surface, availW)
 		}
-		renderPluginTitlebarButtons(c, p, hasBuiltinTail, availW)
-		if showFeedback {
-			renderFeedbackButton(c, p)
-		}
-		if showAI {
-			renderAIButton(c, p)
-		}
-		if showMore {
-			renderPageMorePill(c, p, availW)
-		}
+		plugins.ForEachTitlebarTailSlot(group, func(slotID string) {
+			switch slotID {
+			case plugins.TitlebarSlotWrap:
+				renderSurfaceWrapSlot(c, p, surface, availW)
+			case plugins.TitlebarSlotZoom:
+				renderSurfaceZoomSlot(c, p, surface, availW)
+			case plugins.TitlebarSlotPlugins:
+				renderPluginTitlebarButtons(c, p, hasBuiltinTail, availW)
+			case plugins.TitlebarSlotFeedback:
+				if showFeedback {
+					renderFeedbackButton(c, p)
+				}
+			case plugins.TitlebarSlotAI:
+				if showAI {
+					renderAIButton(c, p)
+				}
+			case plugins.TitlebarSlotMore:
+				if showMore {
+					renderPageMorePill(c, p, availW)
+				}
+			}
+		})
 	})
 }
 

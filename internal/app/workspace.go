@@ -7082,23 +7082,7 @@ func (w *Workspace) pluginHiddenTitlebarSlots() map[string]bool {
 	if sup == nil {
 		return nil
 	}
-	var hidden map[string]bool
-	for _, id := range []string{
-		plugins.TitlebarSlotFeedback,
-		plugins.TitlebarSlotAI,
-		plugins.TitlebarSlotSendAll,
-		plugins.TitlebarSlotWrap,
-		plugins.TitlebarSlotZoom,
-		plugins.TitlebarSlotReveal,
-	} {
-		if sup.TitlebarHidden(id) {
-			if hidden == nil {
-				hidden = make(map[string]bool)
-			}
-			hidden[id] = true
-		}
-	}
-	return hidden
+	return sup.HiddenTitlebarSlots()
 }
 
 func (w *Workspace) pluginTitlebarButtons() []plugins.ResolvedTitlebarButton {
