@@ -129,26 +129,7 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 					time.AfterFunc(1450*time.Millisecond, m.requestRedraw)
 				}
 			})
-			ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space16, 0, 0, 0).Gap(theme.Space12).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-				st := m.currentState()
-				telemetryOn := !st.TelemetryOff
-				telemetryLabel := theme.Tr("匿名使用统计", "Anonymous Usage Stats")
-				telemetryRow := ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).
-					AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-					ui.Text(c, telemetryLabel).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightRegular).
-						TextColor(pal.Text).SingleLine().MinWidth(0).Shrink(1).Ellipsis("…")
-					if internalui.TogglePill(c, "about-telemetry-pill", telemetryLabel, &telemetryOn, false) {
-						off := !telemetryOn
-						m.mutateState(func(s *model.AppState) {
-							s.TelemetryOff = off
-						})
-					}
-				})
-				internalui.WrappedTooltip(c, telemetryRow, theme.Tr(
-					"每天最多发送一次：随机安装编号、版本、系统及大版本、CPU 架构、界面语言；服务器据网络来源记录国家/地区，不保存 IP。不含笔记内容或文件名。",
-					"Sent at most once a day: a random install ID, app version, OS and major version, CPU architecture and UI language. The server records the country from the network origin without storing the IP. No note content or file names.",
-				))
-
+			ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space16, 0, 0, 0).Gap(theme.Space8).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).AlignItems(ui.Center).Children(func() {
 				ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
 					ghIcon := icons.Github
 					if internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
@@ -177,6 +158,19 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 						c.OpenURL("https://block.cooool.top/privacy/")
 					}
 				})
+				if internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+					ID:            "about-open-privacy-settings",
+					Label:         theme.Tr("前往设置管理匿名使用统计 →", "Manage Usage Stats in Settings →"),
+					Style:         internalui.ButtonGhost,
+					Height:        theme.HeightCompact,
+					PaddingX:      theme.Space8,
+					CompactText:   true,
+					RegularWeight: true,
+					Truncate:      true,
+				}).Clicked() {
+					m.CloseAbout()
+					m.OpenSettings("about")
+				}
 			})
 		})
 	})

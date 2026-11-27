@@ -339,14 +339,14 @@ func (m *Manager) IsRecordingShortcut() bool {
 	return m.settingsOpen && (m.recordingShortcut != "" || m.justRecordedPasses > 0)
 }
 
-// OpenSettings opens the full-window Settings page at `tab` ("ai", "appearance", "folders", "shortcuts", "app-store", or "plugin:<id>").
+// OpenSettings opens the full-window Settings page at `tab` ("ai", "appearance", "folders", "shortcuts", "about", "app-store", or "plugin:<id>").
 func (m *Manager) OpenSettings(tab string) {
 	previous := ""
 	if m.settingsOpen {
 		previous = m.ActiveSettingsTab()
 	}
 	switch {
-	case tab == "ai" || tab == "appearance" || tab == "folders" || tab == "shortcuts":
+	case tab == "ai" || tab == "appearance" || tab == "folders" || tab == "shortcuts" || tab == "about":
 		m.settingsTab = tab
 	case tab == TabStoreInstalled:
 		m.settingsTab = TabAppStore
@@ -421,6 +421,9 @@ func (m *Manager) resolveSettingsTabTitle(tab string) string {
 }
 
 func settingsTabTitle(tab string) string {
+	if tab == "about" {
+		return theme.Tr("关于与隐私", "About & Privacy")
+	}
 	for _, spec := range settingsTabs {
 		if spec.id == tab {
 			return theme.Tr(spec.zh, spec.en)
@@ -678,6 +681,49 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 				}
 				})
 			})
+			ui.Column(c.Key("settings-about-footer")).FillWidth().Shrink(0).
+				Padding(theme.Space8, theme.Space8, theme.Space8, theme.Space12).Gap(theme.Space8).Children(func() {
+				ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+				active := tab == "about"
+				navID := "settings-tab-about"
+				title := theme.Tr("关于与隐私", "About & Privacy")
+				btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).Gap(theme.Space10).
+					AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+					Label(title)
+				hovered := btn.Hovered()
+				pressed := btn.Pressed()
+				if active {
+					btn.Background(pal.Selected).Border(1, ui.Transparent)
+				} else if pressed || hovered {
+					btn.Background(chrome.Hover).Border(1, ui.Transparent)
+				} else {
+					btn.Border(1, ui.Transparent)
+				}
+				internalui.TactileCard(btn, hovered, pressed, active, false)
+				btn.Children(func() {
+					ic := pal.DuoIconColors(pal.TextSecondary)
+					if active || hovered || pressed {
+						ic = pal.DuoIconColors(pal.Text)
+					}
+					icons.DrawAnimated(c, icons.ShieldCheck, theme.IconRow, ic, active || hovered || pressed)
+					col := pal.TextSecondary
+					weight := theme.WeightRegular
+					if active {
+						col = pal.Text
+						weight = theme.WeightControl
+					} else if hovered || pressed {
+						col = pal.Text
+					}
+					ui.Text(c, title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				})
+				internalui.Probe(btn, navID)
+				if btn.Clicked() {
+					if isDrawer && onDismissDrawer != nil {
+						onDismissDrawer()
+					}
+					m.selectSettingsTab("about")
+				}
+			})
 			if isDrawer && onDismissDrawer != nil {
 				st := m.currentState()
 				sbSpec := EffectiveShortcut(st, "toggle_sidebar")
@@ -912,6 +958,8 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 						m.renderSettingsFoldersTab(c)
 					case "shortcuts":
 						m.renderSettingsShortcutsTab(c)
+					case "about":
+						m.renderSettingsAboutTab(c)
 					default:
 						if IsPluginSystemTab(tab) && m.PluginHost != nil {
 							m.PluginHost.RenderTabBody(c, tab, m.selectSettingsTab)
@@ -1166,21 +1214,76 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			})
 		})
 
-		// Card 3: Application Updates & Channel Source.
+		if m.PluginHost != nil {
+			m.PluginHost.RenderSettingsSections(c, "appearance", m.selectSettingsTab)
+		}
+	})
+	_ = pal
+}
+
+func (m *Manager) renderSettingsAboutTab(c *ui.Context) {
+	pal := theme.Ocean()
+	st := m.currentState()
+
+	curVer := updater.CurrentVersion()
+	var snap updater.Snapshot
+	if m.Updater != nil {
+		snap = m.Updater.Snapshot()
+		curVer = snap.CurrentVersion
+	}
+
+	ui.Column(c.Key("settings-about-body")).FillWidth().Gap(theme.SettingsSectionGap).Children(func() {
+		// Card 1: Brand, Version & Updates.
 		internalui.SettingsSection(c, func() {
-			internalui.SettingsSectionTitle(c, theme.Tr("应用更新", "App Updates"), nil)
+			internalui.SettingsRowFrame(ui.Row(c.Key("settings-about-brand-row"))).
+				Padding(0, 0, theme.Space12, 0).Justify(ui.SpaceBetween).Children(func() {
+				ui.Row(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space12).Children(func() {
+					ui.Box(c).Size(48, 48).Radius(theme.RadiusLG).Clip().Shrink(0).Children(func() {
+						ui.Image(c.Key("settings-about-emblem"), aboutLogo()).Fill().Fit(ui.Cover)
+					})
+					ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space4).AlignItems(ui.Start).Children(func() {
+						ui.Text(c, "Block").FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).
+							FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 
-			curVer := updater.CurrentVersion()
-			var snap updater.Snapshot
-			if m.Updater != nil {
-				snap = m.Updater.Snapshot()
-				curVer = snap.CurrentVersion
-			}
+						copied := !m.aboutCopiedAt.IsZero() && time.Since(m.aboutCopiedAt) < 1400*time.Millisecond
+						verLabel := fmt.Sprintf("v%s", curVer)
+						verFG := pal.TextSecondary
+						verBG := pal.Shell
+						verBD := pal.Hairline
+						if copied {
+							verLabel = fmt.Sprintf("%s v%s", theme.Tr("已复制", "Copied"), curVer)
+							verFG = pal.Success
+							verBG = pal.SuccessSurface
+							verBD = ui.Transparent
+						}
+						verBtn := ui.ButtonBase(c.Key("settings-about-version")).Height(theme.HeightMicro).PaddingX(theme.Space8).
+							MaxWidthPercent(100).MinWidth(0).AlignItems(ui.Center).Justify(ui.Center).
+							Radius(theme.RadiusPill).Cursor(ui.CursorPointer).Label(verLabel)
+						verHover := verBtn.Hovered()
+						verPress := verBtn.Pressed()
+						if !copied {
+							if verPress {
+								verBG = pal.Selected
+							} else if verHover {
+								verBG = pal.Hover
+							}
+						}
+						internalui.AnimateSurfaceColors(verBtn, verBG, verBD, true)
+						internalui.TactileButton(verBtn, verHover, verPress, false)
+						internalui.Probe(verBtn, "settings-about-version")
+						verBtn.Children(func() {
+							ui.Text(c, verLabel).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								FontWeight(theme.WeightMono).TextColor(verFG).MaxWidthPercent(100).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+						})
+						if verBtn.Clicked() {
+							c.Services().WriteClipboard("v" + curVer)
+							m.aboutCopiedAt = time.Now()
+							time.AfterFunc(1450*time.Millisecond, m.requestRedraw)
+						}
+					})
+				})
 
-			verTitle := fmt.Sprintf("v%s", curVer)
-			internalui.SettingsRow(c, theme.Tr("当前版本", "Version"), func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space10).Children(func() {
-					ui.Text(c, verTitle).Font("monospace").FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
+				ui.Row(c).Shrink(0).AlignItems(ui.Center).Children(func() {
 					if snap.HasActionableUpdate() {
 						btnLabel := fmt.Sprintf(theme.Tr("更新至 v%s", "Update to v%s"), snap.LatestVersion)
 						if snap.Status == updater.StatusReady {
@@ -1208,7 +1311,16 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 							btnLabel = theme.Tr("正在检查…", "Checking…")
 						}
 						refIc := icons.Refresh
-						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{ID: "settings-check-updates", Label: btnLabel, Leading: &refIc, Style: internalui.ButtonSecondary, Disabled: checking, Loading: checking, Height: theme.HeightCompact, PaddingX: theme.Space10})
+						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+							ID:       "settings-check-updates",
+							Label:    btnLabel,
+							Leading:  &refIc,
+							Style:    internalui.ButtonSecondary,
+							Disabled: checking,
+							Loading:  checking,
+							Height:   theme.HeightCompact,
+							PaddingX: theme.Space10,
+						})
 						if btn.Clicked() {
 							m.OpenUpdater()
 							if m.Updater != nil {
@@ -1243,11 +1355,82 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			})
 		})
 
-		if m.PluginHost != nil {
-			m.PluginHost.RenderSettingsSections(c, "appearance", m.selectSettingsTab)
-		}
+		// Card 2: Privacy.
+		internalui.SettingsSection(c, func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("隐私", "Privacy"), nil)
+
+			telemetryOn := !st.TelemetryOff
+			telemetryLabel := theme.Tr("匿名使用统计", "Anonymous Usage Stats")
+			internalui.SettingsRowFrame(ui.Row(c.Key("settings-about-telemetry-row"))).
+				PaddingY(theme.Space8).Justify(ui.SpaceBetween).Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space4).Children(func() {
+					ui.Text(c, telemetryLabel).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightRegular).TextColor(pal.Text)
+					ui.Text(c, theme.Tr(
+						"每天最多发送一次随机安装编号、版本、系统及语言；不含笔记内容、文件名或 IP。",
+						"Sent at most once a day: a random install ID, version, OS and language. No note content, file names, or IP.",
+					)).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+				})
+				if internalui.TogglePill(c, "settings-about-telemetry-pill", telemetryLabel, &telemetryOn, false) {
+					off := !telemetryOn
+					m.mutateState(func(s *model.AppState) {
+						s.TelemetryOff = off
+					})
+				}
+			})
+
+			internalui.SettingsRowFrame(ui.Row(c.Key("settings-about-privacy-row"))).
+				PaddingY(theme.Space8).Justify(ui.SpaceBetween).Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
+					ui.Text(c, theme.Tr("隐私政策", "Privacy Policy")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightRegular).TextColor(pal.Text)
+					ui.Text(c, theme.Tr("完整说明数据收集范围与关闭方式", "Details on what is collected and how to opt out")).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+				})
+				privacyIc := icons.ShieldCheck
+				if internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+					ID:       "settings-about-privacy-policy",
+					Label:    theme.Tr("打开隐私政策", "Open Privacy Policy"),
+					Leading:  &privacyIc,
+					Style:    internalui.ButtonSecondary,
+					Height:   theme.HeightCompact,
+					PaddingX: theme.Space10,
+				}).Clicked() {
+					c.OpenURL("https://block.cooool.top/privacy/")
+				}
+			})
+		})
+
+		// Card 3: Open Source & Community.
+		internalui.SettingsSection(c, func() {
+			internalui.SettingsRow(c, theme.Tr("开源项目与社区", "Open Source & Community"), func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+					ghIc := icons.Github
+					if internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "settings-about-github",
+						Label:    "GitHub",
+						Leading:  &ghIc,
+						Style:    internalui.ButtonSecondary,
+						Height:   theme.HeightCompact,
+						PaddingX: theme.Space10,
+					}).Clicked() {
+						c.OpenURL("https://github.com/eachann1024/block")
+					}
+					fbIc := icons.MessageSquare
+					if internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "settings-about-feedback",
+						Label:    theme.Tr("问题反馈", "Feedback"),
+						Leading:  &fbIc,
+						Style:    internalui.ButtonSecondary,
+						Height:   theme.HeightCompact,
+						PaddingX: theme.Space10,
+					}).Clicked() {
+						c.OpenURL("https://github.com/eachann1024/block/issues")
+					}
+				})
+			})
+		})
 	})
-	_ = pal
 }
 
 func pickInstalledFont(families []ui.FontFamily, candidates []string, fallback string) string {
