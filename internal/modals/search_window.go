@@ -386,14 +386,7 @@ func (s *SearchWindowController) openHit(idx int) {
 func (s *SearchWindowController) RenderView(c *ui.Context) {
 	pal := theme.Ocean()
 	uiTheme := pal.ToUITheme("")
-	uiTheme.ScrollbarStyle = ui.ScrollbarStyle{
-		TrackWidth: theme.ScrollGutter,
-		ThumbWidth: theme.ScrollThumbWidth,
-		MinLength:  32,
-		Thumb:      pal.ScrollThumb,
-		Hover:      pal.ScrollThumbHover,
-		Active:     pal.ScrollThumbHover,
-	}
+	uiTheme.ScrollbarStyle = internalui.StandardScrollbarStyle(pal)
 	c.SetTheme(&uiTheme)
 
 	s.st.consumeAsyncResult(&s.hits, &s.selected, &s.errMsg)

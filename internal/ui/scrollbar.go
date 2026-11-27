@@ -64,14 +64,12 @@ type scrollHideState struct {
 	tracked          *ui.ScrollState
 	lastX            float32
 	lastY            float32
-	showUntil        time.Time
-	hoverQuietUntil  time.Time
-	frameAt          time.Time
-	framePrevVisible bool
-	initialized      bool
-	visible          bool
-	holdingBar       bool
-	sawScrollInput   bool
+	showUntil       time.Time
+	hoverQuietUntil time.Time
+	initialized     bool
+	visible         bool
+	holdingBar      bool
+	sawScrollInput  bool
 }
 
 // Scroll creates a vertical scroll container whose scrollbar stays hidden when
@@ -146,16 +144,24 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 	win := ensureWindowScrollInput(c)
 	primaryDown := win != nil && win.primaryDown
 
-	if !local.frameAt.Equal(now) {
-		local.framePrevVisible = local.visible
-		local.frameAt = now
-	}
+	canV := axes&axisVertical != 0 && st.MaxY > 0.5
+	canH := axes&axisHorizontal != 0 && st.MaxX > 0.5
+	scrollable := canV || canH
+	overBar := false
 
 	if !local.initialized || local.tracked != st {
 		local.tracked = st
 		local.lastX = st.X
 		local.lastY = st.Y
 		local.initialized = true
+		local.showUntil = time.Time{}
+		local.hoverQuietUntil = time.Time{}
+		local.holdingBar = false
+		local.sawScrollInput = false
+		local.visible = false
+	} else if !scrollable {
+		local.lastX = st.X
+		local.lastY = st.Y
 		local.showUntil = time.Time{}
 		local.hoverQuietUntil = time.Time{}
 		local.holdingBar = false
@@ -181,14 +187,13 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 			local.holdingBar = false
 		}
 
-		if local.framePrevVisible {
-			overBar := pointerOverScrollbarTrack(c, el, axes)
-			if overBar && el.PressedInside() && primaryDown {
-				local.holdingBar = true
-			}
-			if overBar || local.holdingBar {
-				local.showUntil = now.Add(ScrollHideDelay)
-			}
+		overV, overH := pointerOverTrackEdges(el, resolveTrackWidth(c), canV, canH)
+		overBar = overV || overH
+		if overBar && el.PressedInside() && primaryDown {
+			local.holdingBar = true
+		}
+		if overBar || local.holdingBar {
+			local.showUntil = now.Add(ScrollHideDelay)
 		}
 
 		local.visible = !local.showUntil.IsZero() && now.Before(local.showUntil)
@@ -205,11 +210,10 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 	if local.visible {
 		el.Scrollbars(true)
 		el.KeepScrollbars(!el.Hovered())
-		if rem := local.showUntil.Sub(now); rem > 0 {
-			c.After(rem + 5*time.Millisecond)
-		} else {
-			c.After(5 * time.Millisecond)
+		if overBar || local.holdingBar {
+			el.ScrollbarStyle(resolveHotScrollbarStyle(c))
 		}
+		scheduleScrollHideFrame(c, now, local.showUntil)
 	} else {
 		el.Scrollbars(false)
 		el.KeepScrollbars(false)
@@ -217,24 +221,55 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 	return el
 }
 
+func resolveTrackWidth(c *ui.Context) float32 {
+	if th := c.Theme(); th != nil && th.ScrollbarStyle.TrackWidth > 0 {
+		return th.ScrollbarStyle.TrackWidth
+	}
+	return theme.ScrollGutter
+}
+
+func resolveHotScrollbarStyle(c *ui.Context) ui.ScrollbarStyle {
+	hot := HotScrollbarStyle(theme.Ocean())
+	if th := c.Theme(); th != nil {
+		if th.ScrollbarStyle.Thumb != (ui.Color{}) {
+			hot.Thumb = th.ScrollbarStyle.Thumb
+		}
+		if th.ScrollbarStyle.Hover != (ui.Color{}) {
+			hot.Hover = th.ScrollbarStyle.Hover
+		}
+		if th.ScrollbarStyle.Active != (ui.Color{}) {
+			hot.Active = th.ScrollbarStyle.Active
+		}
+	}
+	return hot
+}
+
+func scheduleScrollHideFrame(c *ui.Context, now, until time.Time) {
+	if rem := until.Sub(now); rem > 0 {
+		c.After(rem + 5*time.Millisecond)
+	} else {
+		c.After(5 * time.Millisecond)
+	}
+}
+
 func pointerOverScrollbarTrack(c *ui.Context, el ui.Element, axes scrollAxes) bool {
+	overV, overH := pointerOverTrackEdges(el, resolveTrackWidth(c), axes&axisVertical != 0, axes&axisHorizontal != 0)
+	return overV || overH
+}
+
+func pointerOverTrackEdges(el ui.Element, trackW float32, canV, canH bool) (overV, overH bool) {
+	if !el.Valid() || (!canV && !canH) || trackW <= 0 {
+		return false, false
+	}
 	px, py, over := el.PointerPosition()
 	if !over {
-		return false
+		return false, false
 	}
 	b := el.Bounds()
 	if b.W <= 0 || b.H <= 0 {
-		return false
+		return false, false
 	}
-	trackW := theme.ScrollGutter
-	if th := c.Theme(); th != nil && th.ScrollbarStyle.TrackWidth > 0 {
-		trackW = th.ScrollbarStyle.TrackWidth
-	}
-	if axes&axisVertical != 0 && px >= b.W-trackW {
-		return true
-	}
-	if axes&axisHorizontal != 0 && py >= b.H-trackW {
-		return true
-	}
-	return false
+	overV = canV && px >= b.W-trackW
+	overH = canH && py >= b.H-trackW
+	return overV, overH
 }

@@ -1185,12 +1185,6 @@ func renderScopeMenuPopoverView(
 		suppressHover := st.scopeCursor >= 0
 		internalui.Scroll(c.Key("search-scope-scroll"), &st.scopeScroll).
 			FillWidth().MaxHeight(internalui.MenuInnerMaxHeight(menuMaxH)).
-			ScrollbarStyle(ui.ScrollbarStyle{
-				TrackWidth: theme.ScrollGutter,
-				ThumbWidth: theme.ScrollThumbWidth,
-				Thumb:      pal.ScrollThumb,
-				Hover:      pal.ScrollThumbHover,
-			}).
 			Children(func() {
 				ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 					internalui.MenuRow(c, internalui.MenuItemSpec{
@@ -1288,13 +1282,7 @@ func renderSearchBodyView(
 	scroll := internalui.Scroll(c.Key("search-results"), &st.resultsScroll).
 		FillWidth().
 		Padding(8, theme.ScrollGutter, 8, 8).Gap(2).
-		Transition(internalui.SurfaceStageTransition()).
-		ScrollbarStyle(ui.ScrollbarStyle{
-			TrackWidth: theme.ScrollGutter,
-			ThumbWidth: theme.ScrollThumbWidth,
-			Thumb:      pal.ScrollThumb,
-			Hover:      pal.ScrollThumbHover,
-		})
+		Transition(internalui.SurfaceStageTransition())
 	if fillHeight {
 		scroll.Grow(1).MinHeight(0)
 	} else {

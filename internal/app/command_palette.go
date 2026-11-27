@@ -250,13 +250,7 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 		} else {
 			scroll := blockui.Scroll(c.Key("command-palette-list"), &p.scroll).
 				FillWidth().MaxHeight(maxBodyH).
-				Padding(theme.Space8, theme.ScrollGutter, theme.Space8, theme.Space8).Gap(theme.Space2).
-				ScrollbarStyle(ui.ScrollbarStyle{
-					TrackWidth: theme.ScrollGutter,
-					ThumbWidth: theme.ScrollThumbWidth,
-					Thumb:      pal.ScrollThumb,
-					Hover:      pal.ScrollThumbHover,
-				})
+				Padding(theme.Space8, theme.ScrollGutter, theme.Space8, theme.Space8).Gap(theme.Space2)
 			scroll.Children(func() {
 				for idx, it := range filtered {
 					item := it
