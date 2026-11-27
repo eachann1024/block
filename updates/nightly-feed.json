@@ -1,10 +1,117 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T20:35:11.649Z",
-  "latest_version": "1.0.973",
-  "latest_tag": "v1.0.973",
+  "updated_at": "2026-11-27T21:09:58.766Z",
+  "latest_version": "1.0.975",
+  "latest_tag": "v1.0.975",
   "releases": [
+    {
+      "version": "1.0.975",
+      "tag": "v1.0.975",
+      "published_at": "2026-11-27T21:09:58Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.975",
+      "prerelease": true,
+      "channel": "nightly",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "思维导图：底部快捷键提示栏经过精简。",
+          "自动更新：Block 新增稳定版和每夜版更新通道，默认使用稳定版，并每三天或按需检查稳定版更新。",
+          "思维导图：画布获得焦点前也能按住空格拖动平移，且不会折叠节点；提示淡出时会保留快捷键按钮。",
+          "思维导图：节点排序操作更加灵活，可抓取整行、放入间隙，并仅在行边缘进行嵌套；松开鼠标会取消嵌套提示。"
+        ],
+        "fixes": [
+          "插件接口：插件访问文件时会校验预期的数据目录，并更严格地处理缺失文件。",
+          "AI 对话：跨 CLI 工具调用时会保留界面格式分隔，并增强回退处理。",
+          "思维导图：Escape 键现在可以取消操作，快捷键可跨平台使用，输入时修饰键也不会再卡住。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Mind Map: The shortcut hint bar is streamlined.",
+          "Updates: Block now offers stable and nightly update channels, defaults to stable, and checks for stable updates every three days or on demand.",
+          "Mind Map: You can pan the canvas by dragging with the spacebar before focusing it, without folding nodes; the shortcut button stays visible as the hint fades.",
+          "Mind Map: Reordering nodes is more forgiving: you can grab anywhere on a row, place nodes in gaps, and nest them only at row edges. Releasing cancels the nesting hint."
+        ],
+        "fixes": [
+          "Plugin API: Plugin file access now verifies the expected data directory and handles missing files more strictly.",
+          "AI Chat: UI formatting breaks are preserved across CLI tool turns, with more robust fallback behavior.",
+          "Mind Map: Escape now cancels as expected, shortcuts work across platforms, and modifier keys no longer get stuck while typing."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-macos-arm64.dmg",
+          "size": 20706194,
+          "sha256": "81805b9f5501d7491ec4c6d680cc488c39a609bb20c7c5f1aced77ce6d6a4642"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-macos-x64.dmg",
+          "size": 22781596,
+          "sha256": "9df3cd267e78727502c61869e9af358be63b01107ad237f1bbac82937cfb010c"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-windows-x64-setup.exe",
+          "size": 18100346,
+          "sha256": "1bee28c2668695675b82533d60080ab520706257397f12dc2ee611dbc8a0069b"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-linux-x64.deb",
+          "size": 14480498,
+          "sha256": "fb1cd263d5fce3a000568c767369b396f4dd5a1dce2972bb9c609ba1756b71f7"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-linux-x64.AppImage",
+          "size": 28166648,
+          "sha256": "eae08942f7ff73ddcb2157cfc4ec2e8d8b381c6716f5d571edeb5c9625f1220a"
+        }
+      ]
+    },
+    {
+      "version": "1.0.974",
+      "tag": "v1.0.974",
+      "published_at": "2026-11-27T20:54:16Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.974",
+      "prerelease": false,
+      "channel": "stable",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "AI 对话：结构化回复在首轮对话中默认使用深度 UI。",
+          "导入导出：导出 HTML 和 DOCX 时会嵌入子集 TrueType 字体，支持 WOFF2 和 ODTTF 格式。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "思维导图：节点文字现在会在框内垂直居中。",
+          "插件页面：面包屑中的斜杠与文字现在会垂直对齐。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "AI Chat: Structured replies now use the deep UI by default on the first turn.",
+          "Import & Export: HTML and DOCX exports now embed subsets of TrueType fonts in WOFF2 or ODTTF format."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Mind Map: Node text is now vertically centered inside its box.",
+          "Plugin Page: The breadcrumb slash and text are now vertically aligned."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
     {
       "version": "1.0.973",
       "tag": "v1.0.973",
@@ -42,38 +149,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-macos-arm64.dmg",
-          "size": 19181890,
-          "sha256": "00596a465358cf777911e190aa99db57db7842c66f1505ad2ec7dbeea9c185db"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-macos-x64.dmg",
-          "size": 21191797,
-          "sha256": "7b9bee92f9ea16a44643746c0777bdbbc69de5775bd4cd061ec5ae3c791dd92d"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-windows-x64-setup.exe",
-          "size": 16638097,
-          "sha256": "93abcb8e50a363b4845d6b16127da2e82957d0d5d278fdf279cbdb847e70944c"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-linux-x64.deb",
-          "size": 13505896,
-          "sha256": "db63246390dd5e518a99b7d86fbb26f207d4a7311f193aa540fc857f32063222"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-linux-x64.AppImage",
-          "size": 26819064,
-          "sha256": "6bb52534c0003cbcd38ee5322d84a89ae77324b07152dadf1cef253971229186"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.972",
@@ -1785,62 +1861,6 @@
         "improvements": [],
         "fixes": [
           "Menu Bar: The menu bar icon now reliably receives drag-and-drop events on macOS."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.922",
-      "tag": "v1.0.922",
-      "published_at": "2026-11-24T05:23:24Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.922",
-      "prerelease": false,
-      "channel": "stable",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "侧边栏：优化了图标选择器中已选色调色块的圆环显示。",
-          "侧边栏：已选色调色块改为显示勾选标记，不再显示圆环。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Sidebar: The selected tint swatch ring is cleaned up.",
-          "Sidebar: The selected tint swatch is marked with a check instead of a ring."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.921",
-      "tag": "v1.0.921",
-      "published_at": "2026-11-24T04:59:16Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.921",
-      "prerelease": false,
-      "channel": "stable",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "侧边栏：图标选择面板现在会与点击的行保持平齐。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Sidebar: The icon picker now opens level with the clicked row."
         ],
         "other": []
       },
