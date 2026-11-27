@@ -167,9 +167,7 @@ func (s *Session) JumpToBlock(idx int) {
 		s.outlinePreferScroll = false
 		s.outlineWakeUntil = time.Time{}
 		s.outlineIdleFadeAt = time.Time{}
-		if s.outlineMode != outlineModePinned {
-			s.closeOutline(true)
-		}
+		s.closeOutline(blockID)
 	}
 }
 

@@ -117,8 +117,8 @@ func (s *Session) resetOutlineState(clearAll bool) {
 	if s == nil {
 		return
 	}
-	s.clearOutlineOverlay(false)
-	s.outlineSuppressReopen = false
+	s.clearOutlineOverlay(0)
+	s.outlineSuppressBlockID = 0
 	s.outlineRailHovered = false
 	if clearAll {
 		s.outlineListScroll = ui.ScrollState{}
@@ -137,29 +137,76 @@ func (s *Session) resetOutlineState(clearAll bool) {
 	}
 }
 
-func (s *Session) clearOutlineOverlay(suppressReopen bool) {
+func (s *Session) clearOutlineOverlay(suppressBlockID model.BlockID) {
 	if s == nil {
 		return
 	}
 	s.outlineMode = outlineModeClosed
 	s.outlineHoverBlockID = 0
 	s.outlineCardBlockID = 0
-	s.outlineListDwellID = 0
-	s.outlineListDwellAt = time.Time{}
 	s.outlineLeaveAt = time.Time{}
 	s.outlineFocusPending = false
 	s.outlineFilter = ""
 	s.outlineListScroll.Y = 0
-	if suppressReopen {
-		s.outlineSuppressReopen = true
+	s.outlineSuppressBlockID = suppressBlockID
+}
+
+func (s *Session) closeOutline(suppressBlockID model.BlockID) {
+	if s == nil {
+		return
+	}
+	s.clearOutlineOverlay(suppressBlockID)
+}
+
+func (s *Session) outlinePrefersList(itemCount int) bool {
+	if s == nil {
+		return false
+	}
+	switch s.outlineViewMode {
+	case model.OutlineViewCard:
+		return false
+	case model.OutlineViewList:
+		return true
+	default:
+		return itemCount > theme.OutlineMaxTicks
 	}
 }
 
-func (s *Session) closeOutline(suppressReopen bool) {
-	if s == nil || s.outlineMode == outlineModePinned {
+func (s *Session) switchOutlineView(c *ui.Context, next model.OutlineViewMode, now time.Time) {
+	if s == nil {
 		return
 	}
-	s.clearOutlineOverlay(suppressReopen)
+	next = normalizeOutlineViewMode(next)
+	s.outlineViewMode = next
+	s.outlineSuppressBlockID = 0
+	s.outlineFocusPending = false
+
+	switch next {
+	case model.OutlineViewList:
+		s.outlineMode = outlineModePanel
+		s.outlineLeaveAt = time.Time{}
+	case model.OutlineViewCard:
+		s.outlineMode = outlineModeHoverCard
+		s.outlineFilter = ""
+		s.outlineListScroll.Y = 0
+		if s.outlineCardBlockID == 0 && s.outlineHoverBlockID != 0 {
+			s.outlineCardBlockID = s.outlineHoverBlockID
+		}
+		if !testing.Testing() {
+			// Switching from the tall list panel to the shorter centered card often places
+			// the cursor temporarily outside the card's top edge; give a brief grace window.
+			s.outlineLeaveAt = now.Add(650 * time.Millisecond)
+		} else {
+			s.outlineLeaveAt = time.Time{}
+		}
+	default:
+		s.outlineLeaveAt = time.Time{}
+	}
+
+	if s.OnOutlineViewModeChange != nil {
+		s.OnOutlineViewModeChange(next)
+	}
+	c.Invalidate()
 }
 
 func outlineIndexByBlockID(items []model.OutlineItem, id model.BlockID) int {
@@ -313,22 +360,18 @@ func (s *Session) outlineOpacity(c *ui.Context, el ui.Element, now time.Time) fl
 
 func (s *Session) renderOutlineRail(c *ui.Context) {
 	if !s.outlineVisible() {
-		s.closeOutline(false)
+		s.closeOutline(0)
 		s.outlineRailHovered = false
-		if s.outlineMode != outlineModePinned {
-			s.outlineWasAwake = false
-			s.outlineIdleFadeAt = time.Time{}
-		}
+		s.outlineWasAwake = false
+		s.outlineIdleFadeAt = time.Time{}
 		return
 	}
 	items := s.Outline()
 	if len(items) == 0 {
-		s.closeOutline(false)
+		s.closeOutline(0)
 		s.outlineRailHovered = false
-		if s.outlineMode != outlineModePinned {
-			s.outlineWasAwake = false
-			s.outlineIdleFadeAt = time.Time{}
-		}
+		s.outlineWasAwake = false
+		s.outlineIdleFadeAt = time.Time{}
 		return
 	}
 
@@ -345,7 +388,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		maxTicks = min(theme.OutlineMaxTicks, max(1, int((vp.H-theme.Space24)/theme.OutlineTickHitHeight)))
 	}
 	ticks := sampleOutlineTicks(items, activeIdx, hoverIdx, maxTicks)
-	listMode := len(items) > theme.OutlineMaxTicks
+	preferList := s.outlinePrefersList(len(items))
 
 	panelMaxH := clampFloat32(vp.H*theme.OutlinePanelViewportRatio, theme.OutlinePanelMinHeight, theme.OutlinePanelMaxHeight)
 	if vp.H > 0 {
@@ -364,7 +407,8 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		hoveredTickID      model.BlockID
 		listHoveredID      model.BlockID
 		inputFocused       bool
-		expandRequested    bool
+		switchRequested    bool
+		switchTarget       model.OutlineViewMode
 	)
 
 	rightEdge := max(winW-(vp.X+vp.W), 0) + theme.OutlineRailRightOffset
@@ -386,13 +430,13 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		popupStage.Children(func() {
 			switch s.outlineMode {
 			case outlineModeHoverCard:
-				card := s.renderOutlineHoverCard(c, pal, items, activeIdx, &expandRequested)
+				card := s.renderOutlineHoverCard(c, pal, items, activeIdx, &switchRequested, &switchTarget)
 				popupEl = card
 				popupPendingLayout = card.Bounds().W <= 0
 				popupHovered = card.Hovered() || s.pointerInElement(card)
-			case outlineModePanel, outlineModePinned:
+			case outlineModePanel:
 				var panel ui.Element
-				panel, listHoveredID, inputFocused = s.renderOutlinePanel(c, pal, items, activeIdx, panelMaxH)
+				panel, listHoveredID, inputFocused = s.renderOutlinePanel(c, pal, items, activeIdx, panelMaxH, &switchRequested, &switchTarget)
 				popupEl = panel
 				popupPendingLayout = panel.Bounds().W <= 0
 				popupHovered = panel.Hovered() || s.pointerInElement(panel)
@@ -401,7 +445,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 
 		if s.outlineMode != outlineModeClosed {
 			bridgeH := max(railH, 96)
-			if s.outlineMode == outlineModePanel || s.outlineMode == outlineModePinned {
+			if s.outlineMode == outlineModePanel {
 				estPanelH := min(panelMaxH, float32(len(items))*theme.HeightCompact+60)
 				bridgeH = max(railH, estPanelH*0.5)
 			}
@@ -434,21 +478,19 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		})
 	})
 
-	if expandRequested {
-		s.outlineMode = outlineModePanel
-		s.outlineLeaveAt = time.Time{}
-		c.Invalidate()
+	if switchRequested {
+		s.switchOutlineView(c, switchTarget, now)
 		return
 	}
 
 	if (s.outlineMode == outlineModeHoverCard || s.outlineMode == outlineModePanel) && popupEl.Valid() && popupEl.PressedOutside() && (!rail.Valid() || rail.PressedOutside()) {
-		s.clearOutlineOverlay(false)
+		s.clearOutlineOverlay(0)
 		c.Invalidate()
 		return
 	}
 
 	inHotZone := popupHovered || bridgeHovered || railHovered || hoveredTickID != 0 || listHoveredID != 0
-	s.updateOutlineHoverState(c, now, items, listMode, inHotZone, popupPendingLayout, railHovered, hoveredTickID, listHoveredID, inputFocused)
+	s.updateOutlineHoverState(c, now, items, preferList, inHotZone, popupPendingLayout, railHovered, hoveredTickID, listHoveredID, inputFocused)
 }
 
 func (s *Session) pointerInElement(el ui.Element) bool {
@@ -463,7 +505,7 @@ func (s *Session) pointerInElement(el ui.Element) bool {
 	return over && pt.X >= r.X && pt.X <= r.X+r.W && pt.Y >= r.Y && pt.Y <= r.Y+r.H
 }
 
-func (s *Session) renderOutlineHoverCard(c *ui.Context, pal theme.Palette, items []model.OutlineItem, activeIdx int, expandOut *bool) ui.Element {
+func (s *Session) renderOutlineHoverCard(c *ui.Context, pal theme.Palette, items []model.OutlineItem, activeIdx int, switchRequested *bool, switchTarget *model.OutlineViewMode) ui.Element {
 	cardIdx := outlineIndexByBlockID(items, s.outlineCardBlockID)
 	if cardIdx < 0 {
 		cardIdx = max(activeIdx, 0)
@@ -497,13 +539,14 @@ func (s *Session) renderOutlineHoverCard(c *ui.Context, pal theme.Palette, items
 
 			expandBtn := appUi.IconButton(c, icons.AiList, appUi.IconButtonOptions{
 				ID:       "outline-expand-btn",
-				Label:    theme.Tr("展开完整目录", "Expand outline"),
-				Tooltip:  theme.Tr("展开完整目录", "Expand outline"),
+				Label:    theme.Tr("切换为目录视图", "Switch to outline list"),
+				Tooltip:  theme.Tr("切换为目录视图", "Switch to outline list"),
 				Size:     theme.HeightMicro,
 				IconSize: theme.IconInline,
 			})
 			if expandBtn.Clicked() {
-				*expandOut = true
+				*switchTarget = model.OutlineViewList
+				*switchRequested = true
 			}
 		})
 
@@ -536,8 +579,7 @@ func (s *Session) renderOutlineHoverCard(c *ui.Context, pal theme.Palette, items
 	return card
 }
 
-func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []model.OutlineItem, activeIdx int, panelMaxH float32) (ui.Element, model.BlockID, bool) {
-	pinned := s.outlineMode == outlineModePinned
+func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []model.OutlineItem, activeIdx int, panelMaxH float32, switchRequested *bool, switchTarget *model.OutlineViewMode) (ui.Element, model.BlockID, bool) {
 	panel := appUi.Elevate(
 		ui.Column(c.Key("outline-popover")).
 			Width(theme.OutlinePanelWidth).MaxHeight(panelMaxH).
@@ -588,7 +630,7 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 									c.Invalidate()
 									return true
 								}
-								s.clearOutlineOverlay(true)
+								s.clearOutlineOverlay(s.outlineHoverBlockID)
 								if s.doc != nil && len(s.doc.Blocks) > 0 {
 									if s.needsDetachedSelectionFocus() {
 										s.multiSelFocusPending = true
@@ -613,31 +655,18 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 						inputFocused = in.Focused()
 					})
 
-				pinTooltip := theme.Tr("钉住目录", "Pin outline")
-				if pinned {
-					pinTooltip = theme.Tr("取消钉住", "Unpin outline")
-				}
-				pinBtn := appUi.IconButton(c, icons.FileLock, appUi.IconButtonOptions{
-					ID:       "outline-pin-btn",
-					Label:    pinTooltip,
-					Tooltip:  pinTooltip,
+				toggleTooltip := theme.Tr("切换为卡片视图", "Switch to card preview")
+				toggleBtn := appUi.IconButton(c, icons.WindowRestore, appUi.IconButtonOptions{
+					ID:       "outline-view-toggle-btn",
+					Label:    toggleTooltip,
+					Tooltip:  toggleTooltip,
 					Size:     theme.HeightCompact,
 					IconSize: theme.IconInline,
-					Active:   pinned,
+					Active:   false,
 				})
-				if pinBtn.Clicked() {
-					if pinned {
-						s.outlineMode = outlineModePanel
-						s.outlineLeaveAt = time.Time{}
-						if inputFocused {
-							pinBtn.Focus(ui.FocusOptions{PreventScroll: true})
-							inputFocused = false
-						}
-					} else {
-						s.outlineMode = outlineModePinned
-						s.outlineLeaveAt = time.Time{}
-					}
-					c.Invalidate()
+				if toggleBtn.Clicked() {
+					*switchTarget = model.OutlineViewCard
+					*switchRequested = true
 				}
 			})
 
@@ -678,7 +707,7 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 					} else if rowPressed {
 						rowBG = pal.Selected
 						textCol = pal.Text
-					} else if rowHovered {
+					} else if rowHovered || (s.outlineHoverBlockID != 0 && item.BlockID == s.outlineHoverBlockID) {
 						rowBG = pal.Hover
 						textCol = pal.Text
 					}
@@ -775,7 +804,7 @@ func (s *Session) updateOutlineHoverState(
 	c *ui.Context,
 	now time.Time,
 	items []model.OutlineItem,
-	listMode bool,
+	preferList bool,
 	inHotZone bool,
 	popupPendingLayout bool,
 	railHovered bool,
@@ -787,10 +816,8 @@ func (s *Session) updateOutlineHoverState(
 
 	if busy {
 		s.outlineRailHovered = false
-		s.outlineListDwellID = 0
-		s.outlineListDwellAt = time.Time{}
-		if s.outlineMode != outlineModePinned && (s.outlineMode != outlineModeClosed || s.outlineHoverBlockID != 0 || s.outlineCardBlockID != 0 || !s.outlineLeaveAt.IsZero()) {
-			s.clearOutlineOverlay(false)
+		if s.outlineMode != outlineModeClosed || s.outlineHoverBlockID != 0 || s.outlineCardBlockID != 0 || !s.outlineLeaveAt.IsZero() {
+			s.clearOutlineOverlay(0)
 			c.Invalidate()
 		}
 		return
@@ -814,16 +841,12 @@ func (s *Session) updateOutlineHoverState(
 	}
 
 	if !inHotZone {
-		s.outlineSuppressReopen = false
-		s.outlineListDwellID = 0
-		s.outlineListDwellAt = time.Time{}
+		s.outlineSuppressBlockID = 0
 
 		switch s.outlineMode {
-		case outlineModePinned:
-			s.outlineLeaveAt = time.Time{}
 		case outlineModeHoverCard:
 			if testing.Testing() {
-				s.clearOutlineOverlay(false)
+				s.clearOutlineOverlay(0)
 				c.Invalidate()
 				return
 			}
@@ -832,20 +855,18 @@ func (s *Session) updateOutlineHoverState(
 			}
 			leaveDelay := theme.OutlineCardLeaveCloseMs * time.Millisecond
 			if elapsed := now.Sub(s.outlineLeaveAt); elapsed >= leaveDelay {
-				s.clearOutlineOverlay(false)
+				s.clearOutlineOverlay(0)
 				c.Invalidate()
 			} else {
 				c.After(leaveDelay - elapsed + 5*time.Millisecond)
 			}
 		case outlineModePanel:
 			if inputFocused {
-				s.outlineMode = outlineModePinned
 				s.outlineLeaveAt = time.Time{}
-				c.Invalidate()
 				return
 			}
 			if testing.Testing() {
-				s.clearOutlineOverlay(false)
+				s.clearOutlineOverlay(0)
 				c.Invalidate()
 				return
 			}
@@ -854,7 +875,7 @@ func (s *Session) updateOutlineHoverState(
 			}
 			leaveDelay := theme.OutlineListLeaveCloseMs * time.Millisecond
 			if elapsed := now.Sub(s.outlineLeaveAt); elapsed >= leaveDelay {
-				s.clearOutlineOverlay(false)
+				s.clearOutlineOverlay(0)
 				c.Invalidate()
 			} else {
 				c.After(leaveDelay - elapsed + 5*time.Millisecond)
@@ -867,47 +888,31 @@ func (s *Session) updateOutlineHoverState(
 
 	switch s.outlineMode {
 	case outlineModeClosed:
-		if s.outlineSuppressReopen || (hoveredTickID == 0 && !railHovered) {
+		if hoveredTickID == 0 && !railHovered {
 			return
+		}
+		if s.outlineSuppressBlockID != 0 {
+			if hoveredTickID == 0 || hoveredTickID == s.outlineSuppressBlockID {
+				return
+			}
+			s.outlineSuppressBlockID = 0
 		}
 		targetID := hoveredTickID
 		if targetID == 0 {
 			targetID = items[0].BlockID
 		}
-		if !listMode {
-			// <= 20 headings: 0ms into HoverCard; never schedule a timer to auto-switch to outlinePanel.
+		s.outlineHoverBlockID = targetID
+		if !preferList {
 			s.outlineMode = outlineModeHoverCard
 			s.outlineCardBlockID = targetID
-			s.outlineHoverBlockID = targetID
-			s.outlineListDwellID = 0
-			s.outlineListDwellAt = time.Time{}
-			c.Invalidate()
-			return
-		}
-		// > 20 headings (listMode): dwell 200ms directly into outlinePanel without flashing HoverCard.
-		if testing.Testing() {
-			s.outlineMode = outlineModePanel
-			s.outlineListDwellID = 0
-			s.outlineListDwellAt = time.Time{}
-			c.Invalidate()
-			return
-		}
-		s.outlineListDwellID = targetID
-		if s.outlineListDwellAt.IsZero() {
-			s.outlineListDwellAt = now
-		}
-		dwellDelay := theme.OutlineListDwellOpenMs * time.Millisecond
-		if elapsed := now.Sub(s.outlineListDwellAt); elapsed >= dwellDelay {
-			s.outlineMode = outlineModePanel
-			s.outlineListDwellID = 0
-			s.outlineListDwellAt = time.Time{}
-			c.Invalidate()
 		} else {
-			c.After(dwellDelay - elapsed + 5*time.Millisecond)
+			s.outlineMode = outlineModePanel
+			s.outlineCardBlockID = targetID
 		}
+		c.Invalidate()
 
 	case outlineModeHoverCard:
-		if listMode {
+		if preferList {
 			s.outlineMode = outlineModePanel
 			c.Invalidate()
 			return
@@ -918,8 +923,13 @@ func (s *Session) updateOutlineHoverState(
 		}
 
 	case outlineModePanel:
-		if inputFocused {
-			s.outlineMode = outlineModePinned
+		if !preferList {
+			s.outlineMode = outlineModeHoverCard
+			if hoveredTickID != 0 {
+				s.outlineCardBlockID = hoveredTickID
+			}
+			s.outlineFilter = ""
+			s.outlineListScroll.Y = 0
 			c.Invalidate()
 		}
 	}

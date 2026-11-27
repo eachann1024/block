@@ -92,7 +92,6 @@ const (
 	outlineModeClosed outlineOverlayMode = iota
 	outlineModeHoverCard
 	outlineModePanel
-	outlineModePinned
 )
 
 type findMatch struct {
@@ -241,32 +240,31 @@ type Session struct {
 	findReplaceFocusPending bool
 
 	// Outline rail (Scheme B: right-side vertical-centered dual-threshold rail)
-	outlineMode           outlineOverlayMode
-	outlineHoverBlockID   model.BlockID
-	outlineCardBlockID    model.BlockID
-	outlineListDwellID    model.BlockID
-	outlineListDwellAt    time.Time
-	outlineLeaveAt        time.Time
-	outlineListScroll     ui.ScrollState
-	outlineFilter         string
-	outlineInputHandle    ui.Handle
-	outlineFocusPending   bool
-	outlineJumpLockID     model.BlockID
-	outlineJumpLockUntil  time.Time
-	outlineLastClickedID  model.BlockID
-	outlineSuppressReopen bool
-	outlineWakeUntil      time.Time
-	outlineIdleFadeAt     time.Time
-	outlineLastScrollY    float32
-	outlineScrollInit     bool
-	outlineLastFocusBlock int
-	outlineLastDocRev     uint64
-	outlinePreferScroll   bool
-	outlineRailHovered    bool
-	outlineWasAwake       bool
-	jump                  editorJump
-	jumpAlpha             float32
-	outlineForceNarrow    bool
+	outlineMode            outlineOverlayMode
+	outlineViewMode        model.OutlineViewMode
+	outlineHoverBlockID    model.BlockID
+	outlineCardBlockID     model.BlockID
+	outlineLeaveAt         time.Time
+	outlineListScroll      ui.ScrollState
+	outlineFilter          string
+	outlineInputHandle     ui.Handle
+	outlineFocusPending    bool
+	outlineJumpLockID      model.BlockID
+	outlineJumpLockUntil   time.Time
+	outlineLastClickedID   model.BlockID
+	outlineSuppressBlockID model.BlockID
+	outlineWakeUntil       time.Time
+	outlineIdleFadeAt      time.Time
+	outlineLastScrollY     float32
+	outlineScrollInit      bool
+	outlineLastFocusBlock  int
+	outlineLastDocRev      uint64
+	outlinePreferScroll    bool
+	outlineRailHovered     bool
+	outlineWasAwake        bool
+	jump                   editorJump
+	jumpAlpha              float32
+	outlineForceNarrow     bool
 
 	// Edge-float safe insets & scroll suppression
 	edgeInsetLeft      float32
@@ -438,8 +436,9 @@ type Session struct {
 	minimal           bool
 	embedded          bool
 	minCanvasHeight   float32
-	OnPickImages      func(blockID model.BlockID, replace bool)
-	ExtraContextItems func() []ContextMenuExtra
+	OnPickImages            func(blockID model.BlockID, replace bool)
+	ExtraContextItems       func() []ContextMenuExtra
+	OnOutlineViewModeChange func(mode model.OutlineViewMode)
 }
 
 // ContextMenuExtra describes an extra item appended to the editor canvas context menu.
@@ -890,6 +889,31 @@ func (s *Session) SetActivePlan(plan *model.BatchPlan) {
 
 func (s *Session) SetOutlineForceNarrow(narrow bool) {
 	s.outlineForceNarrow = narrow
+}
+
+func normalizeOutlineViewMode(mode model.OutlineViewMode) model.OutlineViewMode {
+	switch mode {
+	case model.OutlineViewCard, model.OutlineViewList:
+		return mode
+	default:
+		return model.OutlineViewAuto
+	}
+}
+
+// SetOutlineViewMode updates the preferred outline view without opening a closed overlay.
+func (s *Session) SetOutlineViewMode(mode model.OutlineViewMode) {
+	if s == nil {
+		return
+	}
+	s.outlineViewMode = normalizeOutlineViewMode(mode)
+}
+
+// OutlineViewMode returns the current outline view preference.
+func (s *Session) OutlineViewMode() model.OutlineViewMode {
+	if s == nil {
+		return model.OutlineViewAuto
+	}
+	return s.outlineViewMode
 }
 
 func (s *Session) blockHandle(id model.BlockID) *ui.Handle {
@@ -1364,7 +1388,7 @@ func (s *Session) closeTransientOverlays() {
 	s.annotFlashAlpha = 0
 	s.reactionPickerAnnotID = ""
 	s.trailingPlus = false
-	s.closeOutline(false)
+	s.closeOutline(0)
 }
 
 // closeNonAnnotationOverlays dismisses geometric popups without committing or
@@ -1384,7 +1408,7 @@ func (s *Session) closeNonAnnotationOverlays() {
 	s.tableMenuKind = ""
 	s.reactionPickerAnnotID = ""
 	s.trailingPlus = false
-	s.closeOutline(false)
+	s.closeOutline(0)
 }
 
 func (s *Session) blockIndexByID(id model.BlockID) int {

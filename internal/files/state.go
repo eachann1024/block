@@ -45,6 +45,11 @@ func normalizeState(st *model.AppState) {
 	if st.LineHeight == "" {
 		st.LineHeight = model.LineHeightNormal
 	}
+	switch st.OutlineView {
+	case model.OutlineViewAuto, model.OutlineViewCard, model.OutlineViewList:
+	default:
+		st.OutlineView = model.OutlineViewAuto
+	}
 	if st.AssetsFolder == "" {
 		st.AssetsFolder = "assets"
 	}

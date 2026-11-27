@@ -423,10 +423,14 @@ func applyThemeFromState(st model.AppState) {
 }
 
 func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.Session {
+	return w.newEditorSessionWithOutlineView(cleanPath, doc, w.State().OutlineView)
+}
+
+func (w *Workspace) newEditorSessionWithOutlineView(cleanPath string, doc *model.Doc, outlineView model.OutlineViewMode) *editor.Session {
 	sess := editor.NewSession(cleanPath, doc, w.codec, w)
 	sess.SetDataDir(w.dataDir)
 	sess.SetAIEnabled(w.ai.Enabled())
-	sess.SetOutlineViewMode(w.State().OutlineView)
+	sess.SetOutlineViewMode(outlineView)
 	sess.OnOutlineViewModeChange = w.setOutlineViewMode
 	sess.SetInlineAIStreamResponder(w.inlineAIStreamRespond)
 	sess.SetAnnotationAIResponder(w.annotationAIRespond)
@@ -1988,7 +1992,7 @@ func (w *Workspace) writeNoteLocked(absPath, content string) error {
 		sess.SetDoc(doc)
 		sess.MarkSaved()
 	} else {
-		w.sessions[clean] = w.newEditorSession(clean, doc)
+		w.sessions[clean] = w.newEditorSessionWithOutlineView(clean, doc, w.state.OutlineView)
 	}
 	w.sessions[clean].SetDiskFingerprint(fingerprint)
 	w.bumpDiskWriteSeqLocked(clean)

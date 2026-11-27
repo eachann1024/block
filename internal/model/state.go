@@ -248,8 +248,18 @@ type AppState struct {
 	TelemetryOff         bool                           `json:"telemetry_off,omitempty"`
 	BrandDeco            BrandDeco                      `json:"brand_deco,omitzero"`
 	TreeSort             TreeSortMode                   `json:"tree_sort,omitempty"`
+	OutlineView          OutlineViewMode                `json:"outline_view,omitempty"`
 	PinnedPluginButtons  []string                       `json:"pinned_plugin_buttons,omitempty"`
 }
+
+// OutlineViewMode controls the preferred right-rail outline overlay view.
+type OutlineViewMode string
+
+const (
+	OutlineViewAuto OutlineViewMode = ""
+	OutlineViewCard OutlineViewMode = "card"
+	OutlineViewList OutlineViewMode = "list"
+)
 
 // TreeSortMode controls how sibling entries are ordered in the sidebar file tree.
 type TreeSortMode string
