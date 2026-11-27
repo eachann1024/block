@@ -1,10 +1,74 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T10:05:35.970Z",
-  "latest_version": "1.0.954",
-  "latest_tag": "v1.0.954",
+  "updated_at": "2026-11-27T10:14:47.514Z",
+  "latest_version": "1.0.955",
+  "latest_tag": "v1.0.955",
   "releases": [
+    {
+      "version": "1.0.955",
+      "tag": "v1.0.955",
+      "published_at": "2026-11-27T10:14:46Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.955",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件商店：应用现在会拦截 Python 窗口程序，并支持升级已停止维护的插件。",
+          "编辑器：多行批注改写内容现在会按带相对缩进的 Markdown 块解析。",
+          "编辑器：按 Tab 键会让焦点留在编辑器中，并缩进选中的多个列表块。"
+        ],
+        "other": [
+          "插件接口：插件 ID 检查现在会在 CI 中运行，也能在不含 Git 元数据的检出目录中执行。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugin Store: The app now blocks Python windowed executables and can upgrade plugins installed before they were retired.",
+          "Editor: Multi-line annotation rewrites now parse as Markdown blocks with relative indentation.",
+          "Editor: Pressing Tab keeps focus in the editor and indents selected blocks in multi-block lists."
+        ],
+        "other": [
+          "Plugin API: Plugin ID checks now run in CI and work in checkouts without Git metadata."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-macos-arm64.dmg",
+          "size": 18763031,
+          "sha256": "489fa8f7f98cee8d44a6e1754b56df621f0de3e5fb03cddf0e474cc8dd17c4c9"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-macos-x64.dmg",
+          "size": 20695198,
+          "sha256": "a88751b17aa273d8ccc8a1ae5b1a303b1e65c047056766ff93cf9ed73c0fc068"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-windows-x64-setup.exe",
+          "size": 16224629,
+          "sha256": "4ae17da43dc67dafc210eb82f0e007cfda3a8799486d57ed0cfaee20c5241026"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-linux-x64.deb",
+          "size": 13183596,
+          "sha256": "5057b662e4391fed3bb9a4c8703bdcfc2adf4e3ea75a07e2614949f0b5bd235b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-linux-x64.AppImage",
+          "size": 26462712,
+          "sha256": "2d4a2a5485d2a8888a3ccb1898e8122177b8d606fd7d6b39c266173ec8405125"
+        }
+      ]
+    },
     {
       "version": "1.0.954",
       "tag": "v1.0.954",
@@ -40,38 +104,7 @@
           "Plugin API: The external plugin runtime has been removed."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-macos-arm64.dmg",
-          "size": 18756584,
-          "sha256": "4f67adf6b57def733a038c635cd194a68d79bd3819a4224977a82d3203f6b67f"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-macos-x64.dmg",
-          "size": 20687000,
-          "sha256": "c12750dbd6c4b672732102329136bfca5b245ee9d88e9ca0f3ff38d073fe28da"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-windows-x64-setup.exe",
-          "size": 16219055,
-          "sha256": "05be2bf25694bc05260329fd8f8d9f66d4e3bd49faed4eb4bb00c7aa585920b8"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-linux-x64.deb",
-          "size": 13175516,
-          "sha256": "ff111825acff713c1daf501f325df418f9633b57c6948537f7204398e65ceda6"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-linux-x64.AppImage",
-          "size": 26446328,
-          "sha256": "b89bea16bf8206ed063f6779033d722f034386f771108e34a54357815c48bae3"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.953",
@@ -1676,41 +1709,6 @@
         "improvements": [],
         "fixes": [],
         "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.903",
-      "tag": "v1.0.903",
-      "published_at": "2026-11-22T08:25:37Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.903",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "批注卡片现已自适应窄栏、宽屏以及段落下方等多种视图布局。"
-        ],
-        "improvements": [
-          "界面按钮恢复了强调色边框样式，并新增了柔和、圆点和紧凑等多种外观选项。",
-          "商店中的卡片操作按钮统一采用了边框样式与规范的固定尺寸。"
-        ],
-        "fixes": [],
-        "other": [
-          "在主题设计规范中新增了段落下方批注卡片的最大宽度配置。"
-        ]
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Annotation cards now adapt flexibly across narrow, wide, and below-paragraph views."
-        ],
-        "improvements": [
-          "Interface buttons now feature restored accent outlines alongside new soft, dot, and compact appearance options.",
-          "Card action buttons in the store now use a unified outline style with standardized fixed dimensions."
-        ],
-        "fixes": [],
-        "other": [
-          "Added a theme design token to define the maximum width for annotation cards placed below content."
-        ]
       },
       "assets": []
     }
