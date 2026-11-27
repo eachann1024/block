@@ -35,24 +35,26 @@ type Callbacks struct {
 	OnCheckLinkStatus func(target string) LinkStatus
 	OnListNotes       func() []NoteCandidate
 	OnPickImportFile  func(onImported func(root *Node, report ImportReport))
-	OnSaveExportFile  func(defaultName, ext string, data []byte, onDone func(err error))
+	OnSaveExportFile  func(defaultName, ext string, data []byte, onDone func(savedPath string, err error))
 	OnNotify          func(msg, tone string)
 	OnRequestFocus    func()
+	OnHostNavKey      func(key ui.Key, mods ui.Modifiers) bool
 	ReadOnly          bool
 }
 
 // BlockState keeps all interactive runtime state for one mindmap block.
 type BlockState struct {
-	Root       *Node
-	NextID     int
-	LastSource string
-	SelectedID int
-	HoveredID  int
-	HoveredHit HitKind
-	View       ViewMode
-	Layout     LayoutMode
-	LayoutSet  bool
-	Fullscreen bool
+	Root        *Node
+	NextID      int
+	LastSource  string
+	SelectedID  int
+	SelectedIDs map[int]bool
+	HoveredID   int
+	HoveredHit  HitKind
+	View        ViewMode
+	Layout      LayoutMode
+	LayoutSet   bool
+	Fullscreen  bool
 
 	Camera               Camera
 	CameraInit           bool
@@ -62,9 +64,21 @@ type BlockState struct {
 	LastCanvasH          float32
 	Measure              MeasureCache
 
-	Panning  bool
-	PanLastX float32
-	PanLastY float32
+	Panning         bool
+	PanLastX        float32
+	PanLastY        float32
+	SpaceHeld       bool
+	SpaceUsedForPan bool
+	panButton       int
+	panStartX       float32
+	panStartY       float32
+
+	BoxSelecting bool
+	BoxAdditive  bool
+	BoxStartX    float32
+	BoxStartY    float32
+	BoxCurrX     float32
+	BoxCurrY     float32
 
 	DragNodeID   int
 	DragActive   bool
@@ -78,16 +92,18 @@ type BlockState struct {
 	lastKeyMod        ui.Modifiers
 	ComposeText       string
 	LastCanvasFocused bool
+	lastHasFocus      bool
 
 	EditingID          int
 	EditSeq            int
 	EditDraft          string
 	EditCompose        string
 	editLastLayoutText string
-	EditFresh          bool
-	EditSelectAll      bool
-	EditFocusPending   bool
-	EditHandle         ui.Handle
+	EditFresh                bool
+	EditSelectAll            bool
+	EditFocusPending         bool
+	EditInsertNewlinePending bool
+	EditHandle               ui.Handle
 
 	linkStatusCache   map[string]LinkStatus
 	linkStatusChecked time.Time
@@ -98,6 +114,7 @@ type BlockState struct {
 	LinkActiveIdx    int
 	LinkBrokenNotice bool
 	LinkHandle       ui.Handle
+	LinkPanelHandle  ui.Handle
 	LinkListScroll   ui.ScrollState
 
 	FindOpen         bool
@@ -107,6 +124,7 @@ type BlockState struct {
 	FindMatchSet     map[int]bool
 	FindCurrentIdx   int
 	FindHandle       ui.Handle
+	FindBarHandle    ui.Handle
 
 	ExportMenuOpen   bool
 	ExportMenuScroll ui.ScrollState
@@ -131,15 +149,21 @@ type BlockState struct {
 	OutlineSelEnd             int
 	OutlineSelRuneLen         int
 	OutlineUndoNodeID         int
+	OutlineComposing          bool
+	OutlineInsertNewlineID    int
 	outlinePending            *outlineAction
 
+	SourceComposing   bool
 	SourceCopiedUntil time.Time
 
-	// Block-scoped chords (⌘1/2/3 views, ⌘⇧↵ fullscreen) captured inside text
+	// Block-scoped chords (⌘1/2/3 views, ⌘⇧↵ fullscreen, ⌘⇧/ help) captured inside text
 	// fields are queued here and applied by handleBlockShortcuts next frame.
-	pendingView      ViewMode
-	pendingFSToggle  bool
-	viewFocusPending bool
+	pendingView              ViewMode
+	pendingFSToggle          bool
+	pendingShortcuts         bool
+	viewFocusPending         bool
+	viewFocusPreventScroll   bool
+	tabFocusClaimedThisFrame bool
 
 	CanvasHandle  ui.Handle
 	OutlineHandle ui.Handle
@@ -226,7 +250,7 @@ func (st *BlockState) SyncSource(src string, cfg Config) {
 		st.ImportUndoAfter = ""
 	}
 	st.invalidateLinkStatusCache()
-	if st.Root != nil && st.Root.FindByID(st.SelectedID) == nil {
+	if st.Root != nil && st.SelectedID != 0 && st.Root.FindByID(st.SelectedID) == nil {
 		st.SelectedID = st.Root.ID
 	}
 	if st.OutlineZoomID != 0 && (st.Root == nil || st.Root.FindByID(st.OutlineZoomID) == nil) {
@@ -244,11 +268,20 @@ func (st *BlockState) clearTransientNodeState() {
 	st.LinkBrokenNotice = false
 	st.EditingID = 0
 	st.EditFocusPending = false
+	st.EditInsertNewlinePending = false
 	st.EditSelectAll = false
 	st.EditCompose = ""
 	st.editLastLayoutText = ""
 	st.ComposeText = ""
+	st.OutlineInsertNewlineID = 0
+	st.SourceComposing = false
 	st.Measure.ClearTextOverride()
+	st.clearMultiSelect()
+	st.Panning = false
+	st.SpaceHeld = false
+	st.SpaceUsedForPan = false
+	st.lastKeyMod = 0
+	st.resetBoxSelect()
 	st.resetDrag()
 	st.HoveredID = 0
 	st.HoveredHit = HitNone
@@ -259,12 +292,430 @@ func (st *BlockState) HasFocus(c *ui.Context) bool {
 	if st == nil || c == nil {
 		return false
 	}
-	return st.CanvasHandle.Focused(c) ||
-		st.EditHandle.Focused(c) ||
-		st.LinkHandle.Focused(c) ||
-		st.FindHandle.Focused(c) ||
-		st.OutlineHandle.FocusWithin(c) ||
-		st.SourceHandle.Focused(c)
+	if st.LinkNodeID != 0 || st.LinkFocusPending || st.LinkHandle.Focused(c) || st.LinkPanelHandle.FocusWithin(c) {
+		return true
+	}
+	if st.viewFocusPending {
+		return true
+	}
+	switch st.View {
+	case ViewOutline:
+		return st.OutlineFocusPending || st.OutlineHandle.FocusWithin(c)
+	case ViewSource:
+		return st.SourceHandle.Focused(c)
+	default:
+		return st.EditingID != 0 ||
+			st.EditFocusPending ||
+			st.FindFocusPending ||
+			st.ComposeText != "" ||
+			st.CanvasHandle.Focused(c) ||
+			st.EditHandle.Focused(c) ||
+			st.FindHandle.Focused(c) ||
+			(st.FindOpen && st.FindBarHandle.FocusWithin(c))
+	}
+}
+
+// HasEscapeOwner reports whether this MindMap currently has an active cancelable edit,
+// IME preedit, popover, find bar, drag/box-select gesture, multi-selection, outline zoom,
+// or fullscreen overlay that must receive Escape before outer window/drawer shortcuts intercept it.
+func (st *BlockState) HasEscapeOwner(c *ui.Context) bool {
+	if st == nil {
+		return false
+	}
+	if st.Fullscreen ||
+		st.ShortcutsOpen ||
+		st.ExportMenuOpen ||
+		st.ImportResult != nil ||
+		st.LinkNodeID != 0 ||
+		st.LinkFocusPending ||
+		(c != nil && (st.LinkHandle.Focused(c) || st.LinkPanelHandle.FocusWithin(c))) {
+		return true
+	}
+	switch st.View {
+	case ViewMap:
+		if st.EditingID != 0 ||
+			st.EditFocusPending ||
+			st.FindFocusPending ||
+			st.BoxSelecting ||
+			st.Panning ||
+			st.DragActive ||
+			st.DragNodeID != 0 ||
+			st.ComposeText != "" ||
+			(c != nil && (st.EditHandle.Focused(c) || st.FindHandle.Focused(c))) {
+			return true
+		}
+		if st.FindOpen {
+			if c != nil {
+				if st.HasFocus(c) || st.FindBarHandle.FocusWithin(c) {
+					return true
+				}
+			} else if st.lastHasFocus || st.LastCanvasFocused {
+				return true
+			}
+		}
+		if st.hasMultiSelect() {
+			if c != nil {
+				return st.CanvasHandle.Focused(c)
+			}
+			return st.LastCanvasFocused
+		}
+		return false
+	case ViewOutline:
+		if st.OutlineComposing {
+			return c == nil || st.OutlineHandle.FocusWithin(c)
+		}
+		if st.OutlineZoomID != 0 {
+			if c != nil {
+				return st.OutlineHandle.FocusWithin(c) || st.OutlineFocusPending
+			}
+			return st.lastHasFocus
+		}
+		return false
+	case ViewSource:
+		return st.SourceComposing && (c == nil || st.SourceHandle.Focused(c))
+	default:
+		return false
+	}
+}
+
+// HasZoomOwner reports whether host zoom shortcuts (Cmd/Ctrl+0/=/−) should target this Map.
+func (st *BlockState) HasZoomOwner(c *ui.Context) bool {
+	if st == nil || st.View != ViewMap {
+		return false
+	}
+	if st.Fullscreen {
+		return true
+	}
+	if c != nil {
+		return st.HasFocus(c)
+	}
+	return st.LastCanvasFocused || st.lastHasFocus
+}
+
+// HasFindOwner reports whether host Cmd/Ctrl+F should open this MindMap's Find bar.
+func (st *BlockState) HasFindOwner(c *ui.Context) bool {
+	if st == nil {
+		return false
+	}
+	if st.Fullscreen {
+		return true
+	}
+	if c != nil {
+		return st.HasFocus(c)
+	}
+	return st.LastCanvasFocused || st.lastHasFocus
+}
+
+// HasFindActive reports whether this MindMap has its in-canvas Find bar open and
+// currently owns keyboard focus (or fullscreen), so host Cmd+G / F3 should yield to it.
+func (st *BlockState) HasFindActive(c *ui.Context) bool {
+	if st == nil || st.View != ViewMap || !st.FindOpen {
+		return false
+	}
+	if st.Fullscreen {
+		return true
+	}
+	if c != nil {
+		return st.HasFocus(c) || st.FindBarHandle.FocusWithin(c)
+	}
+	return st.LastCanvasFocused || st.lastHasFocus
+}
+
+// HasCanvasFocus reports whether the Map canvas itself (not a text field) owns focus.
+func (st *BlockState) HasCanvasFocus(c *ui.Context) bool {
+	return st != nil && c != nil && st.View == ViewMap && st.CanvasHandle.Focused(c) &&
+		st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c)
+}
+
+// HasTabFocus reports whether any focused MindMap control should handle Tab / Shift+Tab
+// (or use framework focus traversal inside Find / Link / Source) instead of the outer
+// editor swallowing Tab.
+func (st *BlockState) HasTabFocus(c *ui.Context) bool {
+	if st == nil || c == nil {
+		return false
+	}
+	return st.tabFocusClaimedThisFrame || st.HasFocus(c)
+}
+
+// CapturesShortcut reports whether this MindMap currently owns keyboard focus and
+// handles the given shortcut chord in its active view/state, preventing host plugin
+// commands from hijacking active MindMap shortcuts.
+func (st *BlockState) CapturesShortcut(c *ui.Context, mods ui.Modifiers, key ui.Key) bool {
+	if st == nil || c == nil || (!st.Fullscreen && !st.HasFocus(c)) {
+		return false
+	}
+	// Block-scoped chords active across all MindMap views.
+	if isMMPrimaryMod(mods) {
+		if _, ok := viewForDigitKey(key); ok {
+			return true
+		}
+	}
+	if isMMPrimaryShiftMod(mods) && (key == ui.KeyEnter || key == ui.KeySlash) {
+		return true
+	}
+	if theme.IsMacOS() && mods == 0 && key == ui.KeyF1 {
+		return true
+	}
+
+	switch st.View {
+	case ViewOutline:
+		if !st.OutlineHandle.FocusWithin(c) {
+			return false
+		}
+		if isMMPrimaryMod(mods) {
+			switch key {
+			case ui.KeyZ, ui.KeyY, ui.KeyPeriod, ui.KeySlash, ui.KeyD, ui.KeyL, ui.KeyEnter:
+				return true
+			}
+		}
+		if isMMPrimaryShiftMod(mods) && (key == ui.KeyZ || key == ui.KeyPeriod) {
+			return true
+		}
+		if isMMPrimaryAltMod(mods) && (key == ui.KeySlash || key == ui.KeyT) {
+			return true
+		}
+		if mods == ui.Alt && (key == ui.KeyUp || key == ui.KeyDown || key == ui.KeyEnter) {
+			return true
+		}
+		return false
+	case ViewSource:
+		return false
+	default: // ViewMap
+		if st.LinkNodeID != 0 {
+			return mods == 0 && (key == ui.KeyEnter || key == ui.KeyEscape || key == ui.KeyUp || key == ui.KeyDown)
+		}
+		if st.EditingID != 0 {
+			if key == ui.KeyEnter && (mods == 0 || mods == ui.Shift || mods == ui.Alt || isMMPrimaryMod(mods)) {
+				return true
+			}
+			if key == ui.KeyTab && (mods == 0 || mods == ui.Shift) {
+				return true
+			}
+			return mods == 0 && key == ui.KeyEscape
+		}
+		if st.FindOpen && st.FindHandle.Focused(c) {
+			if theme.IsMacOS() && (isMMPrimaryMod(mods) || isMMPrimaryShiftMod(mods)) && key == ui.KeyG {
+				return true
+			}
+			if !theme.IsMacOS() && (mods == 0 || mods == ui.Shift) && key == ui.KeyF3 {
+				return true
+			}
+			return false
+		}
+		if !st.CanvasHandle.Focused(c) {
+			return false
+		}
+		if isMMPrimaryMod(mods) {
+			switch key {
+			case ui.KeyZ, ui.KeyY, ui.KeyA, ui.KeyC, ui.KeyX, ui.KeyV, ui.KeyD, ui.KeyE, ui.KeyF, ui.KeyL, ui.KeyEnter, ui.KeySlash, ui.KeyPeriod, ui.Key0, ui.KeyEqual, ui.KeyMinus:
+				return true
+			case ui.KeyG:
+				return theme.IsMacOS() && st.FindOpen
+			}
+			return false
+		}
+		if isMMPrimaryShiftMod(mods) {
+			switch key {
+			case ui.KeyZ, ui.KeyA, ui.Key0, ui.KeyEqual, ui.KeyMinus, ui.KeyL, ui.KeyPeriod:
+				return true
+			case ui.KeyG:
+				return theme.IsMacOS() && st.FindOpen
+			}
+			return false
+		}
+		if isMMPrimaryAltMod(mods) {
+			switch key {
+			case ui.KeyA, ui.Key0, ui.KeyT, ui.KeySlash:
+				return true
+			}
+			return false
+		}
+		if mods == ui.Alt {
+			switch key {
+			case ui.KeyUp, ui.KeyDown, ui.KeyLeft, ui.KeyRight, ui.KeyBackspace, ui.KeyDelete, ui.KeyEnter:
+				return true
+			}
+			return false
+		}
+		if mods == ui.Shift {
+			switch key {
+			case ui.KeyEnter, ui.KeyTab, ui.KeyBackspace, ui.KeyDelete, ui.KeyUp, ui.KeyDown:
+				return true
+			case ui.KeyF3:
+				return !theme.IsMacOS() && st.FindOpen
+			}
+			return false
+		}
+		if mods == 0 {
+			switch key {
+			case ui.KeyTab, ui.KeyInsert, ui.KeyEnter, ui.KeyBackspace, ui.KeyDelete, ui.KeySpace, ui.KeyF2, ui.KeyHome, ui.KeyEnd, ui.KeyPageUp, ui.KeyPageDown, ui.KeyUp, ui.KeyDown, ui.KeyLeft, ui.KeyRight:
+				return true
+			case ui.KeyF3:
+				return !theme.IsMacOS() && st.FindOpen
+			}
+		}
+		return false
+	}
+}
+
+// DismissTransient closes the topmost transient edit, popup, find bar, selection,
+// or zoom inside this MindMap block and reports whether anything was dismissed.
+func (st *BlockState) DismissTransient(cb Callbacks) bool {
+	if st == nil {
+		return false
+	}
+	if st.ImportResult != nil {
+		st.ImportResult = nil
+		st.ImportUndoBefore = ""
+		st.ImportUndoAfter = ""
+		return true
+	}
+	if st.ShortcutsOpen {
+		st.ShortcutsOpen = false
+		return true
+	}
+	if st.LinkNodeID != 0 {
+		st.LinkNodeID = 0
+		st.LinkBrokenNotice = false
+		st.LinkFocusPending = false
+		st.LinkHandle.CancelFocus()
+		st.restoreCanvasFocusAfterEdit(cb)
+		return true
+	}
+	if st.ExportMenuOpen {
+		st.ExportMenuOpen = false
+		return true
+	}
+	if st.EditingID != 0 {
+		st.finishEdit(false, cb)
+		st.restoreCanvasFocusAfterEdit(cb)
+		return true
+	}
+	if st.ComposeText != "" {
+		st.ComposeText = ""
+		return true
+	}
+	if st.BoxSelecting {
+		st.resetBoxSelect()
+		return true
+	}
+	if st.Panning {
+		st.Panning = false
+		return true
+	}
+	if st.DragActive || st.DragNodeID != 0 {
+		st.resetDrag()
+		return true
+	}
+	if st.View == ViewMap && st.FindOpen {
+		st.CloseFind()
+		st.restoreCanvasFocusAfterEdit(cb)
+		return true
+	}
+	if st.View == ViewMap && st.hasMultiSelect() {
+		st.clearMultiSelect()
+		return true
+	}
+	if st.View == ViewOutline && st.OutlineZoomID != 0 {
+		if cur := st.outlineActiveRoot(); cur != nil && cur != st.Root && cur.Parent != nil && cur.Parent != st.Root {
+			st.OutlineZoomID = cur.Parent.ID
+		} else {
+			st.OutlineZoomID = 0
+		}
+		return true
+	}
+	return false
+}
+
+func mmShortcutLabel(mac, other string) string {
+	if theme.IsMacOS() {
+		return mac
+	}
+	return other
+}
+
+func isMMPrimaryMod(mods ui.Modifiers) bool {
+	if theme.IsMacOS() {
+		return mods == ui.Cmd
+	}
+	return mods == ui.Ctrl || mods == ui.Cmd
+}
+
+func isMMPrimaryShiftMod(mods ui.Modifiers) bool {
+	if theme.IsMacOS() {
+		return mods == ui.Cmd|ui.Shift
+	}
+	return mods == ui.Ctrl|ui.Shift || mods == ui.Cmd|ui.Shift
+}
+
+func isMMPrimaryAltMod(mods ui.Modifiers) bool {
+	if theme.IsMacOS() {
+		return mods == ui.Cmd|ui.Alt
+	}
+	return mods == ui.Ctrl|ui.Alt || mods == ui.Cmd|ui.Alt
+}
+
+// RequestFocus schedules focus restoration into the active MindMap view on next render.
+func (st *BlockState) RequestFocus(preventScroll bool) {
+	if st == nil {
+		return
+	}
+	st.viewFocusPending = true
+	if preventScroll {
+		st.viewFocusPreventScroll = true
+	}
+}
+
+func (st *BlockState) consumeViewFocus() (focus bool, preventScroll bool) {
+	if st == nil || !st.viewFocusPending {
+		return false, false
+	}
+	focus = true
+	preventScroll = st.viewFocusPreventScroll
+	st.viewFocusPending = false
+	st.viewFocusPreventScroll = false
+	return focus, preventScroll
+}
+
+func (st *BlockState) cancelViewFocus() {
+	if st == nil {
+		return
+	}
+	st.viewFocusPending = false
+	st.viewFocusPreventScroll = false
+	st.CanvasHandle.CancelFocus()
+}
+
+// focusCanvas hands keyboard focus back to the active view (Map canvas,
+// outline row, or source) on the next frame, always without scrolling the note.
+func (st *BlockState) focusCanvas(c *ui.Context, cb Callbacks) {
+	if st == nil {
+		return
+	}
+	st.RequestFocus(true)
+	if c != nil {
+		c.Invalidate()
+	}
+	if cb.OnRequestFocus != nil {
+		cb.OnRequestFocus()
+	}
+}
+
+func (st *BlockState) restoreCanvasFocusAfterEdit(cb Callbacks) {
+	if st == nil {
+		return
+	}
+	st.RequestFocus(true)
+	if cb.OnRequestFocus != nil {
+		cb.OnRequestFocus()
+	}
+}
+
+func (st *BlockState) keepCanvasButtonFocus(c *ui.Context, btn ui.Element) ui.Element {
+	if st != nil && c != nil && st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) {
+		btn.KeepFocus()
+	}
+	return btn
 }
 
 func maxNodeID(n *Node) int {
@@ -280,8 +731,10 @@ func maxNodeID(n *Node) int {
 	return m
 }
 
+// selectedNode returns the primary selection; nil when the selection is empty
+// (SelectedID == 0, e.g. after clicking blank canvas).
 func (st *BlockState) selectedNode() *Node {
-	if st.Root == nil {
+	if st.Root == nil || st.SelectedID == 0 {
 		return nil
 	}
 	if n := st.Root.FindByID(st.SelectedID); n != nil {
@@ -289,6 +742,414 @@ func (st *BlockState) selectedNode() *Node {
 	}
 	st.SelectedID = st.Root.ID
 	return st.Root
+}
+
+func (st *BlockState) hasMultiSelect() bool {
+	return len(st.SelectedIDs) > 1
+}
+
+func (st *BlockState) clearMultiSelect() {
+	st.SelectedIDs = nil
+}
+
+func (st *BlockState) setSingleSelection(id int) {
+	st.SelectedID = id
+	st.SelectedIDs = nil
+}
+
+func (st *BlockState) resetBoxSelect() {
+	st.BoxSelecting = false
+	st.BoxAdditive = false
+}
+
+func (st *BlockState) boxSelectActive() bool {
+	if !st.BoxSelecting {
+		return false
+	}
+	return math.Hypot(float64(st.BoxCurrX-st.BoxStartX), float64(st.BoxCurrY-st.BoxStartY)) >= 4
+}
+
+// boxSelectRect is the marquee clipped to the visible canvas, shared by paint
+// and hit-testing so off-screen nodes are never selected.
+func (st *BlockState) boxSelectRect() ui.Rect {
+	x0 := max(min(st.BoxStartX, st.BoxCurrX), 0)
+	y0 := max(min(st.BoxStartY, st.BoxCurrY), 0)
+	x1 := max(st.BoxStartX, st.BoxCurrX)
+	y1 := max(st.BoxStartY, st.BoxCurrY)
+	if st.LastCanvasW > 0 {
+		x1 = min(x1, st.LastCanvasW)
+	}
+	if st.LastCanvasH > 0 {
+		y1 = min(y1, st.LastCanvasH)
+	}
+	if x1 < x0 || y1 < y0 {
+		return ui.Rect{X: x0, Y: y0}
+	}
+	return ui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+}
+
+func (st *BlockState) firstVisibleSelectedID(set map[int]bool) int {
+	if st.Root == nil || len(set) == 0 {
+		return 0
+	}
+	var found int
+	var walk func(n *Node)
+	walk = func(n *Node) {
+		if n == nil || found != 0 {
+			return
+		}
+		if set[n.ID] {
+			found = n.ID
+			return
+		}
+		if n.Folded {
+			return
+		}
+		for _, ch := range n.Children {
+			walk(ch)
+		}
+	}
+	walk(st.Root)
+	if found != 0 {
+		return found
+	}
+	for id := range set {
+		if st.Root.FindByID(id) != nil {
+			return id
+		}
+	}
+	return 0
+}
+
+func (st *BlockState) toggleMultiSelectNode(id int) {
+	if st.Root == nil || id == 0 || st.Root.FindByID(id) == nil {
+		return
+	}
+	if len(st.SelectedIDs) == 0 {
+		if st.SelectedID == 0 || st.Root.FindByID(st.SelectedID) == nil {
+			st.SelectedID = id
+			return
+		}
+		if st.SelectedID == id {
+			st.SelectedID = 0
+			return
+		}
+		st.SelectedIDs = map[int]bool{
+			st.SelectedID: true,
+			id:            true,
+		}
+		st.SelectedID = id
+		return
+	}
+	if st.SelectedIDs[id] {
+		if len(st.SelectedIDs) <= 1 {
+			st.setSingleSelection(id)
+			return
+		}
+		delete(st.SelectedIDs, id)
+		if len(st.SelectedIDs) == 1 {
+			for rem := range st.SelectedIDs {
+				st.SelectedID = rem
+			}
+			st.SelectedIDs = nil
+			return
+		}
+		if st.SelectedID == id {
+			if next := st.firstVisibleSelectedID(st.SelectedIDs); next != 0 {
+				st.SelectedID = next
+			}
+		}
+		return
+	}
+	if st.SelectedID != 0 && st.Root.FindByID(st.SelectedID) != nil {
+		st.SelectedIDs[st.SelectedID] = true
+	}
+	st.SelectedIDs[id] = true
+	st.SelectedID = id
+}
+
+func (st *BlockState) applyBoxSelection(additive bool) {
+	if st.Root == nil || st.Camera.Scale <= 0 {
+		return
+	}
+	sr := st.boxSelectRect()
+	wx0, wy0 := st.Camera.ScreenToWorld(sr.X, sr.Y)
+	wx1, wy1 := st.Camera.ScreenToWorld(sr.X+sr.W, sr.Y+sr.H)
+
+	var hits []*Node
+	var walk func(n *Node)
+	walk = func(n *Node) {
+		if n == nil {
+			return
+		}
+		if n.X+n.W >= wx0 && n.X <= wx1 && n.Y+n.H/2 >= wy0 && n.Y-n.H/2 <= wy1 {
+			hits = append(hits, n)
+		}
+		if n.Folded {
+			return
+		}
+		for _, ch := range n.Children {
+			walk(ch)
+		}
+	}
+	walk(st.Root)
+
+	if !additive {
+		switch len(hits) {
+		case 0:
+			st.clearMultiSelect()
+		case 1:
+			st.setSingleSelection(hits[0].ID)
+		default:
+			set := make(map[int]bool, len(hits))
+			for _, n := range hits {
+				set[n.ID] = true
+			}
+			st.SelectedIDs = set
+			if !set[st.SelectedID] {
+				st.SelectedID = hits[0].ID
+			}
+		}
+		return
+	}
+
+	if len(hits) == 0 {
+		return
+	}
+	set := make(map[int]bool, len(st.SelectedIDs)+len(hits)+1)
+	for id := range st.SelectedIDs {
+		if st.Root.FindByID(id) != nil {
+			set[id] = true
+		}
+	}
+	if len(set) == 0 && st.SelectedID != 0 && st.Root.FindByID(st.SelectedID) != nil {
+		set[st.SelectedID] = true
+	}
+	for _, n := range hits {
+		set[n.ID] = true
+	}
+	if len(set) == 1 {
+		for id := range set {
+			st.setSingleSelection(id)
+		}
+		return
+	}
+	st.SelectedIDs = set
+	if st.SelectedID == 0 || !set[st.SelectedID] {
+		st.SelectedID = hits[0].ID
+	}
+}
+
+func (st *BlockState) pruneHiddenMultiSelect() {
+	if st.Root == nil || len(st.SelectedIDs) == 0 {
+		return
+	}
+	for id := range st.SelectedIDs {
+		n := st.Root.FindByID(id)
+		if n == nil || !isNodeVisibleInTree(n) {
+			delete(st.SelectedIDs, id)
+		}
+	}
+	switch len(st.SelectedIDs) {
+	case 0:
+		st.SelectedIDs = nil
+	case 1:
+		for id := range st.SelectedIDs {
+			st.SelectedID = id
+		}
+		st.SelectedIDs = nil
+	default:
+		if !st.SelectedIDs[st.SelectedID] {
+			if next := st.firstVisibleSelectedID(st.SelectedIDs); next != 0 {
+				st.SelectedID = next
+			}
+		}
+	}
+}
+
+func (st *BlockState) multiSelectDeletableCount() int {
+	if st.Root == nil || len(st.SelectedIDs) == 0 {
+		return 0
+	}
+	count := 0
+	for id := range st.SelectedIDs {
+		if n := st.Root.FindByID(id); n != nil && n.Parent != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func (st *BlockState) topLevelSelectedNodes() []*Node {
+	if st.Root == nil {
+		return nil
+	}
+	if !st.hasMultiSelect() {
+		if n := st.selectedNode(); n != nil {
+			return []*Node{n}
+		}
+		return nil
+	}
+	var out []*Node
+	var walk func(cur *Node)
+	walk = func(cur *Node) {
+		if cur == nil {
+			return
+		}
+		if st.SelectedIDs[cur.ID] && isNodeVisibleInTree(cur) {
+			out = append(out, cur)
+			return
+		}
+		if cur.Folded {
+			return
+		}
+		for _, ch := range cur.Children {
+			walk(ch)
+		}
+	}
+	walk(st.Root)
+	if len(out) == 0 {
+		if n := st.selectedNode(); n != nil {
+			return []*Node{n}
+		}
+	}
+	return out
+}
+
+// topLevelSelectedNodesExcludingRoot returns top-level visible selected nodes
+// excluding the root, so multi-select cut and duplicate act consistently even
+// when both root and branches (e.g. after Select All) are selected.
+func (st *BlockState) topLevelSelectedNodesExcludingRoot() []*Node {
+	if st.Root == nil {
+		return nil
+	}
+	if !st.hasMultiSelect() {
+		if n := st.selectedNode(); n != nil && n.Parent != nil {
+			return []*Node{n}
+		}
+		return nil
+	}
+	var out []*Node
+	var walk func(cur *Node)
+	walk = func(cur *Node) {
+		if cur == nil {
+			return
+		}
+		if cur.Parent != nil && st.SelectedIDs[cur.ID] && isNodeVisibleInTree(cur) {
+			out = append(out, cur)
+			return
+		}
+		if cur.Folded {
+			return
+		}
+		for _, ch := range cur.Children {
+			walk(ch)
+		}
+	}
+	for _, ch := range st.Root.Children {
+		walk(ch)
+	}
+	return out
+}
+
+func (st *BlockState) opSelectAll() {
+	if st.Root == nil {
+		return
+	}
+	set := make(map[int]bool)
+	var walk func(cur *Node)
+	walk = func(cur *Node) {
+		if cur == nil {
+			return
+		}
+		set[cur.ID] = true
+		if cur.Folded {
+			return
+		}
+		for _, ch := range cur.Children {
+			walk(ch)
+		}
+	}
+	walk(st.Root)
+	if len(set) <= 1 {
+		st.setSingleSelection(st.Root.ID)
+		return
+	}
+	st.SelectedIDs = set
+	if st.SelectedID == 0 || !set[st.SelectedID] {
+		st.SelectedID = st.Root.ID
+	}
+}
+
+func (st *BlockState) opSelectSiblings() {
+	n := st.selectedNode()
+	if n == nil {
+		return
+	}
+	if n.Parent == nil {
+		st.setSingleSelection(n.ID)
+		return
+	}
+	kids := n.Parent.Children
+	if len(kids) <= 1 {
+		st.setSingleSelection(n.ID)
+		return
+	}
+	set := make(map[int]bool, len(kids))
+	for _, ch := range kids {
+		set[ch.ID] = true
+	}
+	st.SelectedIDs = set
+	st.SelectedID = n.ID
+}
+
+func (st *BlockState) opSelectSubtree() {
+	n := st.selectedNode()
+	if n == nil {
+		return
+	}
+	set := make(map[int]bool)
+	var walk func(cur *Node)
+	walk = func(cur *Node) {
+		if cur == nil {
+			return
+		}
+		set[cur.ID] = true
+		if cur.Folded {
+			return
+		}
+		for _, ch := range cur.Children {
+			walk(ch)
+		}
+	}
+	walk(n)
+	if len(set) <= 1 {
+		st.setSingleSelection(n.ID)
+		return
+	}
+	st.SelectedIDs = set
+	st.SelectedID = n.ID
+}
+
+func (st *BlockState) opExtendSiblingSelection(delta int) {
+	n := st.selectedNode()
+	if n == nil || n.Parent == nil {
+		return
+	}
+	idx := n.IndexInParent()
+	targetIdx := idx + delta
+	if targetIdx < 0 || targetIdx >= len(n.Parent.Children) {
+		return
+	}
+	target := n.Parent.Children[targetIdx]
+	if len(st.SelectedIDs) == 0 {
+		st.SelectedIDs = map[int]bool{n.ID: true, target.ID: true}
+	} else {
+		st.SelectedIDs[n.ID] = true
+		st.SelectedIDs[target.ID] = true
+	}
+	st.SelectedID = target.ID
+	st.EnsureVisiblePending = true
 }
 
 func (st *BlockState) pushUndo() {
@@ -350,7 +1211,7 @@ func (st *BlockState) opAddChild(cb Callbacks) {
 		Parent: n,
 	}
 	n.Children = append(n.Children, child)
-	st.SelectedID = child.ID
+	st.setSingleSelection(child.ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 	st.beginEdit(child, true)
@@ -380,7 +1241,7 @@ func (st *BlockState) opAddSibling(cb Callbacks) {
 	copy(kids[idx+2:], kids[idx+1:])
 	kids[idx+1] = sib
 	n.Parent.Children = kids
-	st.SelectedID = sib.ID
+	st.setSingleSelection(sib.ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 	st.beginEdit(sib, true)
@@ -404,7 +1265,7 @@ func (st *BlockState) opAddSiblingBefore(cb Callbacks) {
 			Parent: n,
 		}
 		n.Children = append([]*Node{child}, n.Children...)
-		st.SelectedID = child.ID
+		st.setSingleSelection(child.ID)
 		st.EnsureVisiblePending = true
 		st.commitChange(cb)
 		st.beginEdit(child, true)
@@ -422,7 +1283,7 @@ func (st *BlockState) opAddSiblingBefore(cb Callbacks) {
 	copy(kids[idx+1:], kids[idx:])
 	kids[idx] = sib
 	n.Parent.Children = kids
-	st.SelectedID = sib.ID
+	st.setSingleSelection(sib.ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 	st.beginEdit(sib, true)
@@ -447,7 +1308,7 @@ func (st *BlockState) opInsertParent(cb Callbacks) {
 	}
 	oldParent.Children[idx] = wrapper
 	n.Parent = wrapper
-	st.SelectedID = wrapper.ID
+	st.setSingleSelection(wrapper.ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 	st.beginEdit(wrapper, true)
@@ -473,7 +1334,7 @@ func (st *BlockState) opPromote(cb Callbacks) {
 	kids[pIdx+1] = n
 	grand.Children = kids
 	n.Parent = grand
-	st.SelectedID = n.ID
+	st.setSingleSelection(n.ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 }
@@ -497,7 +1358,7 @@ func (st *BlockState) opDemote(cb Callbacks) {
 	newParent.Folded = false
 	n.Parent = newParent
 	newParent.Children = append(newParent.Children, n)
-	st.SelectedID = n.ID
+	st.setSingleSelection(n.ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 }
@@ -506,21 +1367,114 @@ func (st *BlockState) opDelete(cb Callbacks) {
 	if cb.ReadOnly || st.Root == nil {
 		return
 	}
-	n := st.selectedNode()
-	if n == nil || n.Parent == nil {
+	if st.hasMultiSelect() {
+		st.opDeleteMulti(cb)
+		return
+	}
+	st.opDeleteBranch(st.selectedNode(), cb)
+}
+
+func (st *BlockState) opDeleteBranch(n *Node, cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil || n == nil || n.Parent == nil {
 		return
 	}
 	st.pushUndo()
 	parent := n.Parent
 	idx := n.IndexInParent()
 	parent.Children = append(parent.Children[:idx], parent.Children[idx+1:]...)
+	nextID := parent.ID
 	if idx < len(parent.Children) {
-		st.SelectedID = parent.Children[idx].ID
+		nextID = parent.Children[idx].ID
 	} else if idx-1 >= 0 {
-		st.SelectedID = parent.Children[idx-1].ID
-	} else {
-		st.SelectedID = parent.ID
+		nextID = parent.Children[idx-1].ID
 	}
+	st.setSingleSelection(nextID)
+	st.EnsureVisiblePending = true
+	st.commitChange(cb)
+}
+
+func (st *BlockState) opDeleteMulti(cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil || len(st.SelectedIDs) == 0 {
+		return
+	}
+	targets := st.topLevelSelectedNodesExcludingRoot()
+	if len(targets) == 0 {
+		st.clearMultiSelect()
+		return
+	}
+	st.deleteTargetNodes(targets, cb)
+}
+
+func (st *BlockState) deleteTargetNodes(targets []*Node, cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil || len(targets) == 0 {
+		return
+	}
+	delSet := make(map[int]bool, len(targets))
+	for _, n := range targets {
+		if n != nil && n.Parent != nil {
+			delSet[n.ID] = true
+		}
+	}
+	if len(delSet) == 0 {
+		st.clearMultiSelect()
+		return
+	}
+	st.pushUndo()
+
+	nextSelID := st.Root.ID
+	if cur := st.Root.FindByID(st.SelectedID); cur != nil {
+		if !delSet[cur.ID] {
+			nextSelID = cur.ID
+		} else {
+			// Highest deleted ancestor along the full chain: everything above it survives.
+			topDel := cur
+			for a := cur.Parent; a != nil; a = a.Parent {
+				if delSet[a.ID] {
+					topDel = a
+				}
+			}
+			if survParent := topDel.Parent; survParent != nil {
+				nextSelID = survParent.ID
+				idx := topDel.IndexInParent()
+				found := false
+				for i := idx + 1; i < len(survParent.Children); i++ {
+					if !delSet[survParent.Children[i].ID] {
+						nextSelID = survParent.Children[i].ID
+						found = true
+						break
+					}
+				}
+				if !found {
+					for i := idx - 1; i >= 0; i-- {
+						if !delSet[survParent.Children[i].ID] {
+							nextSelID = survParent.Children[i].ID
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	var prune func(p *Node)
+	prune = func(p *Node) {
+		if p == nil || len(p.Children) == 0 {
+			return
+		}
+		kept := p.Children[:0]
+		for _, ch := range p.Children {
+			if delSet[ch.ID] {
+				continue
+			}
+			kept = append(kept, ch)
+			prune(ch)
+		}
+		clear(p.Children[len(kept):])
+		p.Children = kept
+	}
+	prune(st.Root)
+
+	st.setSingleSelection(nextSelID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 }
@@ -535,7 +1489,7 @@ func (st *BlockState) opDeleteSingle(cb Callbacks) {
 		return
 	}
 	if len(n.Children) == 0 {
-		st.opDelete(cb)
+		st.opDeleteBranch(n, cb)
 		return
 	}
 	st.pushUndo()
@@ -551,13 +1505,46 @@ func (st *BlockState) opDeleteSingle(cb Callbacks) {
 	nextKids = append(nextKids, promoted...)
 	nextKids = append(nextKids, parent.Children[idx+1:]...)
 	parent.Children = nextKids
-	st.SelectedID = promoted[0].ID
+	st.setSingleSelection(promoted[0].ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 }
 
 func (st *BlockState) opDuplicate(cb Callbacks) {
 	if cb.ReadOnly || st.Root == nil {
+		return
+	}
+	if st.hasMultiSelect() {
+		targets := st.topLevelSelectedNodesExcludingRoot()
+		if len(targets) == 0 {
+			return
+		}
+		st.pushUndo()
+		set := make(map[int]bool, len(targets))
+		var firstID int
+		for _, n := range targets {
+			cp := n.Clone()
+			st.NextID = cp.AssignIDs(st.NextID)
+			cp.Parent = n.Parent
+			idx := n.IndexInParent()
+			kids := n.Parent.Children
+			kids = append(kids, nil)
+			copy(kids[idx+2:], kids[idx+1:])
+			kids[idx+1] = cp
+			n.Parent.Children = kids
+			set[cp.ID] = true
+			if firstID == 0 {
+				firstID = cp.ID
+			}
+		}
+		if len(set) == 1 {
+			st.setSingleSelection(firstID)
+		} else {
+			st.SelectedIDs = set
+			st.SelectedID = firstID
+		}
+		st.EnsureVisiblePending = true
+		st.commitChange(cb)
 		return
 	}
 	n := st.selectedNode()
@@ -574,7 +1561,7 @@ func (st *BlockState) opDuplicate(cb Callbacks) {
 	copy(kids[idx+2:], kids[idx+1:])
 	kids[idx+1] = cp
 	n.Parent.Children = kids
-	st.SelectedID = cp.ID
+	st.setSingleSelection(cp.ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 }
@@ -630,14 +1617,39 @@ func (st *BlockState) opReparent(dragged, target *Node, pos DragDropPos, cb Call
 		newParent.Children = kids
 		dragged.Parent = newParent
 	}
-	st.SelectedID = dragged.ID
+	st.setSingleSelection(dragged.ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
+}
+
+func serializeNodesForClipboard(nodes []*Node) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	if len(nodes) == 1 {
+		return SerializeSubtreeMarkdown(nodes[0])
+	}
+	parts := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if s := SerializeSubtreeListItemMarkdown(n); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (st *BlockState) opCopy(c *ui.Context) bool {
 	if c == nil || st.Root == nil {
 		return false
+	}
+	if st.hasMultiSelect() {
+		nodes := st.topLevelSelectedNodes()
+		text := serializeNodesForClipboard(nodes)
+		if text == "" {
+			return false
+		}
+		c.Services().WriteClipboard(text)
+		return true
 	}
 	n := st.selectedNode()
 	if n == nil {
@@ -655,6 +1667,23 @@ func (st *BlockState) opCut(c *ui.Context, cb Callbacks) bool {
 	if cb.ReadOnly || c == nil || st.Root == nil {
 		return false
 	}
+	if st.hasMultiSelect() {
+		targets := st.topLevelSelectedNodesExcludingRoot()
+		if len(targets) == 0 {
+			return false
+		}
+		text := serializeNodesForClipboard(targets)
+		if text == "" {
+			// Single empty-text leaf: encode as a list item so cut still copies what it removes.
+			text = SerializeSubtreeListItemMarkdown(targets[0])
+		}
+		if text == "" {
+			return false
+		}
+		c.Services().WriteClipboard(text)
+		st.deleteTargetNodes(targets, cb)
+		return true
+	}
 	n := st.selectedNode()
 	if n == nil {
 		return false
@@ -663,7 +1692,7 @@ func (st *BlockState) opCut(c *ui.Context, cb Callbacks) bool {
 		return false
 	}
 	if n.Parent != nil {
-		st.opDelete(cb)
+		st.opDeleteBranch(n, cb)
 	}
 	return true
 }
@@ -688,7 +1717,7 @@ func (st *BlockState) opPaste(c *ui.Context, cb Callbacks) bool {
 		ch.Parent = n
 		n.Children = append(n.Children, ch)
 	}
-	st.SelectedID = nodes[0].ID
+	st.setSingleSelection(nodes[0].ID)
 	st.EnsureVisiblePending = true
 	st.commitChange(cb)
 	return true
@@ -732,6 +1761,7 @@ func (st *BlockState) opCollapseAll() {
 		}
 		st.SelectedID = cur.ID
 	}
+	st.pruneHiddenMultiSelect()
 }
 
 func (st *BlockState) hasAnyFolded() bool {
@@ -765,11 +1795,36 @@ func (st *BlockState) opToggleExpandCollapseAll() {
 }
 
 func (st *BlockState) opToggleFold() {
+	if st.hasMultiSelect() {
+		var foldable []*Node
+		anyExpanded := false
+		for _, n := range st.topLevelSelectedNodes() {
+			if len(n.Children) > 0 {
+				foldable = append(foldable, n)
+				if !n.Folded {
+					anyExpanded = true
+				}
+			}
+		}
+		if len(foldable) == 0 {
+			return
+		}
+		for _, n := range foldable {
+			n.Folded = anyExpanded
+		}
+		if anyExpanded {
+			st.pruneHiddenMultiSelect()
+		}
+		return
+	}
 	n := st.selectedNode()
 	if n == nil || len(n.Children) == 0 {
 		return
 	}
 	n.Folded = !n.Folded
+	if n.Folded {
+		st.pruneHiddenMultiSelect()
+	}
 }
 
 func (st *BlockState) opMoveSibling(delta int, cb Callbacks) {
@@ -812,7 +1867,7 @@ func (st *BlockState) opFlipTaskDone(n *Node, cb Callbacks) {
 	st.pushUndo()
 	next := !*n.Task
 	n.Task = &next
-	st.SelectedID = n.ID
+	st.setSingleSelection(n.ID)
 	st.commitChange(cb)
 }
 
@@ -884,6 +1939,7 @@ func (st *BlockState) opNavigate(dir string) {
 	if n == nil {
 		return
 	}
+	st.clearMultiSelect()
 	prevID := st.SelectedID
 	switch dir {
 	case "up":
@@ -918,6 +1974,17 @@ func (st *BlockState) opNavigate(dir string) {
 	case "home":
 		if st.Root != nil {
 			st.SelectedID = st.Root.ID
+		}
+	case "end":
+		if st.Root != nil {
+			cur := n
+			if cur == nil || !cur.IsOpen() {
+				cur = st.Root
+			}
+			for cur.IsOpen() {
+				cur = cur.Children[len(cur.Children)-1]
+			}
+			st.SelectedID = cur.ID
 		}
 	}
 	if st.SelectedID != prevID {
@@ -1003,6 +2070,12 @@ func (st *BlockState) beginEdit(n *Node, fresh bool) {
 	if n == nil {
 		return
 	}
+	st.cancelViewFocus()
+	st.clearMultiSelect()
+	st.SpaceHeld = false
+	st.SpaceUsedForPan = false
+	st.lastKeyMod = 0
+	st.resetBoxSelect()
 	st.EditingID = n.ID
 	st.EditSeq++
 	st.EditDraft = n.Text
@@ -1011,6 +2084,7 @@ func (st *BlockState) beginEdit(n *Node, fresh bool) {
 	st.EditFresh = fresh
 	st.EditSelectAll = true
 	st.EditFocusPending = true
+	st.EditInsertNewlinePending = false
 	st.EnsureVisiblePending = true
 	st.ComposeText = ""
 	st.LinkNodeID = 0
@@ -1020,6 +2094,12 @@ func (st *BlockState) beginEditWithText(n *Node, initial string) {
 	if n == nil {
 		return
 	}
+	st.cancelViewFocus()
+	st.clearMultiSelect()
+	st.SpaceHeld = false
+	st.SpaceUsedForPan = false
+	st.lastKeyMod = 0
+	st.resetBoxSelect()
 	st.EditingID = n.ID
 	st.EditSeq++
 	st.EditDraft = initial
@@ -1028,6 +2108,7 @@ func (st *BlockState) beginEditWithText(n *Node, initial string) {
 	st.EditFresh = false
 	st.EditSelectAll = false
 	st.EditFocusPending = true
+	st.EditInsertNewlinePending = false
 	st.EnsureVisiblePending = true
 	st.ComposeText = ""
 	st.LinkNodeID = 0
@@ -1042,8 +2123,11 @@ func (st *BlockState) finishEdit(commit bool, cb Callbacks) {
 	st.EditCompose = ""
 	st.editLastLayoutText = ""
 	st.EditFocusPending = false
+	st.EditInsertNewlinePending = false
+	st.EditHandle.CancelFocus()
 	st.EditSelectAll = false
 	st.ComposeText = ""
+	st.lastKeyMod = 0
 	st.Measure.ClearTextOverride()
 	if commit && n != nil {
 		trimmed := normalizeNodeText(st.EditDraft)
@@ -1139,7 +2223,7 @@ func (st *BlockState) openNodeLink(now time.Time, n *Node, cb Callbacks) {
 	status := st.checkLinkStatusFresh(now, target, cb)
 	if status == LinkStatusBroken {
 		if !cb.ReadOnly {
-			st.SelectedID = n.ID
+			st.setSingleSelection(n.ID)
 			st.beginLinkEditBroken(n)
 		} else if cb.OnNotify != nil {
 			cb.OnNotify(theme.Tr("目标笔记不存在或已移动", "Linked note is missing or moved"), "warning")
@@ -1158,6 +2242,11 @@ func (st *BlockState) beginLinkEdit(n *Node) {
 	if n == nil {
 		return
 	}
+	st.cancelViewFocus()
+	st.SpaceHeld = false
+	st.SpaceUsedForPan = false
+	st.lastKeyMod = 0
+	st.resetBoxSelect()
 	st.EditingID = 0
 	st.ExportMenuOpen = false
 	st.ShortcutsOpen = false
@@ -1178,13 +2267,16 @@ func (st *BlockState) beginLinkEditBroken(n *Node) {
 func (st *BlockState) applyLink(target string, cb Callbacks) {
 	if cb.ReadOnly || st.LinkNodeID == 0 || st.Root == nil {
 		st.LinkNodeID = 0
+		st.LinkFocusPending = false
 		st.LinkBrokenNotice = false
+		st.LinkHandle.CancelFocus()
 		return
 	}
 	n := st.Root.FindByID(st.LinkNodeID)
 	st.LinkNodeID = 0
 	st.LinkFocusPending = false
 	st.LinkBrokenNotice = false
+	st.LinkHandle.CancelFocus()
 	if n == nil {
 		return
 	}
@@ -1209,8 +2301,13 @@ func (st *BlockState) OpenFind() {
 	st.ExportMenuOpen = false
 	st.ShortcutsOpen = false
 	st.LinkNodeID = 0
+	st.SpaceHeld = false
+	st.SpaceUsedForPan = false
+	st.lastKeyMod = 0
+	st.resetBoxSelect()
 	st.FindOpen = true
 	st.FindFocusPending = true
+	st.cancelViewFocus()
 	if strings.TrimSpace(st.FindQuery) != "" {
 		st.recomputeFind(true)
 	}
@@ -1223,6 +2320,7 @@ func (st *BlockState) CloseFind() {
 	}
 	st.FindOpen = false
 	st.FindFocusPending = false
+	st.FindHandle.CancelFocus()
 	st.FindMatchIDs = nil
 	st.FindMatchSet = nil
 	st.FindCurrentIdx = 0
@@ -1252,7 +2350,7 @@ func (st *BlockState) recomputeFind(expandAndCenter bool) {
 	}
 	if expandAndCenter {
 		curID := ids[st.FindCurrentIdx]
-		st.SelectedID = curID
+		st.setSingleSelection(curID)
 		st.EnsureVisiblePending = true
 	}
 }
@@ -1266,7 +2364,7 @@ func (st *BlockState) stepFind(delta int) {
 	curID := st.FindMatchIDs[st.FindCurrentIdx]
 	if node := st.Root.FindByID(curID); node != nil {
 		ExpandAncestors(node)
-		st.SelectedID = node.ID
+		st.setSingleSelection(node.ID)
 		st.EnsureVisiblePending = true
 	}
 }
@@ -1301,10 +2399,30 @@ func (st *BlockState) SwitchView(mode ViewMode, focus bool, cb Callbacks) {
 		return
 	}
 	st.finishEdit(true, cb)
+	if mode != ViewMap && st.FindOpen {
+		st.CloseFind()
+	}
 	st.LinkNodeID = 0
+	st.LinkBrokenNotice = false
+	st.LinkFocusPending = false
+	st.LinkHandle.CancelFocus()
 	st.ExportMenuOpen = false
 	st.ShortcutsOpen = false
+	st.ImportResult = nil
+	st.ImportUndoBefore = ""
+	st.ImportUndoAfter = ""
 	st.OutlineUndoNodeID = 0
+	st.OutlineComposing = false
+	st.OutlineInsertNewlineID = 0
+	st.SourceComposing = false
+	st.ComposeText = ""
+	st.lastKeyMod = 0
+	st.SpaceHeld = false
+	st.SpaceUsedForPan = false
+	st.Panning = false
+	st.resetBoxSelect()
+	st.resetDrag()
+	st.clearMultiSelect()
 	if st.View != mode {
 		st.HintScroll.X = 0
 	}
@@ -1316,18 +2434,16 @@ func (st *BlockState) SwitchView(mode ViewMode, focus bool, cb Callbacks) {
 	if !focus {
 		return
 	}
-	st.viewFocusPending = true
+	st.RequestFocus(true)
 	if mode == ViewOutline {
-		target := st.outlineActiveRoot()
-		if st.Root != nil {
-			if n := st.Root.FindByID(st.SelectedID); n != nil {
-				target = n
+		if activeRoot := st.outlineActiveRoot(); activeRoot != nil {
+			targetID := outlineVisibleFocusTarget(activeRoot, 0, st.SelectedID)
+			if target := activeRoot.FindByID(targetID); target != nil {
+				st.focusOutlineNode(target.ID, utf8.RuneCountInString(target.Text))
 			}
 		}
-		if target != nil {
-			st.focusOutlineNode(target.ID, utf8.RuneCountInString(target.Text))
-		}
 		st.viewFocusPending = false
+		st.viewFocusPreventScroll = false
 	}
 	if cb.OnRequestFocus != nil {
 		cb.OnRequestFocus()
@@ -1337,14 +2453,18 @@ func (st *BlockState) SwitchView(mode ViewMode, focus bool, cb Callbacks) {
 // captureBlockTextKey queues block-scoped chords typed inside a text field so
 // the field never swallows them.
 func (st *BlockState) captureBlockTextKey(k ui.TextKey) bool {
-	if isOutlinePrimaryMod(k.Mods) {
+	if isMMPrimaryMod(k.Mods) {
 		if mode, ok := viewForDigitKey(k.Key); ok {
 			st.pendingView = mode
 			return true
 		}
 	}
-	if isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyEnter {
+	if isMMPrimaryShiftMod(k.Mods) && k.Key == ui.KeyEnter {
 		st.pendingFSToggle = true
+		return true
+	}
+	if (isMMPrimaryShiftMod(k.Mods) && k.Key == ui.KeySlash) || (theme.IsMacOS() && k.Mods == 0 && k.Key == ui.KeyF1) {
+		st.pendingShortcuts = true
 		return true
 	}
 	return false
@@ -1354,9 +2474,9 @@ func (st *BlockState) captureBlockTextKey(k ui.TextKey) bool {
 // the block owns focus or is fullscreen, so ⌘1-9 still switch editor tabs
 // everywhere else.
 func (st *BlockState) handleBlockShortcuts(c *ui.Context, fullscreen bool, cb Callbacks) {
-	view, fsToggle := st.pendingView, st.pendingFSToggle
-	st.pendingView, st.pendingFSToggle = "", false
-	if !fullscreen && !st.HasFocus(c) && view == "" && !fsToggle {
+	view, fsToggle, toggleShortcuts := st.pendingView, st.pendingFSToggle, st.pendingShortcuts
+	st.pendingView, st.pendingFSToggle, st.pendingShortcuts = "", false, false
+	if !fullscreen && !st.HasFocus(c) && view == "" && !fsToggle && !toggleShortcuts {
 		return
 	}
 	if view == "" {
@@ -1370,6 +2490,10 @@ func (st *BlockState) handleBlockShortcuts(c *ui.Context, fullscreen bool, cb Ca
 	if !fsToggle && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEnter) {
 		fsToggle = true
 	}
+	if !toggleShortcuts && !c.ShortcutRepeated() &&
+		(c.Shortcut(ui.Cmd|ui.Shift, ui.KeySlash) || (theme.IsMacOS() && c.Shortcut(0, ui.KeyF1))) {
+		toggleShortcuts = true
+	}
 	if view != "" {
 		st.SwitchView(view, true, cb)
 		c.Invalidate()
@@ -1379,6 +2503,15 @@ func (st *BlockState) handleBlockShortcuts(c *ui.Context, fullscreen bool, cb Ca
 			st.ExitFullscreen(cb)
 		} else {
 			st.EnterFullscreen(cb)
+		}
+		c.Invalidate()
+	}
+	if toggleShortcuts {
+		st.ShortcutsOpen = !st.ShortcutsOpen
+		if st.ShortcutsOpen {
+			st.ExportMenuOpen = false
+			st.LinkNodeID = 0
+			st.ImportResult = nil
 		}
 		c.Invalidate()
 	}
@@ -1514,7 +2647,7 @@ func (st *BlockState) triggerExport(format Format, cb Callbacks) {
 	}
 	base := sanitizeFileBase(st.Root.Text)
 	ext := string(format)
-	cb.OnSaveExportFile(base+"."+ext, ext, data, func(saveErr error) {
+	cb.OnSaveExportFile(base+"."+ext, ext, data, func(savedPath string, saveErr error) {
 		if cb.OnNotify == nil {
 			return
 		}
@@ -1522,7 +2655,16 @@ func (st *BlockState) triggerExport(format Format, cb Callbacks) {
 			cb.OnNotify(theme.Tr("导出失败：", "Export failed: ")+saveErr.Error(), "danger")
 			return
 		}
-		cb.OnNotify(theme.Tr("已导出 "+base+"."+ext, "Exported "+base+"."+ext), "success")
+		displayName := base + "." + ext
+		if savedBase := strings.TrimSpace(savedPath); savedBase != "" {
+			if idx := strings.LastIndexAny(savedBase, "/\\"); idx >= 0 {
+				savedBase = savedBase[idx+1:]
+			}
+			if savedBase != "" {
+				displayName = savedBase
+			}
+		}
+		cb.OnNotify(theme.Tr("已导出 "+displayName, "Exported "+displayName), "success")
 	})
 }
 
@@ -1733,6 +2875,10 @@ func (st *BlockState) prepareFullscreenTransition(cb Callbacks) {
 	st.ImportUndoBefore = ""
 	st.ImportUndoAfter = ""
 	st.Panning = false
+	st.SpaceHeld = false
+	st.SpaceUsedForPan = false
+	st.lastKeyMod = 0
+	st.resetBoxSelect()
 	st.resetDrag()
 }
 
@@ -1758,6 +2904,7 @@ func (st *BlockState) EnterFullscreen(cb Callbacks) {
 	st.fsInlineJustLanded = false
 	st.fsFocusRestorePending = false
 	st.fsFocusRestoreUntil = time.Time{}
+	st.RequestFocus(true)
 
 	if st.shouldAnimateFullscreen() {
 		fromP := float32(0)
@@ -1882,6 +3029,11 @@ func (st *BlockState) CancelFullscreen() {
 	st.ImportUndoBefore = ""
 	st.ImportUndoAfter = ""
 	st.Panning = false
+	st.SpaceHeld = false
+	st.SpaceUsedForPan = false
+	st.lastKeyMod = 0
+	st.resetBoxSelect()
+	st.clearMultiSelect()
 	st.resetDrag()
 	st.Measure.ClearTextOverride()
 	st.SetEditorBounds(ui.Rect{})
@@ -2011,13 +3163,15 @@ func lerpCameraViewport(from, to Camera, fromW, fromH, toW, toH, curW, curH, t f
 
 // RenderInline renders the interactive Ocean Paper MindMap block inside the note editor.
 func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg Config, focused bool, cb Callbacks) {
+	st.tabFocusClaimedThisFrame = false
 	st.inlineRenderedThisFrame = true
 	st.inlineRenderedLastFrame = true
 	st.SyncSource(source, cfg)
 	st.lastCfg = cfg
 	st.lastCfgSet = true
 	st.reduceMotion = c.Preferences().ReduceMotion
-	st.lastInlineFocused = focused || st.HasFocus(c) || st.EditingID != 0
+	st.lastHasFocus = st.HasFocus(c)
+	st.lastInlineFocused = focused || st.lastHasFocus || st.EditingID != 0
 	if !st.IsFullscreenOverlayActive() {
 		st.handleBlockShortcuts(c, false, cb)
 	}
@@ -2081,7 +3235,7 @@ func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg 
 		st.inlineBodyMountedThisFrame = true
 		st.renderBody(c, id, cfg.InlineHeightDIP(), false, cb)
 		if cfg.ShowHints && st.View != ViewSource {
-			st.renderHintBar(c, id)
+			st.renderHintBar(c, id, cb)
 		}
 	})
 }
@@ -2105,6 +3259,7 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 		c.Invalidate()
 		return
 	}
+	st.tabFocusClaimedThisFrame = false
 	st.SyncSource(source, cfg)
 	st.lastCfg = cfg
 	st.lastCfgSet = true
@@ -2166,36 +3321,12 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 		}
 	}
 
-	if st.Fullscreen && st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) && !st.OutlineHandle.FocusWithin(c) && c.Shortcut(0, ui.KeyEscape) {
-		if st.DragActive || st.DragNodeID != 0 {
-			st.resetDrag()
-		} else if st.FindOpen {
-			st.CloseFind()
-		} else if st.ShortcutsOpen {
-			st.ShortcutsOpen = false
-		} else if st.ImportResult != nil {
-			st.ImportResult = nil
-		} else if st.ExportMenuOpen {
-			st.ExportMenuOpen = false
-		} else if st.View == ViewOutline && st.OutlineZoomID != 0 {
-			if cur := st.outlineActiveRoot(); cur != nil && cur != st.Root && cur.Parent != nil && cur.Parent != st.Root {
-				st.OutlineZoomID = cur.Parent.ID
-			} else {
-				st.OutlineZoomID = 0
-			}
-			c.Invalidate()
-			return
-		} else {
-			st.ExitFullscreen(cb)
-			c.Invalidate()
-			return
-		}
-	}
+	st.lastHasFocus = st.HasFocus(c)
 	if st.Fullscreen && !st.fsAnimActive {
 		st.handleBlockShortcuts(c, true, cb)
 	}
 	if st.Fullscreen && st.View == ViewOutline && st.EditingID == 0 && st.LinkNodeID == 0 && !st.OutlineHandle.FocusWithin(c) {
-		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyPeriod) {
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyPeriod) || c.Shortcut(ui.Cmd|ui.Alt, ui.KeySlash) {
 			st.outlineToggleFoldAll()
 			c.Invalidate()
 		} else if !cb.ReadOnly {
@@ -2244,6 +3375,7 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 		}
 	}
 	bui.Probe(overlay, "mm-fullscreen-"+id)
+	hadModalPopup := st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil
 	overlay.Children(func() {
 		st.renderHeader(c, id+"-fs", true, cb)
 		if !st.IsFullscreenOverlayActive() && animatingOverlay == false {
@@ -2252,9 +3384,34 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 		}
 		st.renderBody(c, id+"-fs", 0, true, cb)
 		if cfg.ShowHints && st.View != ViewSource {
-			st.renderHintBar(c, id+"-fs")
+			st.renderHintBar(c, id+"-fs", cb)
 		}
 	})
+	if st.Fullscreen && !hadModalPopup && st.EditingID == 0 && st.LinkNodeID == 0 && st.ComposeText == "" &&
+		!st.FindHandle.Focused(c) && !st.OutlineHandle.FocusWithin(c) && overlay.OverlayShortcut(0, ui.KeyEscape) {
+		switch {
+		case st.BoxSelecting:
+			st.resetBoxSelect()
+		case st.Panning:
+			st.Panning = false
+		case st.DragActive || st.DragNodeID != 0:
+			st.resetDrag()
+		case st.FindOpen:
+			st.CloseFind()
+		case st.View == ViewMap && st.hasMultiSelect():
+			st.clearMultiSelect()
+		case st.View == ViewOutline && st.OutlineZoomID != 0:
+			if cur := st.outlineActiveRoot(); cur != nil && cur != st.Root && cur.Parent != nil && cur.Parent != st.Root {
+				st.OutlineZoomID = cur.Parent.ID
+			} else {
+				st.OutlineZoomID = 0
+			}
+			c.Invalidate()
+		default:
+			st.ExitFullscreen(cb)
+			c.Invalidate()
+		}
+	}
 }
 
 // --- Header Bar ---
@@ -2264,6 +3421,9 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 	hdr := ui.Row(c.Key("mm-hdr-" + id)).FillWidth().Height(theme.HeightLarge).Shrink(0).
 		PaddingX(theme.Space6).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space6).
 		Background(pal.Paper)
+	if st.View == ViewMap {
+		st.keepCanvasButtonFocus(c, hdr)
+	}
 	hdr.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		p.Line(r.X, r.Y+r.H-0.5, r.X+r.W, r.Y+r.H-0.5, 1, pal.Hairline)
 	})
@@ -2275,7 +3435,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 			// Holding ⌘ while the block owns focus reveals each tab's ⌘1/2/3 keycap,
 			// the same way browsers surface tab numbers.
 			scoped := fullscreen || st.HasFocus(c) || st.EditingID != 0
-			showDigits := scoped && c.Modifiers() == ui.Cmd
+			showDigits := scoped && isMMPrimaryMod(c.Modifiers())
 			seg.Children(func() {
 				tabs := []struct {
 					mode  ViewMode
@@ -2309,6 +3469,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					if !showDigits {
 						bui.TooltipShortcut(c, btn, tab.label, sc)
 					}
+					st.keepCanvasButtonFocus(c, btn)
 					btn.Children(func() {
 						icons.DrawAnimated(c, tab.icon, theme.IconInline, pal.DuoIconColors(fg), active || hov || prs)
 						ui.Text(c, tab.label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
@@ -2317,7 +3478,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 						}
 					})
 					if btn.Clicked() {
-						st.SwitchView(tab.mode, false, cb)
+						st.SwitchView(tab.mode, true, cb)
 					}
 				}
 			})
@@ -2348,6 +3509,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 						border = pal.Accent.Alpha(0.35)
 					}
 					pill.Background(bg).Border(1, border)
+					st.keepCanvasButtonFocus(c, pill)
 					bui.Tooltip(c, pill, pillTip)
 					pill.Children(func() {
 						icons.DrawAnimated(c, icons.Check, theme.IconMicro, pal.MonoIconColors(fg), pillHov || allDone)
@@ -2357,7 +3519,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					if pill.Clicked() {
 						if next := NextUndoneTask(st.Root, st.SelectedID); next != nil {
 							ExpandAncestors(next)
-							st.SelectedID = next.ID
+							st.setSingleSelection(next.ID)
 							st.EnsureVisiblePending = true
 							if st.View == ViewOutline {
 								st.focusOutlineNode(next.ID, 0)
@@ -2367,6 +3529,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 							}
 							c.Invalidate()
 						}
+						st.focusCanvas(c, cb)
 					}
 				}
 			}
@@ -2375,21 +3538,16 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 		// Right: Context-aware actions tailored to the active view.
 		actions := ui.Row(c.Key("mm-act-" + id)).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
 		actions.Children(func() {
-			k := func(mac, other string) string {
-				if theme.IsMacOS() {
-					return mac
-				}
-				return other
-			}
-
 			// Undo / Redo chrome buttons in Map and Outline views.
 			if st.View != ViewSource && !cb.ReadOnly {
-				st.renderHeaderHistoryBtn(c, "mm-undo-"+id, false, st.canUndo(cb), theme.Tr("撤销", "Undo"), k("⌘Z", "Ctrl+Z"), func() {
+				st.renderHeaderHistoryBtn(c, "mm-undo-"+id, false, st.canUndo(cb), theme.Tr("撤销", "Undo"), mmShortcutLabel("⌘Z", "Ctrl+Z"), func() {
 					st.opUndo(cb)
+					st.focusCanvas(c, cb)
 					c.Invalidate()
 				})
-				st.renderHeaderHistoryBtn(c, "mm-redo-"+id, true, st.canRedo(cb), theme.Tr("重做", "Redo"), k("⌘⇧Z", "Ctrl+Y"), func() {
+				st.renderHeaderHistoryBtn(c, "mm-redo-"+id, true, st.canRedo(cb), theme.Tr("重做", "Redo"), mmShortcutLabel("⌘⇧Z", "Ctrl+Y"), func() {
 					st.opRedo(cb)
+					st.focusCanvas(c, cb)
 					c.Invalidate()
 				})
 				ui.Box(c).Size(1, theme.Space12).Margin(0, theme.Space2).Background(pal.Hairline).Shrink(0)
@@ -2402,7 +3560,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					ID:       "mm-find-" + id,
 					Label:    findTip,
 					Tooltip:  findTip,
-					Shortcut: k("⌘F", "Ctrl+F"),
+					Shortcut: mmShortcutLabel("⌘F", "Ctrl+F"),
 					Size:     theme.HeightChrome,
 					IconSize: theme.IconAction,
 					Radius:   theme.RadiusSM,
@@ -2411,6 +3569,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				if findBtn.Clicked() {
 					if st.FindOpen {
 						st.CloseFind()
+						st.focusCanvas(c, cb)
 					} else {
 						st.OpenFind()
 					}
@@ -2422,30 +3581,33 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					layIcon = icons.Columns
 					layTip = theme.Tr("切换为向右布局", "Switch to right-side layout")
 				}
-				layBtn := bui.IconButton(c, layIcon, bui.IconButtonOptions{
+				layBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, layIcon, bui.IconButtonOptions{
 					ID:       "mm-layout-" + id,
 					Label:    layTip,
 					Tooltip:  layTip,
+					Shortcut: mmShortcutLabel("⌘⇧L", "Ctrl+Shift+L"),
 					Size:     theme.HeightChrome,
 					IconSize: theme.IconAction,
 					Radius:   theme.RadiusSM,
-				})
+				}))
 				if layBtn.Clicked() {
 					st.ToggleLayout()
+					st.focusCanvas(c, cb)
 				}
 
 				fitTip := theme.Tr("适配画布", "Fit to view")
-				fitBtn := bui.IconButton(c, icons.TbReset, bui.IconButtonOptions{
+				fitBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, icons.TbReset, bui.IconButtonOptions{
 					ID:       "mm-fit-" + id,
 					Label:    fitTip,
 					Tooltip:  fitTip,
-					Shortcut: k("⌘0", "Ctrl+0"),
+					Shortcut: mmShortcutLabel("⌘0", "Ctrl+0"),
 					Size:     theme.HeightChrome,
 					IconSize: theme.IconAction,
 					Radius:   theme.RadiusSM,
-				})
+				}))
 				if fitBtn.Clicked() {
 					st.AutoFitPending = true
+					st.focusCanvas(c, cb)
 				}
 
 			case ViewOutline:
@@ -2456,15 +3618,15 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					foldIcon = icons.FoldAll
 					foldTip = theme.Tr("全部折叠", "Collapse all")
 				}
-				foldBtn := bui.IconButton(c, foldIcon, bui.IconButtonOptions{
+				foldBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, foldIcon, bui.IconButtonOptions{
 					ID:       "mm-fold-all-" + id,
 					Label:    foldTip,
 					Tooltip:  foldTip,
-					Shortcut: k("⌘⇧.", "Ctrl+Shift+."),
+					Shortcut: mmShortcutLabel("⌘⇧.", "Ctrl+Shift+."),
 					Size:     theme.HeightChrome,
 					IconSize: theme.IconAction,
 					Radius:   theme.RadiusSM,
-				})
+				}))
 				if foldBtn.Clicked() {
 					st.outlineToggleFoldAll()
 					c.Invalidate()
@@ -2493,7 +3655,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					Radius:      theme.RadiusSM,
 					Active:      copied,
 					ActiveStyle: bui.ActiveAccentFlat,
-				})
+				}).KeepFocus()
 				if copyBtn.Clicked() {
 					src := st.LastSource
 					if src == "" && st.Root != nil {
@@ -2514,14 +3676,14 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 							Detail:  ".md / .opml / .mm / .xmind",
 						}},
 					}
-					impBtn := bui.IconButton(c, icons.Upload, bui.IconButtonOptions{
+					impBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, icons.Upload, bui.IconButtonOptions{
 						ID:          "mm-import-" + id,
 						Label:       theme.Tr("导入 (.md / .opml / .mm / .xmind)", "Import (.md / .opml / .mm / .xmind)"),
 						TooltipSpec: &impSpec,
 						Size:        theme.HeightChrome,
 						IconSize:    theme.IconAction,
 						Radius:      theme.RadiusSM,
-					})
+					}))
 					if impBtn.Clicked() {
 						st.triggerImport(cb)
 					}
@@ -2539,13 +3701,14 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				if !st.ExportMenuOpen {
 					expOpts.Tooltip = expTip
 				}
-				expBtn := bui.IconButton(c, icons.Download, expOpts)
+				expBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, icons.Download, expOpts))
 				if expBtn.Clicked() {
 					st.ExportMenuOpen = !st.ExportMenuOpen
 					if st.ExportMenuOpen {
 						st.ShortcutsOpen = false
 						st.LinkNodeID = 0
 					}
+					st.focusCanvas(c, cb)
 				}
 			}
 
@@ -2557,7 +3720,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				fsTip = theme.Tr("退出全屏", "Exit fullscreen")
 				fsShortcut = "Esc"
 			}
-			fsBtn := bui.IconButton(c, fsIcon, bui.IconButtonOptions{
+			fsBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, fsIcon, bui.IconButtonOptions{
 				ID:       "mm-fs-" + id,
 				Label:    fsTip,
 				Tooltip:  fsTip,
@@ -2565,7 +3728,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				Size:     theme.HeightChrome,
 				IconSize: theme.IconAction,
 				Radius:   theme.RadiusSM,
-			})
+			}))
 			if fsBtn.Clicked() {
 				if fullscreen {
 					st.ExitFullscreen(cb)
@@ -2583,6 +3746,7 @@ func (st *BlockState) renderHeaderHistoryBtn(c *ui.Context, key string, isRedo, 
 	btn := ui.ButtonBase(c.Key(key)).
 		Size(theme.HeightChrome, theme.HeightChrome).Center().
 		Radius(theme.RadiusSM).Shrink(0).Disabled(!enabled).Label(label)
+	st.keepCanvasButtonFocus(c, btn)
 	if enabled {
 		btn.Cursor(ui.CursorPointer)
 	}
@@ -2664,7 +3828,7 @@ func (st *BlockState) renderBody(c *ui.Context, id string, fixedHeight float32, 
 			st.renderLinkPopover(c, id, cb)
 		}
 		if st.ShortcutsOpen {
-			st.renderShortcutsPopover(c, id)
+			st.renderShortcutsPopover(c, id, cb)
 		}
 		if st.ImportResult != nil {
 			st.renderImportResultCard(c, id, cb)
@@ -2678,15 +3842,17 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 	pal := theme.Ocean()
 	canvas := ui.Box(c.Key("mm-canvas-"+id)).Fill().Focusable().FocusRing(false).Bind(&st.CanvasHandle)
 	bui.Probe(canvas, "mm-canvas-"+id)
-	if !fullscreen && st.consumeFullscreenFocusRestore() {
-		canvas.Focus(ui.FocusOptions{PreventScroll: true})
-		if cb.OnRequestFocus != nil {
+	fsRestore := !fullscreen && st.consumeFullscreenFocusRestore()
+	reqFocus, reqPreventScroll := st.consumeViewFocus()
+	if (fsRestore || reqFocus) && st.EditingID == 0 && st.LinkNodeID == 0 && !(st.FindOpen && st.FindFocusPending) {
+		if fsRestore || reqPreventScroll {
+			canvas.Focus(ui.FocusOptions{PreventScroll: true})
+		} else {
+			canvas.Focus()
+		}
+		if fsRestore && cb.OnRequestFocus != nil {
 			cb.OnRequestFocus()
 		}
-	}
-	if st.viewFocusPending {
-		st.viewFocusPending = false
-		canvas.Focus(ui.FocusOptions{PreventScroll: true})
 	}
 
 	// Measure viewport size and ensure camera fits initially or after layout/resize.
@@ -2713,7 +3879,25 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 	} else if st.LastCanvasW <= 0 || st.LastCanvasH <= 0 {
 		st.LastCanvasW, st.LastCanvasH = cw, ch
 	}
-	st.LastCanvasFocused = st.CanvasHandle.Focused(c) && st.EditingID == 0 && st.LinkNodeID == 0
+	canvasFocused := (canvas.Focused() || st.CanvasHandle.Focused(c)) &&
+		st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c)
+	st.LastCanvasFocused = canvasFocused
+	if st.EditingID != 0 || st.EditFocusPending || st.LinkNodeID != 0 || (st.FindOpen && st.FindFocusPending) ||
+		(st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) && canvas.Focused()) {
+		st.tabFocusClaimedThisFrame = true
+	}
+
+	spaceAllowed := st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) &&
+		!st.ShortcutsOpen && !st.ExportMenuOpen && st.ComposeText == "" &&
+		(canvasFocused || (fullscreen && !c.FocusTakesText()))
+	if st.SpaceHeld && (!spaceAllowed || !c.KeyDown(ui.KeySpace)) {
+		st.SpaceHeld = false
+		st.SpaceUsedForPan = false
+	}
+	if (c.Modifiers() & (ui.Cmd | ui.Ctrl | ui.Alt)) == 0 {
+		st.lastKeyMod = 0
+	}
+	spacePanReady := spaceAllowed && (st.SpaceHeld || c.KeyDown(ui.KeySpace))
 
 	// Live-layout during inline editing or direct CJK IME composition using the exact
 	// native text measurer so node geometry, Bezier curves, and the transparent inline
@@ -2856,7 +4040,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				st.beginLinkEdit(n)
 			}
 			if strings.TrimSpace(n.Link) != "" {
-				if m.Item(theme.Tr("打开链接", "Open Link")).Chosen() {
+				if m.Item(theme.Tr("打开链接", "Open Link")).Shortcut(ui.Alt, ui.KeyEnter).Chosen() {
 					st.openNodeLink(c.Now(), n, cb)
 				}
 				if m.Item(theme.Tr("移除链接", "Remove Link")).Chosen() {
@@ -2904,13 +4088,23 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				st.opCollapseAll()
 			}
 		}
-		if !cb.ReadOnly && n.Parent != nil {
+		if !cb.ReadOnly && (n.Parent != nil || (st.hasMultiSelect() && st.multiSelectDeletableCount() > 0)) {
 			m.Separator()
-			if m.Item(theme.Tr("删除", "Delete")).Shortcut(0, ui.KeyBackspace).Chosen() {
+			delLbl := theme.Tr("删除", "Delete")
+			if st.hasMultiSelect() {
+				if cnt := st.multiSelectDeletableCount(); cnt > 0 {
+					delLbl = theme.Tr(fmt.Sprintf("删除所选 (%d)", cnt), fmt.Sprintf("Delete Selected (%d)", cnt))
+				}
+			}
+			delKey := ui.KeyBackspace
+			if !theme.IsMacOS() {
+				delKey = ui.KeyDelete
+			}
+			if m.Item(delLbl).Shortcut(0, delKey).Chosen() {
 				st.opDelete(cb)
 			}
-			if len(n.Children) > 0 {
-				if m.Item(theme.Tr("仅删除当前节点", "Delete Single Node")).Shortcut(ui.Alt, ui.KeyBackspace).Chosen() {
+			if n.Parent != nil && len(n.Children) > 0 && !st.hasMultiSelect() {
+				if m.Item(theme.Tr("仅删除当前节点", "Delete Single Node")).Shortcut(ui.Alt, delKey).Chosen() {
 					st.opDeleteSingle(cb)
 				}
 			}
@@ -2921,13 +4115,27 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 	canvas.HandleInput(func(ev ui.InputEvent) bool {
 		switch ev.Kind {
 		case ui.InputPointerMove:
+			// A lost release (capture taken by another control) leaves no button
+			// down: drop the stale gesture instead of panning / boxing / dragging on hover.
+			if (st.Panning || st.BoxSelecting || st.DragNodeID != 0) && ev.Pointer == ui.PointerMouse && ev.Pressure == 0 {
+				st.Panning = false
+				st.resetBoxSelect()
+				st.resetDrag()
+			}
 			if st.Panning && st.Camera.Scale > 0 {
 				st.fsCamAnimActive = false
+				if st.SpaceHeld && math.Hypot(float64(ev.X-st.panStartX), float64(ev.Y-st.panStartY)) >= 4 {
+					st.SpaceUsedForPan = true
+				}
 				dx := ev.X - st.PanLastX
 				dy := ev.Y - st.PanLastY
 				st.Camera.X -= dx / st.Camera.Scale
 				st.Camera.Y -= dy / st.Camera.Scale
 				st.PanLastX, st.PanLastY = ev.X, ev.Y
+				return true
+			}
+			if st.BoxSelecting {
+				st.BoxCurrX, st.BoxCurrY = ev.X, ev.Y
 				return true
 			}
 			if st.DragNodeID != 0 {
@@ -2940,7 +4148,12 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 					}
 				}
 				if st.DragActive {
-					if dragged := st.Root.FindByID(st.DragNodeID); dragged != nil {
+					outOfCanvas := st.LastCanvasW > 0 && st.LastCanvasH > 0 &&
+						(ev.X < 0 || ev.X > st.LastCanvasW || ev.Y < 0 || ev.Y > st.LastCanvasH)
+					if outOfCanvas {
+						st.DragTargetID = 0
+						st.DragPos = DropNone
+					} else if dragged := st.Root.FindByID(st.DragNodeID); dragged != nil {
 						wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
 						target, pos := HitTestDropTarget(st.Root, dragged, wx, wy)
 						if target != nil {
@@ -2953,6 +4166,11 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 					}
 				}
 				return true
+			}
+			if spacePanReady {
+				st.HoveredID = 0
+				st.HoveredHit = HitNone
+				return false
 			}
 			st.refreshHoverAt(ev.X, ev.Y, cb.ReadOnly)
 			return false
@@ -2969,6 +4187,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			st.ComposeText = ""
 			st.lastKeyMod = 0
 			st.resetDrag()
+			st.resetBoxSelect()
 			if st.EditingID != 0 {
 				st.finishEdit(true, cb)
 			}
@@ -2980,19 +4199,32 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			hit := HitTestWithActions(st.Root, [2]int{activeID, 0}, cb.ReadOnly, wx, wy, st.Camera.Scale)
 
 			if ev.Button == 1 {
-				// Right-click selects hit node before ContextMenu opens.
+				// Right-click selects hit node and focuses canvas before ContextMenu opens.
+				st.CanvasHandle.Focus(c)
+				if cb.OnRequestFocus != nil {
+					cb.OnRequestFocus()
+				}
 				if hit.Node != nil {
-					st.SelectedID = hit.Node.ID
+					if !st.SelectedIDs[hit.Node.ID] {
+						st.setSingleSelection(hit.Node.ID)
+					} else {
+						st.SelectedID = hit.Node.ID
+					}
 				}
 				return false
 			}
 			if ev.Button == 2 {
 				// Middle-mouse drag pans the canvas anywhere, even over a node.
-				st.CanvasHandle.Focus()
+				st.CanvasHandle.Focus(c)
 				if cb.OnRequestFocus != nil {
 					cb.OnRequestFocus()
 				}
+				if st.fsAnimActive {
+					return true
+				}
 				st.Panning = true
+				st.panButton = 2
+				st.panStartX, st.panStartY = ev.X, ev.Y
 				st.PanLastX, st.PanLastY = ev.X, ev.Y
 				return true
 			}
@@ -3000,26 +4232,39 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				return false
 			}
 
-			st.CanvasHandle.Focus()
+			// SpaceHeld is set only by an unmodified Space KeyDown the canvas itself
+			// received and cleared on KeyUp, so it is live here (no frame-old snapshot).
+			wasSpacePan := st.SpaceHeld
+			st.CanvasHandle.Focus(c)
 			if cb.OnRequestFocus != nil {
 				cb.OnRequestFocus()
 			}
 
+			if wasSpacePan {
+				if !st.fsAnimActive {
+					st.Panning = true
+					st.panButton = 0
+					st.panStartX, st.panStartY = ev.X, ev.Y
+					st.PanLastX, st.PanLastY = ev.X, ev.Y
+				}
+				return true
+			}
+
 			switch hit.Kind {
 			case HitLinkBadge:
-				st.SelectedID = hit.Node.ID
+				st.setSingleSelection(hit.Node.ID)
 				st.openNodeLink(c.Now(), hit.Node, cb)
 				return true
 			case HitHoverFold:
 				if !cb.ReadOnly {
-					st.SelectedID = hit.Node.ID
+					st.setSingleSelection(hit.Node.ID)
 					hit.Node.Folded = true
 					st.HoveredHit = HitNone
 				}
 				return true
 			case HitHoverAdd:
 				if !cb.ReadOnly {
-					st.SelectedID = hit.Node.ID
+					st.setSingleSelection(hit.Node.ID)
 					st.HoveredHit = HitNone
 					st.opAddChild(cb)
 				}
@@ -3029,20 +4274,20 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				return true
 			case HitFoldBadge:
 				hit.Node.Folded = false
-				st.SelectedID = hit.Node.ID
+				st.setSingleSelection(hit.Node.ID)
 				st.HoveredHit = HitNone
 				return true
 			case HitNode:
-				st.SelectedID = hit.Node.ID
-				if (ev.Mods&(ui.Cmd|ui.Ctrl)) != 0 && strings.TrimSpace(hit.Node.Link) != "" {
-					st.openNodeLink(c.Now(), hit.Node, cb)
+				if (ev.Mods & (ui.Shift | ui.Cmd | ui.Ctrl)) != 0 {
+					st.toggleMultiSelectNode(hit.Node.ID)
 					return true
 				}
+				st.setSingleSelection(hit.Node.ID)
 				if ev.Clicks >= 2 && !cb.ReadOnly {
 					st.beginEdit(hit.Node, false)
 					return true
 				}
-				if !cb.ReadOnly && hit.Node.Parent != nil && ev.Clicks == 1 {
+				if !cb.ReadOnly && hit.Node.Parent != nil && ev.Clicks <= 1 {
 					st.DragNodeID = hit.Node.ID
 					st.DragActive = false
 					st.DragStartX, st.DragStartY = ev.X, ev.Y
@@ -3052,18 +4297,38 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				}
 				return true
 			default:
-				if ev.Clicks >= 2 {
+				additive := (ev.Mods & (ui.Shift | ui.Cmd | ui.Ctrl)) != 0
+				if ev.Clicks >= 2 && !additive {
+					st.clearMultiSelect()
 					st.FitCanvas()
 					return true
 				}
-				st.Panning = true
-				st.PanLastX, st.PanLastY = ev.X, ev.Y
+				if !additive {
+					st.setSingleSelection(0)
+				}
+				if st.fsAnimActive {
+					// Canvas is still moving during the fullscreen transition.
+					return true
+				}
+				st.BoxSelecting = true
+				st.BoxAdditive = additive
+				st.BoxStartX, st.BoxStartY = ev.X, ev.Y
+				st.BoxCurrX, st.BoxCurrY = ev.X, ev.Y
 				return true
 			}
 
 		case ui.InputPointerUp:
 			if st.Panning {
-				st.Panning = false
+				if ev.Button == st.panButton || ev.Canceled {
+					st.Panning = false
+				}
+				return true
+			}
+			if st.BoxSelecting && (ev.Button == 0 || ev.Canceled) {
+				if !ev.Canceled && st.boxSelectActive() && st.Root != nil && st.Camera.Scale > 0 {
+					st.applyBoxSelection(st.BoxAdditive)
+				}
+				st.resetBoxSelect()
 				return true
 			}
 			if st.DragNodeID != 0 {
@@ -3111,6 +4376,9 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				return false
 			}
 			switch ev.Text {
+			case "selectAll":
+				st.opSelectAll()
+				return true
 			case "copy":
 				return st.opCopy(c)
 			case "cut":
@@ -3142,8 +4410,23 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 
 		case ui.InputText:
 			st.ComposeText = ""
-			if st.EditingID != 0 || st.LinkNodeID != 0 || cb.ReadOnly || st.DragActive {
+			if st.LinkNodeID != 0 || cb.ReadOnly || st.DragActive {
 				return false
+			}
+			if st.EditingID != 0 {
+				if st.EditFocusPending && (st.lastKeyMod&(ui.Cmd|ui.Ctrl|ui.Alt)) == 0 && isDirectEditText(ev.Text) {
+					if st.EditSelectAll {
+						st.EditDraft = ev.Text
+						st.EditSelectAll = false
+					} else {
+						st.EditDraft += ev.Text
+					}
+					return true
+				}
+				return false
+			}
+			if st.SpaceHeld && ev.Text == " " {
+				return true
 			}
 			if (st.lastKeyMod & (ui.Cmd | ui.Ctrl | ui.Alt)) != 0 {
 				return false
@@ -3158,10 +4441,53 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 
 		case ui.InputKeyDown:
 			st.lastKeyMod = ev.Mods
+			if ev.Key == ui.KeyEscape && ev.Mods == 0 && (st.EditingID != 0 || st.LinkNodeID != 0) {
+				st.SpaceHeld = false
+				st.SpaceUsedForPan = false
+				if st.ImportResult != nil {
+					st.ImportResult = nil
+					st.ImportUndoBefore = ""
+					st.ImportUndoAfter = ""
+					return true
+				}
+				if st.ShortcutsOpen {
+					st.ShortcutsOpen = false
+					return true
+				}
+				if st.ExportMenuOpen {
+					st.ExportMenuOpen = false
+					return true
+				}
+				if st.LinkNodeID != 0 {
+					st.LinkNodeID = 0
+					st.LinkBrokenNotice = false
+					st.LinkFocusPending = false
+					st.LinkHandle.CancelFocus()
+					return true
+				}
+				if st.EditingID != 0 {
+					st.finishEdit(false, cb)
+					return true
+				}
+			}
 			if st.EditingID != 0 || st.LinkNodeID != 0 {
+				st.SpaceHeld = false
+				st.SpaceUsedForPan = false
 				return false
 			}
-			if ev.Key == ui.KeyEscape {
+			if ev.Key == ui.KeyEscape && ev.Mods == 0 {
+				if st.ComposeText != "" {
+					st.ComposeText = ""
+					return true
+				}
+				if st.BoxSelecting {
+					st.resetBoxSelect()
+					return true
+				}
+				if st.Panning {
+					st.Panning = false
+					return true
+				}
 				if st.DragActive || st.DragNodeID != 0 {
 					st.resetDrag()
 					return true
@@ -3180,6 +4506,12 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				}
 				if st.ImportResult != nil {
 					st.ImportResult = nil
+					st.ImportUndoBefore = ""
+					st.ImportUndoAfter = ""
+					return true
+				}
+				if st.hasMultiSelect() {
+					st.clearMultiSelect()
 					return true
 				}
 				if st.Fullscreen {
@@ -3188,21 +4520,55 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 					return true
 				}
 			}
+			if st.ComposeText != "" && (ev.Mods&(ui.Cmd|ui.Ctrl|ui.Alt)) == 0 {
+				return false
+			}
+			if !st.ShortcutsOpen && !st.ExportMenuOpen && st.ImportResult == nil && !st.FindOpen && !st.BoxSelecting && !st.Panning && !st.DragActive && st.DragNodeID == 0 && cb.OnHostNavKey != nil && cb.OnHostNavKey(ev.Key, ev.Mods) {
+				return true
+			}
+			if ev.Key == ui.KeySpace && ev.Mods == 0 {
+				if !st.ShortcutsOpen && !st.ExportMenuOpen && !st.DragActive && !st.BoxSelecting && !st.Panning {
+					if !ev.Repeat && !st.SpaceHeld {
+						st.SpaceHeld = true
+						st.SpaceUsedForPan = false
+					}
+				}
+				return true
+			}
 			return st.handleCanvasKey(c, ev.Key, ev.Mods, cb)
+
+		case ui.InputKeyUp:
+			st.lastKeyMod = 0
+			if ev.Key == ui.KeySpace && st.SpaceHeld {
+				shouldFold := !st.SpaceUsedForPan && st.EditingID == 0 && st.LinkNodeID == 0 &&
+					st.ComposeText == "" && !st.ShortcutsOpen && !st.ExportMenuOpen &&
+					!st.DragActive && !st.BoxSelecting
+				st.SpaceHeld = false
+				st.SpaceUsedForPan = false
+				if shouldFold {
+					st.opToggleFold()
+				}
+				return true
+			}
+			return false
 		}
 		return false
 	})
 
 	canvasHovered := canvas.Hovered()
-	if !canvasHovered && !st.Panning && st.DragNodeID == 0 && st.HoveredID != 0 {
+	if !canvasHovered && !st.Panning && !st.BoxSelecting && st.DragNodeID == 0 && st.HoveredID != 0 {
 		st.HoveredID = 0
 		st.HoveredHit = HitNone
 	}
 
-	// Dynamic canvas cursor: pointer over interactive badges/buttons, grab on draggable nodes, grabbing when panning/dragging.
+	// Dynamic canvas cursor: pointer over interactive badges/buttons, grab when Space-pan ready or on draggable nodes, grabbing when panning/dragging.
 	switch {
 	case st.Panning || st.DragActive:
 		canvas.Cursor(ui.CursorGrabbing)
+	case st.BoxSelecting:
+		canvas.Cursor(ui.CursorDefault)
+	case canvasHovered && spacePanReady:
+		canvas.Cursor(ui.CursorGrab)
 	case canvasHovered && st.HoveredID != 0:
 		switch st.HoveredHit {
 		case HitLinkBadge, HitFoldBadge:
@@ -3323,7 +4689,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 		}
 		hoveredID := st.HoveredID
 		hoveredHit := st.HoveredHit
-		if !canvasHovered || st.LinkNodeID != 0 || st.ExportMenuOpen || st.ShortcutsOpen || st.ImportResult != nil {
+		if !canvasHovered || st.LinkNodeID != 0 || st.ExportMenuOpen || st.ShortcutsOpen || st.ImportResult != nil || spacePanReady || st.Panning || st.BoxSelecting {
 			hoveredID = 0
 			hoveredHit = HitNone
 		}
@@ -3332,19 +4698,22 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			findCurID = st.FindMatchIDs[st.FindCurrentIdx]
 		}
 		opt := PaintOptions{
-			SelectedID: st.SelectedID,
-			HoveredID:  hoveredID,
-			HoveredHit: hoveredHit,
-			EditingID:  paintEditID,
-			Palette:    pal,
-			Background: pal.CodeBG,
-			ReadOnly:   cb.ReadOnly,
+			SelectedID:  st.SelectedID,
+			SelectedIDs: st.SelectedIDs,
+			HoveredID:   hoveredID,
+			HoveredHit:  hoveredHit,
+			EditingID:   paintEditID,
+			Palette:     pal,
+			Background:  pal.CodeBG,
+			ReadOnly:    cb.ReadOnly,
 			LinkStatusFn: func(target string) LinkStatus {
 				return st.resolveLinkStatusCached(now, target, cb)
 			},
-			FindActive:    st.FindOpen && strings.TrimSpace(st.FindQuery) != "",
-			FindMatchIDs:  st.FindMatchSet,
-			FindCurrentID: findCurID,
+			FindActive:      st.FindOpen && strings.TrimSpace(st.FindQuery) != "",
+			FindMatchIDs:    st.FindMatchSet,
+			FindCurrentID:   findCurID,
+			BoxSelectActive: st.boxSelectActive(),
+			BoxSelectRect:   st.boxSelectRect(),
 		}
 		if st.DragActive && st.DragNodeID != 0 {
 			opt.DragNodeID = st.DragNodeID
@@ -3357,14 +4726,14 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 	})
 
 	// Floating link hover tooltip when pointer hovers a node's link badge.
-	if canvasHovered && st.HoveredID != 0 && st.HoveredHit == HitLinkBadge && st.EditingID == 0 && st.LinkNodeID == 0 && !st.DragActive && !st.Panning && st.Root != nil {
+	if canvasHovered && st.HoveredID != 0 && st.HoveredHit == HitLinkBadge && st.EditingID == 0 && st.LinkNodeID == 0 && !st.DragActive && !st.Panning && !st.BoxSelecting && !spacePanReady && st.Root != nil {
 		if hn := st.Root.FindByID(st.HoveredID); hn != nil && strings.TrimSpace(hn.Link) != "" {
 			st.renderLinkHoverTooltip(c, id, hn, cw, ch, cb)
 		}
 	}
 
 	// Bottom-left selected node quick action bar (Task toggle, Link edit, Add child).
-	if !cb.ReadOnly && st.SelectedID != 0 && st.EditingID == 0 && st.LinkNodeID == 0 && !st.DragActive && !st.Panning && !st.ExportMenuOpen && !st.ShortcutsOpen && st.ImportResult == nil && st.Root != nil {
+	if !cb.ReadOnly && st.SelectedID != 0 && st.EditingID == 0 && st.LinkNodeID == 0 && !st.DragActive && !st.Panning && !st.boxSelectActive() && !st.ExportMenuOpen && !st.ShortcutsOpen && st.ImportResult == nil && st.Root != nil {
 		if sel := st.Root.FindByID(st.SelectedID); sel != nil {
 			st.renderSelectionQuickBar(c, id, sel, cb)
 		}
@@ -3372,7 +4741,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 
 	// Bottom-right floating Zoom & Fold-All HUD.
 	if st.Root != nil && !st.ShortcutsOpen {
-		st.renderZoomHUD(c, id)
+		st.renderZoomHUD(c, id, cb)
 	}
 
 	// Transparent inline IME composition preview while directly typing CJK on a selected node.
@@ -3395,6 +4764,11 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 	if st.EditingID != 0 && !cb.ReadOnly {
 		if n := st.Root.FindByID(st.EditingID); n != nil {
 			input := ui.TextAreaBase(c.Key(fmt.Sprintf("mm-inline-edit-%s-%d-%d", id, st.EditingID, st.EditSeq)), &st.EditDraft)
+			if st.EditInsertNewlinePending {
+				st.EditInsertNewlinePending = false
+				s0, s1 := input.TextSelection()
+				input.ReplaceText(s0, s1, "\n")
+			}
 			if updatedText := st.EditDraft + st.EditCompose; updatedText != activeEditText {
 				activeEditText = updatedText
 				st.editLastLayoutText = updatedText
@@ -3428,18 +4802,31 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				if st.EditSelectAll {
 					st.EditHandle.SelectAll(c)
 				} else {
-					st.EditHandle.Focus()
+					st.EditHandle.Focus(c)
 				}
+			}
+			if !input.Composing() {
+				st.EditCompose = ""
+			}
+			if input.Focused() {
+				st.tabFocusClaimedThisFrame = true
 			}
 			input.ObserveInput(func(ev ui.InputEvent) {
 				switch ev.Kind {
 				case ui.InputCompose:
 					st.EditCompose = ev.Text
-				case ui.InputText, ui.InputKeyDown, ui.InputCommand:
+				case ui.InputText, ui.InputCommand:
 					st.EditCompose = ""
+				case ui.InputKeyDown:
+					if ev.Key != ui.KeyUnknown {
+						st.EditCompose = ""
+					}
 				}
 			})
 			input.OnTextKey(func(k ui.TextKey) bool {
+				if k.Key == ui.KeyUnknown || st.EditCompose != "" {
+					return false
+				}
 				if st.captureBlockTextKey(k) {
 					st.EditDraft = k.Text()
 					return true
@@ -3450,33 +4837,69 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 						// Shift+Enter inserts a line break inside the topic text.
 						return false
 					}
+					if k.Mods == ui.Alt {
+						st.EditInsertNewlinePending = true
+						return true
+					}
+					if isMMPrimaryMod(k.Mods) {
+						st.EditDraft = k.Text()
+						st.finishEdit(true, cb)
+						if target := st.Root.FindByID(st.SelectedID); target != nil {
+							st.opToggleTaskDoneOrCreate(target, cb)
+						}
+						st.restoreCanvasFocusAfterEdit(cb)
+						return true
+					}
 					if k.Mods == 0 {
 						st.EditDraft = k.Text()
 						st.finishEdit(true, cb)
-						st.CanvasHandle.Focus()
+						st.restoreCanvasFocusAfterEdit(cb)
 						return true
 					}
 				case ui.KeyEscape:
-					st.finishEdit(false, cb)
-					st.CanvasHandle.Focus()
-					return true
+					if k.Mods == 0 {
+						// Dismiss topmost popover first without discarding the active rename draft.
+						if st.ImportResult != nil {
+							st.ImportResult = nil
+							st.ImportUndoBefore = ""
+							st.ImportUndoAfter = ""
+							return true
+						}
+						if st.ShortcutsOpen {
+							st.ShortcutsOpen = false
+							return true
+						}
+						if st.ExportMenuOpen {
+							st.ExportMenuOpen = false
+							return true
+						}
+						st.finishEdit(false, cb)
+						st.restoreCanvasFocusAfterEdit(cb)
+						return true
+					}
 				case ui.KeyTab:
 					if k.Mods == ui.Shift {
 						st.EditDraft = k.Text()
 						st.finishEdit(true, cb)
 						st.opInsertParent(cb)
+						if st.EditingID == 0 {
+							st.restoreCanvasFocusAfterEdit(cb)
+						}
 						return true
 					}
 					if k.Mods == 0 {
 						st.EditDraft = k.Text()
 						st.finishEdit(true, cb)
 						st.opAddChild(cb)
+						if st.EditingID == 0 {
+							st.restoreCanvasFocusAfterEdit(cb)
+						}
 						return true
 					}
 				}
 				return false
 			})
-			if input.FocusLeft() {
+			if input.FocusLeft() && !st.ShortcutsOpen && !st.ExportMenuOpen && st.ImportResult == nil {
 				st.finishEdit(true, cb)
 			}
 		}
@@ -3594,6 +5017,14 @@ func (st *BlockState) ZoomBy(factor float32) {
 	st.zoomAt(st.LastCanvasW*0.5, st.LastCanvasH*0.5, st.Camera.Scale*factor)
 }
 
+// ResetZoom resets the canvas zoom to 100% around the viewport center.
+func (st *BlockState) ResetZoom() {
+	if st == nil {
+		return
+	}
+	st.zoomAt(st.LastCanvasW*0.5, st.LastCanvasH*0.5, 1.0)
+}
+
 // FitCanvas schedules an automatic zoom-to-fit on the next paint pass.
 func (st *BlockState) FitCanvas() {
 	if st == nil {
@@ -3606,8 +5037,8 @@ func (st *BlockState) FitCanvas() {
 // canvasActionsLive reports whether floating −/+ action buttons are currently drawn,
 // so hit-testing never triggers a button the user cannot see.
 func (st *BlockState) canvasActionsLive() bool {
-	return st.EditingID == 0 && st.DragNodeID == 0 && st.LinkNodeID == 0 &&
-		!st.ExportMenuOpen && !st.ShortcutsOpen && st.ImportResult == nil
+	return st.EditingID == 0 && st.DragNodeID == 0 && !st.BoxSelecting && !st.Panning &&
+		st.LinkNodeID == 0 && !st.ExportMenuOpen && !st.ShortcutsOpen && st.ImportResult == nil
 }
 
 // refreshHoverAt recomputes hover state for the pointer at screen (sx, sy),
@@ -3646,18 +5077,56 @@ func (st *BlockState) zoomAt(sx, sy, targetScale float32) {
 func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifiers, cb Callbacks) bool {
 	n := st.selectedNode()
 	if n == nil {
-		return false
+		// Empty selection: arrows pick the root again, node-scoped chords are
+		// no-ops, and global chords (undo, find, zoom, layout, select-all) still run.
+		if st.Root == nil {
+			return false
+		}
+		switch {
+		case mods == 0:
+			switch key {
+			case ui.KeyUp, ui.KeyDown, ui.KeyLeft, ui.KeyRight, ui.KeyHome, ui.KeyEnd:
+				st.setSingleSelection(st.Root.ID)
+				st.EnsureVisiblePending = true
+				return true
+			case ui.KeyF3:
+				if !theme.IsMacOS() && st.FindOpen {
+					st.stepFind(1)
+					return true
+				}
+			}
+			return false
+		case mods == ui.Shift:
+			if key == ui.KeyF3 && !theme.IsMacOS() && st.FindOpen {
+				st.stepFind(-1)
+				return true
+			}
+			return false
+		case mods == ui.Alt:
+			return false
+		case isMMPrimaryMod(mods) &&
+			(key == ui.KeyC || key == ui.KeyX || key == ui.KeyD || key == ui.KeyE || key == ui.KeyL || key == ui.KeyEnter || key == ui.KeySlash || key == ui.KeyPeriod):
+			return false
+		case isMMPrimaryShiftMod(mods) && key == ui.KeyA:
+			return false
+		case isMMPrimaryAltMod(mods) && (key == ui.KeyT || key == ui.KeyA):
+			return false
+		}
+		n = st.Root
 	}
 	leftSide := n.Dir < 0
 
-	// Cmd/Ctrl shortcuts
-	if mods == ui.Cmd || mods == ui.Ctrl {
+	// Primary modifier chords (⌘ on macOS, Ctrl on Windows/Linux).
+	if isMMPrimaryMod(mods) {
 		switch key {
 		case ui.KeyZ:
 			st.opUndo(cb)
 			return true
 		case ui.KeyY:
 			st.opRedo(cb)
+			return true
+		case ui.KeyA:
+			st.opSelectAll()
 			return true
 		case ui.KeyC:
 			return st.opCopy(c)
@@ -3668,18 +5137,32 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 		case ui.KeyD:
 			st.opDuplicate(cb)
 			return true
+		case ui.KeyE:
+			if !cb.ReadOnly {
+				st.beginEdit(n, false)
+				return true
+			}
 		case ui.KeyF:
 			st.OpenFind()
 			return true
+		case ui.KeyG:
+			if theme.IsMacOS() && st.FindOpen {
+				st.stepFind(1)
+				return true
+			}
 		case ui.KeyL:
 			if !cb.ReadOnly {
 				st.beginLinkEdit(n)
 				return true
 			}
 		case ui.KeyEnter:
+			if cb.ReadOnly {
+				// Read-only (e.g. pending plan review): let ⌘↵ reach the host.
+				return false
+			}
 			st.opToggleTaskDoneOrCreate(n, cb)
 			return true
-		case ui.KeySlash:
+		case ui.KeySlash, ui.KeyPeriod:
 			st.opToggleFold()
 			return true
 		case ui.Key0:
@@ -3694,22 +5177,45 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 		}
 		return false
 	}
-	if mods == ui.Cmd|ui.Shift || mods == ui.Ctrl|ui.Shift {
+	if isMMPrimaryShiftMod(mods) {
 		switch key {
 		case ui.KeyZ:
 			st.opRedo(cb)
 			return true
+		case ui.KeyA:
+			st.opSelectSiblings()
+			return true
+		case ui.KeyG:
+			if theme.IsMacOS() && st.FindOpen {
+				st.stepFind(-1)
+				return true
+			}
+		case ui.Key0:
+			st.ResetZoom()
+			return true
 		case ui.KeyEqual:
 			st.zoomAt(st.LastCanvasW*0.5, st.LastCanvasH*0.5, st.Camera.Scale*1.15)
+			return true
+		case ui.KeyMinus:
+			st.zoomAt(st.LastCanvasW*0.5, st.LastCanvasH*0.5, st.Camera.Scale/1.15)
 			return true
 		case ui.KeyL:
 			st.ToggleLayout()
 			return true
+		case ui.KeyPeriod:
+			st.opToggleExpandCollapseAll()
+			return true
 		}
 		return false
 	}
-	if mods == ui.Cmd|ui.Alt || mods == ui.Ctrl|ui.Alt {
+	if isMMPrimaryAltMod(mods) {
 		switch key {
+		case ui.KeyA:
+			st.opSelectSubtree()
+			return true
+		case ui.Key0:
+			st.ResetZoom()
+			return true
 		case ui.KeyT:
 			st.opToggleTask(n, cb)
 			return true
@@ -3720,7 +5226,7 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 		return false
 	}
 
-	// Shift shortcuts: Shift+Enter (sibling above), Shift+Tab (insert parent), Shift+Backspace (delete single)
+	// Shift shortcuts: Shift+Enter (sibling above), Shift+Tab (insert parent), Shift+Backspace (delete single), Shift+Up/Down (multi-select siblings)
 	if mods == ui.Shift {
 		switch key {
 		case ui.KeyEnter:
@@ -3732,11 +5238,22 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 		case ui.KeyBackspace, ui.KeyDelete:
 			st.opDeleteSingle(cb)
 			return true
+		case ui.KeyUp:
+			st.opExtendSiblingSelection(-1)
+			return true
+		case ui.KeyDown:
+			st.opExtendSiblingSelection(1)
+			return true
+		case ui.KeyF3:
+			if !theme.IsMacOS() && st.FindOpen {
+				st.stepFind(-1)
+				return true
+			}
 		}
 		return false
 	}
 
-	// Alt shortcuts: reorder (Up/Down), promote/demote (Left/Right), delete single node (Backspace)
+	// Alt shortcuts: reorder (Up/Down), promote/demote (Left/Right), delete single node (Backspace), open link (Alt+Enter)
 	if mods == ui.Alt {
 		switch key {
 		case ui.KeyUp:
@@ -3762,6 +5279,11 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 		case ui.KeyBackspace, ui.KeyDelete:
 			st.opDeleteSingle(cb)
 			return true
+		case ui.KeyEnter:
+			if strings.TrimSpace(n.Link) != "" {
+				st.openNodeLink(c.Now(), n, cb)
+				return true
+			}
 		}
 		return false
 	}
@@ -3780,17 +5302,34 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 	case ui.KeyBackspace, ui.KeyDelete:
 		st.opDelete(cb)
 		return true
-	case ui.KeySpace:
-		st.opToggleFold()
-		return true
 	case ui.KeyF2:
 		if !cb.ReadOnly {
 			st.beginEdit(n, false)
 			return true
 		}
+	case ui.KeyF3:
+		if !theme.IsMacOS() && st.FindOpen {
+			st.stepFind(1)
+			return true
+		}
 	case ui.KeyHome:
 		st.opNavigate("home")
 		return true
+	case ui.KeyEnd:
+		st.opNavigate("end")
+		return true
+	case ui.KeyPageUp:
+		if st.Camera.Scale > 0 {
+			st.fsCamAnimActive = false
+			st.Camera.Y -= max(st.LastCanvasH*0.65, 120) / st.Camera.Scale
+			return true
+		}
+	case ui.KeyPageDown:
+		if st.Camera.Scale > 0 {
+			st.fsCamAnimActive = false
+			st.Camera.Y += max(st.LastCanvasH*0.65, 120) / st.Camera.Scale
+			return true
+		}
 	case ui.KeyUp:
 		st.opNavigate("up")
 		return true
@@ -3892,9 +5431,9 @@ func (st *BlockState) renderLinkHoverTooltip(c *ui.Context, id string, n *Node, 
 
 func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Node, cb Callbacks) {
 	pal := theme.Ocean()
-	bar := ui.Row(c.Key("mm-sel-bar-"+id)).Absolute().Left(theme.Space10).Bottom(theme.Space10).
+	bar := st.keepCanvasButtonFocus(c, ui.Row(c.Key("mm-sel-bar-"+id)).Absolute().Left(theme.Space10).Bottom(theme.Space10).
 		Height(theme.HeightChrome).PaddingX(theme.Space2).AlignItems(ui.Center).Gap(theme.Space2).
-		Radius(theme.RadiusPill).Background(pal.Menu).Border(1, pal.MenuBorder)
+		Radius(theme.RadiusPill).Background(pal.Menu).Border(1, pal.MenuBorder))
 	bui.Elevate(bar, theme.ElevationPopover)
 	bar.Children(func() {
 		renderPillBtn := func(key string, icon icons.Icon, label string, active, warn bool, onClick func()) {
@@ -3915,6 +5454,7 @@ func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Nod
 				fg = pal.Text
 			}
 			btn.Background(bg)
+			st.keepCanvasButtonFocus(c, btn)
 			btn.Children(func() {
 				icons.DrawAnimated(c, icon, theme.IconMicro, pal.MonoIconColors(fg), active || hov || warn)
 				ui.Text(c, label).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
@@ -3932,6 +5472,7 @@ func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Nod
 			}
 			renderPillBtn("mm-qb-task-"+id, icons.Todo, taskLbl, sel.Task != nil, false, func() {
 				st.opToggleTask(sel, cb)
+				st.focusCanvas(c, cb)
 			})
 			if sel.Task != nil {
 				doneLbl := theme.Tr("完成", "Done")
@@ -3940,6 +5481,7 @@ func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Nod
 				}
 				renderPillBtn("mm-qb-done-"+id, icons.Check, doneLbl, *sel.Task, false, func() {
 					st.opFlipTaskDone(sel, cb)
+					st.focusCanvas(c, cb)
 				})
 			}
 		}
@@ -3970,17 +5512,11 @@ func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Nod
 	})
 }
 
-func (st *BlockState) renderZoomHUD(c *ui.Context, id string) {
+func (st *BlockState) renderZoomHUD(c *ui.Context, id string, cb Callbacks) {
 	pal := theme.Ocean()
-	k := func(mac, other string) string {
-		if theme.IsMacOS() {
-			return mac
-		}
-		return other
-	}
-	hud := ui.Row(c.Key("mm-zoom-hud-"+id)).Absolute().Right(theme.Space10).Bottom(theme.Space10).
+	hud := st.keepCanvasButtonFocus(c, ui.Row(c.Key("mm-zoom-hud-"+id)).Absolute().Right(theme.Space10).Bottom(theme.Space10).
 		Height(theme.HeightChrome).PaddingX(theme.Space4).AlignItems(ui.Center).Gap(theme.Space2).
-		Radius(theme.RadiusPill).Background(pal.Menu).Border(1, pal.MenuBorder)
+		Radius(theme.RadiusPill).Background(pal.Menu).Border(1, pal.MenuBorder))
 	bui.Elevate(hud, theme.ElevationPopover)
 	hud.Children(func() {
 		anyFolded := st.hasAnyFolded()
@@ -3990,65 +5526,71 @@ func (st *BlockState) renderZoomHUD(c *ui.Context, id string) {
 			foldIcon = icons.UnfoldAll
 			foldTip = theme.Tr("展开所有分支", "Expand all branches")
 		}
-		foldBtn := bui.IconButton(c, foldIcon, bui.IconButtonOptions{
+		foldBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, foldIcon, bui.IconButtonOptions{
 			ID:       "mm-hud-fold-" + id,
 			Label:    foldTip,
 			Tooltip:  foldTip,
-			Shortcut: k("⌘⌥/", "Ctrl+Alt+/"),
+			Shortcut: mmShortcutLabel("⌘⌥/", "Ctrl+Alt+/"),
 			Size:     theme.HeightMicro + theme.Space4,
 			IconSize: theme.IconMicro,
 			Radius:   theme.RadiusPill,
-		})
+		}))
 		if foldBtn.Clicked() {
 			st.opToggleExpandCollapseAll()
+			st.focusCanvas(c, cb)
 		}
 
 		ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
 
-		outBtn := bui.IconButton(c, icons.TbMinus, bui.IconButtonOptions{
+		outBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, icons.TbMinus, bui.IconButtonOptions{
 			ID:       "mm-hud-zout-" + id,
 			Label:    theme.Tr("缩小", "Zoom out"),
 			Tooltip:  theme.Tr("缩小", "Zoom out"),
-			Shortcut: k("⌘-", "Ctrl+-"),
+			Shortcut: mmShortcutLabel("⌘-", "Ctrl+-"),
 			Size:     theme.HeightMicro + theme.Space4,
 			IconSize: theme.IconMicro,
 			Radius:   theme.RadiusPill,
-		})
+		}))
 		if outBtn.Clicked() {
 			st.ZoomBy(1.0 / 1.15)
+			st.focusCanvas(c, cb)
 		}
 
 		scalePct := int(math.Round(float64(st.Camera.Scale * 100)))
 		if scalePct <= 0 {
 			scalePct = 100
 		}
-		pctBtn := ui.ButtonBase(c.Key("mm-hud-zpct-"+id)).
+		pctBtn := st.keepCanvasButtonFocus(c, ui.ButtonBase(c.Key("mm-hud-zpct-"+id)).
 			Height(theme.HeightMicro + theme.Space4).MinWidth(42).PaddingX(theme.Space4).
 			Radius(theme.RadiusPill).Center().Cursor(ui.CursorPointer).Shrink(0).
-			Label(theme.Tr("适配画布", "Fit to view"))
+			Label(theme.Tr("适配画布", "Fit to view")))
 		if pctBtn.Hovered() || pctBtn.Pressed() {
 			pctBtn.Background(pal.Hover)
 		}
-		bui.TooltipShortcut(c, pctBtn, theme.Tr("点击适配画布", "Click to fit view"), k("⌘0", "Ctrl+0"))
+		bui.TooltipShortcut(c, pctBtn,
+			theme.Tr("点击适配画布（"+mmShortcutLabel("⌘⇧0", "Ctrl+Shift+0")+" 还原 100%）", "Click to fit ("+mmShortcutLabel("⌘⇧0", "Ctrl+Shift+0")+" 100%)"),
+			mmShortcutLabel("⌘0", "Ctrl+0"))
 		pctBtn.Children(func() {
 			ui.Text(c, fmt.Sprintf("%d%%", scalePct)).
 				FontSize(theme.FontMeta).FontWeight(theme.WeightMono).TextColor(pal.Text).SingleLine()
 		})
 		if pctBtn.Clicked() {
 			st.FitCanvas()
+			st.focusCanvas(c, cb)
 		}
 
-		inBtn := bui.IconButton(c, icons.TbPlus, bui.IconButtonOptions{
+		inBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, icons.TbPlus, bui.IconButtonOptions{
 			ID:       "mm-hud-zin-" + id,
 			Label:    theme.Tr("放大", "Zoom in"),
 			Tooltip:  theme.Tr("放大", "Zoom in"),
-			Shortcut: k("⌘+", "Ctrl++"),
+			Shortcut: mmShortcutLabel("⌘+", "Ctrl+="),
 			Size:     theme.HeightMicro + theme.Space4,
 			IconSize: theme.IconMicro,
 			Radius:   theme.RadiusPill,
-		})
+		}))
 		if inBtn.Clicked() {
 			st.ZoomBy(1.15)
+			st.focusCanvas(c, cb)
 		}
 	})
 }
@@ -4057,7 +5599,8 @@ func (st *BlockState) renderFindBar(c *ui.Context, id string, cb Callbacks) {
 	pal := theme.Ocean()
 	bar := ui.Row(c.Key("mm-find-bar-"+id)).Absolute().Top(theme.Space8).Right(theme.Space10).
 		Height(theme.HeightControl + theme.Space4).PaddingX(theme.Space6).AlignItems(ui.Center).Gap(theme.Space4).
-		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder)
+		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder).
+		Bind(&st.FindBarHandle)
 	bui.Elevate(bar, theme.ElevationPopover)
 	bar.Children(func() {
 		icons.DrawAnimated(c, icons.FindSearch, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary), false)
@@ -4074,27 +5617,55 @@ func (st *BlockState) renderFindBar(c *ui.Context, id string, cb Callbacks) {
 			st.FindHandle.SelectAll(c)
 		}
 		inp.HandleInput(func(ev ui.InputEvent) bool {
-			if ev.Kind != ui.InputKeyDown {
+			if ev.Kind != ui.InputKeyDown || ev.Key == ui.KeyUnknown {
 				return false
 			}
 			switch ev.Key {
 			case ui.KeyEscape:
-				st.CloseFind()
-				st.CanvasHandle.Focus()
-				return true
+				if ev.Mods == 0 {
+					st.CloseFind()
+					st.restoreCanvasFocusAfterEdit(cb)
+					return true
+				}
 			case ui.KeyEnter:
 				if (ev.Mods & ui.Shift) != 0 {
 					st.stepFind(-1)
-				} else {
+				} else if ev.Mods == 0 {
 					st.stepFind(1)
+				} else {
+					return false
 				}
 				return true
 			case ui.KeyDown:
-				st.stepFind(1)
-				return true
+				if ev.Mods == 0 {
+					st.stepFind(1)
+					return true
+				}
 			case ui.KeyUp:
-				st.stepFind(-1)
-				return true
+				if ev.Mods == 0 {
+					st.stepFind(-1)
+					return true
+				}
+			case ui.KeyG:
+				if theme.IsMacOS() && isMMPrimaryShiftMod(ev.Mods) {
+					st.stepFind(-1)
+					return true
+				}
+				if theme.IsMacOS() && isMMPrimaryMod(ev.Mods) {
+					st.stepFind(1)
+					return true
+				}
+			case ui.KeyF3:
+				if !theme.IsMacOS() {
+					if ev.Mods == ui.Shift {
+						st.stepFind(-1)
+						return true
+					}
+					if ev.Mods == 0 {
+						st.stepFind(1)
+						return true
+					}
+				}
 			}
 			return false
 		})
@@ -4123,37 +5694,47 @@ func (st *BlockState) renderFindBar(c *ui.Context, id string, cb Callbacks) {
 		prevBtn := bui.IconButton(c, icons.ChevronUp, bui.IconButtonOptions{
 			ID:       "mm-find-prev-" + id,
 			Label:    theme.Tr("上一个", "Previous match"),
+			Tooltip:  theme.Tr("上一个", "Previous match"),
+			Shortcut: mmShortcutLabel("⌘⇧G", "Shift+F3"),
 			Size:     theme.HeightMicro + theme.Space2,
 			IconSize: theme.IconMicro,
 			Radius:   theme.RadiusSM,
 			Disabled: !hasMatches,
-		})
+		}).KeepFocus()
 		if prevBtn.Clicked() && hasMatches {
 			st.stepFind(-1)
 		}
 		nextBtn := bui.IconButton(c, icons.ChevronDown, bui.IconButtonOptions{
 			ID:       "mm-find-next-" + id,
 			Label:    theme.Tr("下一个", "Next match"),
+			Tooltip:  theme.Tr("下一个", "Next match"),
+			Shortcut: mmShortcutLabel("⌘G", "F3"),
 			Size:     theme.HeightMicro + theme.Space2,
 			IconSize: theme.IconMicro,
 			Radius:   theme.RadiusSM,
 			Disabled: !hasMatches,
-		})
+		}).KeepFocus()
 		if nextBtn.Clicked() && hasMatches {
 			st.stepFind(1)
 		}
 		closeBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
 			ID:       "mm-find-close-" + id,
 			Label:    theme.Tr("关闭查找", "Close find"),
+			Shortcut: "Esc",
+			Tooltip:  theme.Tr("关闭查找", "Close find"),
 			Size:     theme.HeightMicro + theme.Space2,
 			IconSize: theme.IconMicro,
 			Radius:   theme.RadiusSM,
 		})
 		if closeBtn.Clicked() {
 			st.CloseFind()
-			st.CanvasHandle.Focus()
+			st.focusCanvas(c, cb)
 		}
 	})
+	if bar.OverlayShortcut(0, ui.KeyEscape) {
+		st.CloseFind()
+		st.restoreCanvasFocusAfterEdit(cb)
+	}
 }
 
 // --- Source View ---
@@ -4189,17 +5770,45 @@ func (st *BlockState) renderSourceView(c *ui.Context, id string, fullscreen bool
 		if cb.ReadOnly {
 			ta.ReadOnly(true)
 		}
-		if !fullscreen && st.consumeFullscreenFocusRestore() {
-			ta.Focus(ui.FocusOptions{PreventScroll: true})
-			if cb.OnRequestFocus != nil {
+		fsRestore := !fullscreen && st.consumeFullscreenFocusRestore()
+		reqFocus, reqPreventScroll := st.consumeViewFocus()
+		if fsRestore || reqFocus {
+			if fsRestore || reqPreventScroll {
+				ta.Focus(ui.FocusOptions{PreventScroll: true})
+			} else {
+				ta.Focus()
+			}
+			if fsRestore && cb.OnRequestFocus != nil {
 				cb.OnRequestFocus()
 			}
 		}
-		if st.viewFocusPending {
-			st.viewFocusPending = false
-			ta.Focus(ui.FocusOptions{PreventScroll: true})
-		}
-		ta.OnTextKey(st.captureBlockTextKey)
+		st.SourceComposing = ta.Composing()
+		ta.OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyUnknown {
+				return false
+			}
+			flushSource := func() {
+				if cb.ReadOnly {
+					return
+				}
+				live := k.Text()
+				if live != st.LastSource {
+					st.SyncSource(live, Config{})
+					if cb.OnChange != nil {
+						cb.OnChange(live)
+					}
+				}
+			}
+			if cb.OnHostNavKey != nil && cb.OnHostNavKey(k.Key, k.Mods) {
+				flushSource()
+				return true
+			}
+			if st.captureBlockTextKey(k) {
+				flushSource()
+				return true
+			}
+			return false
+		})
 		bui.AutoHideScrollbars(c, ta, &st.SourceScroll)
 		if !cb.ReadOnly && (ta.Changed() || draft != prev) {
 			st.SyncSource(draft, Config{})
@@ -4282,12 +5891,25 @@ func (st *BlockState) renderSourceView(c *ui.Context, id string, fullscreen bool
 
 // --- Export Dropdown Menu ---
 
+func (st *BlockState) restoreFocusAfterPopover(c *ui.Context, cb Callbacks) {
+	if st.EditingID != 0 {
+		if el := c.Resolve(st.EditHandle); el.Valid() {
+			el.Focus(ui.FocusOptions{PreventScroll: true})
+		} else {
+			st.EditHandle.Focus(c)
+		}
+		return
+	}
+	st.focusCanvas(c, cb)
+}
+
 func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight float32, cb Callbacks) {
 	pal := theme.Ocean()
-	// Backdrop to close on outside click.
+	// Backdrop to close on outside click or Escape.
 	scrim := ui.Box(c.Key("mm-exp-scrim-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).Background(ui.Transparent)
-	if scrim.Clicked() {
+	if scrim.Clicked() || scrim.OverlayShortcut(0, ui.KeyEscape) {
 		st.ExportMenuOpen = false
+		st.restoreFocusAfterPopover(c, cb)
 		return
 	}
 
@@ -4332,9 +5954,9 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 					}
 					for _, o := range opts {
 						active := curTheme == o.mode
-						btn := ui.ButtonBase(c.Key("mm-exp-th-"+id+"-"+string(o.mode))).
+						btn := st.keepCanvasButtonFocus(c, ui.ButtonBase(c.Key("mm-exp-th-"+id+"-"+string(o.mode))).
 							Grow(1).Shrink(1).MinWidth(0).Height(theme.HeightCompact).
-							Radius(theme.RadiusSM).Center().Cursor(ui.CursorPointer).Label(o.label)
+							Radius(theme.RadiusSM).Center().Cursor(ui.CursorPointer).Label(o.label))
 						if active {
 							btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
 						} else if btn.Hovered() || btn.Pressed() {
@@ -4349,6 +5971,7 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 						})
 						if btn.Clicked() {
 							st.ExportTheme = o.mode
+							st.focusCanvas(c, cb)
 						}
 					}
 				})
@@ -4357,9 +5980,9 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 
 				// Quick clipboard copy actions.
 				renderClipRow := func(key string, icon icons.Icon, label string, onClick func()) {
-					row := ui.ButtonBase(c.Key(key)).
+					row := st.keepCanvasButtonFocus(c, ui.ButtonBase(c.Key(key)).
 						FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-						AlignItems(ui.Center).Justify(ui.Start).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(label)
+						AlignItems(ui.Center).Justify(ui.Start).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(label))
 					hot := row.Hovered() || row.Pressed()
 					if hot {
 						row.Background(pal.MenuHover)
@@ -4375,6 +5998,7 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 					})
 					if row.Clicked() && onClick != nil {
 						onClick()
+						st.focusCanvas(c, cb)
 					}
 				}
 
@@ -4392,9 +6016,9 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 					Padding(theme.Space2, theme.Space8, theme.Space2, theme.Space8).SingleLine()
 
 				renderFmtRow := func(label, ext string, format Format) {
-					row := ui.ButtonBase(c.Key("mm-exp-item-"+id+"-"+ext)).
+					row := st.keepCanvasButtonFocus(c, ui.ButtonBase(c.Key("mm-exp-item-"+id+"-"+ext)).
 						FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-						AlignItems(ui.Center).Justify(ui.SpaceBetween).Cursor(ui.CursorPointer).Label(label)
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).Cursor(ui.CursorPointer).Label(label))
 					if row.Hovered() || row.Pressed() {
 						row.Background(pal.MenuHover)
 					}
@@ -4406,6 +6030,7 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 					})
 					if row.Clicked() {
 						st.triggerExport(format, cb)
+						st.focusCanvas(c, cb)
 					}
 				}
 
@@ -4421,9 +6046,9 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 
 				if !cb.ReadOnly {
 					ui.Box(c).FillWidth().Height(1).Margin(theme.Space4, theme.Space2).Background(pal.MenuSeparator)
-					impRow := ui.ButtonBase(c.Key("mm-exp-imp-"+id)).
+					impRow := st.keepCanvasButtonFocus(c, ui.ButtonBase(c.Key("mm-exp-imp-"+id)).
 						FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-						AlignItems(ui.Center).Justify(ui.Start).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(theme.Tr("导入文件", "Import File"))
+						AlignItems(ui.Center).Justify(ui.Start).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(theme.Tr("导入文件", "Import File")))
 					impHot := impRow.Hovered() || impRow.Pressed()
 					if impHot {
 						impRow.Background(pal.MenuHover)
@@ -4439,6 +6064,7 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 					})
 					if impRow.Clicked() {
 						st.triggerImport(cb)
+						st.focusCanvas(c, cb)
 					}
 				}
 			})
@@ -4450,10 +6076,16 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 
 func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) {
 	pal := theme.Ocean()
-	scrim := ui.Box(c.Key("mm-link-scrim-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).Background(ui.Transparent)
-	if scrim.Clicked() {
+	closeLink := func() {
 		st.LinkNodeID = 0
 		st.LinkBrokenNotice = false
+		st.LinkFocusPending = false
+		st.LinkHandle.CancelFocus()
+		st.focusCanvas(c, cb)
+	}
+	scrim := ui.Box(c.Key("mm-link-scrim-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).Background(ui.Transparent)
+	if scrim.Clicked() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+		closeLink()
 		return
 	}
 
@@ -4531,7 +6163,8 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 
 	panel := ui.Column(c.Key("mm-link-pop-"+id)).Absolute().
 		Width(popW).Padding(theme.Space12).Gap(theme.Space8).
-		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder)
+		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder).
+		Bind(&st.LinkPanelHandle)
 
 	// Anchor popover cleanly near the target node when in Map view, flipping above if near bottom edge.
 	if st.View == ViewMap && st.LastCanvasW > 0 && st.LastCanvasH > 0 {
@@ -4580,10 +6213,10 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 			Bind(&st.LinkHandle)
 		if st.LinkFocusPending {
 			st.LinkFocusPending = false
-			st.LinkHandle.Focus()
+			st.LinkHandle.Focus(c)
 		}
 		inp.HandleInput(func(ev ui.InputEvent) bool {
-			if ev.Kind != ui.InputKeyDown {
+			if ev.Kind != ui.InputKeyDown || ev.Key == ui.KeyUnknown {
 				return false
 			}
 			switch ev.Key {
@@ -4609,16 +6242,10 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 				} else {
 					st.applyLink(st.LinkDraft, cb)
 				}
-				if st.View == ViewMap {
-					st.CanvasHandle.Focus()
-				}
+				st.focusCanvas(c, cb)
 				return true
 			case ui.KeyEscape:
-				st.LinkNodeID = 0
-				st.LinkBrokenNotice = false
-				if st.View == ViewMap {
-					st.CanvasHandle.Focus()
-				}
+				closeLink()
 				return true
 			}
 			return false
@@ -4679,9 +6306,7 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 						})
 						if row.Clicked() {
 							st.applyLink(cand.RelPath, cb)
-							if st.View == ViewMap {
-								st.CanvasHandle.Focus()
-							}
+							st.focusCanvas(c, cb)
 						}
 					}
 				})
@@ -4706,9 +6331,7 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 					})
 					if remBtn.Clicked() {
 						st.applyLink("", cb)
-						if st.View == ViewMap {
-							st.CanvasHandle.Focus()
-						}
+						st.focusCanvas(c, cb)
 					}
 				}
 				draftTrim := strings.TrimSpace(st.LinkDraft)
@@ -4741,11 +6364,7 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 					ui.Text(c, theme.Tr("取消", "Cancel")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 				})
 				if cancel.Clicked() {
-					st.LinkNodeID = 0
-					st.LinkBrokenNotice = false
-					if st.View == ViewMap {
-						st.CanvasHandle.Focus()
-					}
+					closeLink()
 				}
 
 				okBtn := ui.ButtonBase(c.Key("mm-link-ok-"+id)).Height(theme.HeightCompact).PaddingX(theme.Space12).
@@ -4763,9 +6382,7 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 					} else {
 						st.applyLink(st.LinkDraft, cb)
 					}
-					if st.View == ViewMap {
-						st.CanvasHandle.Focus()
-					}
+					st.focusCanvas(c, cb)
 				}
 			})
 		})
@@ -4774,20 +6391,16 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 
 // --- Grouped Shortcut Cheat-Sheet Popover ---
 
-func (st *BlockState) renderShortcutsPopover(c *ui.Context, id string) {
+func (st *BlockState) renderShortcutsPopover(c *ui.Context, id string, cb Callbacks) {
 	pal := theme.Ocean()
 	scrim := ui.Box(c.Key("mm-sc-scrim-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).Background(ui.Transparent)
-	if scrim.Clicked() {
+	if scrim.Clicked() || scrim.OverlayShortcut(0, ui.KeyEscape) {
 		st.ShortcutsOpen = false
+		st.restoreFocusAfterPopover(c, cb)
 		return
 	}
 
-	k := func(mac, other string) string {
-		if theme.IsMacOS() {
-			return mac
-		}
-		return other
-	}
+	k := mmShortcutLabel
 	type scEntry struct {
 		keys  []string
 		label string
@@ -4798,54 +6411,72 @@ func (st *BlockState) renderShortcutsPopover(c *ui.Context, id string) {
 	}
 	groups := []scGroup{
 		{
-			title: theme.Tr("视图", "Views"),
+			title: theme.Tr("视图与全局", "Views & Window"),
 			items: []scEntry{
-				{[]string{k("⌘1", "Ctrl+1")}, theme.Tr("导图", "Map")},
-				{[]string{k("⌘2", "Ctrl+2")}, theme.Tr("大纲", "Outline")},
-				{[]string{k("⌘3", "Ctrl+3")}, theme.Tr("源码", "Source")},
-				{[]string{k("⌘⇧↵", "Ctrl+Shift+↵")}, theme.Tr("进入 / 退出全屏", "Toggle fullscreen")},
-				{[]string{k("⌘⇧L", "Ctrl+Shift+L")}, theme.Tr("切换左右布局", "Toggle layout")},
+				{[]string{k("⌘1/2/3", "Ctrl+1/2/3")}, theme.Tr("切换导图 / 大纲 / 源码", "Map / Outline / Source")},
+				{[]string{k("⌘⇧↵", "Ctrl+Shift+Enter")}, theme.Tr("进入 / 退出全屏", "Toggle fullscreen")},
+				{[]string{k("⌘⇧L", "Ctrl+Shift+L")}, theme.Tr("切换左右 / 平衡布局", "Toggle layout")},
+				{[]string{k("⌘⇧/", "Ctrl+Shift+/")}, theme.Tr("打开 / 关闭快捷键速查", "Toggle shortcuts")},
+				{[]string{"Esc"}, theme.Tr("取消 / 关闭弹窗 / 退全屏", "Cancel / close / exit fullscreen")},
 			},
 		},
 		{
 			title: theme.Tr("建树与编辑", "Tree & Editing"),
 			items: []scEntry{
-				{[]string{"Tab"}, theme.Tr("添加子节点", "Add child")},
-				{[]string{"↵"}, theme.Tr("下方同级节点", "Add sibling below")},
-				{[]string{k("⇧↵", "Shift+↵")}, theme.Tr("上方同级节点", "Add sibling above")},
+				{[]string{k("Tab", "Tab / Ins")}, theme.Tr("添加子节点", "Add child")},
+				{[]string{k("↵", "Enter")}, theme.Tr("下方同级节点", "Add sibling below")},
+				{[]string{k("⇧↵", "Shift+Enter")}, theme.Tr("上方同级节点", "Add sibling above")},
 				{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("插入父节点", "Insert parent")},
-				{[]string{"F2"}, theme.Tr("重命名节点", "Rename node")},
-				{[]string{"⌫"}, theme.Tr("删除分支", "Delete branch")},
-				{[]string{k("⌥⌫", "Alt+Del")}, theme.Tr("仅删当前节点", "Delete single node")},
+				{[]string{"F2", k("⌘E", "Ctrl+E")}, theme.Tr("重命名 / 编辑节点", "Rename / edit topic")},
+				{[]string{k("⇧↵", "Shift+Enter"), k("⌥↵", "Alt+Enter")}, theme.Tr("编辑态内换行", "Newline while editing")},
+				{[]string{k("⌫", "Del")}, theme.Tr("删除所选分支", "Delete branch")},
+				{[]string{k("⇧⌫", "Shift+Del"), k("⌥⌫", "Alt+Del")}, theme.Tr("仅删节点（保留子级）", "Delete single node")},
 			},
 		},
 		{
-			title: theme.Tr("层级与移动", "Structure & Move"),
+			title: theme.Tr("层级、选中与历史", "Structure, Selection & History"),
 			items: []scEntry{
 				{[]string{k("⌥↑↓", "Alt+↑↓")}, theme.Tr("同级上下移动", "Move up / down")},
 				{[]string{k("⌥←→", "Alt+←→")}, theme.Tr("升级 / 降级节点", "Promote / demote")},
+				{[]string{k("⌘A", "Ctrl+A")}, theme.Tr("全选可见节点", "Select all nodes")},
+				{[]string{k("⌘⇧A", "Ctrl+Shift+A")}, theme.Tr("选中同级节点", "Select siblings")},
+				{[]string{k("⌘⌥A", "Ctrl+Alt+A")}, theme.Tr("选中当前分支", "Select subtree")},
+				{[]string{k("⌘C / X / V", "Ctrl+C / X / V")}, theme.Tr("复制 / 剪切 / 粘贴分支", "Copy / cut / paste")},
 				{[]string{k("⌘D", "Ctrl+D")}, theme.Tr("创建分支副本", "Duplicate branch")},
 				{[]string{k("⌘Z", "Ctrl+Z")}, theme.Tr("撤销", "Undo")},
-				{[]string{k("⌘⇧Z", "Ctrl+Y")}, theme.Tr("重做", "Redo")},
+				{[]string{k("⌘⇧Z", "Ctrl+Y / Ctrl+Shift+Z")}, theme.Tr("重做", "Redo")},
 			},
 		},
 		{
-			title: theme.Tr("任务、链接与画布", "Tasks, Links & Canvas"),
+			title: theme.Tr("任务、链接、查找与画布", "Tasks, Links, Find & Canvas"),
 			items: []scEntry{
 				{[]string{k("⌘⌥T", "Ctrl+Alt+T")}, theme.Tr("设为 / 取消任务", "Toggle task")},
-				{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("切换任务完成", "Toggle done")},
+				{[]string{k("⌘↵", "Ctrl+Enter")}, theme.Tr("切换任务完成", "Toggle done")},
 				{[]string{k("⌘L", "Ctrl+L")}, theme.Tr("编辑节点链接", "Edit link")},
-				{[]string{"Space"}, theme.Tr("折叠 / 展开分支", "Fold / unfold")},
-				{[]string{k("⌘⌥/", "Ctrl+Alt+/")}, theme.Tr("全部折叠 / 展开", "Fold / unfold all")},
-				{[]string{k("⌘F", "Ctrl+F")}, theme.Tr("画布内查找", "Find in map")},
-				{[]string{k("⌘±", "Ctrl+±")}, theme.Tr("缩放画布", "Zoom in / out")},
+				{[]string{k("⌥↵", "Alt+Enter")}, theme.Tr("打开节点链接", "Open link")},
+				{[]string{theme.Tr("空格", "Space"), k("⌘.", "Ctrl+.")}, theme.Tr("折叠 / 展开分支", "Fold / unfold branch")},
+				{[]string{k("⌘⌥/", "Ctrl+Alt+/"), k("⌘⇧.", "Ctrl+Shift+.")}, theme.Tr("全部折叠 / 展开", "Fold / unfold all")},
+				{[]string{k("⌘F", "Ctrl+F")}, theme.Tr("画布内查找", "Find in canvas")},
+				{[]string{k("⌘G / ⌘⇧G", "F3 / Shift+F3")}, theme.Tr("查找下一个 / 上一个", "Next / previous match")},
+				{[]string{k("⌘+ / ⌘-", "Ctrl+= / Ctrl+-")}, theme.Tr("放大 / 缩小画布", "Zoom in / out")},
 				{[]string{k("⌘0", "Ctrl+0")}, theme.Tr("适配画布", "Fit to view")},
+				{[]string{k("⌘⇧0", "Ctrl+Shift+0")}, theme.Tr("还原 100% 缩放", "Reset zoom 100%")},
+				{[]string{"Home / End"}, theme.Tr("跳到中心主题 / 末梢节点", "Central / last topic")},
+				{[]string{"PageUp / PageDown"}, theme.Tr("纵向翻页平移画布", "Page canvas up / down")},
+				{[]string{theme.Tr("拖动空白", "Drag blank")}, theme.Tr("框选节点", "Box select")},
+				{[]string{k("⇧/⌘+单击", "Shift/Ctrl+Click")}, theme.Tr("加选 / 减选节点", "Toggle selection")},
+				{[]string{theme.Tr("空格+拖动", "Space+Drag")}, theme.Tr("平移画布", "Pan canvas")},
 			},
 		},
 	}
 
+	availH := st.LastCanvasH
+	if availH <= 0 {
+		availH = 310
+	}
+	maxPopH := min(float32(380), max(float32(180), availH-theme.Space16))
 	panel := ui.Column(c.Key("mm-sc-pop-"+id)).Absolute().Right(theme.Space10).Bottom(theme.Space8).
-		Width(320).MaxHeight(300).Padding(theme.Space12).Gap(theme.Space8).
+		Width(356).MaxHeight(maxPopH).Padding(theme.Space12).Gap(theme.Space8).
 		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder)
 	bui.Elevate(panel, theme.ElevationPopover)
 	panel.Children(func() {
@@ -4853,15 +6484,16 @@ func (st *BlockState) renderShortcutsPopover(c *ui.Context, id string) {
 		hdr.Children(func() {
 			ui.Text(c, theme.Tr("快捷键速查", "Keyboard Shortcuts")).
 				FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
-			closeBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
+			closeBtn := st.keepCanvasButtonFocus(c, bui.IconButton(c, icons.Close, bui.IconButtonOptions{
 				ID:       "mm-sc-close-" + id,
 				Label:    theme.Tr("关闭", "Close"),
 				Size:     theme.HeightMicro + theme.Space2,
 				IconSize: theme.IconMicro,
 				Radius:   theme.RadiusSM,
-			})
+			}))
 			if closeBtn.Clicked() {
 				st.ShortcutsOpen = false
+				st.restoreFocusAfterPopover(c, cb)
 			}
 		})
 
@@ -4906,6 +6538,13 @@ func (st *BlockState) renderImportResultCard(c *ui.Context, id string, cb Callba
 		Width(232).Padding(theme.Space12, theme.Space16).Gap(theme.Space4).
 		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder)
 	bui.Elevate(card, theme.ElevationPopover)
+	if card.OverlayShortcut(0, ui.KeyEscape) {
+		st.ImportResult = nil
+		st.ImportUndoBefore = ""
+		st.ImportUndoAfter = ""
+		st.restoreFocusAfterPopover(c, cb)
+		return
+	}
 	card.Children(func() {
 		name := filepath.Base(rep.FileName)
 		if name == "" || name == "." {
@@ -4966,9 +6605,9 @@ func (st *BlockState) renderImportResultCard(c *ui.Context, id string, cb Callba
 		btnRow := ui.Row(c.Key("mm-imp-btns-"+id)).FillWidth().Margin(theme.Space6, 0, 0, 0).Gap(theme.Space6)
 		btnRow.Children(func() {
 			if st.canUndoImport(cb) {
-				undoBtn := ui.ButtonBase(c.Key("mm-imp-undo-"+id)).Grow(1).Shrink(1).MinWidth(0).Height(theme.HeightCompact).
+				undoBtn := st.keepCanvasButtonFocus(c, ui.ButtonBase(c.Key("mm-imp-undo-"+id)).Grow(1).Shrink(1).MinWidth(0).Height(theme.HeightCompact).
 					Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
-					Label(theme.Tr("撤销导入", "Undo Import"))
+					Label(theme.Tr("撤销导入", "Undo Import")))
 				if undoBtn.Hovered() || undoBtn.Pressed() {
 					undoBtn.Background(pal.Hover)
 				}
@@ -4978,13 +6617,14 @@ func (st *BlockState) renderImportResultCard(c *ui.Context, id string, cb Callba
 				})
 				if undoBtn.Clicked() {
 					st.opUndoImport(cb)
+					st.focusCanvas(c, cb)
 					c.Invalidate()
 				}
 			}
 
-			okBtn := ui.ButtonBase(c.Key("mm-imp-ok-"+id)).Grow(1).Shrink(1).MinWidth(0).Height(theme.HeightCompact).
+			okBtn := st.keepCanvasButtonFocus(c, ui.ButtonBase(c.Key("mm-imp-ok-"+id)).Grow(1).Shrink(1).MinWidth(0).Height(theme.HeightCompact).
 				Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
-				Label(theme.Tr("知道了", "Got it"))
+				Label(theme.Tr("知道了", "Got it")))
 			if okBtn.Hovered() || okBtn.Pressed() {
 				okBtn.Background(pal.Hover)
 			}
@@ -4996,6 +6636,7 @@ func (st *BlockState) renderImportResultCard(c *ui.Context, id string, cb Callba
 				st.ImportResult = nil
 				st.ImportUndoBefore = ""
 				st.ImportUndoAfter = ""
+				st.focusCanvas(c, cb)
 			}
 		})
 	})
@@ -5003,14 +6644,14 @@ func (st *BlockState) renderImportResultCard(c *ui.Context, id string, cb Callba
 
 // --- Bottom Shortcut Hint Bar (Single-Row Horizontal Scroll + Direct Mouse Wheel Scroll) ---
 
-func (st *BlockState) renderHintBar(c *ui.Context, id string) {
+func (st *BlockState) renderHintBar(c *ui.Context, id string, cb Callbacks) {
 	pal := theme.Ocean()
 	bar := ui.Row(c.Key("mm-hint-bar-" + id)).FillWidth().Height(theme.HeightControl).Shrink(0).
 		Background(pal.HintBand).AlignItems(ui.Center).Clip()
 
 	// Convert vertical mouse wheel directly into horizontal scroll over the bottom hint bar
-	// whenever the strip overflows horizontally (no line wrapping!).
-	handleHintWheel := func(ev ui.InputEvent) bool {
+	// whenever the strip overflows horizontally (no line wrapping!), and keep canvas focused on click.
+	handleHintInput := func(ev ui.InputEvent) bool {
 		if ev.Kind != ui.InputScroll || st.HintScroll.MaxX <= 0 {
 			return false
 		}
@@ -5020,69 +6661,90 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 		}
 		return false
 	}
-	bar.HandleInput(handleHintWheel)
+	bar.HandleInput(handleHintInput)
 
 	bar.Children(func() {
 		strip := ui.ScrollHorizontal(c.Key("mm-hint-scroll-" + id)).
 			Grow(1).Shrink(1).MinWidth(0).FillHeight().
 			AlignItems(ui.Center).PaddingX(theme.Space10).Gap(theme.Space10).
 			Scrollbars(false).TrackScroll(&st.HintScroll)
-		strip.HandleInput(handleHintWheel)
+		// Only the scrolling hint strip hands focus back to the canvas on click;
+		// the pinned Shortcuts button must still receive its own pointer events.
+		strip.HandleInput(func(ev ui.InputEvent) bool {
+			if ev.Kind == ui.InputPointerDown && ev.Button == 0 && st.View == ViewMap && st.EditingID == 0 && st.LinkNodeID == 0 {
+				st.focusCanvas(c, cb)
+				return true
+			}
+			return handleHintInput(ev)
+		})
 		strip.Children(func() {
 			type hintItem struct {
-				keys  []string
-				label string
+				keys      []string
+				label     string
+				highlight bool
+				divider   bool
 			}
-			k := func(mac, other string) string {
-				if theme.IsMacOS() {
-					return mac
-				}
-				return other
-			}
+			k := mmShortcutLabel
 			var items []hintItem
 			switch {
 			case st.View == ViewOutline:
 				items = []hintItem{
-					{[]string{"↵"}, theme.Tr("新行", "New")},
-					{[]string{k("⇧↵", "Shift+↵")}, theme.Tr("换行", "Break")},
-					{[]string{"Tab", k("⇧Tab", "Shift+Tab")}, theme.Tr("缩进", "Indent")},
-					{[]string{k("⌥↑↓", "Alt+↑↓")}, theme.Tr("移动", "Move")},
-					{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("待办", "Todo")},
-					{[]string{k("⌘.", "Ctrl+.")}, theme.Tr("折叠", "Fold")},
+					{keys: []string{k("↵", "Enter")}, label: theme.Tr("新行", "New")},
+					{keys: []string{k("⇧↵", "Shift+Enter"), k("⌥↵", "Alt+Enter")}, label: theme.Tr("换行", "Break")},
+					{keys: []string{"Tab", k("⇧Tab", "Shift+Tab")}, label: theme.Tr("缩进", "Indent")},
+					{keys: []string{k("⌥↑↓", "Alt+↑↓")}, label: theme.Tr("移动", "Move")},
+					{keys: []string{k("⌘↵", "Ctrl+Enter")}, label: theme.Tr("待办", "Todo")},
+					{keys: []string{k("⌘.", "Ctrl+.")}, label: theme.Tr("折叠", "Fold")},
+					{keys: []string{k("⌘D", "Ctrl+D")}, label: theme.Tr("副本", "Dup")},
+					{keys: []string{k("⌘L", "Ctrl+L")}, label: theme.Tr("链接", "Link")},
 				}
 				if st.OutlineZoomID != 0 {
-					items = append(items, hintItem{[]string{"Esc"}, theme.Tr("返回上级", "Zoom out")})
+					items = append(items, hintItem{keys: []string{"Esc"}, label: theme.Tr("返回上级", "Zoom out")})
 				} else {
-					items = append(items, hintItem{nil, theme.Tr("· 点圆点聚焦", "· Click dot to zoom")})
+					items = append(items, hintItem{label: theme.Tr("· 点圆点聚焦", "· Click dot to zoom")})
 				}
 			case st.EditingID != 0:
 				items = []hintItem{
-					{[]string{"↵"}, theme.Tr("完成", "Done")},
-					{[]string{k("⇧↵", "Shift+↵")}, theme.Tr("换行", "Newline")},
-					{[]string{"Tab"}, theme.Tr("子节点", "Child")},
-					{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("父节点", "Parent")},
-					{[]string{"Esc"}, theme.Tr("取消", "Cancel")},
+					{keys: []string{k("⇧↵", "Shift+Enter")}, label: theme.Tr("换行", "Newline"), highlight: true, divider: true},
+					{keys: []string{"Tab"}, label: theme.Tr("子节点", "Child")},
+					{keys: []string{k("↵", "Enter")}, label: theme.Tr("完成", "Done")},
 				}
 			default:
 				items = []hintItem{
-					{[]string{"Tab"}, theme.Tr("子节点", "Child")},
-					{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("父节点", "Parent")},
-					{[]string{"↵"}, theme.Tr("同级", "Sibling")},
-					{[]string{k("⌥↑↓←→", "Alt+↑↓←→")}, theme.Tr("移动", "Move")},
-					{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("任务", "Task")},
-					{[]string{"Space"}, theme.Tr("折叠", "Fold")},
-					{[]string{"F2"}, theme.Tr("改名", "Rename")},
-					{[]string{k("⌘L", "Ctrl+L")}, theme.Tr("链接", "Link")},
+					{keys: []string{theme.Tr("空格+拖动", "Space+Drag")}, label: theme.Tr("平移画布", "Pan canvas"), highlight: true, divider: true},
 				}
+				if !cb.ReadOnly {
+					items = append(items,
+						hintItem{keys: []string{"Tab"}, label: theme.Tr("子节点", "Child")},
+						hintItem{keys: []string{k("⌥↑↓←→", "Alt+↑↓←→")}, label: theme.Tr("移动", "Move")},
+					)
+				}
+				items = append(items,
+					hintItem{keys: []string{theme.Tr("空格", "Space")}, label: theme.Tr("折叠", "Fold")},
+				)
 			}
-			for _, it := range items {
+			for i, it := range items {
 				itemRow := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0)
 				itemRow.Children(func() {
 					for _, key := range it.keys {
-						bui.Keycap(c, key)
+						if it.highlight {
+							bui.KeycapWithOptions(c, key, bui.KeycapOptions{Accent: true})
+						} else {
+							bui.Keycap(c, key)
+						}
 					}
-					ui.Text(c, it.label).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+					lblCol := pal.TextSecondary
+					lblWeight := theme.WeightRegular
+					if it.highlight {
+						lblCol = pal.Text
+						lblWeight = theme.WeightControl
+					}
+					ui.Text(c, it.label).FontSize(theme.FontMeta).FontWeight(lblWeight).
+						TextColor(lblCol).SingleLine().Shrink(0)
 				})
+				if it.divider && i < len(items)-1 {
+					ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
+				}
 			}
 		})
 
@@ -5090,7 +6752,8 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 		ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
 		scBtn := ui.ButtonBase(c.Key("mm-sc-btn-"+id)).
 			Height(theme.HeightControl).PaddingX(theme.Space8).AlignItems(ui.Center).Gap(theme.Space4).
-			Cursor(ui.CursorPointer).Shrink(0).Label(theme.Tr("快捷键", "Shortcuts"))
+			Cursor(ui.CursorPointer).Shrink(0).Label(theme.Tr("快捷键", "Shortcuts")).KeepFocus()
+		bui.TooltipShortcut(c, scBtn, theme.Tr("快捷键速查", "Keyboard shortcuts"), mmShortcutLabel("⌘⇧/", "Ctrl+Shift+/"))
 		scHot := scBtn.Hovered() || scBtn.Pressed()
 		scFG := pal.TextSecondary
 		if st.ShortcutsOpen {
@@ -5111,6 +6774,15 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 				st.ExportMenuOpen = false
 				st.LinkNodeID = 0
 				st.ImportResult = nil
+			}
+			if st.EditingID != 0 {
+				if el := c.Resolve(st.EditHandle); el.Valid() {
+					el.Focus(ui.FocusOptions{PreventScroll: true})
+				} else {
+					st.EditHandle.Focus(c)
+				}
+			} else {
+				st.focusCanvas(c, cb)
 			}
 		}
 	})

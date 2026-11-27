@@ -9,6 +9,7 @@ import (
 type KeycapOptions struct {
 	Recording bool
 	Plain     bool
+	Accent    bool
 	Height    float32
 	MinWidth  float32
 	PaddingX  float32
@@ -53,6 +54,11 @@ func KeycapWithOptions(c *ui.Context, label string, opts KeycapOptions) ui.Eleme
 	if opts.Mono {
 		bg = pal.Keycap().BG
 		fg = pal.Text
+	}
+	if opts.Accent {
+		bg = pal.SelectionBG
+		bd = pal.Accent.Alpha(0.42)
+		fg = pal.SelectionFG
 	}
 	if opts.Recording {
 		bd = pal.Accent
