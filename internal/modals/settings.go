@@ -1070,23 +1070,20 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 
 			density := st.BrandDeco.EffectiveDensity()
 			decoOn := st.BrandDeco.Mode != model.BrandDecoOff
-			decoVal := "rich"
+			decoVal := "calm"
 			switch {
 			case !decoOn:
 				decoVal = "off"
 			case density == model.BrandDecoDensityMinimal:
 				decoVal = "minimal"
-			case density == model.BrandDecoDensityCalm:
-				decoVal = "calm"
 			}
-			decoVals := []string{"off", "minimal", "calm", "rich"}
+			decoVals := []string{"off", "minimal", "calm"}
 			decoIdx := slices.Index(decoVals, decoVal)
 			internalui.SettingsRow(c, theme.Tr("侧栏装饰动画", "Sidebar Decoration"), func() {
 				if internalui.SettingsSegmented(c, "settings-brand-deco-seg", &decoIdx, []internalui.SegmentOption{
 					{ID: "settings-brand-deco-off", Label: theme.Tr("关闭", "Off")},
 					{ID: "settings-brand-deco-minimal", Label: theme.Tr("简约", "Minimal")},
 					{ID: "settings-brand-deco-calm", Label: theme.Tr("舒缓", "Calm")},
-					{ID: "settings-brand-deco-rich", Label: theme.Tr("丰富", "Rich")},
 				}) {
 					decoVal = decoVals[decoIdx]
 					m.mutateState(func(s *model.AppState) {
@@ -1102,10 +1099,8 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 						switch decoVal {
 						case "minimal":
 							s.BrandDeco.Density = model.BrandDecoDensityMinimal
-						case "calm":
-							s.BrandDeco.Density = model.BrandDecoDensityCalm
 						default:
-							s.BrandDeco.Density = model.BrandDecoDensityRich
+							s.BrandDeco.Density = model.BrandDecoDensityCalm
 						}
 					})
 				}

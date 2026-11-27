@@ -60,15 +60,14 @@ type BrandScenePaintOpts struct {
 }
 
 // ResolveBrandMotion converts persisted BrandDeco preferences into runtime motion settings.
+// The rich density option is hidden from settings for now; unset or legacy rich values fall back to calm.
 func ResolveBrandMotion(deco model.BrandDeco) BrandMotion {
-	var m BrandMotion
 	switch deco.EffectiveDensity() {
-	case model.BrandDecoDensityCalm:
-		m.Density = BrandDensityCalm
 	case model.BrandDecoDensityMinimal:
-		m.Density = BrandDensityMinimal
+		return BrandMotion{Density: BrandDensityMinimal}
+	default:
+		return BrandMotion{Density: BrandDensityCalm}
 	}
-	return m
 }
 
 // BrandSceneSpec describes metadata for settings cards and scene selection.
