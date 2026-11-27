@@ -3,6 +3,8 @@ package pluginui
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,9 +20,12 @@ import (
 const storeHeroAutoAdvance = 5 * time.Second
 
 type storeHeroSpec struct {
-	PluginID string              `json:"id"`
-	Tone     theme.StoreHeroTone `json:"tone"`
+	PluginID string
+	Tone     theme.StoreHeroTone
 }
+
+// storeHeroTones cycles through featured slides in store/featured.json order.
+var storeHeroTones = []theme.StoreHeroTone{theme.StoreHeroToneOcean, theme.StoreHeroToneAmber, theme.StoreHeroToneViolet}
 
 type storeHeroSlide struct {
 	spec storeHeroSpec
@@ -30,9 +35,13 @@ type storeHeroSlide struct {
 var storeHeroCatalog = loadStoreHeroCatalog()
 
 func loadStoreHeroCatalog() []storeHeroSpec {
-	var specs []storeHeroSpec
-	if err := json.Unmarshal(storedata.FeaturedJSON, &specs); err != nil {
+	var ids []string
+	if err := json.Unmarshal(storedata.FeaturedJSON, &ids); err != nil {
 		return nil
+	}
+	specs := make([]storeHeroSpec, 0, len(ids))
+	for i, id := range ids {
+		specs = append(specs, storeHeroSpec{PluginID: id, Tone: storeHeroTones[i%len(storeHeroTones)]})
 	}
 	return specs
 }
@@ -44,7 +53,12 @@ type storeArtKey struct {
 
 var storeArtSlots = make(chan struct{}, 4)
 
+// storeArtSVG returns store/<filename> from the installed package when present,
+// otherwise fetches it from the plugin repository in the background.
 func (ctrl *Controller) storeArtSVG(c *ui.Context, entry plugins.StoreAppEntry, filename string) *ui.SVG {
+	if svg := ctrl.installedArtSVG(entry.ID, filename); svg != nil {
+		return svg
+	}
 	ref := entry.ArtworkBaseURL()
 	if ref == nil {
 		return nil
@@ -81,6 +95,39 @@ func (ctrl *Controller) storeArtSVG(c *ui.Context, entry plugins.StoreAppEntry, 
 		services.Invalidate()
 	}()
 	return nil
+}
+
+func (ctrl *Controller) installedArtSVG(id, filename string) *ui.SVG {
+	if ctrl.sup == nil || id == "" {
+		return nil
+	}
+	inst, ok := ctrl.sup.GetInstalled(id)
+	if !ok || inst.InstallDir == "" {
+		return nil
+	}
+	full := filepath.Join(inst.InstallDir, "store", filename)
+	key := storeArtKey{url: full, version: inst.Manifest.Version}
+	ctrl.storeArtMu.Lock()
+	defer ctrl.storeArtMu.Unlock()
+	if svg, found := ctrl.storeArt[key]; found {
+		return svg
+	}
+	if ctrl.storeArt == nil {
+		ctrl.storeArt = make(map[storeArtKey]*ui.SVG)
+	}
+	var svg *ui.SVG
+	if st, err := os.Stat(full); err == nil && st.Mode().IsRegular() && st.Size() <= 512<<10 {
+		if data, err := os.ReadFile(full); err == nil {
+			svg, _ = ui.ParseSVG(data)
+		}
+	}
+	ctrl.storeArt[key] = svg
+	return svg
+}
+
+// pluginIconArt returns the store icon for an installed plugin (local package first, then repository).
+func (ctrl *Controller) pluginIconArt(c *ui.Context, m plugins.Manifest) *ui.SVG {
+	return ctrl.storeArtSVG(c, plugins.StoreAppEntry{ID: m.ID, Repo: m.Repo, Version: m.Version}, "icon.svg")
 }
 
 func renderStorePluginIcon(

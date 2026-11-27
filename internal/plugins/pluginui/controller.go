@@ -250,6 +250,10 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 			HasError:      hasErr,
 			DisabledLabel: disabledLabel,
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors, active bool) {
+				if svg := c.pluginIconArt(ctx, app.Manifest); svg != nil {
+					ui.Image(ctx, svg.WithDark(theme.IsDark())).Size(size, size).Shrink(0)
+					return
+				}
 				DrawDuoSpecAnimated(ctx, app.Manifest.Icon, size, colors, active)
 			},
 		})

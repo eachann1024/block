@@ -44,4 +44,4 @@ Block 应用商店采用无审批自动采集机制。**硬门槛与采集上限
 
 - 索引通过 `system_apps` 提供带系统权限的发行包，通过 `apps` 提供其余发行包。支持 `system_apps` 的 Block 会合并两组条目。
 - **商店索引和离线缓存**：桌面端从 GitHub 或 jsDelivr 加载 `store-index.json`，把 `system_apps` 合入 `apps`，并缓存到 `<BlockAppData>/apps-cache/`。桌面商店和采集器都使用 `store/blocklist.json` 按插件 ID 或仓库过滤。首次离线打开且没有索引缓存时，商店只显示已安装条目。外部插件在独立仓库发布。
-- **可选商店美术**：所有插件均可在仓库默认分支提供 `store/icon.svg` 和 `store/hero.svg`，每个文件最多 512 KiB。宿主先从 GitHub 获取，失败时尝试 jsDelivr，并在本次运行中缓存。缺少图标时使用 `manifest.icon`。缺少轮播图时，在色调背景上显示放大的 `manifest.icon`。商店按 `store/featured.json` 中的 `id` 与 `tone` 选定轮播内容，支持 `ocean`、`amber`、`violet`。
+- **可选商店美术**：插件仓库根目录放 `store/icon.svg`（图标）和 `store/hero.svg`（轮播图）即可，无需在 manifest 声明，每个文件最多 512 KiB。发版包会带上这两个文件：已安装的插件直接读包内文件，商店和设置侧栏「已安装」都显示同一个图标；未安装时从仓库默认分支获取（GitHub 失败回退 jsDelivr），本次运行内缓存。缺少图标时使用 `manifest.icon`，缺少轮播图时在色调背景上显示放大的 `manifest.icon`。轮播内容由 `store/featured.json` 的插件 ID 列表决定，色调按顺序自动轮换。
