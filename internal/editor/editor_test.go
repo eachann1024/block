@@ -1863,6 +1863,15 @@ func TestBlockDecoratorsAndPaperBackdrop(t *testing.T) {
 		Backdrop: &BackdropSpec{
 			Pattern:  "paper_grid",
 			Contrast: "standard",
+			Scope:    "window",
+		},
+	})
+	_ = ui.NewTester(makeSessionView(s, false), 600, 400)
+	s.SetBackground(BackgroundStyle{
+		Backdrop: &BackdropSpec{
+			Pattern:  "paper_dots",
+			Contrast: "high",
+			Scope:    "window",
 		},
 	})
 	_ = ui.NewTester(makeSessionView(s, false), 600, 400)

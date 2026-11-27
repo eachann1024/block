@@ -372,7 +372,7 @@ func renderExternalPathBar(
 	chrome := pal.ShellChrome()
 
 	c.Key("external-path-bar")
-	wrap := ui.Column(c).FillWidth().Height(theme.ExternalPathBarHeight).Shrink(0)
+	wrap := ui.Column(c).FillWidth().Height(theme.ExternalPathBarHeight).Shrink(0).Background(pal.Paper)
 	blockui.Probe(wrap, "external-path-bar")
 	wrap.Children(func() {
 		bar := ui.Row(c.Key("external-path-bar-row")).Grow(1).FillWidth().

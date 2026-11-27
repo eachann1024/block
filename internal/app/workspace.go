@@ -6511,32 +6511,64 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 		layout.SidebarDrawer = false
 	}
 
-	// Window-wide top brand sky band + sidebar-width illustrated landscape painted onto
-	// root's own backdrop so the titlebar, sidebar controls, and right floating paper card
-	// always sit cleanly above it. Always invoked while !aiImmersive (even when scID == "")
-	// so scene switches and on/off toggles crossfade smoothly instead of snapping.
-	if !aiImmersive {
-		now := time.Now()
-		scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, now)
-		pauseBrandAnim := !c.WindowActive() || (activeSess != nil && activeSess.IsScrollingForHover(c.Now()))
-		sceneW := float32(0)
-		if sidebarWide {
-			sceneW = max(dockedSidebarWidth, SidebarMinW)
-		}
-		blockui.PaintBrandSceneBand(root, scID, chrome.Ground, blockui.BrandScenePaintOpts{
-			ShowOrb:    sidebarWide && !stSnap.BrandDeco.HideOrb,
-			ShowCat:    !stSnap.BrandDeco.HideCat,
-			SceneWidth: sceneW,
-			Motion:     blockui.ResolveBrandMotion(stSnap.BrandDeco),
-			PauseAnim:  pauseBrandAnim,
-			Now:        now,
-			SkinChrome: theme.IsSkinActive(),
-			SkinAccent: pal.Accent,
-			GlassAlpha: float32(shellGround.A) / 255,
-		})
+	frameBackdrop := w.activeBackdropSpec(false)
+	var winBackdrop *editor.BackdropSpec
+	if frameBackdrop != nil && frameBackdrop.Scope == "window" {
+		winBackdrop = frameBackdrop
 	}
 
 	root.Children(func() {
+		// Full-window plugin backdrop (when scope == "window") + window-wide top brand
+		// sky/landscape band both paint strictly at ZIndex(-1) above shellGround and
+		// underneath every interactive shell region, floating card, menu, modal, and toast.
+		// The shell backdrop clips out the top brand artwork band and the right-hand card
+		// so translucent skins/glass never double-blend patterns or bleed into brand art.
+		var backdropExcludeCard ui.Element
+		if !aiImmersive {
+			now := time.Now()
+			scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, now)
+			if winBackdrop != nil {
+				backdropPal := pal
+				hasBrandBand := scID != ""
+				ui.Box(c.Key("workspace-backdrop-layer")).
+					Absolute().Left(0).Top(0).Right(0).Bottom(0).
+					IgnoreInput(true).ZIndex(-1).
+					Draw(func(p *ui.Painter, r ui.Rect) {
+						var excludes [2]ui.Rect
+						n := 0
+						if hasBrandBand {
+							excludes[n] = ui.Rect{X: r.X, Y: r.Y, W: r.W, H: min(blockui.BrandBandHeight, r.H)}
+							n++
+						}
+						if backdropExcludeCard.Valid() {
+							if cb := backdropExcludeCard.Bounds(); cb.W > 0 && cb.H > 0 {
+								excludes[n] = cb
+								n++
+							}
+						}
+						editor.PaintBackdropClipped(p, r, backdropPal, winBackdrop, true, excludes[:n]...)
+					})
+			}
+			pauseBrandAnim := !c.WindowActive() || (activeSess != nil && activeSess.IsScrollingForHover(c.Now()))
+			sceneW := float32(0)
+			if sidebarWide {
+				sceneW = max(dockedSidebarWidth, SidebarMinW)
+			}
+			brandBand := ui.Box(c.Key("workspace-brand-band")).
+				Absolute().Left(0).Top(0).Right(0).Height(blockui.BrandBandHeight).
+				IgnoreInput(true).ZIndex(-1).Clip()
+			blockui.PaintBrandSceneBand(brandBand, scID, chrome.Ground, blockui.BrandScenePaintOpts{
+				ShowOrb:    sidebarWide && !stSnap.BrandDeco.HideOrb,
+				ShowCat:    !stSnap.BrandDeco.HideCat,
+				SceneWidth: sceneW,
+				Motion:     blockui.ResolveBrandMotion(stSnap.BrandDeco),
+				PauseAnim:  pauseBrandAnim,
+				Now:        now,
+				SkinChrome: theme.IsSkinActive(),
+				SkinAccent: pal.Accent,
+				GlassAlpha: float32(shellGround.A) / 255,
+			})
+		}
 		// 1. Top 40px Titlebar (hidden in AI Immersive full-window mode).
 		if aiImmersive {
 			w.tabMenu.Close()
@@ -6857,6 +6889,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 							Transition(blockui.SurfaceStageTransition()),
 						theme.ElevationCard,
 					)
+					backdropExcludeCard = settingsCard
 					settingsCard.Children(func() {
 						w.modals.RenderSettingsBody(c, layout.SidebarDrawer, func() {
 							w.ToggleSidebar(vpW)
@@ -6889,6 +6922,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 							Background(chrome.Card).Border(1, chrome.CardBorder),
 						cardElev,
 					)
+					backdropExcludeCard = panelCard
 					blockui.Probe(panelCard, "workspace-panel-card")
 					panelCard.Children(func() {
 						theme.WithSurface("paper", func() {
@@ -6971,7 +7005,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 										activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 										activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
 										activeSess.SetOutlineViewMode(stSnap.OutlineView)
-										activeSess.SetBackground(w.pluginEditorBackground())
+										activeSess.SetBackground(editor.BackgroundStyle{Backdrop: frameBackdrop})
 										activeSess.SetBlockDecorators(w.pluginBlockDecorators())
 										activeSess.SetMindMapConfig(w.nativeMindMapConfig())
 										activeSess.SetNotifyFunc(w.notify)
@@ -6992,7 +7026,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 										allowGhostFocus := !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() &&
 											w.sidebarUI.RenamingPath == "" && !layout.SidebarDrawer &&
 											!w.edgeFloat.LeftOpen() && !w.edgeFloat.RightOpen()
-										w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
+										w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus, winBackdrop)
 									}
 								})
 								renderPluginStatusStrip(c, w.Plugins(), w.activeSelectionText, w.ActiveNotePath)
@@ -7134,28 +7168,38 @@ func (w *Workspace) activeSelectionText() string {
 	return ""
 }
 
-func (w *Workspace) pluginEditorBackground() editor.BackgroundStyle {
+func (w *Workspace) activeBackdropSpec(windowOnly bool) *editor.BackdropSpec {
 	sup := w.Plugins()
 	if sup == nil {
-		return editor.BackgroundStyle{}
+		return nil
 	}
 	bd, ok := sup.ActiveBackdrop()
 	if !ok {
+		return nil
+	}
+	if windowOnly && bd.Scope != "window" {
+		return nil
+	}
+	return &editor.BackdropSpec{
+		FillPaths:   bd.Icon.FillPaths,
+		StrokePaths: bd.Icon.StrokePaths,
+		AccentPaths: bd.Icon.AccentPaths,
+		Pattern:     bd.Pattern,
+		Density:     bd.Density,
+		Contrast:    bd.Contrast,
+		Scope:       bd.Scope,
+		Opacity:     bd.Opacity,
+		Tint:        bd.Tint,
+		DarkGlow:    bd.DarkGlow,
+	}
+}
+
+func (w *Workspace) pluginEditorBackground() editor.BackgroundStyle {
+	spec := w.activeBackdropSpec(false)
+	if spec == nil {
 		return editor.BackgroundStyle{}
 	}
-	return editor.BackgroundStyle{
-		Backdrop: &editor.BackdropSpec{
-			FillPaths:   bd.Icon.FillPaths,
-			StrokePaths: bd.Icon.StrokePaths,
-			AccentPaths: bd.Icon.AccentPaths,
-			Pattern:     bd.Pattern,
-			Density:     bd.Density,
-			Contrast:    bd.Contrast,
-			Opacity:     bd.Opacity,
-			Tint:        bd.Tint,
-			DarkGlow:    bd.DarkGlow,
-		},
-	}
+	return editor.BackgroundStyle{Backdrop: spec}
 }
 
 func (w *Workspace) pluginBlockDecorators() []editor.BlockDecorator {
@@ -7697,12 +7741,12 @@ func (w *Workspace) openDirInShell(path string) {
 	}
 }
 
-func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, emptyFolder, allowGhostFocus bool) {
+func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, emptyFolder, allowGhostFocus bool, winBackdrop *editor.BackdropSpec) {
 	pal := theme.Ocean()
 	st := w.state
 	c.Key("workspace-empty")
 	if activeNB != "" && !emptyFolder {
-		w.renderGhostPage(c, st, allowGhostFocus)
+		w.renderGhostPage(c, st, allowGhostFocus, winBackdrop)
 		return
 	}
 	box := blockui.EmptyStage(c, pal.Paper, theme.EmptyStateWidth, func() {
@@ -7755,12 +7799,18 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 			}
 		})
 	})
+	if winBackdrop != nil {
+		paperPal := pal
+		box.Draw(func(p *ui.Painter, r ui.Rect) {
+			editor.PaintBackdrop(p, r, paperPal, winBackdrop, false)
+		})
+	}
 	blockui.Probe(box, "workspace-empty")
 }
 
 // renderGhostPage is the no-note state: a blank page whose title field creates
 // a note on Enter (named after what was typed, or the default name).
-func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState, allowAutoFocus bool) {
+func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState, allowAutoFocus bool, winBackdrop *editor.BackdropSpec) {
 	pal := theme.Ocean()
 	box := blockui.EmptyPageStage(c, pal.Paper, theme.EditorStandardWidth, func() {
 		in := ui.TextInputBase(c.Key("empty-ghost-title"), &w.ghostTitle).
@@ -7790,6 +7840,12 @@ func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState, allowAutoF
 			}
 		})
 	})
+	if winBackdrop != nil {
+		paperPal := pal
+		box.Draw(func(p *ui.Painter, r ui.Rect) {
+			editor.PaintBackdrop(p, r, paperPal, winBackdrop, false)
+		})
+	}
 	blockui.Probe(box, "workspace-empty")
 }
 

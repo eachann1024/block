@@ -262,7 +262,7 @@ type FileBadgeContrib struct {
 	Tooltip LocalizedText `json:"tooltip,omitempty"`
 }
 
-// BackdropContrib declares a custom vector or paper backdrop that can be applied behind the editor canvas.
+// BackdropContrib declares a custom vector or paper backdrop that can be applied behind the editor canvas or full window.
 type BackdropContrib struct {
 	ID       string        `json:"id"`
 	Title    LocalizedText `json:"title"`
@@ -270,6 +270,7 @@ type BackdropContrib struct {
 	Pattern  string        `json:"pattern,omitempty"`  // "scatter" | "grid" | "watermark" | "corners" | "paper_dots" | "paper_grid"
 	Density  string        `json:"density,omitempty"`  // "sparse" | "medium" | "dense"
 	Contrast string        `json:"contrast,omitempty"` // "standard" | "high"
+	Scope    string        `json:"scope,omitempty"`    // "editor" (default) | "window"
 	Opacity  float64       `json:"opacity,omitempty"`  // 0 (default 0.09) or 0.03..0.25
 	Tint     string        `json:"tint,omitempty"`     // "accent" | "muted" | "warm" | "glow"
 	DarkGlow bool          `json:"dark_glow,omitempty"`
@@ -845,6 +846,9 @@ func (m *Manifest) validateContributes() error {
 		if bg.Contrast != "" && !validBackdropContrast(bg.Contrast) {
 			return fmt.Errorf("contributes.backdrops %q contrast %q must be standard or high", bg.ID, bg.Contrast)
 		}
+		if bg.Scope != "" && !validBackdropScope(bg.Scope) {
+			return fmt.Errorf("contributes.backdrops %q scope %q must be editor or window", bg.ID, bg.Scope)
+		}
 		if bg.Tint != "" && !validBackdropTint(bg.Tint) {
 			return fmt.Errorf("contributes.backdrops %q tint %q must be accent, muted, warm, or glow", bg.ID, bg.Tint)
 		}
@@ -1048,6 +1052,24 @@ func validBackdropContrast(c string) bool {
 		return true
 	}
 	return false
+}
+
+func validBackdropScope(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "editor", "window", "fullscreen":
+		return true
+	}
+	return false
+}
+
+func normalizeBackdropScope(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "window", "fullscreen":
+		return "window"
+	case "editor":
+		return "editor"
+	}
+	return ""
 }
 
 func validBackdropDensity(d string) bool {
@@ -1495,6 +1517,7 @@ type EditorBackdropState struct {
 	Pattern  string  `json:"pattern,omitempty"`
 	Density  string  `json:"density,omitempty"`
 	Contrast string  `json:"contrast,omitempty"`
+	Scope    string  `json:"scope,omitempty"`
 	Opacity  float64 `json:"opacity,omitempty"`
 	Tint     string  `json:"tint,omitempty"`
 	DarkGlow bool    `json:"dark_glow,omitempty"`
@@ -1538,6 +1561,15 @@ func normalizeBackdropState(base BackdropContrib, st EditorBackdropState) Editor
 		contrast = "standard"
 	}
 	out.Contrast = contrast
+
+	scope := normalizeBackdropScope(out.Scope)
+	if scope == "" {
+		scope = normalizeBackdropScope(base.Scope)
+	}
+	if scope == "" {
+		scope = "editor"
+	}
+	out.Scope = scope
 
 	tint := strings.ToLower(strings.TrimSpace(out.Tint))
 	if !validBackdropTint(tint) {
@@ -2265,6 +2297,7 @@ type ResolvedBackdrop struct {
 	Pattern    string
 	Density    string
 	Contrast   string
+	Scope      string
 	Opacity    float64
 	Tint       string
 	DarkGlow   bool
@@ -2537,6 +2570,7 @@ func (s *Supervisor) ActiveBackdrop() (ResolvedBackdrop, bool) {
 			Pattern:    norm.Pattern,
 			Density:    norm.Density,
 			Contrast:   norm.Contrast,
+			Scope:      norm.Scope,
 			Opacity:    norm.Opacity,
 			Tint:       norm.Tint,
 			DarkGlow:   norm.DarkGlow,
@@ -3803,7 +3837,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			if base.ID == "" {
 				return EditorBackdropState{Enabled: false}, nil, true
 			}
-			st = EditorBackdropState{ID: base.ID, Enabled: false, Contrast: base.Contrast, DarkGlow: base.DarkGlow}
+			st = EditorBackdropState{ID: base.ID, Enabled: false, Contrast: base.Contrast, Scope: base.Scope, DarkGlow: base.DarkGlow}
 		} else if m.Contributes != nil {
 			if b, found := m.Contributes.backdropByID(st.ID); found {
 				base = b
@@ -3824,6 +3858,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			Pattern  string   `json:"pattern"`
 			Density  string   `json:"density"`
 			Contrast string   `json:"contrast"`
+			Scope    string   `json:"scope"`
 			Opacity  *float64 `json:"opacity"`
 			Tint     string   `json:"tint"`
 			DarkGlow *bool    `json:"dark_glow"`
@@ -3857,21 +3892,29 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if p.Contrast != "" && !validBackdropContrast(p.Contrast) {
 			return nil, rpcErr(-32602, "invalid backdrop contrast: "+p.Contrast), true
 		}
+		if p.Scope != "" && !validBackdropScope(p.Scope) {
+			return nil, rpcErr(-32602, "invalid backdrop scope: "+p.Scope), true
+		}
 		if p.Tint != "" && !validBackdropTint(p.Tint) {
 			return nil, rpcErr(-32602, "invalid backdrop tint: "+p.Tint), true
 		}
 		if p.Opacity != nil && (math.IsNaN(*p.Opacity) || math.IsInf(*p.Opacity, 0)) {
 			return nil, rpcErr(-32602, "invalid backdrop opacity"), true
 		}
-		s.contrib.mu.RLock()
+		s.mu.RLock()
+		if !s.isRuntimeActiveLocked(m.ID, rt) {
+			s.mu.RUnlock()
+			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
+		}
+		s.contrib.mu.Lock()
 		prev, hasPrev := s.contrib.backdropBy[m.ID]
-		s.contrib.mu.RUnlock()
 		next := EditorBackdropState{
 			ID:       base.ID,
 			Enabled:  enabled,
 			Pattern:  base.Pattern,
 			Density:  base.Density,
 			Contrast: base.Contrast,
+			Scope:    base.Scope,
 			Opacity:  base.Opacity,
 			Tint:     base.Tint,
 			DarkGlow: base.DarkGlow,
@@ -3880,6 +3923,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			next.Pattern = prev.Pattern
 			next.Density = prev.Density
 			next.Contrast = prev.Contrast
+			next.Scope = prev.Scope
 			next.Opacity = prev.Opacity
 			next.Tint = prev.Tint
 			next.DarkGlow = prev.DarkGlow
@@ -3893,6 +3937,9 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if p.Contrast != "" {
 			next.Contrast = p.Contrast
 		}
+		if p.Scope != "" {
+			next.Scope = p.Scope
+		}
 		if p.Tint != "" {
 			next.Tint = p.Tint
 		}
@@ -3903,13 +3950,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			next.DarkGlow = *p.DarkGlow
 		}
 		next = normalizeBackdropState(base, next)
-		s.mu.RLock()
-		if !s.isRuntimeActiveLocked(m.ID, rt) {
-			s.mu.RUnlock()
-			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
-		}
-		s.contrib.mu.Lock()
-		if prev, ok := s.contrib.backdropBy[m.ID]; !ok || prev != next {
+		if !hasPrev || prev != next {
 			s.contrib.backdropBy[m.ID] = next
 			s.contrib.saveLocked()
 		}

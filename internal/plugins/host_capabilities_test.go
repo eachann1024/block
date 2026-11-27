@@ -1070,6 +1070,21 @@ func TestPhase2BBackdropDecoratorsTitlebarAndRemovedRPCs(t *testing.T) {
 		t.Fatalf("expected invalid backdrop contrast error")
 	}
 
+	mBadScope := baseManifest("bad-scope")
+	mBadScope.Permissions = []Permission{PermUIAppearance}
+	mBadScope.Contributes = &Contributes{
+		Backdrops: []BackdropContrib{{
+			ID:      "paper-dots",
+			Title:   LocalizedText{Zh: "点阵纸纹", En: "Dot Paper"},
+			Icon:    icon,
+			Pattern: "paper_dots",
+			Scope:   "desktop",
+		}},
+	}
+	if err := mBadScope.Validate(); err == nil {
+		t.Fatalf("expected invalid backdrop scope error")
+	}
+
 	// 2. BlockDecorators validation (permission, fields, no emoji) + ActiveBlockDecorators.
 	mDecNoPerm := baseManifest("dec-noperm")
 	mDecNoPerm.Contributes = &Contributes{
@@ -1160,18 +1175,41 @@ func TestPhase2BBackdropDecoratorsTitlebarAndRemovedRPCs(t *testing.T) {
 	sup.runtimes[mOnlyPerm.ID] = rtOther
 	sup.mu.Unlock()
 
-	// host.ui.set_backdrop with paper_dots + contrast=high
+	// host.ui.set_backdrop with paper_dots + contrast=high (scope defaults to editor)
 	res, rerr, handled := sup.dispatchContribHostMethod(rtPaper, "host.ui.set_backdrop", json.RawMessage(`{"id":"paper-dots","enabled":true,"pattern":"paper_dots","contrast":"high"}`))
 	if !handled || rerr != nil {
 		t.Fatalf("host.ui.set_backdrop failed: handled=%v err=%v", handled, rerr)
 	}
 	st := res.(EditorBackdropState)
-	if !st.Enabled || st.Pattern != "paper_dots" || st.Contrast != "high" {
+	if !st.Enabled || st.Pattern != "paper_dots" || st.Contrast != "high" || st.Scope != "editor" {
 		t.Fatalf("unexpected backdrop state: %+v", st)
 	}
 	bd, ok := sup.ActiveBackdrop()
-	if !ok || bd.Pattern != "paper_dots" || bd.Contrast != "high" {
+	if !ok || bd.Pattern != "paper_dots" || bd.Contrast != "high" || bd.Scope != "editor" {
 		t.Fatalf("unexpected ActiveBackdrop: ok=%v bd=%+v", ok, bd)
+	}
+
+	// host.ui.set_backdrop with scope=window, fullscreen alias, preserved scope, and invalid scope rejection
+	resWin, rerr, handled := sup.dispatchContribHostMethod(rtPaper, "host.ui.set_backdrop", json.RawMessage(`{"id":"paper-dots","enabled":true,"scope":"window"}`))
+	if !handled || rerr != nil {
+		t.Fatalf("host.ui.set_backdrop scope=window failed: handled=%v err=%v", handled, rerr)
+	}
+	if stWin := resWin.(EditorBackdropState); stWin.Scope != "window" || stWin.Contrast != "high" {
+		t.Fatalf("unexpected window backdrop state: %+v", stWin)
+	}
+	if bdWin, ok := sup.ActiveBackdrop(); !ok || bdWin.Scope != "window" {
+		t.Fatalf("unexpected window ActiveBackdrop: ok=%v bd=%+v", ok, bdWin)
+	}
+	resNoScope, rerr, _ := sup.dispatchContribHostMethod(rtPaper, "host.ui.set_backdrop", json.RawMessage(`{"id":"paper-dots","contrast":"standard"}`))
+	if rerr != nil || resNoScope.(EditorBackdropState).Scope != "window" {
+		t.Fatalf("expected omitted scope to preserve window: err=%v res=%+v", rerr, resNoScope)
+	}
+	resAlias, rerr, _ := sup.dispatchContribHostMethod(rtPaper, "host.ui.set_backdrop", json.RawMessage(`{"id":"paper-dots","scope":"fullscreen"}`))
+	if rerr != nil || resAlias.(EditorBackdropState).Scope != "window" {
+		t.Fatalf("expected fullscreen alias to normalize to window: err=%v res=%+v", rerr, resAlias)
+	}
+	if _, rerr, _ := sup.dispatchContribHostMethod(rtPaper, "host.ui.set_backdrop", json.RawMessage(`{"id":"paper-dots","scope":"desktop"}`)); rerr == nil {
+		t.Fatalf("expected invalid backdrop scope RPC error")
 	}
 
 	// ActiveBlockDecorators

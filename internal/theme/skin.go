@@ -358,6 +358,18 @@ func ApplySkinPalette(base Palette, surface string) Palette {
 			applyColorMap(&out, surfColors)
 		}
 	}
+	// Ensure floating menus/popovers remain opaque even if a custom skin specifies
+	// a translucent Menu color, preventing full-window backdrops from bleeding through.
+	if out.Menu.A < 255 {
+		base := out.Paper
+		if base.A < 255 {
+			shellOpaque := out.Shell
+			shellOpaque.A = 255
+			base = base.Over(shellOpaque)
+		}
+		base.A = 255
+		out.Menu = out.Menu.Over(base)
+	}
 	return out
 }
 
