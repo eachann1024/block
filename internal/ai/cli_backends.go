@@ -1517,7 +1517,7 @@ func (c *Controller) startExternalTurn(turn *assistantTurn, kind model.BackendKi
 			prompt += " Use only Block MCP tools for notebook access and propose all note changes through executeBatchPlan."
 		}
 		if turn.deepUI {
-			prompt += "\n\n" + deepUIPromptHint
+			prompt += "\n\nFor Block chat replies, follow the UI rule below over default Markdown (use Block MCP tool `loadSkill` for `deepUI` when needed):\n\n" + deepUIPromptHint
 		}
 	}
 	selectedModel := c.effectiveBackendModelLocked(kind)

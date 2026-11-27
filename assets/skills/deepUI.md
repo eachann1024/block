@@ -5,7 +5,7 @@
 - 输出 ```ui 围栏，内含单行 JSON：`{"title"?, "blocks":[...], "foot"?}`，每块用 `t` 指定组件，可选 `title`、`sub`。
 - 按内容挑组件、自由组合，同一回答优先 2–4 种组件搭配；用 `group` 并排、`tabs` 分视图、`fold` 收起次要细节。
 - 每块短句、≤6 项；数值写数字。组件里不写代码、函数名或文件名。
-- 围栏外正文 ≤3 行，只写结论或待确认事项，不复述画面。
+- 内容全放进组件内；围栏外正文 ≤3 行，只写结论、前提说明或待确认事项，不复述画面，也不要再用 Markdown 分节展开。
 
 ## 组件
 
@@ -17,7 +17,7 @@
 | `line` | `x:[..]`、`series:[{name,vals:[..]}]`、`yUnit?` | 趋势 |
 | `share` | `items:[{l,v}]` | 构成占比（环形图） |
 | `table` | `cols:[..]`、`rows:[[..]]` | 多维明细 |
-| `cards` | `items:[{name,badge?,pick?,desc?,pts:[..],tone?}]` | 方案对比、推荐 |
+| `cards` | `items:[{name,badge?,pick?,desc?,pts:[..],tone?}]` | 分组卡片、方案对比、推荐 |
 | `proscons` | `pros:[..]`、`cons:[..]` | 利弊权衡 |
 | `steps` | `items:[{l,s?,state:done/doing/todo}]` | 流程、进度、时间线 |
 | `checklist` | `items:[{l,ok}]` | 核对清单 |

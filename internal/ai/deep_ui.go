@@ -23,9 +23,9 @@ const deepAIConfigFile = "ai-deep.json"
 // deepUIFenceLangs are the code fence languages rendered as native components.
 var deepUIFenceLangs = map[string]bool{"ui": true, "blockui": true, "genui": true}
 
-// deepUIPromptHint is the only always-on prompt text; the component catalog
+// deepUIPromptHint is the always-on routing prompt; the full component catalog
 // stays in the deepUI skill and is loaded on demand.
-const deepUIPromptHint = "# 深层次界面\n\n回答含对比、≥3 项数据或趋势、流程步骤、多项结论或清单时，积极用界面组件代替长文：先 `loadSkill` 加载 `deepUI` 取组件目录，再输出 ```ui 围栏 JSON。按内容灵活搭配多种组件，不要每次只用同一种。纯问答、单句结论或修改笔记时不用。组件外正文不超过 3 行，不复述画面内容。"
+const deepUIPromptHint = "# 深层次界面（回复默认优先）\n\n凡回答含多节、多条建议/清单、数据、对比或步骤（如天气+穿搭+建议、攻略、方案），默认用 ```ui 围栏 JSON 输出，不要写多节 Markdown 长文（优先于 Markdown）。内容全进组件，围栏外 ≤3 行且不复述画面；纯闲聊、单句问答、纯代码或新建/修改笔记时不用。\n图表/表格或复杂排版先调 `loadSkill(\"deepUI\")` 取目录并搭多种组件；常规结构化内容也可直接输出单行 JSON：`{\"title\":\"…\",\"blocks\":[{\"t\":\"kpi\",\"items\":[{\"l\":\"…\",\"v\":\"…\"}]},{\"t\":\"cards\",\"title\":\"…\",\"items\":[{\"name\":\"…\",\"pts\":[\"…\"]}]}]}`（`t` 亦可用 `checklist/steps/proscons/callout/tags/text`）。"
 
 type deepAIConfig struct {
 	Enabled bool `json:"enabled"`
@@ -308,7 +308,7 @@ func renderDeepBlock(cUI *ui.Context, pal theme.Palette, key string, m deepNode,
 		case "tags", "chips":
 			renderDeepTags(cUI, pal, key, m)
 		case "callout", "note", "alert":
-			renderDeepCallout(cUI, pal, m)
+			renderDeepCallout(cUI, pal, key, m)
 		case "proscons", "compare":
 			renderDeepProsCons(cUI, pal, key, m)
 		case "group", "row", "grid":
@@ -351,7 +351,7 @@ func renderDeepKPI(cUI *ui.Context, pal theme.Palette, key string, m deepNode) {
 			tile := ui.Column(cUI.Key(fmt.Sprintf("%s-k%d", key, i))).Basis(116).Grow(1).MinWidth(0).
 				Gap(theme.Space2).Padding(theme.Space8, theme.Space10).Background(pal.CodeBlockBG).Radius(theme.RadiusMD)
 			tile.Children(func() {
-				ui.Text(cUI, deepStr(it, "l", "label", "name")).FontSize(theme.FontMicro).TextColor(pal.TextSecondary).FillWidth().SingleLine().Ellipsis("…")
+				ui.Text(cUI, deepStr(it, "l", "label", "name", "title")).FontSize(theme.FontMicro).TextColor(pal.TextSecondary).FillWidth().SingleLine().Ellipsis("…")
 				ui.Row(cUI).FillWidth().Gap(theme.Space6).AlignItems(ui.Baseline).Children(func() {
 					ui.Text(cUI, deepStr(it, "v", "value")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).SingleLine().Ellipsis("…")
 					if tag := deepStr(it, "tag", "delta"); tag != "" {
@@ -672,7 +672,7 @@ func renderDeepTable(cUI *ui.Context, pal theme.Palette, key string, m deepNode)
 }
 
 func renderDeepCards(cUI *ui.Context, pal theme.Palette, key string, m deepNode) {
-	items := deepNodes(deepArr(m, "items"))
+	items := deepNodes(deepArr(m, "items", "cards"))
 	ui.Row(cUI.Key(key+"-cards")).FillWidth().Wrap().Gap(theme.Space8).Children(func() {
 		for i, it := range items {
 			fg, surface := deepTone(pal, deepStr(it, "tone"))
@@ -768,7 +768,7 @@ func renderDeepSteps(cUI *ui.Context, pal theme.Palette, key string, m deepNode)
 }
 
 func renderDeepChecklist(cUI *ui.Context, pal theme.Palette, key string, m deepNode) {
-	items := deepArr(m, "items")
+	items := deepArr(m, "items", "checks", "checklist")
 	ui.Column(cUI.Key(key+"-checks")).FillWidth().Gap(theme.Space6).Children(func() {
 		for i, raw := range items {
 			label, ok := "", false
@@ -776,7 +776,7 @@ func renderDeepChecklist(cUI *ui.Context, pal theme.Palette, key string, m deepN
 			case string:
 				label = v
 			case map[string]any:
-				label = deepStr(v, "l", "label", "name", "text")
+				label = deepStr(v, "l", "label", "name", "text", "title")
 				ok = deepBool(v, "ok", "done", "checked", "state")
 			}
 			ui.Row(cUI.Key(fmt.Sprintf("%s-ck%d", key, i))).FillWidth().Gap(theme.Space8).AlignItems(ui.Start).Children(func() {
@@ -807,7 +807,7 @@ func renderDeepTags(cUI *ui.Context, pal theme.Palette, key string, m deepNode) 
 			case string:
 				label = v
 			case map[string]any:
-				label = deepStr(v, "l", "label", "name", "text")
+				label = deepStr(v, "l", "label", "name", "text", "title")
 				tone = deepStr(v, "tone")
 			}
 			fg, surface := deepTone(pal, tone)
@@ -820,7 +820,7 @@ func renderDeepTags(cUI *ui.Context, pal theme.Palette, key string, m deepNode) 
 	})
 }
 
-func renderDeepCallout(cUI *ui.Context, pal theme.Palette, m deepNode) {
+func renderDeepCallout(cUI *ui.Context, pal theme.Palette, key string, m deepNode) {
 	tone := deepStr(m, "tone")
 	if tone == "" {
 		tone = "info"
@@ -837,6 +837,9 @@ func renderDeepCallout(cUI *ui.Context, pal theme.Palette, m deepNode) {
 		}
 		if s := deepStr(m, "text", "body", "md", "sub"); s != "" {
 			ui.Text(cUI, s).FontSize(theme.FontSmall).LineHeight(1.5).TextColor(pal.Text).FillWidth()
+		}
+		if pts := deepStrs(m, "items", "pts", "points"); len(pts) > 0 {
+			renderDeepBullets(cUI, pal, key+"-callout", pts, fg)
 		}
 	})
 }
