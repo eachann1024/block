@@ -75,7 +75,7 @@ func TestManifestAcceptsNewCategories(t *testing.T) {
 			Version:       "1.0.0",
 			Author:        "Block",
 			Summary:       LocalizedText{Zh: "测试摘要", En: "Test summary"},
-			Entry:         EntrySpec{Command: []string{"./plugin"}},
+			Entry:         EntrySpec{JS: "plugin.js"},
 			Surfaces:      []Surface{SurfaceSettingsPage},
 			Icon:          AppStoreIconSpec(),
 		}

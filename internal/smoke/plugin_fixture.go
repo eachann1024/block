@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,25 +19,11 @@ const (
 	smokePluginInsertMarker = "[SMOKE_PLUGIN_INSERTED]"
 )
 
-func resolveSmokePythonCommand() (string, error) {
-	for _, bin := range []string{"python3", "python"} {
-		if _, err := exec.LookPath(bin); err == nil {
-			return bin, nil
-		}
-	}
-	return "", fmt.Errorf("python3/python interpreter not found in PATH for smoke plugin")
-}
-
-// installSmokePluginFixture writes a self-contained out-of-process JSON-RPC test
+// installSmokePluginFixture writes a self-contained sandboxed test
 // plugin into a temporary directory and installs it into dataDir via StoreManager.
 // It stays disabled until the dedicated plugin UI acceptance step enables it so
 // earlier workspace steps run unaffected.
 func installSmokePluginFixture(baseTempDir, dataDir string) error {
-	pyBin, err := resolveSmokePythonCommand()
-	if err != nil {
-		return err
-	}
-
 	srcDir := filepath.Join(baseTempDir, "smoke-plugin-src")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir smoke plugin src: %w", err)
@@ -53,7 +38,7 @@ func installSmokePluginFixture(baseTempDir, dataDir string) error {
 		Version:       "1.0.0",
 		Author:        "Block Smoke",
 		Summary:       plugins.LocalizedText{Zh: "验证插件顶栏、命令面板、面板、提示与对话框", En: "Exercises plugin titlebar, palette, panel, toast and dialog UI"},
-		Entry:         plugins.EntrySpec{Command: []string{pyBin, "plugin.py"}},
+		Entry:         plugins.EntrySpec{JS: "plugin.js"},
 		Permissions: []plugins.Permission{
 			plugins.PermUITitlebar,
 			plugins.PermUISettings,
@@ -154,7 +139,7 @@ func installSmokePluginFixture(baseTempDir, dataDir string) error {
 	if err := os.WriteFile(filepath.Join(srcDir, "manifest.json"), rawManifest, 0o600); err != nil {
 		return fmt.Errorf("write smoke plugin manifest: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(srcDir, "plugin.py"), []byte(smokePluginScript), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(srcDir, "plugin.js"), []byte(smokePluginScript), 0o600); err != nil {
 		return fmt.Errorf("write smoke plugin script: %w", err)
 	}
 
@@ -168,210 +153,125 @@ func installSmokePluginFixture(baseTempDir, dataDir string) error {
 	return nil
 }
 
-const smokePluginScript = `import json
-import sys
+const smokePluginScript = `let clickCount = 0;
 
-host_seq = 0
-queued_requests = []
-click_count = 0
+function buildPage(surface) {
+  switch (surface) {
+    case 'settings_section:titlebar_ctrl':
+      return {
+        title: '顶栏图标控制',
+        cards: [{ id: 'titlebar_card', title: '右上角图标显示', items: [
+          { kind: 'actions', buttons: [
+            { id: 'apply_hide', label: '隐藏反馈与 AI', variant: 'primary' },
+            { id: 'apply_restore', label: '恢复全部图标', variant: 'secondary' },
+          ] },
+        ] }],
+      };
+    case 'panel:inspector':
+      return {
+        title: '烟测检查面板',
+        cards: [{ id: 'panel_card', title: '面板操作', items: [
+          { kind: 'kv', rows: [{ label: '点击计数', value: String(clickCount) }] },
+          { kind: 'actions', buttons: [
+            { id: 'panel_open_dialog', label: '打开确认对话框', variant: 'primary' },
+            { id: 'panel_toast', label: '发送面板提示', variant: 'secondary' },
+          ] },
+        ] }],
+      };
+    case 'dialog:confirm_box':
+      return {
+        title: '烟测确认对话框',
+        cards: [{ id: 'dialog_card', title: '对话框动作', items: [
+          { kind: 'actions', buttons: [
+            { id: 'dialog_insert', label: '插入标记文本', variant: 'primary' },
+            { id: 'dialog_close', label: '关闭对话框', variant: 'secondary' },
+          ] },
+        ] }],
+      };
+    default:
+      return {
+        title: '烟测界面插件',
+        cards: [{ id: 'overview', title: '概览', items: [
+          { kind: 'kv', rows: [{ label: '状态', value: '运行中' }] },
+        ] }],
+      };
+  }
+}
 
+function triggerToast() {
+  clickCount++;
+  callHost('host.titlebar.set_button', { id: 'quick_toast', badge: String(clickCount) });
+  callHost('host.status.set', { id: 'counter', text: '烟测已触发 ' + clickCount, tooltip: '烟测状态更新' });
+  callHost('host.ui.toast', { message: '烟测提示 #' + clickCount, tone: 'success' });
+}
 
-def send_msg(obj):
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+function handleAction({ action_id, surface }) {
+  let result = { ok: true };
+  switch (action_id) {
+    case 'apply_hide':
+      callHost('host.titlebar.set_hidden', { hidden: ['feedback', 'ai', 'more'] });
+      result = { ...result, tone: 'success', status: '已隐藏反馈与 AI' };
+      break;
+    case 'apply_restore':
+      callHost('host.titlebar.set_hidden', { hidden: [] });
+      result = { ...result, tone: 'success', status: '已恢复顶栏图标' };
+      break;
+    case 'panel_open_dialog':
+      callHost('host.ui.open_dialog', { id: 'confirm_box' });
+      result.tone = 'info';
+      break;
+    case 'panel_toast':
+      triggerToast();
+      result.tone = 'success';
+      break;
+    case 'dialog_insert':
+      callHost('host.editor.insert', { text: '` + smokePluginInsertMarker + `' });
+      callHost('host.ui.toast', { message: '已插入烟测标记', tone: 'success' });
+      result.tone = 'success';
+      break;
+    case 'dialog_close':
+      callHost('host.ui.close_dialog', { id: 'confirm_box' });
+      return { ok: true, tone: 'info' };
+  }
+  return { ...result, page: buildPage(surface) };
+}
 
+function handleCommand(id) {
+  switch (id) {
+    case 'show_toast':
+      triggerToast();
+      return { ok: true, tone: 'success' };
+    case 'open_dialog':
+      callHost('host.ui.open_dialog', { id: 'confirm_box' });
+      return { ok: true, tone: 'info' };
+    case 'open_panel':
+      callHost('host.ui.open_panel', { id: 'inspector' });
+      return { ok: true, tone: 'info' };
+    case 'hide_slots':
+      callHost('host.titlebar.set_hidden', { hidden: ['feedback', 'ai', 'more'] });
+      return { ok: true, tone: 'success', status: '已隐藏顶栏图标' };
+    case 'restore_slots':
+      callHost('host.titlebar.set_hidden', { hidden: [] });
+      return { ok: true, tone: 'success', status: '已恢复顶栏图标' };
+    case 'insert_note':
+      callHost('host.editor.insert', { text: '` + smokePluginInsertMarker + `' });
+      return { ok: true, tone: 'success', status: '已插入烟测标记' };
+    default:
+      return { ok: true };
+  }
+}
 
-def call_host(method, params):
-    global host_seq
-    host_seq += 1
-    req_id = f"h-{host_seq}"
-    send_msg({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params})
-    while True:
-        line = sys.stdin.readline()
-        if not line:
-            raise RuntimeError("host closed pipe while waiting for response")
-        line = line.strip()
-        if not line:
-            continue
-        msg = json.loads(line)
-        if "method" in msg and msg["method"]:
-            queued_requests.append(msg)
-            continue
-        if str(msg.get("id")) == req_id:
-            if "error" in msg and msg["error"]:
-                raise RuntimeError(str(msg["error"]))
-            return msg.get("result")
-
-
-def build_page(surface):
-    if surface == "settings_section:titlebar_ctrl":
-        return {
-            "title": "顶栏图标控制",
-            "cards": [
-                {
-                    "id": "titlebar_card",
-                    "title": "右上角图标显示",
-                    "items": [
-                        {
-                            "kind": "actions",
-                            "buttons": [
-                                {"id": "apply_hide", "label": "隐藏反馈与 AI", "variant": "primary"},
-                                {"id": "apply_restore", "label": "恢复全部图标", "variant": "secondary"},
-                            ],
-                        }
-                    ],
-                }
-            ],
-        }
-    if surface == "panel:inspector":
-        return {
-            "title": "烟测检查面板",
-            "cards": [
-                {
-                    "id": "panel_card",
-                    "title": "面板操作",
-                    "items": [
-                        {
-                            "kind": "kv",
-                            "rows": [{"label": "点击计数", "value": str(click_count)}],
-                        },
-                        {
-                            "kind": "actions",
-                            "buttons": [
-                                {"id": "panel_open_dialog", "label": "打开确认对话框", "variant": "primary"},
-                                {"id": "panel_toast", "label": "发送面板提示", "variant": "secondary"},
-                            ],
-                        },
-                    ],
-                }
-            ],
-        }
-    if surface == "dialog:confirm_box":
-        return {
-            "title": "烟测确认对话框",
-            "cards": [
-                {
-                    "id": "dialog_card",
-                    "title": "对话框动作",
-                    "items": [
-                        {
-                            "kind": "actions",
-                            "buttons": [
-                                {"id": "dialog_insert", "label": "插入标记文本", "variant": "primary"},
-                                {"id": "dialog_close", "label": "关闭对话框", "variant": "secondary"},
-                            ],
-                        }
-                    ],
-                }
-            ],
-        }
-    return {
-        "title": "烟测界面插件",
-        "cards": [
-            {
-                "id": "overview",
-                "title": "概览",
-                "items": [
-                    {
-                        "kind": "kv",
-                        "rows": [{"label": "状态", "value": "运行中"}],
-                    }
-                ],
-            }
-        ],
-    }
-
-
-def trigger_toast():
-    global click_count
-    click_count += 1
-    call_host("host.titlebar.set_button", {"id": "quick_toast", "badge": str(click_count)})
-    call_host("host.status.set", {"id": "counter", "text": f"烟测已触发 {click_count}", "tooltip": "烟测状态更新"})
-    call_host("host.ui.toast", {"message": f"烟测提示 #{click_count}", "tone": "success"})
-
-
-def handle_request(msg):
-    method = msg.get("method", "")
-    params = msg.get("params") or {}
-    req_id = msg.get("id")
-
-    try:
-        if method == "plugin.initialize":
-            result = {"ready": True}
-        elif method == "plugin.render":
-            surface = params.get("surface") or "settings_page"
-            result = {"page": build_page(surface)}
-        elif method == "plugin.action":
-            surface = params.get("surface") or "settings_page"
-            action_id = params.get("action_id") or ""
-            if action_id == "apply_hide":
-                call_host("host.titlebar.set_hidden", {"hidden": ["feedback", "ai", "more"]})
-                result = {"ok": True, "tone": "success", "status": "已隐藏反馈与 AI", "page": build_page(surface)}
-            elif action_id == "apply_restore":
-                call_host("host.titlebar.set_hidden", {"hidden": []})
-                result = {"ok": True, "tone": "success", "status": "已恢复顶栏图标", "page": build_page(surface)}
-            elif action_id == "panel_open_dialog":
-                call_host("host.ui.open_dialog", {"id": "confirm_box"})
-                result = {"ok": True, "tone": "info", "page": build_page(surface)}
-            elif action_id == "panel_toast":
-                trigger_toast()
-                result = {"ok": True, "tone": "success", "page": build_page(surface)}
-            elif action_id == "dialog_insert":
-                call_host("host.editor.insert", {"text": "[SMOKE_PLUGIN_INSERTED]"})
-                call_host("host.ui.toast", {"message": "已插入烟测标记", "tone": "success"})
-                result = {"ok": True, "tone": "success", "page": build_page(surface)}
-            elif action_id == "dialog_close":
-                call_host("host.ui.close_dialog", {"id": "confirm_box"})
-                result = {"ok": True, "tone": "info"}
-            else:
-                result = {"ok": True, "page": build_page(surface)}
-        elif method == "plugin.command":
-            cmd_id = params.get("command_id") or ""
-            if cmd_id == "show_toast":
-                trigger_toast()
-                result = {"ok": True, "tone": "success"}
-            elif cmd_id == "open_dialog":
-                call_host("host.ui.open_dialog", {"id": "confirm_box"})
-                result = {"ok": True, "tone": "info"}
-            elif cmd_id == "open_panel":
-                call_host("host.ui.open_panel", {"id": "inspector"})
-                result = {"ok": True, "tone": "info"}
-            elif cmd_id == "hide_slots":
-                call_host("host.titlebar.set_hidden", {"hidden": ["feedback", "ai", "more"]})
-                result = {"ok": True, "tone": "success", "status": "已隐藏顶栏图标"}
-            elif cmd_id == "restore_slots":
-                call_host("host.titlebar.set_hidden", {"hidden": []})
-                result = {"ok": True, "tone": "success", "status": "已恢复顶栏图标"}
-            elif cmd_id == "insert_note":
-                call_host("host.editor.insert", {"text": "[SMOKE_PLUGIN_INSERTED]"})
-                result = {"ok": True, "tone": "success", "status": "已插入烟测标记"}
-            else:
-                result = {"ok": True}
-        elif method == "plugin.event":
-            result = {"handled": True}
-        elif method == "plugin.shutdown":
-            send_msg({"jsonrpc": "2.0", "id": req_id, "result": {"ok": True}})
-            sys.exit(0)
-        else:
-            send_msg({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"unknown method: {method}"}})
-            return
-        send_msg({"jsonrpc": "2.0", "id": req_id, "result": result})
-    except Exception as exc:
-        send_msg({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(exc)}})
-
-
-while True:
-    if queued_requests:
-        next_msg = queued_requests.pop(0)
-        handle_request(next_msg)
-        continue
-    raw = sys.stdin.readline()
-    if not raw:
-        break
-    raw = raw.strip()
-    if not raw:
-        continue
-    handle_request(json.loads(raw))
+serve((method, params) => {
+  switch (method) {
+    case 'plugin.initialize': return { ready: true };
+    case 'plugin.render': return { page: buildPage(params.surface) };
+    case 'plugin.action': return handleAction(params);
+    case 'plugin.command': return handleCommand(params.command_id);
+    case 'plugin.event': return { handled: true };
+    case 'plugin.shutdown': return { ok: true };
+    default: throw new HostRPCError(-32601, 'unknown method: ' + method);
+  }
+});
 `
 
 func waitForProbe(tt *ui.Tester, id string, timeout time.Duration) (ui.Rect, error) {

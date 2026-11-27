@@ -111,23 +111,16 @@ func main() {
 		return
 	}
 
-	var wasmCacheDir string
-	if m.Entry.JS != "" || m.Entry.Wasm != "" {
-		dir, err := os.MkdirTemp("", "block-plugin-check-wasm-*")
-		if err != nil {
-			fail("create wasm cache dir: %v", err)
-		}
-		defer os.RemoveAll(dir)
-		wasmCacheDir = dir
+	wasmCacheDir, err := os.MkdirTemp("", "block-plugin-check-wasm-*")
+	if err != nil {
+		fail("create wasm cache dir: %v", err)
 	}
+	defer os.RemoveAll(wasmCacheDir)
 
-	switch {
-	case m.Entry.JS != "":
+	if m.Entry.JS != "" {
 		fmt.Printf("[OK] entry: js=%s\n", m.Entry.JS)
-	case m.Entry.Wasm != "":
+	} else {
 		fmt.Printf("[OK] entry: wasm=%s\n", m.Entry.Wasm)
-	case len(m.Entry.Command) > 0:
-		fmt.Printf("[OK] entry: command=%v\n", m.Entry.Command)
 	}
 
 	zhSnap, err := runLocaleChecks(m, pluginDir, "zh", false, wasmCacheDir)

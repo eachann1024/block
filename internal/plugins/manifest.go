@@ -343,14 +343,13 @@ func (t LocalizedText) IsEmpty() bool {
 }
 
 type EntrySpec struct {
-	JS      string   `json:"js,omitempty"`
-	Wasm    string   `json:"wasm,omitempty"`
-	Command []string `json:"command,omitempty"`
+	JS   string `json:"js,omitempty"`
+	Wasm string `json:"wasm,omitempty"`
 }
 
-// IsEmpty reports whether no entry mode (js, wasm, or command) is configured.
+// IsEmpty reports whether no sandbox entry is configured.
 func (e EntrySpec) IsEmpty() bool {
-	return e.JS == "" && e.Wasm == "" && len(e.Command) == 0
+	return e.JS == "" && e.Wasm == ""
 }
 
 // DuoIconSpec describes an Ocean Paper Scheme A two-tone icon in 24x24 space.
@@ -441,10 +440,11 @@ func (m *Manifest) IsDeclarativeOnly() bool {
 }
 
 var (
-	pluginIDRe          = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,47}$`)
-	semverRe            = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
-	repoSlugRe          = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
-	execAllowlistNameRe = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	pluginIDRe             = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,47}$`)
+	semverRe               = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
+	repoSlugRe             = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	execAllowlistNameRe    = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	versionedInterpreterRe = regexp.MustCompile(`^python[0-9]+(\.[0-9]+)*$`)
 )
 
 var forbiddenExecPrograms = map[string]bool{
@@ -458,7 +458,7 @@ var forbiddenExecPrograms = map[string]bool{
 	"powershell": true,
 	"pwsh":       true,
 	"python":     true,
-	"python3":    true,
+	"py":         true,
 	"node":       true,
 	"perl":       true,
 	"ruby":       true,
@@ -474,7 +474,7 @@ func validateExecAllowlistProgram(prog string) error {
 	}
 	lower := strings.ToLower(prog)
 	base := strings.TrimSuffix(lower, ".exe")
-	if forbiddenExecPrograms[lower] || forbiddenExecPrograms[base] {
+	if forbiddenExecPrograms[lower] || forbiddenExecPrograms[base] || versionedInterpreterRe.MatchString(base) {
 		return fmt.Errorf("manifest.exec_allowlist forbids shell or script interpreter %q", prog)
 	}
 	return nil
@@ -495,7 +495,17 @@ func validateNetworkDomain(domain string) error {
 	return nil
 }
 
+var errRetiredPluginEntry = errors.New("该插件使用已停用的旧版运行方式，请更新到新版。 This plugin uses a retired runtime. Please update it to a newer version.")
+
 func LoadManifest(pluginDir string) (*Manifest, error) {
+	raw, err := readManifest(pluginDir)
+	if err != nil {
+		return nil, err
+	}
+	return DecodeManifestStrict(raw)
+}
+
+func readManifest(pluginDir string) ([]byte, error) {
 	root, err := os.OpenRoot(pluginDir)
 	if err != nil {
 		return nil, err
@@ -505,26 +515,41 @@ func LoadManifest(pluginDir string) (*Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read manifest.json: %w", err)
 	}
-	return DecodeManifestStrict(raw)
+	return raw, nil
 }
 
 func DecodeManifestStrict(raw []byte) (*Manifest, error) {
+	m, err := decodeManifest(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.Validate(); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func decodeManifest(raw []byte) (*Manifest, error) {
 	if err := checkNoDuplicateJSONKeys(raw); err != nil {
 		return nil, fmt.Errorf("decode manifest.json: %w", err)
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
-	var m Manifest
-	if err := dec.Decode(&m); err != nil {
+	var decoded struct {
+		Manifest
+		Entry struct {
+			EntrySpec
+			RetiredCommand json.RawMessage `json:"command"`
+		} `json:"entry"`
+	}
+	if err := dec.Decode(&decoded); err != nil {
 		return nil, fmt.Errorf("decode manifest.json: %w", err)
 	}
-	if err := dec.Decode(new(any)); err != io.EOF {
-		return nil, errors.New("manifest.json must contain exactly one JSON object")
+	decoded.Manifest.Entry = decoded.Entry.EntrySpec
+	if decoded.Entry.RetiredCommand != nil {
+		return &decoded.Manifest, errRetiredPluginEntry
 	}
-	if err := m.Validate(); err != nil {
-		return nil, err
-	}
-	return &m, nil
+	return &decoded.Manifest, nil
 }
 
 func checkNoDuplicateJSONKeys(raw []byte) error {
@@ -724,43 +749,19 @@ func (m *Manifest) Validate() error {
 	}
 	hasJS := m.Entry.JS != ""
 	hasWasm := m.Entry.Wasm != ""
-	hasCommand := len(m.Entry.Command) > 0
-	entryCount := 0
-	if hasJS {
-		entryCount++
-	}
-	if hasWasm {
-		entryCount++
-	}
-	if hasCommand {
-		entryCount++
-	}
-	if entryCount > 1 {
-		return errors.New("manifest.entry must specify at most one of js, wasm, or command")
-	}
-	declarative := m.IsDeclarativeOnly()
-	if declarative {
-		if entryCount != 0 {
-			return errors.New("declarative-only manifest must not specify entry")
+	switch {
+	case hasJS && hasWasm:
+		return errors.New("manifest.entry must specify at most one of js or wasm")
+	case hasJS:
+		if _, err := wasmrt.ValidateEntryPath(m.Entry.JS, ".js", ".mjs"); err != nil {
+			return fmt.Errorf("manifest.entry.js: %w", err)
 		}
-	} else {
-		if entryCount == 0 {
-			return errors.New("manifest.entry must specify one of js, wasm, or command")
+	case hasWasm:
+		if _, err := wasmrt.ValidateEntryPath(m.Entry.Wasm, ".wasm"); err != nil {
+			return fmt.Errorf("manifest.entry.wasm: %w", err)
 		}
-		switch {
-		case hasJS:
-			if _, err := wasmrt.ValidateEntryPath(m.Entry.JS, ".js", ".mjs"); err != nil {
-				return fmt.Errorf("manifest.entry.js: %w", err)
-			}
-		case hasWasm:
-			if _, err := wasmrt.ValidateEntryPath(m.Entry.Wasm, ".wasm"); err != nil {
-				return fmt.Errorf("manifest.entry.wasm: %w", err)
-			}
-		case hasCommand:
-			if strings.TrimSpace(m.Entry.Command[0]) == "" {
-				return errors.New("manifest.entry.command must be a non-empty string array")
-			}
-		}
+	case !m.IsDeclarativeOnly():
+		return errors.New("manifest.entry must specify one of js or wasm")
 	}
 	seenPerm := map[Permission]bool{}
 	for _, p := range m.Permissions {

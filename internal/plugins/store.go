@@ -1719,15 +1719,6 @@ func validateCandidateDir(tmpDir string, entry *StoreAppEntry) (*Manifest, error
 		if err := wasmrt.ValidateEntryFile(tmpDir, m.Entry.Wasm, wasmrt.MaxWasmEntryBytes, ".wasm"); err != nil {
 			return nil, fmt.Errorf("manifest.entry.wasm: %w", err)
 		}
-	case len(m.Entry.Command) > 0:
-		// Resolve bare PATH interpreters (python3) only when the runtime actually
-		// starts: probing them during install blocks the store on the host
-		// environment and caches an interpreter the plugin has not run under yet.
-		if !isPython3Command(m.Entry.Command[0]) {
-			if _, err := pluginCommand(tmpDir, m.Entry.Command[0]); err != nil {
-				return nil, err
-			}
-		}
 	}
 	if m.Contributes != nil && len(m.Contributes.Languages) > 0 {
 		if err := ValidatePluginLanguages(tmpDir, m); err != nil {

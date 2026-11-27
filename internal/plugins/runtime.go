@@ -3,7 +3,6 @@ package plugins
 import (
 	"bufio"
 	"bytes"
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -13,11 +12,8 @@ import (
 	"io/fs"
 	"net/netip"
 	"os"
-	"os/exec"
-	"path"
 	"path/filepath"
 	goruntime "runtime"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -202,49 +198,7 @@ func (r *ringBuffer) String() string {
 	return string(out)
 }
 
-type runtimeTransport interface {
-	Stdin() io.WriteCloser
-	Stdout() io.ReadCloser
-	CloseWrite() error
-	Kill() error
-	Wait() error
-}
-
-type processTransport struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout io.ReadCloser
-}
-
-func (t *processTransport) Stdin() io.WriteCloser { return t.stdin }
-func (t *processTransport) Stdout() io.ReadCloser { return t.stdout }
-func (t *processTransport) CloseWrite() error     { return t.stdin.Close() }
-func (t *processTransport) Kill() error {
-	if t.cmd != nil && t.cmd.Process != nil {
-		return stopPluginProcess(t.cmd)
-	}
-	return nil
-}
-func (t *processTransport) Wait() error { return t.cmd.Wait() }
-
-type wasmTransport struct {
-	sess     *wasmrt.Session
-	ownedEng *wasmrt.Engine
-}
-
-func (t *wasmTransport) Stdin() io.WriteCloser { return t.sess.Stdin() }
-func (t *wasmTransport) Stdout() io.ReadCloser { return t.sess.Stdout() }
-func (t *wasmTransport) CloseWrite() error     { return t.sess.Stdin().Close() }
-func (t *wasmTransport) Kill() error           { return t.sess.Kill() }
-func (t *wasmTransport) Wait() error {
-	err := t.sess.Wait()
-	if t.ownedEng != nil {
-		_ = t.ownedEng.Close(context.Background())
-	}
-	return err
-}
-
-// Runtime hosts a single out-of-process or sandboxed plugin speaking
+// Runtime hosts a single sandboxed plugin speaking
 // newline-delimited bidirectional JSON-RPC 2.0 over stdin/stdout.
 type Runtime struct {
 	exited   chan struct{}
@@ -253,11 +207,10 @@ type Runtime struct {
 	cfg      HostConfig
 	dataRoot *os.Root
 
-	transport runtimeTransport
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	stdout    io.ReadCloser
-	stderr    *ringBuffer
+	session *wasmrt.Session
+	stdin   io.WriteCloser
+	stdout  io.ReadCloser
+	stderr  *ringBuffer
 
 	lookupNetIP func(ctx context.Context, network, host string) ([]netip.Addr, error)
 
@@ -342,103 +295,41 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	cfg.DownloadsDir = downloadsDir
 
 	stderr := newRingBuffer(maxStderrBytes)
-	var (
-		tr         runtimeTransport
-		cmd        *exec.Cmd
-		cmdName    string
-		isPython3  bool
-		entryLabel string
-	)
-
-	switch {
-	case m.Entry.JS != "" || m.Entry.Wasm != "":
-		eng := cfg.wasmEngine
-		var ownedEng *wasmrt.Engine
-		if eng == nil {
-			eng, err = wasmrt.NewEngine(cfg.CacheDir)
-			if err != nil {
-				return nil, fmt.Errorf("init wasm runtime: %w", err)
-			}
-			ownedEng = eng
-		}
-		opts := wasmrt.StartOptions{
-			Stderr: stderr,
-			Env: map[string]string{
-				"BLOCK_PLUGIN_ID":       m.ID,
-				"BLOCK_DATA_DIR":        cfg.DataDir,
-				"BLOCKMD_PLUGIN_ID":     m.ID,
-				"BLOCKMD_DATA_DIR":      cfg.DataDir,
-				"BLOCKMD_DOWNLOADS_DIR": downloadsDir,
-			},
-		}
-		var sess *wasmrt.Session
-		if m.Entry.JS != "" {
-			entryLabel = m.Entry.JS
-			sess, err = eng.StartJS(ctx, cfg.PluginDir, m.Entry.JS, opts)
-		} else {
-			entryLabel = m.Entry.Wasm
-			sess, err = eng.StartWasm(ctx, cfg.PluginDir, m.Entry.Wasm, opts)
-		}
+	eng := cfg.wasmEngine
+	var ownedEng *wasmrt.Engine
+	if eng == nil {
+		eng, err = wasmrt.NewEngine(cfg.CacheDir)
 		if err != nil {
-			if ownedEng != nil {
-				_ = ownedEng.Close(context.Background())
-			}
-			files.LogErrorf("plugin start failed: id=%s version=%s entry=%s err=%v stderr=%s",
-				m.ID, m.Version, entryLabel, err, truncatePluginStderr(stderr.String()))
-			return nil, fmt.Errorf("start wasm plugin %s: %w", entryLabel, err)
+			return nil, fmt.Errorf("init wasm runtime: %w", err)
 		}
-		tr = &wasmTransport{sess: sess, ownedEng: ownedEng}
-
-	default:
-		isPython3 = isPython3Command(m.Entry.Command[0])
-		cmdName, err = pluginCommand(cfg.PluginDir, m.Entry.Command[0])
-		if err != nil {
-			return nil, err
+		ownedEng = eng
+	}
+	opts := wasmrt.StartOptions{
+		Stderr: stderr,
+		Env: map[string]string{
+			"BLOCK_PLUGIN_ID":       m.ID,
+			"BLOCK_DATA_DIR":        cfg.DataDir,
+			"BLOCKMD_PLUGIN_ID":     m.ID,
+			"BLOCKMD_DATA_DIR":      cfg.DataDir,
+			"BLOCKMD_DOWNLOADS_DIR": downloadsDir,
+		},
+	}
+	var sess *wasmrt.Session
+	var entryLabel string
+	if m.Entry.JS != "" {
+		entryLabel = m.Entry.JS
+		sess, err = eng.StartJS(ctx, cfg.PluginDir, m.Entry.JS, opts)
+	} else {
+		entryLabel = m.Entry.Wasm
+		sess, err = eng.StartWasm(ctx, cfg.PluginDir, m.Entry.Wasm, opts)
+	}
+	if err != nil {
+		if ownedEng != nil {
+			_ = ownedEng.Close(context.Background())
 		}
-		entryLabel = cmdName
-		childPath := prependEnvPathDir(os.Getenv("PATH"), filepath.Dir(cmdName))
-		cmd = exec.CommandContext(ctx, cmdName, m.Entry.Command[1:]...)
-		configurePluginProcess(cmd)
-		cmd.WaitDelay = time.Second
-		cmd.Dir = cfg.PluginDir
-		cmd.Env = []string{
-			"PATH=" + childPath,
-			"HOME=" + os.Getenv("HOME"),
-			"TMPDIR=" + os.TempDir(),
-			"PYTHONUNBUFFERED=1",
-			"BLOCK_PLUGIN_ID=" + m.ID,
-			"BLOCK_DATA_DIR=" + cfg.DataDir,
-			"BLOCKMD_PLUGIN_ID=" + m.ID,
-			"BLOCKMD_DATA_DIR=" + cfg.DataDir,
-			"BLOCKMD_DOWNLOADS_DIR=" + downloadsDir,
-		}
-		stdinPipe, err := cmd.StdinPipe()
-		if err != nil {
-			return nil, err
-		}
-		// Own the stdout pipe instead of cmd.StdoutPipe: Wait must run while the
-		// read loop is still draining, so a crashed plugin whose children keep
-		// the pipe open can still be reaped.
-		stdoutPipe, stdoutW, err := os.Pipe()
-		if err != nil {
-			_ = stdinPipe.Close()
-			return nil, err
-		}
-		cmd.Stdout = stdoutW
-		cmd.Stderr = stderr
-		if err := cmd.Start(); err != nil {
-			if isPython3 {
-				python3Cache.invalidate(cmdName)
-			}
-			files.LogErrorf("plugin start failed: id=%s version=%s cmd=%s err=%v stderr=%s",
-				m.ID, m.Version, cmdName, err, truncatePluginStderr(stderr.String()))
-			_ = stdinPipe.Close()
-			_ = stdoutPipe.Close()
-			_ = stdoutW.Close()
-			return nil, fmt.Errorf("start plugin process %v (%s): %w", m.Entry.Command, cmdName, err)
-		}
-		_ = stdoutW.Close()
-		tr = &processTransport{cmd: cmd, stdin: stdinPipe, stdout: stdoutPipe}
+		files.LogErrorf("plugin start failed: id=%s version=%s entry=%s err=%v stderr=%s",
+			m.ID, m.Version, entryLabel, err, truncatePluginStderr(stderr.String()))
+		return nil, fmt.Errorf("start wasm plugin %s: %w", entryLabel, err)
 	}
 
 	rt := &Runtime{
@@ -447,10 +338,9 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		manifest:  m,
 		cfg:       cfg,
 		dataRoot:  dataRoot,
-		transport: tr,
-		cmd:       cmd,
-		stdin:     tr.Stdin(),
-		stdout:    tr.Stdout(),
+		session:   sess,
+		stdin:     sess.Stdin(),
+		stdout:    sess.Stdout(),
 		stderr:    stderr,
 		pending:   make(map[string]chan rpcEnvelope),
 		writeGate: make(chan struct{}, 1),
@@ -458,7 +348,6 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		hostCalls: make(chan struct{}, maxPluginHostRPCs),
 	}
 
-	startedAt := time.Now()
 	files.LogInfof("plugin started: id=%s version=%s", m.ID, m.Version)
 	started = true
 
@@ -468,14 +357,9 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		close(readDone)
 	}()
 	go func() {
-		waitErr := tr.Wait()
-		// Invalidation must not depend on a local abort: a plugin that dies before
-		// the first request often fails that write with a broken pipe, which aborts
-		// the runtime and would otherwise leave the broken interpreter cached.
-		if !rt.shuttingDown.Load() && ctx.Err() == nil && isPython3 {
-			if !rt.initialized.Load() || (waitErr != nil && time.Since(startedAt) < 5*time.Second) {
-				python3Cache.invalidate(cmdName)
-			}
+		waitErr := sess.Wait()
+		if ownedEng != nil {
+			_ = ownedEng.Close(context.Background())
 		}
 		if !rt.shuttingDown.Load() && ctx.Err() == nil {
 			files.LogErrorf("plugin exited unexpectedly: id=%s entry=%s err=%v stderr=%s",
@@ -484,8 +368,8 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		select {
 		case <-readDone:
 		case <-time.After(time.Second):
-			// Leftover children still hold stdout: stop the process group / session.
-			_ = tr.Kill()
+			// Close the reader if the read loop is still draining stdout.
+			_ = sess.Kill()
 			_ = rt.stdout.Close()
 			<-readDone
 		}
@@ -494,569 +378,6 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		close(rt.reaped)
 	}()
 	return rt, nil
-}
-
-func pluginCommand(pluginDir, command string) (string, error) {
-	commandPath := filepath.FromSlash(strings.ReplaceAll(command, "\\", "/"))
-	if strings.Contains(commandPath, ":") || !filepath.IsLocal(commandPath) || filepath.Clean(commandPath) == "." {
-		return "", errors.New("plugin command must be a PATH executable or a file within the plugin")
-	}
-	if commandPath == filepath.Base(commandPath) {
-		return resolveBareCommand(commandPath)
-	}
-	name := filepath.Clean(commandPath)
-	root, err := os.OpenRoot(pluginDir)
-	if err != nil {
-		return "", err
-	}
-	defer root.Close()
-	if err := checkPluginParents(root, name); err != nil {
-		return "", err
-	}
-	info, err := root.Lstat(name)
-	if err != nil {
-		return "", err
-	}
-	if !info.Mode().IsRegular() {
-		return "", errors.New("bundled plugin command must be a regular file")
-	}
-	return filepath.Abs(filepath.Join(pluginDir, name))
-}
-
-func resolveBareCommand(command string) (string, error) {
-	if isPython3Command(command) {
-		return resolvePython3()
-	}
-	return exec.LookPath(command)
-}
-
-func isPython3Command(command string) bool {
-	base := strings.ToLower(strings.TrimSpace(command))
-	return base == "python3" || (goruntime.GOOS == "windows" && base == "python3.exe")
-}
-
-type pythonCache struct {
-	mu   sync.Mutex
-	path string
-}
-
-var python3Cache pythonCache
-
-type pythonEnv struct {
-	goos    string
-	getenv  func(string) string
-	homeDir func() (string, error)
-	stat    func(string) (os.FileInfo, error)
-	glob    func(string) ([]string, error)
-	verify  func(path string) bool
-	hasCLT  func() bool
-}
-
-func defaultPythonEnv() pythonEnv {
-	return pythonEnv{
-		goos:    goruntime.GOOS,
-		getenv:  os.Getenv,
-		homeDir: os.UserHomeDir,
-		stat:    os.Stat,
-		glob:    filepath.Glob,
-		verify:  defaultVerifyPython3,
-		hasCLT:  defaultHasMacOSCLT,
-	}
-}
-
-func resolvePython3() (string, error) {
-	return resolvePython3Cached(&python3Cache, defaultPythonEnv())
-}
-
-func (c *pythonCache) invalidate(path string) {
-	if c == nil {
-		return
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if path == "" || c.path == path || (goruntime.GOOS == "windows" && strings.EqualFold(c.path, path)) {
-		c.path = ""
-	}
-}
-
-func resolvePython3Cached(cache *pythonCache, env pythonEnv) (string, error) {
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-	if cache.path != "" && env.isRunnableFile(cache.path) {
-		return cache.path, nil
-	}
-	cache.path = ""
-	resolved, err := env.resolve()
-	if err != nil {
-		return "", err
-	}
-	cache.path = resolved
-	return resolved, nil
-}
-
-func (e pythonEnv) isRunnableFile(path string) bool {
-	if path == "" || e.stat == nil || !isAbsExecPathForOS(e.goos, path) {
-		return false
-	}
-	if e.goos == "windows" && isWindowsAppsStub(path) {
-		return false
-	}
-	info, err := e.stat(path)
-	if err != nil || info.IsDir() || !info.Mode().IsRegular() {
-		return false
-	}
-	if e.goos != "windows" && info.Mode().Perm()&0o111 == 0 {
-		return false
-	}
-	return true
-}
-
-func (e pythonEnv) resolve() (string, error) {
-	seen := make(map[string]bool)
-	tryCandidate := func(raw string) (string, bool) {
-		p := cleanExecPathForOS(e.goos, strings.TrimSpace(raw))
-		if p == "" || !isAbsExecPathForOS(e.goos, p) {
-			return "", false
-		}
-		key := p
-		if e.goos == "windows" {
-			key = strings.ToLower(p)
-		}
-		if seen[key] {
-			return "", false
-		}
-		seen[key] = true
-		if !e.isRunnableFile(p) {
-			return "", false
-		}
-		if e.verify != nil && !e.verify(p) {
-			return "", false
-		}
-		return p, true
-	}
-
-	switch e.goos {
-	case "darwin":
-		return e.resolveDarwin(tryCandidate)
-	case "windows":
-		return e.resolveWindows(tryCandidate)
-	default:
-		return e.resolveLinux(tryCandidate)
-	}
-}
-
-func (e pythonEnv) resolveDarwin(tryCandidate func(string) (string, bool)) (string, error) {
-	home := e.resolvedHome()
-	for _, dir := range splitEnvPath(e.goos, e.get("PATH")) {
-		cand := joinExecPath(e.goos, dir, "python3")
-		if cleanExecPathForOS(e.goos, cand) == "/usr/bin/python3" {
-			// Defer the Apple CLT shim until real Homebrew/framework/pyenv paths are checked.
-			continue
-		}
-		if p, ok := tryCandidate(cand); ok {
-			return p, nil
-		}
-	}
-
-	candidates := []string{
-		"/opt/homebrew/bin/python3",
-		"/usr/local/bin/python3",
-		"/Library/Frameworks/Python.framework/Versions/Current/bin/python3",
-	}
-	candidates = append(candidates, e.sortedGlobDesc("/Library/Frameworks/Python.framework/Versions/3.*/bin/python3")...)
-	if pyenvRoot := strings.TrimSpace(e.get("PYENV_ROOT")); pyenvRoot != "" {
-		candidates = append(candidates, joinExecPath(e.goos, pyenvRoot, "shims", "python3"))
-	}
-	if home != "" {
-		candidates = append(candidates, joinExecPath(e.goos, home, ".pyenv", "shims", "python3"))
-	}
-	candidates = append(candidates, e.sortedGlobDesc("/opt/homebrew/opt/python*/bin/python3")...)
-	candidates = append(candidates, e.sortedGlobDesc("/usr/local/opt/python*/bin/python3")...)
-	candidates = append(candidates, "/opt/local/bin/python3")
-	if home != "" {
-		candidates = append(candidates, joinExecPath(e.goos, home, ".local", "bin", "python3"))
-		candidates = append(candidates, e.sortedGlobDesc(joinExecPath(e.goos, home, "Library", "Python", "3.*", "bin", "python3"))...)
-	}
-	for _, cand := range candidates {
-		if p, ok := tryCandidate(cand); ok {
-			return p, nil
-		}
-	}
-
-	if e.hasCLT != nil && e.hasCLT() {
-		if p, ok := tryCandidate("/usr/bin/python3"); ok {
-			return p, nil
-		}
-	}
-	return "", errors.New("python3 not found (install Python 3 via Homebrew/python.org or Xcode Command Line Tools)")
-}
-
-func (e pythonEnv) resolveWindows(tryCandidate func(string) (string, bool)) (string, error) {
-	pathDirs := splitEnvPath(e.goos, e.get("PATH"))
-	for _, dir := range pathDirs {
-		if isWindowsAppsStub(dir) {
-			continue
-		}
-		for _, exe := range []string{"python3.exe", "python.exe"} {
-			if p, ok := tryCandidate(joinExecPath(e.goos, dir, exe)); ok {
-				return p, nil
-			}
-		}
-	}
-
-	home := e.resolvedHome()
-	localAppData := strings.TrimSpace(e.get("LOCALAPPDATA"))
-	if localAppData == "" && home != "" {
-		localAppData = joinExecPath(e.goos, home, "AppData", "Local")
-	}
-	var dirPatterns []string
-	if localAppData != "" {
-		dirPatterns = append(dirPatterns, joinExecPath(e.goos, localAppData, "Programs", "Python", "Python3*"))
-	}
-	for _, envName := range []string{"ProgramFiles", "ProgramFiles(x86)"} {
-		if base := strings.TrimSpace(e.get(envName)); base != "" {
-			dirPatterns = append(dirPatterns, joinExecPath(e.goos, base, "Python3*"))
-		}
-	}
-	sysDrive := strings.TrimSpace(e.get("SystemDrive"))
-	if sysDrive == "" {
-		sysDrive = `C:\`
-	} else if len(sysDrive) == 2 && sysDrive[1] == ':' {
-		sysDrive += `\`
-	}
-	dirPatterns = append(dirPatterns, joinExecPath(e.goos, sysDrive, "Python3*"))
-
-	for _, pat := range dirPatterns {
-		for _, dir := range e.sortedGlobDesc(pat) {
-			for _, exe := range []string{"python3.exe", "python.exe"} {
-				if p, ok := tryCandidate(joinExecPath(e.goos, dir, exe)); ok {
-					return p, nil
-				}
-			}
-		}
-	}
-
-	var pyenvPatterns []string
-	if pyenvRoot := strings.TrimSpace(e.get("PYENV_ROOT")); pyenvRoot != "" {
-		pyenvPatterns = append(pyenvPatterns, joinExecPath(e.goos, pyenvRoot, "versions", "3.*", "python.exe"))
-	}
-	if home != "" {
-		pyenvPatterns = append(pyenvPatterns, joinExecPath(e.goos, home, ".pyenv", "pyenv-win", "versions", "3.*", "python.exe"))
-	}
-	for _, pat := range pyenvPatterns {
-		for _, cand := range e.sortedGlobDesc(pat) {
-			if p, ok := tryCandidate(cand); ok {
-				return p, nil
-			}
-		}
-	}
-
-	// Fall back to Windows Python Launcher (py.exe) only after direct python.exe paths.
-	for _, dir := range pathDirs {
-		if isWindowsAppsStub(dir) {
-			continue
-		}
-		if p, ok := tryCandidate(joinExecPath(e.goos, dir, "py.exe")); ok {
-			return p, nil
-		}
-	}
-	var launcherCands []string
-	if localAppData != "" {
-		launcherCands = append(launcherCands, joinExecPath(e.goos, localAppData, "Programs", "Python", "Launcher", "py.exe"))
-	}
-	if sysRoot := strings.TrimSpace(e.get("SystemRoot")); sysRoot != "" {
-		launcherCands = append(launcherCands, joinExecPath(e.goos, sysRoot, "py.exe"))
-	}
-	launcherCands = append(launcherCands, `C:\Windows\py.exe`)
-	for _, cand := range launcherCands {
-		if p, ok := tryCandidate(cand); ok {
-			return p, nil
-		}
-	}
-
-	return "", errors.New("python3 not found (install Python 3 from python.org and avoid the Microsoft Store alias)")
-}
-
-func (e pythonEnv) resolveLinux(tryCandidate func(string) (string, bool)) (string, error) {
-	for _, dir := range splitEnvPath(e.goos, e.get("PATH")) {
-		if p, ok := tryCandidate(joinExecPath(e.goos, dir, "python3")); ok {
-			return p, nil
-		}
-	}
-	home := e.resolvedHome()
-	candidates := []string{
-		"/usr/local/bin/python3",
-		"/usr/bin/python3",
-		"/bin/python3",
-	}
-	if pyenvRoot := strings.TrimSpace(e.get("PYENV_ROOT")); pyenvRoot != "" {
-		candidates = append(candidates, joinExecPath(e.goos, pyenvRoot, "shims", "python3"))
-	}
-	if home != "" {
-		candidates = append(candidates,
-			joinExecPath(e.goos, home, ".pyenv", "shims", "python3"),
-			joinExecPath(e.goos, home, ".local", "bin", "python3"),
-		)
-	}
-	candidates = append(candidates,
-		"/home/linuxbrew/.linuxbrew/bin/python3",
-		"/snap/bin/python3",
-	)
-	for _, cand := range candidates {
-		if p, ok := tryCandidate(cand); ok {
-			return p, nil
-		}
-	}
-	return "", errors.New("python3 not found (install python3 via your system package manager)")
-}
-
-func (e pythonEnv) get(key string) string {
-	if e.getenv == nil {
-		return ""
-	}
-	return e.getenv(key)
-}
-
-func (e pythonEnv) resolvedHome() string {
-	if e.homeDir != nil {
-		if h, err := e.homeDir(); err == nil && strings.TrimSpace(h) != "" {
-			return strings.TrimSpace(h)
-		}
-	}
-	if h := strings.TrimSpace(e.get("HOME")); h != "" {
-		return h
-	}
-	return strings.TrimSpace(e.get("USERPROFILE"))
-}
-
-func (e pythonEnv) sortedGlobDesc(pattern string) []string {
-	if e.glob == nil {
-		return nil
-	}
-	matches, err := e.glob(pattern)
-	if err != nil || len(matches) == 0 {
-		return nil
-	}
-	slices.SortFunc(matches, compareVersionPathsDesc)
-	return matches
-}
-
-func compareVersionPathsDesc(a, b string) int {
-	split := func(s string) []string {
-		return strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == '\\' })
-	}
-	sa, sb := split(a), split(b)
-	for i := 0; i < len(sa) && i < len(sb); i++ {
-		if c := compareNatural(sa[i], sb[i]); c != 0 {
-			return -c
-		}
-	}
-	if len(sa) != len(sb) {
-		return -cmp.Compare(len(sa), len(sb))
-	}
-	return -cmp.Compare(a, b)
-}
-
-func compareNatural(a, b string) int {
-	ia, ib := 0, 0
-	for ia < len(a) && ib < len(b) {
-		da := a[ia] >= '0' && a[ia] <= '9'
-		db := b[ib] >= '0' && b[ib] <= '9'
-		if da && db {
-			ja, jb := ia, ib
-			for ja < len(a) && a[ja] >= '0' && a[ja] <= '9' {
-				ja++
-			}
-			for jb < len(b) && b[jb] >= '0' && b[jb] <= '9' {
-				jb++
-			}
-			if c := compareUnsignedDigits(a[ia:ja], b[ib:jb]); c != 0 {
-				return c
-			}
-			ia, ib = ja, jb
-			continue
-		}
-		if da != db {
-			if da {
-				return 1
-			}
-			return -1
-		}
-		if a[ia] != b[ib] {
-			return cmp.Compare(a[ia], b[ib])
-		}
-		ia++
-		ib++
-	}
-	return cmp.Compare(len(a)-ia, len(b)-ib)
-}
-
-func compareUnsignedDigits(a, b string) int {
-	sa := strings.TrimLeft(a, "0")
-	sb := strings.TrimLeft(b, "0")
-	if len(sa) != len(sb) {
-		return cmp.Compare(len(sa), len(sb))
-	}
-	if sa != sb {
-		return cmp.Compare(sa, sb)
-	}
-	return cmp.Compare(len(a), len(b))
-}
-
-func isWindowsAppsStub(p string) bool {
-	norm := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(p)), "\\", "/")
-	return strings.Contains(norm, "/windowsapps/") || strings.HasSuffix(norm, "/windowsapps")
-}
-
-func isAbsExecPathForOS(goos, p string) bool {
-	if p == "" || p == "." {
-		return false
-	}
-	if goos == "windows" {
-		if len(p) >= 3 && ((p[0] >= 'a' && p[0] <= 'z') || (p[0] >= 'A' && p[0] <= 'Z')) && p[1] == ':' && (p[2] == '\\' || p[2] == '/') {
-			return true
-		}
-		if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") {
-			rest := strings.ReplaceAll(p[2:], "/", `\`)
-			host, share, ok := strings.Cut(rest, `\`)
-			return ok && host != "" && share != "" && share[0] != '\\'
-		}
-		return false
-	}
-	return strings.HasPrefix(p, "/")
-}
-
-func splitEnvPath(goos, val string) []string {
-	if val == "" {
-		return nil
-	}
-	var rawParts []string
-	if goos == goruntime.GOOS {
-		rawParts = filepath.SplitList(val)
-	} else {
-		sep := ":"
-		if goos == "windows" {
-			sep = ";"
-		}
-		rawParts = strings.Split(val, sep)
-	}
-	out := make([]string, 0, len(rawParts))
-	for _, p := range rawParts {
-		p = strings.TrimSpace(p)
-		if goos == "windows" {
-			p = strings.TrimSpace(strings.Trim(p, `"`))
-		}
-		if !isAbsExecPathForOS(goos, p) {
-			continue
-		}
-		out = append(out, p)
-	}
-	return out
-}
-
-func joinExecPath(goos string, elems ...string) string {
-	if goos == goruntime.GOOS {
-		return filepath.Join(elems...)
-	}
-	sep := "/"
-	if goos == "windows" {
-		sep = `\`
-	}
-	var parts []string
-	for i, el := range elems {
-		if el == "" {
-			continue
-		}
-		if i == 0 {
-			if el == "/" {
-				parts = append(parts, "")
-				continue
-			}
-			parts = append(parts, strings.TrimRight(el, `/\`))
-		} else {
-			parts = append(parts, strings.Trim(el, `/\`))
-		}
-	}
-	if len(parts) == 1 && parts[0] == "" {
-		return sep
-	}
-	return strings.Join(parts, sep)
-}
-
-func cleanExecPathForOS(goos, p string) string {
-	if p == "" {
-		return ""
-	}
-	if goos == goruntime.GOOS {
-		return filepath.Clean(p)
-	}
-	if goos == "windows" {
-		p = strings.ReplaceAll(p, "/", `\`)
-		if len(p) > 3 {
-			p = strings.TrimRight(p, `\`)
-		}
-		return p
-	}
-	return path.Clean(p)
-}
-
-func prependEnvPathDir(pathEnv, dir string) string {
-	return prependEnvPathDirForOS(goruntime.GOOS, pathEnv, dir)
-}
-
-func prependEnvPathDirForOS(goos, pathEnv, dir string) string {
-	dir = cleanExecPathForOS(goos, strings.TrimSpace(dir))
-	if dir == "" || dir == "." {
-		return pathEnv
-	}
-	for _, existing := range splitEnvPath(goos, pathEnv) {
-		cleaned := cleanExecPathForOS(goos, strings.TrimSpace(existing))
-		if cleaned == "" {
-			continue
-		}
-		if goos == "windows" {
-			if strings.EqualFold(cleaned, dir) {
-				return pathEnv
-			}
-		} else if cleaned == dir {
-			return pathEnv
-		}
-	}
-	if pathEnv == "" {
-		return dir
-	}
-	sep := string(os.PathListSeparator)
-	if goos != goruntime.GOOS {
-		if goos == "windows" {
-			sep = ";"
-		} else {
-			sep = ":"
-		}
-	}
-	return dir + sep + pathEnv
-}
-
-func defaultHasMacOSCLT() bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "xcode-select", "-p").Output()
-	if err != nil {
-		return false
-	}
-	devDir := strings.TrimSpace(string(out))
-	if devDir == "" {
-		return false
-	}
-	info, err := os.Stat(devDir)
-	return err == nil && info.IsDir()
-}
-
-func defaultVerifyPython3(path string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "-c", "import sys; raise SystemExit(0 if sys.version_info[0] >= 3 else 1)")
-	configurePluginProcess(cmd)
-	return cmd.Run() == nil
 }
 
 const maxPluginLogStderr = 1024
@@ -1069,7 +390,7 @@ func truncatePluginStderr(raw string) string {
 	if len(s) <= maxPluginLogStderr {
 		return s
 	}
-	// Keep the tail so Python tracebacks retain the final exception line.
+	// Keep the tail so stack traces retain the final error.
 	start := len(s) - maxPluginLogStderr
 	for start < len(s) && !utf8.RuneStart(s[start]) {
 		start++
@@ -1404,9 +725,7 @@ func (rt *Runtime) Shutdown(ctx context.Context) error {
 	rt.shuttingDown.Store(true)
 	if !rt.closed.Swap(true) {
 		_ = rt.call(ctx, "plugin.shutdown", map[string]any{}, nil)
-		if rt.transport != nil {
-			_ = rt.transport.CloseWrite()
-		} else if rt.stdin != nil {
+		if rt.stdin != nil {
 			_ = rt.stdin.Close()
 		}
 	}
@@ -1419,7 +738,7 @@ func (rt *Runtime) Shutdown(ctx context.Context) error {
 		case <-rt.reaped:
 			return nil
 		case <-time.After(time.Second):
-			return errors.New("plugin process did not exit")
+			return errors.New("plugin sandbox did not exit")
 		}
 	}
 }
@@ -1430,10 +749,8 @@ func (rt *Runtime) abort() {
 		select {
 		case <-rt.reaped:
 		default:
-			if rt.transport != nil {
-				_ = rt.transport.Kill()
-			} else if rt.cmd != nil && rt.cmd.Process != nil {
-				_ = stopPluginProcess(rt.cmd)
+			if rt.session != nil {
+				_ = rt.session.Kill()
 			}
 		}
 		if rt.stdin != nil {
