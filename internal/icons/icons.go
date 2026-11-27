@@ -159,7 +159,6 @@ const (
 	KeyPlus         Icon = "key-plus"
 	Refresh         Icon = "refresh"
 	Spinner         Icon = "spinner"
-	UpdateTangle    Icon = "update-tangle"
 	ToolThink       Icon = "tool-think"
 	ToolWrite       Icon = "tool-write"
 	ToolRun         Icon = "tool-run"
