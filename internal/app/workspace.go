@@ -6489,6 +6489,9 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 	shellGround := chrome.Ground
 	if w.syncWindowGlass(c, stSnap) {
 		shellGround = pal.GlassGround(chrome.Ground)
+		// The framework fills the root with the opaque theme background every
+		// frame; clear it so the window material shows through the shell.
+		c.Root().Background(ui.Transparent)
 	}
 	c.Key("workspace-root")
 	root := ui.Column(c).Fill().Background(shellGround).TextColor(pal.Text).Clip()

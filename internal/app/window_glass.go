@@ -1,6 +1,7 @@
 package app
 
 import (
+	"runtime"
 	"sync"
 	"time"
 
@@ -22,7 +23,12 @@ func MainWindowVibrancy(st model.AppState) mygo.Vibrancy {
 	if !theme.WindowGlassSupported() || !st.WindowGlassOn() {
 		return mygo.VibrancyNone
 	}
-	return mygo.VibrancySidebar
+	if runtime.GOOS == "darwin" {
+		// Liquid Glass on macOS 26+ (the popover material before it): the desktop
+		// reads through vividly, as in Tahoe's own sidebars.
+		return mygo.VibrancyGlass
+	}
+	return mygo.VibrancyMica
 }
 
 // InitWindowGlass records the material the main window was created with.

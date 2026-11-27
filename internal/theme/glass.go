@@ -31,10 +31,10 @@ func WindowGlassNeedsRestart(on bool) bool {
 // light so the material reads through, skins keep more of their own color.
 func (p Palette) GlassGround(ground ui.Color) ui.Color {
 	if skinActive() {
-		return ground.Alpha(0.72)
+		return ground.Alpha(0.45)
 	}
 	if p.Dark {
-		return ground.Alpha(0.55)
+		return ground.Alpha(0.28)
 	}
-	return ground.Alpha(0.45)
+	return ground.Alpha(0.16)
 }
