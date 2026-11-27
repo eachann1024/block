@@ -71,6 +71,8 @@ type TabSurface struct {
 	code        *codeed.State
 	codeVersion uint64
 	codeLangGen uint64
+	scrollbars  blockui.EditorScrollbars
+	findOpen    bool
 }
 
 // NewTabSurface constructs a TabSurface from a ClassifiedFile.

@@ -23,6 +23,8 @@ type noteSourceView struct {
 	recordedUndo bool
 	docRev       uint64
 	focusPending bool
+	scrollbars   blockui.EditorScrollbars
+	findOpen     bool
 }
 
 func (w *Workspace) noteSourceActiveLocked(tab string) bool {
@@ -124,10 +126,20 @@ func (w *Workspace) openNoteSourceFind(replace bool) bool {
 	if st == nil {
 		return false
 	}
+	opened := false
 	if replace && !st.ReadOnly {
-		return st.Run(codeed.FindReplace)
+		opened = st.Run(codeed.FindReplace)
+	} else {
+		opened = st.Run(codeed.Find)
 	}
-	return st.Run(codeed.Find)
+	if opened {
+		w.mu.Lock()
+		if w.noteSource.st == st {
+			w.noteSource.findOpen = true
+		}
+		w.mu.Unlock()
+	}
+	return opened
 }
 
 func (w *Workspace) toggleNoteSource(tab string, sess *editor.Session) {
@@ -219,6 +231,7 @@ func (w *Workspace) renderNoteSource(c *ui.Context, sess *editor.Session) {
 	nsDocRev := w.noteSource.docRev
 	nsText := w.noteSource.text
 	nsSavedText := w.noteSource.savedText
+	findOpen := w.noteSource.findOpen
 	isVirtual := w.virtualPreview[tab]
 	w.mu.RUnlock()
 	if st == nil {
@@ -266,15 +279,21 @@ func (w *Workspace) renderNoteSource(c *ui.Context, sess *editor.Session) {
 	st.LineHeight = 1.54
 	st.SoftWrap = true
 	st.Theme = sourceEditorTheme(pal)
+	findRendered := false
 	st.Bindings = sourceFindBindings(st.Bindings)
-	st.RenderFindBar = renderSourceFindBar
+	st.RenderFindBar = func(ctx *ui.Context, bar ui.Element, f *codeed.FindBar) {
+		findRendered = true
+		renderSourceFindBar(ctx, bar, f)
+	}
 
+	right, bottom := w.noteSource.scrollbars.Prepare(c, st, findOpen)
 	c.Key("note-source:" + tab)
-	outer := ui.Column(c).Fill().Background(pal.Paper)
+	outer := ui.Column(c).Fill().Background(pal.Paper).Padding(0, right, bottom, 0)
 	blockui.Probe(outer, "note-source")
+	var ed ui.Element
 	outer.Children(func() {
 		c.Key("note-source-editor:" + tab)
-		ed := codeed.View(c, st).Fill()
+		ed = codeed.View(c, st).Fill()
 		blockui.Probe(ed, "note-source-editor")
 		w.mu.Lock()
 		shouldFocus := w.noteSourceActiveLocked(tab) && w.noteSource.st == st && w.noteSource.focusPending
@@ -286,6 +305,15 @@ func (w *Workspace) renderNoteSource(c *ui.Context, sess *editor.Session) {
 			ed.Focus()
 		}
 	})
+	if findRendered != findOpen {
+		w.mu.Lock()
+		if w.noteSourceActiveLocked(tab) && w.noteSource.st == st {
+			w.noteSource.findOpen = findRendered
+		}
+		w.mu.Unlock()
+		c.Invalidate()
+	}
+	w.noteSource.scrollbars.Observe(c, outer, ed, st)
 
 	w.mu.RLock()
 	prevVer := w.noteSource.codeVersion

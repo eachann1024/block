@@ -471,9 +471,17 @@ func (s *TabSurface) OpenFind(replace bool) bool {
 		return false
 	}
 	if replace && !st.ReadOnly {
-		return st.Run(codeed.FindReplace)
+		if st.Run(codeed.FindReplace) {
+			s.findOpen = true
+			return true
+		}
+		return false
 	}
-	return st.Run(codeed.Find)
+	if st.Run(codeed.Find) {
+		s.findOpen = true
+		return true
+	}
+	return false
 }
 
 // renderSourceEditor shows non-Markdown text as a full-bleed code editor (Zed/VS Code
@@ -494,17 +502,28 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	st.LineHeight = 1.54
 	st.SoftWrap = sourceSoftWrap
 	st.Theme = sourceEditorTheme(pal)
+	findRendered := false
 	st.Bindings = sourceFindBindings(st.Bindings)
-	st.RenderFindBar = renderSourceFindBar
+	st.RenderFindBar = func(ctx *ui.Context, bar ui.Element, f *codeed.FindBar) {
+		findRendered = true
+		renderSourceFindBar(ctx, bar, f)
+	}
 
+	right, bottom := s.scrollbars.Prepare(c, st, s.findOpen)
 	c.Key("source-surface:" + s.Path)
-	outer := ui.Column(c).Fill().Background(pal.Paper)
+	outer := ui.Column(c).Fill().Background(pal.Paper).Padding(0, right, bottom, 0)
 	blockui.Probe(outer, "source-surface")
+	var ed ui.Element
 	outer.Children(func() {
 		c.Key("source-editor:" + s.Path)
-		ed := codeed.View(c, st).Fill()
+		ed = codeed.View(c, st).Fill()
 		blockui.Probe(ed, "source-editor")
 	})
+	if findRendered != s.findOpen {
+		s.findOpen = findRendered
+		c.Invalidate()
+	}
+	s.scrollbars.Observe(c, outer, ed, st)
 
 	if v := st.Buffer.Version(); v != s.codeVersion {
 		s.codeVersion = v
