@@ -156,6 +156,7 @@ var SettingsSectionTabs = []string{"ai", "appearance", "folders", "shortcuts"}
 // Contributes declares where a plugin places UI or language extensions in the host.
 type Contributes struct {
 	TitlebarButtons  []TitlebarButtonContrib  `json:"titlebar_buttons,omitempty"`
+	TitlebarManager  bool                     `json:"titlebar_manager,omitempty"`
 	SettingsSections []SettingsSectionContrib `json:"settings_sections,omitempty"`
 	Commands         []CommandContrib         `json:"commands,omitempty"`
 	PageMenu         []MenuContrib            `json:"page_menu,omitempty"`
@@ -167,6 +168,7 @@ type Contributes struct {
 	FileBadges       []FileBadgeContrib       `json:"file_badges,omitempty"`
 	FileIcons        []FileIconPackContrib    `json:"file_icons,omitempty"`
 	Backdrops        []BackdropContrib        `json:"backdrops,omitempty"`
+	BlockDecorators  []BlockDecoratorContrib  `json:"block_decorators,omitempty"`
 	StatusItems      []StatusItemContrib      `json:"status_items,omitempty"`
 	Dialogs          []DialogContrib          `json:"dialogs,omitempty"`
 	MenubarItems     []MenubarItemContrib     `json:"menubar_items,omitempty"`
@@ -253,16 +255,30 @@ type FileBadgeContrib struct {
 	Tooltip LocalizedText `json:"tooltip,omitempty"`
 }
 
-// BackdropContrib declares a custom vector backdrop that can be applied behind the editor canvas.
+// BackdropContrib declares a custom vector or paper backdrop that can be applied behind the editor canvas.
 type BackdropContrib struct {
 	ID       string        `json:"id"`
 	Title    LocalizedText `json:"title"`
 	Icon     DuoIconSpec   `json:"icon"`
-	Pattern  string        `json:"pattern,omitempty"` // "scatter" | "grid" | "watermark" | "corners"
-	Density  string        `json:"density,omitempty"` // "sparse" | "medium" | "dense"
-	Opacity  float64       `json:"opacity,omitempty"` // 0 (default 0.09) or 0.03..0.25
-	Tint     string        `json:"tint,omitempty"`    // "accent" | "muted" | "warm" | "glow"
+	Pattern  string        `json:"pattern,omitempty"`  // "scatter" | "grid" | "watermark" | "corners" | "paper_dots" | "paper_grid"
+	Density  string        `json:"density,omitempty"`  // "sparse" | "medium" | "dense"
+	Contrast string        `json:"contrast,omitempty"` // "standard" | "high"
+	Opacity  float64       `json:"opacity,omitempty"`  // 0 (default 0.09) or 0.03..0.25
+	Tint     string        `json:"tint,omitempty"`     // "accent" | "muted" | "warm" | "glow"
 	DarkGlow bool          `json:"dark_glow,omitempty"`
+}
+
+// BlockDecoratorContrib declares a plugin block decorator matched by HTML comment
+// signature (or legacy bracket tag prefix) to apply callout styling and an
+// optional empty placeholder in the editor.
+type BlockDecoratorContrib struct {
+	ID               string            `json:"id"`
+	BlockKind        string            `json:"block_kind,omitempty"`
+	SignaturePrefix  string            `json:"signature_prefix"`
+	LegacyTagPrefix  string            `json:"legacy_tag_prefix,omitempty"`
+	DefaultCallout   string            `json:"default_callout"`
+	CalloutByKind    map[string]string `json:"callout_by_kind,omitempty"`
+	EmptyPlaceholder LocalizedText     `json:"empty_placeholder,omitempty"`
 }
 
 // StatusItemContrib is a short label in the status strip. Text is the initial
@@ -284,10 +300,10 @@ type DialogContrib struct {
 }
 
 func (c *Contributes) hasRuntimeContributions() bool {
-	return c != nil && (len(c.TitlebarButtons) > 0 || len(c.SettingsSections) > 0 || len(c.Commands) > 0 ||
+	return c != nil && (len(c.TitlebarButtons) > 0 || c.TitlebarManager || len(c.SettingsSections) > 0 || len(c.Commands) > 0 ||
 		len(c.PageMenu) > 0 || len(c.EditorMenu) > 0 || len(c.SidebarMenu) > 0 || len(c.TabMenu) > 0 ||
 		len(c.Panels) > 0 || len(c.SidebarSections) > 0 || len(c.FileBadges) > 0 || len(c.FileIcons) > 0 ||
-		len(c.Backdrops) > 0 || len(c.StatusItems) > 0 || len(c.Dialogs) > 0 || len(c.MenubarItems) > 0)
+		len(c.Backdrops) > 0 || len(c.BlockDecorators) > 0 || len(c.StatusItems) > 0 || len(c.Dialogs) > 0 || len(c.MenubarItems) > 0)
 }
 
 func (c *Contributes) empty() bool {
@@ -599,6 +615,7 @@ var contribLimits = []struct {
 	{"file_badges", 4, func(c Contributes) int { return len(c.FileBadges) }},
 	{"file_icons", 1, func(c Contributes) int { return len(c.FileIcons) }},
 	{"backdrops", 8, func(c Contributes) int { return len(c.Backdrops) }},
+	{"block_decorators", 8, func(c Contributes) int { return len(c.BlockDecorators) }},
 	{"status_items", 4, func(c Contributes) int { return len(c.StatusItems) }},
 	{"dialogs", 16, func(c Contributes) int { return len(c.Dialogs) }},
 	{"languages", 16, func(c Contributes) int { return len(c.Languages) }},
@@ -625,6 +642,9 @@ func (m *Manifest) validateContributes() error {
 		if lim.n(*c) > lim.max {
 			return fmt.Errorf("contributes.%s allows at most %d entries", lim.kind, lim.max)
 		}
+	}
+	if c.TitlebarManager && !m.HasDeclaredPermission(PermUITitlebar) {
+		return fmt.Errorf("contributes.titlebar_manager requires permission %q", PermUITitlebar)
 	}
 	if len(c.TitlebarButtons) > 3 {
 		return errors.New("contributes.titlebar_buttons allows at most 3 buttons")
@@ -773,16 +793,56 @@ func (m *Manifest) validateContributes() error {
 			return err
 		}
 		if bg.Pattern != "" && !validBackdropPattern(bg.Pattern) {
-			return fmt.Errorf("contributes.backdrops %q pattern %q must be scatter, grid, watermark, or corners", bg.ID, bg.Pattern)
+			return fmt.Errorf("contributes.backdrops %q pattern %q must be scatter, grid, watermark, corners, paper_dots, or paper_grid", bg.ID, bg.Pattern)
 		}
 		if bg.Density != "" && !validBackdropDensity(bg.Density) {
 			return fmt.Errorf("contributes.backdrops %q density %q must be sparse, medium, or dense", bg.ID, bg.Density)
+		}
+		if bg.Contrast != "" && !validBackdropContrast(bg.Contrast) {
+			return fmt.Errorf("contributes.backdrops %q contrast %q must be standard or high", bg.ID, bg.Contrast)
 		}
 		if bg.Tint != "" && !validBackdropTint(bg.Tint) {
 			return fmt.Errorf("contributes.backdrops %q tint %q must be accent, muted, warm, or glow", bg.ID, bg.Tint)
 		}
 		if bg.Opacity != 0 && (math.IsNaN(bg.Opacity) || math.IsInf(bg.Opacity, 0) || bg.Opacity < 0.01 || bg.Opacity > 0.35) {
 			return fmt.Errorf("contributes.backdrops %q opacity must be between 0.01 and 0.35", bg.ID)
+		}
+	}
+	if len(c.BlockDecorators) > 0 && !m.HasDeclaredPermission(PermUIAppearance) && !m.HasDeclaredPermission(PermEditorEdit) {
+		return fmt.Errorf("contributes.block_decorators requires permission %q or %q", PermUIAppearance, PermEditorEdit)
+	}
+	for _, bd := range c.BlockDecorators {
+		if err := id("block_decorators", bd.ID); err != nil {
+			return err
+		}
+		if bd.BlockKind != "" && !validDecoratorBlockKind(bd.BlockKind) {
+			return fmt.Errorf("contributes.block_decorators %q block_kind %q must be quote, paragraph, or callout", bd.ID, bd.BlockKind)
+		}
+		sig := strings.TrimSpace(bd.SignaturePrefix)
+		if !blockDecoratorSigRe.MatchString(sig) || ContainsEmoji(sig) {
+			return fmt.Errorf("contributes.block_decorators %q signature_prefix %q is invalid", bd.ID, bd.SignaturePrefix)
+		}
+		if bd.LegacyTagPrefix != "" {
+			if len(bd.LegacyTagPrefix) > 32 || strings.ContainsAny(bd.LegacyTagPrefix, " \t\r\n<>") || ContainsEmoji(bd.LegacyTagPrefix) {
+				return fmt.Errorf("contributes.block_decorators %q legacy_tag_prefix %q is invalid", bd.ID, bd.LegacyTagPrefix)
+			}
+		}
+		if !validDecoratorCallout(bd.DefaultCallout) || ContainsEmoji(bd.DefaultCallout) {
+			return fmt.Errorf("contributes.block_decorators %q default_callout %q must be note, tip, important, warning, or caution", bd.ID, bd.DefaultCallout)
+		}
+		for kindKey, calloutVal := range bd.CalloutByKind {
+			kk := strings.TrimSpace(kindKey)
+			if kk == "" || len(kk) > 32 || strings.ContainsAny(kk, " \t\r\n") || ContainsEmoji(kk) {
+				return fmt.Errorf("contributes.block_decorators %q callout_by_kind key %q is invalid", bd.ID, kindKey)
+			}
+			if !validDecoratorCallout(calloutVal) || ContainsEmoji(calloutVal) {
+				return fmt.Errorf("contributes.block_decorators %q callout_by_kind[%q] %q must be note, tip, important, warning, or caution", bd.ID, kindKey, calloutVal)
+			}
+		}
+		if strings.TrimSpace(bd.EmptyPlaceholder.Zh) != "" || strings.TrimSpace(bd.EmptyPlaceholder.En) != "" {
+			if err := validateContribText("contributes.block_decorators.empty_placeholder", bd.EmptyPlaceholder); err != nil {
+				return err
+			}
 		}
 	}
 	for _, st := range c.StatusItems {
@@ -833,9 +893,35 @@ func (m *Manifest) validateContributes() error {
 	return nil
 }
 
+var blockDecoratorSigRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,63}$`)
+
+func validDecoratorBlockKind(k string) bool {
+	switch strings.ToLower(strings.TrimSpace(k)) {
+	case "quote", "paragraph", "callout":
+		return true
+	}
+	return false
+}
+
+func validDecoratorCallout(c string) bool {
+	switch strings.ToLower(strings.TrimSpace(c)) {
+	case "note", "tip", "important", "warning", "caution":
+		return true
+	}
+	return false
+}
+
 func validBackdropPattern(p string) bool {
 	switch strings.ToLower(strings.TrimSpace(p)) {
-	case "scatter", "grid", "watermark", "corners":
+	case "scatter", "grid", "watermark", "corners", "paper_dots", "paper_grid":
+		return true
+	}
+	return false
+}
+
+func validBackdropContrast(c string) bool {
+	switch strings.ToLower(strings.TrimSpace(c)) {
+	case "standard", "high":
 		return true
 	}
 	return false
@@ -928,76 +1014,14 @@ type TarotState struct {
 	ActiveNote string `json:"active_note"`
 }
 
-// EditorBackgroundState describes the host editor's decorative background
-// controlled via host.ui.editor_background and host.ui.set_editor_background.
-type EditorBackgroundState struct {
-	Mode     string `json:"mode"`     // "off" | "dots" | "grid"
-	Contrast string `json:"contrast"` // "standard" | "high"
-}
-
-func normalizeEditorBackgroundState(mode, contrast string) EditorBackgroundState {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "dots":
-		mode = "dots"
-	case "grid":
-		mode = "grid"
-	default:
-		mode = "off"
-	}
-	switch strings.ToLower(strings.TrimSpace(contrast)) {
-	case "high", "strong":
-		contrast = "high"
-	default:
-		contrast = "standard"
-	}
-	return EditorBackgroundState{Mode: mode, Contrast: contrast}
-}
-
-// MindMapState describes the native mind map renderer configuration controlled
-// via host.ui.mindmap_state and host.ui.set_mindmap.
-type MindMapState struct {
-	Layout    string `json:"layout"`     // "right" | "both"
-	Height    string `json:"height"`     // "compact" | "standard" | "tall"
-	ShowHints bool   `json:"show_hints"` // bottom shortcut hint bar visibility
-}
-
-func defaultMindMapState() MindMapState {
-	return MindMapState{
-		Layout:    "right",
-		Height:    "standard",
-		ShowHints: true,
-	}
-}
-
-func normalizeMindMapState(layout, height string, showHints bool) MindMapState {
-	switch strings.ToLower(strings.TrimSpace(layout)) {
-	case "both":
-		layout = "both"
-	default:
-		layout = "right"
-	}
-	switch strings.ToLower(strings.TrimSpace(height)) {
-	case "compact":
-		height = "compact"
-	case "tall":
-		height = "tall"
-	default:
-		height = "standard"
-	}
-	return MindMapState{
-		Layout:    layout,
-		Height:    height,
-		ShowHints: showHints,
-	}
-}
-
-// EditorBackdropState stores a plugin's active custom vector backdrop configuration
+// EditorBackdropState stores a plugin's active custom vector or paper backdrop configuration
 // controlled via host.ui.backdrop and host.ui.set_backdrop.
 type EditorBackdropState struct {
 	ID       string  `json:"id,omitempty"`
 	Enabled  bool    `json:"enabled"`
 	Pattern  string  `json:"pattern,omitempty"`
 	Density  string  `json:"density,omitempty"`
+	Contrast string  `json:"contrast,omitempty"`
 	Opacity  float64 `json:"opacity,omitempty"`
 	Tint     string  `json:"tint,omitempty"`
 	DarkGlow bool    `json:"dark_glow,omitempty"`
@@ -1032,6 +1056,15 @@ func normalizeBackdropState(base BackdropContrib, st EditorBackdropState) Editor
 		density = "medium"
 	}
 	out.Density = density
+
+	contrast := strings.ToLower(strings.TrimSpace(out.Contrast))
+	if !validBackdropContrast(contrast) {
+		contrast = strings.ToLower(strings.TrimSpace(base.Contrast))
+	}
+	if !validBackdropContrast(contrast) {
+		contrast = "standard"
+	}
+	out.Contrast = contrast
 
 	tint := strings.ToLower(strings.TrimSpace(out.Tint))
 	if !validBackdropTint(tint) {
@@ -1165,23 +1198,21 @@ type UIHost interface {
 // Contribution registry (host-side state pushed by plugins)
 
 type contribRegistry struct {
-	mu         sync.RWMutex
-	path       string
-	hidden     map[string]bool                                                 // legacy global titlebar slot id -> hidden
-	hiddenBy   map[string]map[string]bool                                      // plugin id -> hidden titlebar slot ids
-	editorBG   map[string]EditorBackgroundState                                // plugin id -> editor background
-	mindMapBy  map[string]MindMapState                                         // plugin id -> native mind map prefs
-	backdropBy      map[string]EditorBackdropState                                  // plugin id -> custom vector backdrop
+	mu              sync.RWMutex
+	path            string
+	hidden          map[string]bool                                                 // legacy global titlebar slot id -> hidden
+	hiddenBy        map[string]map[string]bool                                      // plugin id -> hidden titlebar slot ids
+	backdropBy      map[string]EditorBackdropState                                  // plugin id -> custom vector or paper backdrop
 	fileBadges      map[string]map[string]map[string]map[string]FileBadgeEntry      // pluginID -> notebookRoot -> badgeID -> relPath -> entry
 	fileIcons       map[string]map[string]map[string]FileIconEntry                  // pluginID -> notebookRoot -> relPath -> entry
 	fileIconPrefs   map[string]FileIconPrefs                                        // pluginID -> picker/sync_tabs overrides
 	fileIconRecents map[string][]string                                             // pluginID -> recent icon ids
 	warmedUp        map[string]string                                               // plugin id -> initialized version
-	badges     map[string]string                                               // plugin slot id -> badge text
-	active     map[string]bool                                                 // plugin slot id -> active
-	status     map[string]statusOverlay                                        // "<plugin>/<item>" -> text/icon
-	menubar    map[string]menubarOverlay                                       // "<plugin>/<item>" -> title/tooltip/dynamic menu
-	refreshed  map[string]time.Time                                            // surface refresh requests "<plugin>|<surface>"
+	badges          map[string]string                                               // plugin slot id -> badge text
+	active          map[string]bool                                                 // plugin slot id -> active
+	status          map[string]statusOverlay                                        // "<plugin>/<item>" -> text/icon
+	menubar         map[string]menubarOverlay                                       // "<plugin>/<item>" -> title/tooltip/dynamic menu
+	refreshed       map[string]time.Time                                            // surface refresh requests "<plugin>|<surface>"
 	// commandNote maps a plugin to the note its in-flight command targets.
 	commandNote map[string]string
 }
@@ -1194,35 +1225,31 @@ type statusOverlay struct {
 }
 
 type contribFile struct {
-	TitlebarHidden    []string                                                 `json:"titlebar_hidden,omitempty"`
-	TitlebarHiddenBy  map[string][]string                                      `json:"titlebar_hidden_by,omitempty"`
-	EditorBackgrounds map[string]EditorBackgroundState                         `json:"editor_backgrounds,omitempty"`
-	MindMaps          map[string]MindMapState                                  `json:"mindmaps,omitempty"`
-	EditorBackdrops   map[string]EditorBackdropState                           `json:"editor_backdrops,omitempty"`
-	FileBadges        map[string]map[string]map[string]map[string]FileBadgeEntry `json:"file_badges,omitempty"`
-	FileIcons         map[string]map[string]map[string]FileIconEntry           `json:"file_icons,omitempty"`
-	FileIconPrefs     map[string]FileIconPrefs                                 `json:"file_icon_prefs,omitempty"`
-	FileIconRecents   map[string][]string                                      `json:"file_icon_recents,omitempty"`
-	WarmedUp          map[string]string                                        `json:"warmed_up,omitempty"`
+	TitlebarHidden   []string                                                 `json:"titlebar_hidden,omitempty"`
+	TitlebarHiddenBy map[string][]string                                      `json:"titlebar_hidden_by,omitempty"`
+	EditorBackdrops  map[string]EditorBackdropState                           `json:"editor_backdrops,omitempty"`
+	FileBadges       map[string]map[string]map[string]map[string]FileBadgeEntry `json:"file_badges,omitempty"`
+	FileIcons        map[string]map[string]map[string]FileIconEntry           `json:"file_icons,omitempty"`
+	FileIconPrefs    map[string]FileIconPrefs                                 `json:"file_icon_prefs,omitempty"`
+	FileIconRecents  map[string][]string                                      `json:"file_icon_recents,omitempty"`
+	WarmedUp         map[string]string                                        `json:"warmed_up,omitempty"`
 }
 
 func newContribRegistry(appDataDir string) *contribRegistry {
 	r := &contribRegistry{
-		hidden:     map[string]bool{},
-		hiddenBy:   map[string]map[string]bool{},
-		editorBG:   map[string]EditorBackgroundState{},
-		mindMapBy:  map[string]MindMapState{},
+		hidden:          map[string]bool{},
+		hiddenBy:        map[string]map[string]bool{},
 		backdropBy:      map[string]EditorBackdropState{},
 		fileBadges:      map[string]map[string]map[string]map[string]FileBadgeEntry{},
 		fileIcons:       map[string]map[string]map[string]FileIconEntry{},
 		fileIconPrefs:   map[string]FileIconPrefs{},
 		fileIconRecents: map[string][]string{},
 		warmedUp:        map[string]string{},
-		badges:     map[string]string{},
-		active:     map[string]bool{},
-		status:     map[string]statusOverlay{},
-		menubar:    map[string]menubarOverlay{},
-		refreshed:  map[string]time.Time{},
+		badges:          map[string]string{},
+		active:          map[string]bool{},
+		status:          map[string]statusOverlay{},
+		menubar:         map[string]menubarOverlay{},
+		refreshed:       map[string]time.Time{},
 
 		commandNote: map[string]string{},
 	}
@@ -1247,16 +1274,6 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 						}
 					}
 					r.hiddenBy[pluginID] = m
-				}
-				for pluginID, bg := range f.EditorBackgrounds {
-					if strings.TrimSpace(pluginID) != "" {
-						r.editorBG[pluginID] = normalizeEditorBackgroundState(bg.Mode, bg.Contrast)
-					}
-				}
-				for pluginID, mm := range f.MindMaps {
-					if strings.TrimSpace(pluginID) != "" {
-						r.mindMapBy[pluginID] = normalizeMindMapState(mm.Layout, mm.Height, mm.ShowHints)
-					}
 				}
 				for pluginID, bd := range f.EditorBackdrops {
 					if strings.TrimSpace(pluginID) != "" {
@@ -1414,20 +1431,6 @@ func (r *contribRegistry) saveLocked() {
 			hiddenBy[pluginID] = list
 		}
 	}
-	var bgs map[string]EditorBackgroundState
-	if len(r.editorBG) > 0 {
-		bgs = make(map[string]EditorBackgroundState, len(r.editorBG))
-		for pluginID, bg := range r.editorBG {
-			bgs[pluginID] = normalizeEditorBackgroundState(bg.Mode, bg.Contrast)
-		}
-	}
-	var mindMaps map[string]MindMapState
-	if len(r.mindMapBy) > 0 {
-		mindMaps = make(map[string]MindMapState, len(r.mindMapBy))
-		for pluginID, mm := range r.mindMapBy {
-			mindMaps[pluginID] = normalizeMindMapState(mm.Layout, mm.Height, mm.ShowHints)
-		}
-	}
 	var backdrops map[string]EditorBackdropState
 	if len(r.backdropBy) > 0 {
 		backdrops = make(map[string]EditorBackdropState, len(r.backdropBy))
@@ -1528,16 +1531,14 @@ func (r *contribRegistry) saveLocked() {
 		}
 	}
 	b, _ := json.MarshalIndent(contribFile{
-		TitlebarHidden:    ids,
-		TitlebarHiddenBy:  hiddenBy,
-		EditorBackgrounds: bgs,
-		MindMaps:          mindMaps,
-		EditorBackdrops:   backdrops,
-		FileBadges:        fileBadges,
-		FileIcons:         fileIcons,
-		FileIconPrefs:     fileIconPrefs,
-		FileIconRecents:   fileIconRecents,
-		WarmedUp:          warmed,
+		TitlebarHidden:   ids,
+		TitlebarHiddenBy: hiddenBy,
+		EditorBackdrops:  backdrops,
+		FileBadges:       fileBadges,
+		FileIcons:        fileIcons,
+		FileIconPrefs:    fileIconPrefs,
+		FileIconRecents:  fileIconRecents,
+		WarmedUp:         warmed,
 	}, "", "  ")
 	_ = os.MkdirAll(filepath.Dir(r.path), 0o755)
 	tmp := r.path + ".tmp"
@@ -1597,14 +1598,6 @@ func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool
 	}
 	if clearLegacyTitlebar && len(r.hiddenBy) == 0 && len(r.hidden) > 0 {
 		clear(r.hidden)
-		changed = true
-	}
-	if _, ok := r.editorBG[pluginID]; ok {
-		delete(r.editorBG, pluginID)
-		changed = true
-	}
-	if _, ok := r.mindMapBy[pluginID]; ok {
-		delete(r.mindMapBy, pluginID)
 		changed = true
 	}
 	if _, ok := r.backdropBy[pluginID]; ok {
@@ -1775,9 +1768,21 @@ type ResolvedBackdrop struct {
 	Icon       DuoIconSpec
 	Pattern    string
 	Density    string
+	Contrast   string
 	Opacity    float64
 	Tint       string
 	DarkGlow   bool
+}
+
+type ResolvedBlockDecorator struct {
+	PluginID         string
+	ID               string
+	BlockKind        string
+	SignaturePrefix  string
+	LegacyTagPrefix  string
+	DefaultCallout   string
+	CalloutByKind    map[string]string
+	EmptyPlaceholder string
 }
 
 type ResolvedStatusItem struct {
@@ -1817,9 +1822,8 @@ func (s *Supervisor) enabledContribs() []InstalledApp {
 	return out
 }
 
-func isLegacyTitlebarManager(a InstalledApp) bool {
-	return (a.Manifest.ID == "block-titlebar" || a.Manifest.HasDeclaredPermission(PermUITitlebar)) &&
-		(a.Manifest.Contributes == nil || len(a.Manifest.Contributes.TitlebarButtons) == 0)
+func isTitlebarManagerManifest(m Manifest) bool {
+	return m.Contributes != nil && m.Contributes.TitlebarManager
 }
 
 func (s *Supervisor) isRuntimeActiveLocked(pluginID string, rt *Runtime) bool {
@@ -1835,106 +1839,34 @@ func (s *Supervisor) isRuntimeActiveLocked(pluginID string, rt *Runtime) bool {
 }
 
 // TitlebarHidden reports whether a titlebar slot is hidden by an enabled
-// titlebar-controlling plugin. "more" is never hidden, and disabling or
-// uninstalling all titlebar plugins immediately restores built-in slots.
+// titlebar-manager plugin. "more" is never hidden, and disabling or
+// uninstalling all titlebar manager plugins immediately restores built-in slots.
 func (s *Supervisor) TitlebarHidden(slotID string) bool {
 	if slotID == TitlebarSlotMore || s == nil || s.contrib == nil {
 		return false
 	}
 	s.mu.RLock()
-	enabledTitlebarIDs := make([]string, 0, len(s.installed))
-	hasLegacyManager := false
+	enabledManagerIDs := make([]string, 0, len(s.installed))
 	for _, a := range s.installed {
-		if a.Enabled {
-			enabledTitlebarIDs = append(enabledTitlebarIDs, a.Manifest.ID)
-			if isLegacyTitlebarManager(a) {
-				hasLegacyManager = true
-			}
+		if a.Enabled && isTitlebarManagerManifest(a.Manifest) && a.Manifest.HasPermission(PermUITitlebar) {
+			enabledManagerIDs = append(enabledManagerIDs, a.Manifest.ID)
 		}
 	}
 	s.mu.RUnlock()
-	if len(enabledTitlebarIDs) == 0 {
+	if len(enabledManagerIDs) == 0 {
 		return false
 	}
 	s.contrib.mu.RLock()
 	defer s.contrib.mu.RUnlock()
 	if len(s.contrib.hiddenBy) > 0 {
-		for _, pid := range enabledTitlebarIDs {
+		for _, pid := range enabledManagerIDs {
 			if s.contrib.hiddenBy[pid][slotID] {
 				return true
 			}
 		}
 		return false
 	}
-	if !hasLegacyManager {
-		return false
-	}
 	return s.contrib.hidden[slotID]
-}
-
-// EditorBackground returns the active decorative editor background set by the
-// first enabled plugin with a non-"off" mode. Disabling or uninstalling that
-// plugin immediately restores "off".
-func (s *Supervisor) EditorBackground() EditorBackgroundState {
-	if s == nil || s.contrib == nil {
-		return EditorBackgroundState{Mode: "off", Contrast: "standard"}
-	}
-	s.mu.RLock()
-	enabledIDs := make([]string, 0, len(s.installed))
-	for _, a := range s.installed {
-		if a.Enabled {
-			enabledIDs = append(enabledIDs, a.Manifest.ID)
-		}
-	}
-	s.mu.RUnlock()
-
-	s.contrib.mu.RLock()
-	defer s.contrib.mu.RUnlock()
-	for _, id := range enabledIDs {
-		if st, ok := s.contrib.editorBG[id]; ok && st.Mode != "" && st.Mode != "off" {
-			return normalizeEditorBackgroundState(st.Mode, st.Contrast)
-		}
-	}
-	return EditorBackgroundState{Mode: "off", Contrast: "standard"}
-}
-
-const mindMapPluginID = "block-mindmap"
-
-// MindMapState returns the active native mind map configuration and whether
-// the mind map plugin is currently enabled.
-func (s *Supervisor) MindMapState() (MindMapState, bool) {
-	def := defaultMindMapState()
-	if s == nil || s.contrib == nil {
-		return def, false
-	}
-	s.mu.RLock()
-	enabledIDs := make([]string, 0, len(s.installed))
-	mindMapEnabled := false
-	for _, a := range s.installed {
-		if !a.Enabled {
-			continue
-		}
-		enabledIDs = append(enabledIDs, a.Manifest.ID)
-		if a.Manifest.ID == mindMapPluginID {
-			mindMapEnabled = true
-		}
-	}
-	s.mu.RUnlock()
-
-	s.contrib.mu.RLock()
-	defer s.contrib.mu.RUnlock()
-	if mindMapEnabled {
-		if st, ok := s.contrib.mindMapBy[mindMapPluginID]; ok {
-			return normalizeMindMapState(st.Layout, st.Height, st.ShowHints), true
-		}
-		return def, true
-	}
-	for _, id := range enabledIDs {
-		if st, ok := s.contrib.mindMapBy[id]; ok {
-			return normalizeMindMapState(st.Layout, st.Height, st.ShowHints), true
-		}
-	}
-	return def, false
 }
 
 // TitlebarSlots lists built-in and plugin titlebar slots with hidden state.
@@ -2011,12 +1943,52 @@ func (s *Supervisor) ActiveBackdrop() (ResolvedBackdrop, bool) {
 			Icon:       base.Icon,
 			Pattern:    norm.Pattern,
 			Density:    norm.Density,
+			Contrast:   norm.Contrast,
 			Opacity:    norm.Opacity,
 			Tint:       norm.Tint,
 			DarkGlow:   norm.DarkGlow,
 		}, true
 	}
 	return ResolvedBackdrop{}, false
+}
+
+// ActiveBlockDecorators returns all block decorators declared by currently
+// enabled plugins that hold ui:appearance or editor:write permission.
+func (s *Supervisor) ActiveBlockDecorators() []ResolvedBlockDecorator {
+	if s == nil {
+		return nil
+	}
+	loc := s.Locale()
+	var out []ResolvedBlockDecorator
+	for _, a := range s.enabledContribs() {
+		if !a.Manifest.HasDeclaredPermission(PermUIAppearance) && !a.Manifest.HasDeclaredPermission(PermEditorEdit) {
+			continue
+		}
+		for _, bd := range a.Manifest.Contributes.BlockDecorators {
+			kind := strings.ToLower(strings.TrimSpace(bd.BlockKind))
+			if kind == "" {
+				kind = "quote"
+			}
+			var byKind map[string]string
+			if len(bd.CalloutByKind) > 0 {
+				byKind = make(map[string]string, len(bd.CalloutByKind))
+				for k, v := range bd.CalloutByKind {
+					byKind[strings.ToLower(strings.TrimSpace(k))] = strings.ToLower(strings.TrimSpace(v))
+				}
+			}
+			out = append(out, ResolvedBlockDecorator{
+				PluginID:         a.Manifest.ID,
+				ID:               bd.ID,
+				BlockKind:        kind,
+				SignaturePrefix:  strings.TrimSpace(bd.SignaturePrefix),
+				LegacyTagPrefix:  strings.TrimSpace(bd.LegacyTagPrefix),
+				DefaultCallout:   strings.ToLower(strings.TrimSpace(bd.DefaultCallout)),
+				CalloutByKind:    byKind,
+				EmptyPlaceholder: bd.EmptyPlaceholder.Resolve(loc),
+			})
+		}
+	}
+	return out
 }
 
 // SettingsSections returns plugin sections for a built-in settings tab.
@@ -2697,6 +2669,9 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if !m.HasPermission(PermUITitlebar) {
 			return nil, missingPerm(PermUITitlebar), true
 		}
+		if !isTitlebarManagerManifest(m) {
+			return nil, rpcErr(-32602, "manifest must declare contributes.titlebar_manager"), true
+		}
 		var p struct {
 			Hidden []string `json:"hidden"`
 		}
@@ -2726,8 +2701,6 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			}
 			next[id] = true
 		}
-		isLegacyMgr := (m.ID == "block-titlebar" || m.HasDeclaredPermission(PermUITitlebar)) &&
-			(m.Contributes == nil || len(m.Contributes.TitlebarButtons) == 0)
 		s.mu.RLock()
 		if !s.isRuntimeActiveLocked(m.ID, rt) {
 			s.mu.RUnlock()
@@ -2735,7 +2708,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		}
 		s.contrib.mu.Lock()
 		prev, existed := s.contrib.hiddenBy[m.ID]
-		clearLegacy := isLegacyMgr && len(s.contrib.hidden) > 0
+		clearLegacy := len(s.contrib.hidden) > 0
 		if !existed || !maps.Equal(next, prev) || clearLegacy {
 			s.contrib.hiddenBy[m.ID] = next
 			if clearLegacy {
@@ -3072,99 +3045,6 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		}
 		return st, nil, true
 
-	case "host.ui.editor_background":
-		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
-			return nil, missingPerm(PermUISettings), true
-		}
-		s.contrib.mu.RLock()
-		st, ok := s.contrib.editorBG[m.ID]
-		s.contrib.mu.RUnlock()
-		if !ok {
-			st = EditorBackgroundState{Mode: "off", Contrast: "standard"}
-		}
-		return normalizeEditorBackgroundState(st.Mode, st.Contrast), nil, true
-
-	case "host.ui.set_editor_background":
-		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
-			return nil, missingPerm(PermUISettings), true
-		}
-		var p struct {
-			Mode     string `json:"mode"`
-			Contrast string `json:"contrast"`
-		}
-		if e := decode(&p); e != nil {
-			return nil, e, true
-		}
-		st := normalizeEditorBackgroundState(p.Mode, p.Contrast)
-		s.mu.RLock()
-		if !s.isRuntimeActiveLocked(m.ID, rt) {
-			s.mu.RUnlock()
-			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
-		}
-		s.contrib.mu.Lock()
-		if prev, ok := s.contrib.editorBG[m.ID]; !ok || prev != st {
-			s.contrib.editorBG[m.ID] = st
-			s.contrib.saveLocked()
-		}
-		s.contrib.mu.Unlock()
-		s.mu.RUnlock()
-		return st, nil, true
-
-	case "host.ui.mindmap_state":
-		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
-			return nil, missingPerm(PermUISettings), true
-		}
-		s.contrib.mu.RLock()
-		st, ok := s.contrib.mindMapBy[m.ID]
-		s.contrib.mu.RUnlock()
-		if !ok {
-			st = defaultMindMapState()
-		}
-		return normalizeMindMapState(st.Layout, st.Height, st.ShowHints), nil, true
-
-	case "host.ui.set_mindmap":
-		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
-			return nil, missingPerm(PermUISettings), true
-		}
-		var p struct {
-			Layout    string `json:"layout"`
-			Height    string `json:"height"`
-			ShowHints *bool  `json:"show_hints"`
-		}
-		if e := decode(&p); e != nil {
-			return nil, e, true
-		}
-		s.mu.RLock()
-		if !s.isRuntimeActiveLocked(m.ID, rt) {
-			s.mu.RUnlock()
-			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
-		}
-		s.contrib.mu.Lock()
-		cur, ok := s.contrib.mindMapBy[m.ID]
-		if !ok {
-			cur = defaultMindMapState()
-		}
-		layout := cur.Layout
-		if strings.TrimSpace(p.Layout) != "" {
-			layout = p.Layout
-		}
-		height := cur.Height
-		if strings.TrimSpace(p.Height) != "" {
-			height = p.Height
-		}
-		showHints := cur.ShowHints
-		if p.ShowHints != nil {
-			showHints = *p.ShowHints
-		}
-		st := normalizeMindMapState(layout, height, showHints)
-		if !ok || cur != st {
-			s.contrib.mindMapBy[m.ID] = st
-			s.contrib.saveLocked()
-		}
-		s.contrib.mu.Unlock()
-		s.mu.RUnlock()
-		return st, nil, true
-
 	case "host.ui.backdrop":
 		if !m.HasPermission(PermUIAppearance) {
 			return nil, missingPerm(PermUIAppearance), true
@@ -3180,7 +3060,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			if base.ID == "" {
 				return EditorBackdropState{Enabled: false}, nil, true
 			}
-			st = EditorBackdropState{ID: base.ID, Enabled: false, DarkGlow: base.DarkGlow}
+			st = EditorBackdropState{ID: base.ID, Enabled: false, Contrast: base.Contrast, DarkGlow: base.DarkGlow}
 		} else if m.Contributes != nil {
 			if b, found := m.Contributes.backdropByID(st.ID); found {
 				base = b
@@ -3200,6 +3080,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			Enabled  *bool    `json:"enabled"`
 			Pattern  string   `json:"pattern"`
 			Density  string   `json:"density"`
+			Contrast string   `json:"contrast"`
 			Opacity  *float64 `json:"opacity"`
 			Tint     string   `json:"tint"`
 			DarkGlow *bool    `json:"dark_glow"`
@@ -3230,6 +3111,9 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if p.Density != "" && !validBackdropDensity(p.Density) {
 			return nil, rpcErr(-32602, "invalid backdrop density: "+p.Density), true
 		}
+		if p.Contrast != "" && !validBackdropContrast(p.Contrast) {
+			return nil, rpcErr(-32602, "invalid backdrop contrast: "+p.Contrast), true
+		}
 		if p.Tint != "" && !validBackdropTint(p.Tint) {
 			return nil, rpcErr(-32602, "invalid backdrop tint: "+p.Tint), true
 		}
@@ -3244,6 +3128,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			Enabled:  enabled,
 			Pattern:  base.Pattern,
 			Density:  base.Density,
+			Contrast: base.Contrast,
 			Opacity:  base.Opacity,
 			Tint:     base.Tint,
 			DarkGlow: base.DarkGlow,
@@ -3251,6 +3136,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if hasPrev && (prev.ID == "" || prev.ID == base.ID) {
 			next.Pattern = prev.Pattern
 			next.Density = prev.Density
+			next.Contrast = prev.Contrast
 			next.Opacity = prev.Opacity
 			next.Tint = prev.Tint
 			next.DarkGlow = prev.DarkGlow
@@ -3260,6 +3146,9 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		}
 		if p.Density != "" {
 			next.Density = p.Density
+		}
+		if p.Contrast != "" {
+			next.Contrast = p.Contrast
 		}
 		if p.Tint != "" {
 			next.Tint = p.Tint

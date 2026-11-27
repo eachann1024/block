@@ -17,8 +17,9 @@ type BackdropSpec struct {
 	FillPaths   []string
 	StrokePaths []string
 	AccentPaths []string
-	Pattern     string  // "scatter" | "grid" | "watermark" | "corners"
+	Pattern     string  // "scatter" | "grid" | "watermark" | "corners" | "paper_dots" | "paper_grid"
 	Density     string  // "sparse" | "medium" | "dense"
+	Contrast    string  // "standard" | "high" (for paper_dots / paper_grid)
 	Opacity     float64 // clamped to [0.03, 0.25]
 	Tint        string  // "accent" | "muted" | "warm" | "glow"
 	DarkGlow    bool
@@ -98,13 +99,24 @@ func (s *Session) paintBackground(p *ui.Painter, r ui.Rect, pal theme.Palette, e
 	if r.W <= 0 || r.H <= 0 {
 		return
 	}
-	if s.bgStyle.Backdrop != nil && len(s.bgStyle.Backdrop.StrokePaths) > 0 {
-		s.paintVectorBackdrop(p, r, pal, edgeL, edgeR, s.bgStyle.Backdrop)
-		return
+	if bd := s.bgStyle.Backdrop; bd != nil {
+		switch bd.Pattern {
+		case "paper_dots":
+			s.paintGridOrDotsBackground(p, r, pal, edgeL, edgeR, "dots", bd.Contrast == "high")
+			return
+		case "paper_grid":
+			s.paintGridOrDotsBackground(p, r, pal, edgeL, edgeR, "grid", bd.Contrast == "high")
+			return
+		default:
+			if len(bd.StrokePaths) > 0 {
+				s.paintVectorBackdrop(p, r, pal, edgeL, edgeR, bd)
+				return
+			}
+		}
 	}
 	mode := s.bgStyle.Mode
 	if mode == "dots" || mode == "grid" {
-		s.paintGridOrDotsBackground(p, r, pal, edgeL, edgeR, mode)
+		s.paintGridOrDotsBackground(p, r, pal, edgeL, edgeR, mode, s.bgStyle.Contrast == "high")
 	}
 }
 
@@ -261,7 +273,7 @@ func (s *Session) paintVectorBackdrop(p *ui.Painter, r ui.Rect, pal theme.Palett
 	})
 }
 
-func (s *Session) paintGridOrDotsBackground(p *ui.Painter, r ui.Rect, pal theme.Palette, edgeL, edgeR float32, mode string) {
+func (s *Session) paintGridOrDotsBackground(p *ui.Painter, r ui.Rect, pal theme.Palette, edgeL, edgeR float32, mode string, high bool) {
 
 	fontSize, _, lh := s.textMetrics(model.BlockParagraph)
 	step := float32(math.Round(float64(fontSize * lh)))
@@ -339,7 +351,6 @@ func (s *Session) paintGridOrDotsBackground(p *ui.Painter, r ui.Rect, pal theme.
 	}
 
 	edCols := pal.Editor()
-	high := s.bgStyle.Contrast == "high"
 
 	p.Clip(r, 0, func() {
 		if mode == "dots" {

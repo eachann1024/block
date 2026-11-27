@@ -640,3 +640,34 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 		t.Fatalf("expected no prepended title when ShowTitle=false, got %q", string(mdWithoutTitle))
 	}
 }
+
+func TestGenericBlockDecoratorQuoteParsing(t *testing.T) {
+	doc := ParseMarkdown(strings.Join([]string{
+		"> Hello <!-- acme-notes:stamp:ribbon -->",
+		"",
+		"> [acme:classic] Legacy body <!-- acme-notes:stamp -->",
+		"",
+		"> Escaped \\<!-- acme-notes:stamp -->",
+		"",
+		"> Normal quote <!-- plain comment -->",
+	}, "\n"))
+	if len(doc.Blocks) != 4 {
+		t.Fatalf("expected 4 quote blocks, got %d", len(doc.Blocks))
+	}
+	b0 := doc.Blocks[0]
+	if b0.DecoratorPrefix != "acme-notes:stamp" || b0.DecoratorKind != "ribbon" || strings.TrimSpace(b0.PlainText()) != "Hello" {
+		t.Fatalf("block 0 mismatch: prefix=%q kind=%q text=%q", b0.DecoratorPrefix, b0.DecoratorKind, b0.PlainText())
+	}
+	b1 := doc.Blocks[1]
+	if b1.DecoratorPrefix != "acme-notes:stamp" || b1.DecoratorKind != "classic" || strings.TrimSpace(b1.PlainText()) != "Legacy body" {
+		t.Fatalf("block 1 mismatch: prefix=%q kind=%q text=%q", b1.DecoratorPrefix, b1.DecoratorKind, b1.PlainText())
+	}
+	b2 := doc.Blocks[2]
+	if b2.DecoratorPrefix != "" || b2.DecoratorKind != "" {
+		t.Fatalf("escaped comment should not match decorator: prefix=%q kind=%q", b2.DecoratorPrefix, b2.DecoratorKind)
+	}
+	b3 := doc.Blocks[3]
+	if b3.DecoratorPrefix != "" || b3.DecoratorKind != "" {
+		t.Fatalf("plain comment should not match decorator: prefix=%q kind=%q", b3.DecoratorPrefix, b3.DecoratorKind)
+	}
+}

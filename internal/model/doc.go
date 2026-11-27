@@ -286,7 +286,8 @@ type Block struct {
 	ListIndex        int         `json:"listIndex,omitempty"`
 	Checked          bool        `json:"checked,omitempty"`
 	Callout          CalloutKind `json:"callout,omitempty"`
-	PoopKind         string      `json:"poopKind,omitempty"`
+	DecoratorPrefix  string      `json:"decoratorPrefix,omitempty"`
+	DecoratorKind    string      `json:"decoratorKind,omitempty"`
 	Language         string      `json:"language,omitempty"`
 	ShowSource       bool        `json:"showSource,omitempty"`
 	WrapCode         bool        `json:"wrapCode,omitempty"`

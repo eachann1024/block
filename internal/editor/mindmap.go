@@ -18,8 +18,7 @@ import (
 
 const maxMindMapImportBytes = 32 * 1024 * 1024 // 32 MiB hard read cap for imported files
 
-// SetMindMapConfig updates the native MindMap renderer configuration synced from
-// the official block-mindmap plugin.
+// SetMindMapConfig updates the native MindMap renderer configuration.
 func (s *Session) SetMindMapConfig(cfg mindmap.Config) {
 	if s == nil {
 		return
@@ -490,7 +489,7 @@ func readFileBounded(path string, maxBytes int64) ([]byte, error) {
 // or corrupts an existing destination file.
 func writeFileAtomic(dest string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(dest)
-	tmp, err := os.CreateTemp(dir, ".block-mindmap-*.tmp")
+	tmp, err := os.CreateTemp(dir, ".mindmap-export-*.tmp")
 	if err != nil {
 		return err
 	}

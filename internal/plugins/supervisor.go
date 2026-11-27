@@ -787,13 +787,15 @@ func shouldAutoWarmupPlugin(m Manifest) bool {
 	if m.IsDeclarativeOnly() {
 		return false
 	}
-	if m.EffectiveCategory() == CategoryAppearance || m.ID == "block-titlebar" || m.HasDeclaredPermission(PermUITitlebar) {
+	if m.EffectiveCategory() == CategoryAppearance {
 		return true
 	}
 	if m.Contributes == nil {
 		return false
 	}
-	if len(m.Contributes.Backdrops) > 0 ||
+	if m.Contributes.TitlebarManager ||
+		len(m.Contributes.Backdrops) > 0 ||
+		len(m.Contributes.BlockDecorators) > 0 ||
 		len(m.Contributes.SidebarSections) > 0 ||
 		len(m.Contributes.FileBadges) > 0 ||
 		len(m.Contributes.FileIcons) > 0 ||
@@ -1364,10 +1366,10 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 
 	go func() {
 		s.mu.Lock()
-		wasLegacyTitlebarMgr := false
+		wasTitlebarMgr := false
 		for _, a := range s.installed {
-			if a.Manifest.ID == pluginID && isLegacyTitlebarManager(a) {
-				wasLegacyTitlebarMgr = true
+			if a.Manifest.ID == pluginID && isTitlebarManagerManifest(a.Manifest) {
+				wasTitlebarMgr = true
 				break
 			}
 		}
@@ -1423,10 +1425,10 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.storeErr = ""
 		delete(s.uninstallErrors, pluginID)
 		s.deleteViewsForPluginLocked(pluginID)
-		hasRemainingLegacyTitlebarMgr := false
+		hasRemainingTitlebarMgr := false
 		for _, a := range s.installed {
-			if isLegacyTitlebarManager(a) {
-				hasRemainingLegacyTitlebarMgr = true
+			if isTitlebarManagerManifest(a.Manifest) {
+				hasRemainingTitlebarMgr = true
 				break
 			}
 		}
@@ -1434,7 +1436,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		langSeq := NextLanguageSyncSeq()
 		s.mu.Unlock()
 		SyncActiveLanguagesSeq(langSnap, langSeq)
-		s.contrib.forgetPlugin(pluginID, wasLegacyTitlebarMgr && !hasRemainingLegacyTitlebarMgr)
+		s.contrib.forgetPlugin(pluginID, wasTitlebarMgr && !hasRemainingTitlebarMgr)
 		s.clearInactiveSystemBadge(pluginID)
 
 		if onDone != nil {

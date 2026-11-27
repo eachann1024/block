@@ -6415,14 +6415,9 @@ func (w *Workspace) Render(c *ui.Context) {
 									activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 									activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.RightOpen())
 									activeSess.SetBackground(w.pluginEditorBackground())
-									activeSess.SetMindMapConfig(w.pluginMindMapConfig())
-									activeSess.SetNotifyFunc(func(msg, tone string) {
-										w.notifyBanner(plugins.ToastRequest{
-											PluginID: "block-mindmap",
-											Message:  msg,
-											Tone:     tone,
-										})
-									})
+									activeSess.SetBlockDecorators(w.pluginBlockDecorators())
+									activeSess.SetMindMapConfig(w.nativeMindMapConfig())
+									activeSess.SetNotifyFunc(w.notify)
 									activeSess.Render(c, effMainW, false)
 									if w.pluginUI != nil {
 										w.pluginUI.setEditorFocus(activeTab, activeSess.HasFocus(c))
@@ -6585,52 +6580,65 @@ func (w *Workspace) pluginEditorBackground() editor.BackgroundStyle {
 	if sup == nil {
 		return editor.BackgroundStyle{}
 	}
-	bg := sup.EditorBackground()
-	style := editor.BackgroundStyle{
-		Mode:     bg.Mode,
-		Contrast: bg.Contrast,
+	bd, ok := sup.ActiveBackdrop()
+	if !ok {
+		return editor.BackgroundStyle{}
 	}
-	if bd, ok := sup.ActiveBackdrop(); ok {
-		style.Backdrop = &editor.BackdropSpec{
+	return editor.BackgroundStyle{
+		Backdrop: &editor.BackdropSpec{
 			FillPaths:   bd.Icon.FillPaths,
 			StrokePaths: bd.Icon.StrokePaths,
 			AccentPaths: bd.Icon.AccentPaths,
 			Pattern:     bd.Pattern,
 			Density:     bd.Density,
+			Contrast:    bd.Contrast,
 			Opacity:     bd.Opacity,
 			Tint:        bd.Tint,
 			DarkGlow:    bd.DarkGlow,
-		}
+		},
 	}
-	return style
 }
 
-func (w *Workspace) pluginMindMapConfig() mindmap.Config {
-	cfg := mindmap.DefaultConfig()
-	cfg.Enabled = true
+func (w *Workspace) pluginBlockDecorators() []editor.BlockDecorator {
 	sup := w.Plugins()
 	if sup == nil {
-		return cfg
+		return nil
 	}
-	st, ok := sup.MindMapState()
-	if !ok {
-		return cfg
+	decs := sup.ActiveBlockDecorators()
+	if len(decs) == 0 {
+		return nil
 	}
-	switch st.Layout {
-	case "both":
-		cfg.DefaultLayout = mindmap.LayoutBoth
-	default:
-		cfg.DefaultLayout = mindmap.LayoutRight
+	out := make([]editor.BlockDecorator, 0, len(decs))
+	for _, d := range decs {
+		kind := model.BlockQuote
+		switch d.BlockKind {
+		case "paragraph":
+			kind = model.BlockParagraph
+		case "callout":
+			kind = model.BlockCallout
+		}
+		var byKind map[string]model.CalloutKind
+		if len(d.CalloutByKind) > 0 {
+			byKind = make(map[string]model.CalloutKind, len(d.CalloutByKind))
+			for k, v := range d.CalloutByKind {
+				byKind[k] = model.CalloutKind(strings.ToUpper(v))
+			}
+		}
+		out = append(out, editor.BlockDecorator{
+			BlockKind:        kind,
+			SignaturePrefix:  d.SignaturePrefix,
+			LegacyTagPrefix:  d.LegacyTagPrefix,
+			DefaultCallout:   model.CalloutKind(strings.ToUpper(d.DefaultCallout)),
+			CalloutByKind:    byKind,
+			EmptyPlaceholder: d.EmptyPlaceholder,
+		})
 	}
-	switch st.Height {
-	case "compact":
-		cfg.Height = mindmap.HeightCompact
-	case "tall":
-		cfg.Height = mindmap.HeightTall
-	default:
-		cfg.Height = mindmap.HeightStandard
-	}
-	cfg.ShowHints = st.ShowHints
+	return out
+}
+
+func (w *Workspace) nativeMindMapConfig() mindmap.Config {
+	cfg := mindmap.DefaultConfig()
+	cfg.Enabled = true
 	return cfg
 }
 

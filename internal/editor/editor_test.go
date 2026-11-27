@@ -1557,3 +1557,52 @@ func TestEditorRenderingParity(t *testing.T) {
 		t.Fatalf("expected clicking block-2 to focus index 1, got %d", s.FocusedBlockIndex())
 	}
 }
+
+func TestBlockDecoratorsAndPaperBackdrop(t *testing.T) {
+	s := NewSession("", &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockQuote, DecoratorPrefix: "acme-notes:stamp", DecoratorKind: "ribbon"},
+			{ID: 2, Kind: model.BlockQuote, Spans: []model.Span{{Text: "[acme:pellet] Styled body"}}},
+			{ID: 3, Kind: model.BlockQuote, Spans: []model.Span{{Text: "Plain quote"}}},
+		},
+	}, nil, nil)
+	s.SetBlockDecorators([]BlockDecorator{{
+		BlockKind:       model.BlockQuote,
+		SignaturePrefix: "acme-notes:stamp",
+		LegacyTagPrefix: "[acme:",
+		DefaultCallout:  model.CalloutWarning,
+		CalloutByKind: map[string]model.CalloutKind{
+			"ribbon": model.CalloutImportant,
+			"pellet": model.CalloutTip,
+		},
+		EmptyPlaceholder: "Empty stamp",
+	}})
+
+	dec0, k0, ok0 := s.matchBlockDecorator(&s.Doc().Blocks[0])
+	if !ok0 || decoratorCalloutKind(dec0, k0) != model.CalloutImportant || decoratorDisplayText("", dec0) != "Empty stamp" {
+		t.Fatalf("block 0 decorator mismatch: ok=%v kind=%q text=%q", ok0, k0, decoratorDisplayText("", dec0))
+	}
+	dec1, k1, ok1 := s.matchBlockDecorator(&s.Doc().Blocks[1])
+	if !ok1 || decoratorCalloutKind(dec1, k1) != model.CalloutTip || decoratorDisplayText(s.Doc().Blocks[1].PlainText(), dec1) != "Styled body" {
+		t.Fatalf("block 1 decorator mismatch: ok=%v kind=%q text=%q", ok1, k1, decoratorDisplayText(s.Doc().Blocks[1].PlainText(), dec1))
+	}
+	if _, _, ok2 := s.matchBlockDecorator(&s.Doc().Blocks[2]); ok2 {
+		t.Fatalf("plain quote should not match block decorator")
+	}
+
+	// Verify paper_dots / paper_grid render cleanly even with empty StrokePaths.
+	s.SetBackground(BackgroundStyle{
+		Backdrop: &BackdropSpec{
+			Pattern:  "paper_dots",
+			Contrast: "high",
+		},
+	})
+	_ = ui.NewTester(makeSessionView(s, false), 600, 400)
+	s.SetBackground(BackgroundStyle{
+		Backdrop: &BackdropSpec{
+			Pattern:  "paper_grid",
+			Contrast: "standard",
+		},
+	})
+	_ = ui.NewTester(makeSessionView(s, false), 600, 400)
+}

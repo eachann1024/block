@@ -88,7 +88,7 @@ func ResolveExportPalette(mode ExportTheme) theme.Palette {
 	}
 }
 
-// Config controls native mindmap rendering, synced from the block-mindmap plugin.
+// Config controls native mindmap rendering.
 type Config struct {
 	Enabled       bool
 	DefaultLayout LayoutMode

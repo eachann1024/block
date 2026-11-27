@@ -1267,8 +1267,8 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 	if b.Kind == model.BlockQuote && qDepth < 1 {
 		qDepth = 1
 	}
-	if kind, ok := poopDropKind(b); ok {
-		st := pal.Callout(poopDropCallout(kind))
+	if dec, kind, ok := s.matchBlockDecorator(b); ok {
+		st := pal.Callout(decoratorCalloutKind(dec, kind))
 		wrap.Padding(s.scale(6), s.scale(12)).Radius(theme.RadiusMD).Background(st.BG).Border(1, st.Border)
 	} else if b.Kind == model.BlockCallout {
 		st := calloutTone(b.Callout, dark)
@@ -1377,12 +1377,21 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 		}
 		edFont := resolvedEditorFont()
 		plain := b.PlainText()
-		if drop, ok := poopDropKind(b); ok {
-			plain = poopDropDisplayText(plain, drop)
+		origPlain := plain
+		isDecorated := false
+		if dec, _, ok := s.matchBlockDecorator(b); ok {
+			isDecorated = true
+			plain = decoratorDisplayText(plain, dec)
 		}
 		var rt ui.Element
 		var pathCursor bool
-		if len(b.Spans) == 0 || plain == "" {
+		if isDecorated && plain != "" && (len(b.Spans) == 0 || strings.TrimSpace(origPlain) == "") {
+			rt = ui.Text(c.Key("rt-empty"), plain).PreserveSpaces().FontSize(fontSize).FontWeight(weight).LineHeight(lh).
+				MinHeight(fontSize * lh).TextColor(pal.Placeholder).FillWidth()
+		} else if isDecorated && plain != origPlain && plain != "" {
+			rt = ui.Text(c.Key("rt"), plain).PreserveSpaces().FontSize(fontSize).FontWeight(weight).LineHeight(lh).
+				MinHeight(fontSize * lh).TextColor(textCol).FillWidth()
+		} else if len(b.Spans) == 0 || plain == "" {
 			rt = ui.Text(c.Key("rt-empty"), "").PreserveSpaces().FontSize(fontSize).FontWeight(weight).LineHeight(lh).
 				MinHeight(fontSize * lh).TextColor(pal.Placeholder).FillWidth()
 			if _, _, _, selOk := s.blockSelectionSpanRange(idx); selOk && s.hasMultiBlockSelection() {
@@ -1498,8 +1507,8 @@ func spanLinkAtOffset(b *model.Block, off int) string {
 func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block, fontSize float32, weight int, lh float32, deleteArmed bool) {
 	pal := theme.Ocean()
 	draft := b.PlainText()
-	if drop, ok := poopDropKind(b); ok {
-		draft = poopDropDisplayText(draft, drop)
+	if dec, _, ok := s.matchBlockDecorator(b); ok {
+		draft = decoratorDisplayText(draft, dec)
 	}
 	st := s.richInputState(b.ID)
 

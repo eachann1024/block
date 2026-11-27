@@ -276,6 +276,7 @@ type Session struct {
 	edgeScrollQuietAt  time.Time
 	hoverScrollQuietAt time.Time
 	bgStyle            BackgroundStyle
+	blockDecorators    []BlockDecorator
 
 	// Annotations
 	annotations           []*model.Annotation

@@ -2300,64 +2300,123 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, usedOut map[s
 		SourceLine:    startLine,
 		SourceEndLine: startLine + end - 1,
 	}
-	absorbPoopQuote(&blk)
+	absorbDecoratorQuote(&blk)
 	return []model.Block{blk}, end, true
 }
 
-func absorbPoopQuote(b *model.Block) {
+func isEscapedAt(s string, idx int) bool {
+	bs := 0
+	for i := idx - 1; i >= 0 && s[i] == '\\'; i-- {
+		bs++
+	}
+	return bs%2 == 1
+}
+
+func isValidDecoratorSegment(seg string, allowLeadingDigit bool) bool {
+	if seg == "" || len(seg) > 48 {
+		return false
+	}
+	for i := 0; i < len(seg); i++ {
+		c := seg[i]
+		if i == 0 && !allowLeadingDigit && (c < 'a' || c > 'z') {
+			return false
+		}
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func decoratorFromSource(src string) (prefix, kind string, ok bool) {
+	pos := 0
+	for pos < len(src) {
+		rel := strings.Index(src[pos:], "<!--")
+		if rel < 0 {
+			return "", "", false
+		}
+		start := pos + rel
+		if isEscapedAt(src, start) {
+			pos = start + 4
+			continue
+		}
+		endRel := strings.Index(src[start+4:], "-->")
+		if endRel < 0 {
+			return "", "", false
+		}
+		inner := strings.TrimSpace(src[start+4 : start+4+endRel])
+		pos = start + 4 + endRel + 3
+		fields := strings.Fields(inner)
+		if len(fields) == 0 {
+			continue
+		}
+		parts := strings.Split(fields[0], ":")
+		if len(parts) < 2 || len(parts) > 3 {
+			continue
+		}
+		if !isValidDecoratorSegment(parts[0], false) || !isValidDecoratorSegment(parts[1], true) {
+			continue
+		}
+		if len(parts) == 3 && !isValidDecoratorSegment(parts[2], true) {
+			continue
+		}
+		if len(fields) > 1 {
+			metaOK := true
+			for _, f := range fields[1:] {
+				if !strings.Contains(f, "=") {
+					metaOK = false
+					break
+				}
+			}
+			if !metaOK {
+				continue
+			}
+		}
+		prefix = parts[0] + ":" + parts[1]
+		if len(parts) == 3 {
+			kind = parts[2]
+		}
+		return prefix, kind, true
+	}
+	return "", "", false
+}
+
+func absorbDecoratorQuote(b *model.Block) {
 	if b == nil || b.Kind != model.BlockQuote {
 		return
 	}
-	if spans, kind := stripPoopMarkers(b.Spans); kind != "" {
-		b.Spans = spans
-		b.PoopKind = kind
+	prefix, kind, ok := decoratorFromSource(b.CleanSource)
+	if !ok {
 		return
 	}
-	if kind := poopKindFromSource(b.CleanSource); kind != "" {
-		b.PoopKind = kind
-	}
-}
-
-func poopKindFromSource(src string) string {
-	const key = "block-poop-everywhere:drop"
-	i := strings.Index(src, key)
-	if i < 0 {
-		return ""
-	}
-	rest := src[i+len(key):]
-	if rest == "" || rest[0] != ':' {
-		return "classic"
-	}
-	rest = rest[1:]
-	j := 0
-	for j < len(rest) {
-		c := rest[j]
-		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
-			j++
-			continue
+	b.DecoratorPrefix = prefix
+	b.DecoratorKind = kind
+	if spans, tagKind := stripDecoratorTagMarkers(b.Spans); tagKind != "" {
+		b.Spans = spans
+		if b.DecoratorKind == "" {
+			b.DecoratorKind = tagKind
 		}
-		break
 	}
-	if j == 0 {
-		return "classic"
-	}
-	return rest[:j]
 }
 
-func poopMarkerCut(line string) (kind string, n int, ok bool) {
-	const prefix = "[poop:"
-	if !strings.HasPrefix(line, prefix) {
+func decoratorTagCut(line string) (kind string, n int, ok bool) {
+	if !strings.HasPrefix(line, "[") {
 		return "", 0, false
 	}
 	end := strings.IndexByte(line, ']')
-	if end <= len(prefix) {
+	if end <= 3 {
 		return "", 0, false
 	}
-	kind = line[len(prefix):end]
-	for _, c := range kind {
-		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '_' && c != '-' {
-			return "", 0, false
-		}
+	inside := line[1:end]
+	colon := strings.IndexByte(inside, ':')
+	if colon <= 0 || colon >= len(inside)-1 {
+		return "", 0, false
+	}
+	tag := inside[:colon]
+	kind = inside[colon+1:]
+	if !isValidDecoratorSegment(tag, false) || !isValidDecoratorSegment(kind, true) {
+		return "", 0, false
 	}
 	n = end + 1
 	for n < len(line) && (line[n] == ' ' || line[n] == '\t') {
@@ -2366,9 +2425,9 @@ func poopMarkerCut(line string) (kind string, n int, ok bool) {
 	return kind, n, true
 }
 
-func stripPoopMarkers(spans []model.Span) ([]model.Span, string) {
+func stripDecoratorTagMarkers(spans []model.Span) ([]model.Span, string) {
 	text := model.PlainTextOfSpans(spans)
-	if !strings.Contains(text, "[poop:") {
+	if !strings.Contains(text, "[") || !strings.Contains(text, ":") {
 		return spans, ""
 	}
 	rs := []rune(text)
@@ -2381,7 +2440,7 @@ func stripPoopMarkers(spans []model.Span) ([]model.Span, string) {
 			continue
 		}
 		line := string(rs[lineStart:i])
-		if marker, n, ok := poopMarkerCut(line); ok {
+		if marker, n, ok := decoratorTagCut(line); ok {
 			if kind == "" {
 				kind = marker
 			}

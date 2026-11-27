@@ -660,3 +660,182 @@ serve((method, params) => {
 		t.Fatalf("pwd = %v, want %q", res.Values["pwd"], canonDataDir)
 	}
 }
+
+func TestPhase2BBackdropDecoratorsTitlebarAndRemovedRPCs(t *testing.T) {
+	icon := DuoIconSpec{ViewBox: "0 0 24 24", StrokePaths: []string{"M4 4H20V20H4Z"}}
+	baseManifest := func(id string) Manifest {
+		return Manifest{
+			App:           TargetApp,
+			SchemaVersion: CurrentSchemaVersion,
+			ID:            id,
+			Name:          LocalizedText{Zh: "测试插件", En: "Test Plugin"},
+			Version:       "1.0.0",
+			Author:        "tester",
+			Summary:       LocalizedText{Zh: "插件测试摘要", En: "Plugin test summary"},
+			Entry:         EntrySpec{JS: "main.js"},
+			Icon:          icon,
+		}
+	}
+
+	// 1. Paper backdrop validation + runtime state + contrast.
+	mPaper := baseManifest("paper-bg")
+	mPaper.Permissions = []Permission{PermUIAppearance}
+	mPaper.Contributes = &Contributes{
+		Backdrops: []BackdropContrib{{
+			ID:       "paper-dots",
+			Title:    LocalizedText{Zh: "点阵纸纹", En: "Dot Paper"},
+			Icon:     icon,
+			Pattern:  "paper_dots",
+			Contrast: "standard",
+		}},
+	}
+	if err := mPaper.Validate(); err != nil {
+		t.Fatalf("valid paper backdrop failed: %v", err)
+	}
+	mBadContrast := mPaper
+	mBadContrast.Contributes = &Contributes{
+		Backdrops: []BackdropContrib{{
+			ID:       "paper-dots",
+			Title:    LocalizedText{Zh: "点阵纸纹", En: "Dot Paper"},
+			Icon:     icon,
+			Pattern:  "paper_dots",
+			Contrast: "ultra",
+		}},
+	}
+	if err := mBadContrast.Validate(); err == nil {
+		t.Fatalf("expected invalid backdrop contrast error")
+	}
+
+	// 2. BlockDecorators validation (permission, fields, no emoji) + ActiveBlockDecorators.
+	mDecNoPerm := baseManifest("dec-noperm")
+	mDecNoPerm.Contributes = &Contributes{
+		BlockDecorators: []BlockDecoratorContrib{{
+			ID:              "stamp",
+			SignaturePrefix: "dec-noperm:stamp",
+			DefaultCallout:  "warning",
+		}},
+	}
+	if err := mDecNoPerm.Validate(); err == nil {
+		t.Fatalf("expected block_decorators without ui:appearance or editor:write to fail")
+	}
+
+	mDecEmoji := baseManifest("dec-emoji")
+	mDecEmoji.Permissions = []Permission{PermEditorEdit}
+	mDecEmoji.Contributes = &Contributes{
+		BlockDecorators: []BlockDecoratorContrib{{
+			ID:               "stamp",
+			SignaturePrefix:  "dec-emoji:stamp",
+			DefaultCallout:   "tip",
+			EmptyPlaceholder: LocalizedText{Zh: "占位\U0001F600", En: "Placeholder"},
+		}},
+	}
+	if err := mDecEmoji.Validate(); err == nil {
+		t.Fatalf("expected emoji in empty_placeholder to fail")
+	}
+
+	mDecOK := baseManifest("dec-ok")
+	mDecOK.Permissions = []Permission{PermUIAppearance}
+	mDecOK.Contributes = &Contributes{
+		BlockDecorators: []BlockDecoratorContrib{{
+			ID:               "stamp",
+			BlockKind:        "quote",
+			SignaturePrefix:  "dec-ok:stamp",
+			LegacyTagPrefix:  "[stamp:",
+			DefaultCallout:   "warning",
+			CalloutByKind:    map[string]string{"ribbon": "important"},
+			EmptyPlaceholder: LocalizedText{Zh: "空占位", En: "Empty stamp"},
+		}},
+	}
+	if err := mDecOK.Validate(); err != nil {
+		t.Fatalf("valid block_decorators failed: %v", err)
+	}
+
+	// 3. TitlebarManager validation + auto warmup + host.titlebar.set_hidden gating.
+	mMgrNoPerm := baseManifest("mgr-noperm")
+	mMgrNoPerm.Contributes = &Contributes{TitlebarManager: true}
+	if err := mMgrNoPerm.Validate(); err == nil {
+		t.Fatalf("expected titlebar_manager without ui:titlebar to fail")
+	}
+
+	mMgr := baseManifest("custom-titlebar-mgr")
+	mMgr.Permissions = []Permission{PermUITitlebar}
+	mMgr.Contributes = &Contributes{TitlebarManager: true}
+	if err := mMgr.Validate(); err != nil {
+		t.Fatalf("valid titlebar_manager failed: %v", err)
+	}
+	if !shouldAutoWarmupPlugin(mMgr) {
+		t.Fatalf("expected titlebar_manager plugin to auto-warmup")
+	}
+	mOnlyPerm := baseManifest("other-tb-perm")
+	mOnlyPerm.Category = CategoryTools
+	mOnlyPerm.Permissions = []Permission{PermUITitlebar}
+	if shouldAutoWarmupPlugin(mOnlyPerm) {
+		t.Fatalf("expected non-manager ui:titlebar plugin without buttons not to auto-warmup")
+	}
+
+	// Supervisor integration checks for ActiveBackdrop, ActiveBlockDecorators, TitlebarHidden, and removed RPCs.
+	sup := NewSupervisor(SupervisorConfig{
+		AppDataDir: t.TempDir(),
+		GetLocale:  func() string { return "en" },
+	})
+	sup.mu.Lock()
+	sup.installed = []InstalledApp{
+		{Manifest: mPaper, Enabled: true},
+		{Manifest: mDecOK, Enabled: true},
+		{Manifest: mMgr, Enabled: true},
+		{Manifest: mOnlyPerm, Enabled: true},
+	}
+	sup.mu.Unlock()
+
+	rtPaper := &Runtime{manifest: mPaper, exited: make(chan struct{}), reaped: make(chan struct{})}
+	rtMgr := &Runtime{manifest: mMgr, exited: make(chan struct{}), reaped: make(chan struct{})}
+	rtOther := &Runtime{manifest: mOnlyPerm, exited: make(chan struct{}), reaped: make(chan struct{})}
+	sup.mu.Lock()
+	sup.runtimes[mPaper.ID] = rtPaper
+	sup.runtimes[mMgr.ID] = rtMgr
+	sup.runtimes[mOnlyPerm.ID] = rtOther
+	sup.mu.Unlock()
+
+	// host.ui.set_backdrop with paper_dots + contrast=high
+	res, rerr, handled := sup.dispatchContribHostMethod(rtPaper, "host.ui.set_backdrop", json.RawMessage(`{"id":"paper-dots","enabled":true,"pattern":"paper_dots","contrast":"high"}`))
+	if !handled || rerr != nil {
+		t.Fatalf("host.ui.set_backdrop failed: handled=%v err=%v", handled, rerr)
+	}
+	st := res.(EditorBackdropState)
+	if !st.Enabled || st.Pattern != "paper_dots" || st.Contrast != "high" {
+		t.Fatalf("unexpected backdrop state: %+v", st)
+	}
+	bd, ok := sup.ActiveBackdrop()
+	if !ok || bd.Pattern != "paper_dots" || bd.Contrast != "high" {
+		t.Fatalf("unexpected ActiveBackdrop: ok=%v bd=%+v", ok, bd)
+	}
+
+	// ActiveBlockDecorators
+	decs := sup.ActiveBlockDecorators()
+	if len(decs) != 1 || decs[0].SignaturePrefix != "dec-ok:stamp" || decs[0].EmptyPlaceholder != "Empty stamp" || decs[0].CalloutByKind["ribbon"] != "important" {
+		t.Fatalf("unexpected ActiveBlockDecorators: %+v", decs)
+	}
+
+	// host.titlebar.set_hidden only allowed for TitlebarManager
+	if _, rerr, handled := sup.dispatchContribHostMethod(rtOther, "host.titlebar.set_hidden", json.RawMessage(`{"hidden":["feedback"]}`)); !handled || rerr == nil {
+		t.Fatalf("expected non-titlebar_manager host.titlebar.set_hidden to be rejected: handled=%v err=%v", handled, rerr)
+	}
+	if _, rerr, handled := sup.dispatchContribHostMethod(rtMgr, "host.titlebar.set_hidden", json.RawMessage(`{"hidden":["feedback","more"]}`)); !handled || rerr != nil {
+		t.Fatalf("titlebar_manager host.titlebar.set_hidden failed: handled=%v err=%v", handled, rerr)
+	}
+	if !sup.TitlebarHidden(TitlebarSlotFeedback) || sup.TitlebarHidden(TitlebarSlotMore) {
+		t.Fatalf("unexpected TitlebarHidden state: feedback=%v more=%v", sup.TitlebarHidden(TitlebarSlotFeedback), sup.TitlebarHidden(TitlebarSlotMore))
+	}
+
+	// Removed RPCs must return unknown host method (-32601)
+	for _, removed := range []string{
+		"host.ui.editor_background",
+		"host.ui.set_editor_background",
+		"host.ui.mindmap_state",
+		"host.ui.set_mindmap",
+	} {
+		if _, rerr, handled := sup.dispatchContribHostMethod(rtPaper, removed, json.RawMessage(`{}`)); !handled || rerr == nil || rerr.Code != -32601 {
+			t.Fatalf("expected removed RPC %s to return -32601, got handled=%v err=%v", removed, handled, rerr)
+		}
+	}
+}
