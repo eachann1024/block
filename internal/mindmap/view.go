@@ -4359,7 +4359,7 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 				renderClipRow := func(key string, icon icons.Icon, label string, onClick func()) {
 					row := ui.ButtonBase(c.Key(key)).
 						FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-						AlignItems(ui.Center).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(label)
+						AlignItems(ui.Center).Justify(ui.Start).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(label)
 					hot := row.Hovered() || row.Pressed()
 					if hot {
 						row.Background(pal.MenuHover)
@@ -4423,7 +4423,7 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight flo
 					ui.Box(c).FillWidth().Height(1).Margin(theme.Space4, theme.Space2).Background(pal.MenuSeparator)
 					impRow := ui.ButtonBase(c.Key("mm-exp-imp-"+id)).
 						FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-						AlignItems(ui.Center).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(theme.Tr("导入文件", "Import File"))
+						AlignItems(ui.Center).Justify(ui.Start).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(theme.Tr("导入文件", "Import File"))
 					impHot := impRow.Hovered() || impRow.Pressed()
 					if impHot {
 						impRow.Background(pal.MenuHover)
@@ -4641,7 +4641,7 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 						isActive := st.LinkActiveIdx == idx
 						row := ui.ButtonBase(c.Key("mm-link-note-"+id+"-"+cand.RelPath)).
 							FillWidth().Height(linkCandidateRowH).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-							AlignItems(ui.Center).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(cand.Title)
+							AlignItems(ui.Center).Justify(ui.Start).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(cand.Title)
 						rowHot := row.Hovered() || row.Pressed()
 						if isActive {
 							row.Background(pal.SelectionBG)
