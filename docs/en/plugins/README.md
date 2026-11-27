@@ -1,7 +1,7 @@
 <!-- ai-guide:skip-start -->
 # Block Plugin Developer Documentation
 
-> [Back to Docs](../README.md) · [Manifest & Permissions](manifest.md) · [Protocol, UI & SDK](protocol-and-ui.md) · [Host UI Contributions](ui-contributions.md) · [Language Extensions](languages.md) · [Check & Store](check-and-store.md) · [Self-Contained AI Spec](../plugin-dev-for-ai.md)
+> [Back to Docs](../README.md) · [Manifest & Permissions](manifest.md) · [Protocol, UI & SDK](protocol-and-ui.md) · [Host Method Index](protocol-and-ui.md#host-method-index) · [Host UI Contributions](ui-contributions.md) · [Language Extensions](languages.md) · [Check & Store](check-and-store.md) · [Self-Contained AI Spec](../plugin-dev-for-ai.md)
 
 This directory splits the complete Block App Store (`blockmd`) plugin specification into modular chapters. Read by topic or use the single-file bundle [plugin-dev-for-ai.md](../plugin-dev-for-ai.md).
 
@@ -35,7 +35,7 @@ External plugins **require no PR to the main repository and no manual approval**
 
 ### 1.3 Standard Workflow
 
-1. **Read the matching chapters before coding**: interactive plugins read [Manifest & Permissions](manifest.md) + [Protocol, UI & SDK](protocol-and-ui.md) (plus [Host UI Contributions](ui-contributions.md) if extending host chrome); language extensions read [Manifest & Permissions](manifest.md) + [Language Extensions](languages.md).
+1. **Read the matching chapters before coding**: interactive plugins read [Manifest & Permissions](manifest.md) + [Protocol, UI & SDK](protocol-and-ui.md) (look up RPCs in the [Host Method Index](protocol-and-ui.md#host-method-index), plus [Host UI Contributions](ui-contributions.md) if extending host chrome); language extensions read [Manifest & Permissions](manifest.md) + [Language Extensions](languages.md).
 2. **Create a standalone repository**: include `manifest.json` and `README.md` at the root (official and bilingual plugins also include English `README.en.md`).
 3. **Implement core logic and declarative UI**: start interactive plugins from the locale-aware `entry.js` + `/runtime/block-sdk.js` skeleton in [Protocol, UI & SDK](protocol-and-ui.md); language extensions only need `manifest.json` and `grammars/*.json`.
 4. **Complete verification (1.4)**: static checks → `block-plugin-check` `[PASS]` → desktop verification. If Go or the desktop app is unavailable in your environment, report unexecuted steps explicitly instead of fabricating pass results.

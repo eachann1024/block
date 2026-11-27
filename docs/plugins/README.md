@@ -1,7 +1,7 @@
 <!-- ai-guide:skip-start -->
 # Block 插件开发文档
 
-> [返回文档中心](../README.md) · [清单与权限](manifest.md) · [协议、UI 与骨架](protocol-and-ui.md) · [宿主界面扩展](ui-contributions.md) · [语言扩展](languages.md) · [检查与上架](check-and-store.md) · [AI 单文件全量规范](../plugin-dev-for-ai.md)
+> [返回文档中心](../README.md) · [清单与权限](manifest.md) · [协议、UI 与骨架](protocol-and-ui.md) · [宿主方法总表](protocol-and-ui.md#宿主方法总表) · [宿主界面扩展](ui-contributions.md) · [语言扩展](languages.md) · [检查与上架](check-and-store.md) · [AI 单文件全量规范](../plugin-dev-for-ai.md)
 
 本目录按主题拆分了 Block 应用商店插件（`blockmd`）的完整开发规范。你可以按需分章阅读，也可以直接使用同源合成单文件 [plugin-dev-for-ai.md](../plugin-dev-for-ai.md)。
 
@@ -35,7 +35,7 @@
 
 ### 1.3 标准开发步骤（标「不可跳过」的严禁省略）
 
-1. **【不可跳过】按路径通读对应规范再写代码**：交互式插件读 [清单与权限](manifest.md) + [协议、UI 与骨架](protocol-and-ui.md)（涉及顶栏/侧栏/状态栏/命令/内置设置再读 [宿主界面扩展](ui-contributions.md)）；纯语言扩展读 [清单与权限](manifest.md) + [语言扩展](languages.md)。
+1. **【不可跳过】按路径通读对应规范再写代码**：交互式插件读 [清单与权限](manifest.md) + [协议、UI 与骨架](protocol-and-ui.md)（按需检索 [宿主方法总表](protocol-and-ui.md#宿主方法总表)，涉及顶栏/侧栏/状态栏/命令/内置设置再读 [宿主界面扩展](ui-contributions.md)）；纯语言扩展读 [清单与权限](manifest.md) + [语言扩展](languages.md)。
 2. **创建独立仓库结构与清单**：根目录放 `manifest.json` 与 `README.md`（官方或双语插件同步放纯英文 `README.en.md`）。
 3. **实现核心逻辑与声明式界面**：交互式插件从 [协议、UI 与骨架](protocol-and-ui.md) 的「`entry.js` + `/runtime/block-sdk.js` 通信骨架」起步实现 `initialize` / `render` / `action` / `shutdown`（及所需 `command` / `event`）；纯语言扩展仅写 `manifest.json` 与 `grammars/*.json`。
 4. **【不可跳过】按 `1.4` 逐项完成开发后验收**：静态自查 → `block-plugin-check` `[PASS]` → Block 桌面端实机加载验收，**禁止跳过**直接发版；本地有条件时必须亲自跑完第 1–3 步，若缺少 Go 工具链或桌面端环境，须跑完第 1 步并如实交接未测项，**严禁**伪造通过。

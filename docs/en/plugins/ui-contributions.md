@@ -58,28 +58,33 @@ Shared validation rules:
 
 ### 7.4 Host UI RPC Methods (Plugin -> Host)
 
-1. **`host.titlebar.get_items`** (`{}`): returns all built-in (`feedback`, `ai`, `send_all`, `wrap`, `zoom`, `reveal`, `more` [locked]) and plugin (`plugin:<pluginID>/<buttonID>`) titlebar slots with their `icon` specs.
-2. **`host.titlebar.set_hidden`** (requires `contributes.titlebar_manager: true` and `"ui:titlebar"`): `{"hidden": [...]}` persisted in `contrib-state.json` (`"more"` is permanently locked and cannot be hidden).
-3. **`host.titlebar.set_button`**: `{"id", "badge"?, "active"?}` (`badge <= 3` runes).
-4. **`host.status.set`**: `{"id", "text"?, "tooltip"?, "icon"?, "show_plugin_icon"?, "clear_icon"?}` (`text <= 40` runes, no Emoji; `tooltip <= 200` runes).
-5. **`host.ui.toast`**: in-app top-right notification banner (`message` required `<= 160`, optional `body <= 1000`, `tone`, `icon`, `show_plugin_icon`, `action` callback to `plugin.action` with `surface: "toast"`). Returns `{"ok": true, "shown", "queued"}`.
-5.1. **`host.ui.open_settings`** (`{}`; requires `"open_settings"` capability and `"settings_page"` surface): opens the plugin's Settings page.
-6. **`host.ui.open_dialog` / `host.ui.close_dialog`**: `{"id"}`. `open_dialog` returns `{"ok": true, "dialog_token": "dlg-..."}`. Actions from that `dialog:*` surface carry the active dialog instance's `dialog_token` (reused across actions within the same open dialog instance).
-7. **`host.ui.open_panel` / `close_panel` / `toggle_panel`**: `{"id"}`; `toggle_panel` returns `{"ok": true, "open": true|false}`.
-8. **`host.ui.refresh`**: `{"surface"}` asynchronously re-renders an already-opened surface; returns `{"ok": true}` or `{"ok": true, "skipped": true}` if notebook scope does not match.
-9. **`host.sidebar.set_badges` / `get_badges`**: `{"badge_id": "review-mark", "notebook_root"?, "clear"?, "patch"?, "entries": {...}}` (`<= 512` entries, `text <= 4` no Emoji, `tooltip <= 120` no Emoji, `tone` in `accent|success|warning|danger`).
-9.1. **`host.sidebar.set_file_icons` / `get_file_icons`** (requires `contributes.file_icons`): `entries` (`<= 2048`, `"."` for notebook itself), `tint` (`none|blue|teal|green|amber|red|purple`), `prefs` (`picker`, `sync_tabs`).
+> Note: Methods marked `"ui:*" (default-allowed)` are checked against that permission in code, which is auto-granted without declaring it in `manifest.permissions`. Methods marked **explicit** or sensitive permissions must be declared in `manifest.permissions`. See the [Host Method Index](protocol-and-ui.md#host-method-index) for all 78 `host.*` methods.
+
+1. **`host.titlebar.get_items`** (checks `"ui:titlebar"`, default-allowed; `{}`): returns `{"items": [...], "groups": [...]}`.
+   - Each `item` includes `id`, `label`, `locked`, `hidden`, `plugin`, `icon` (for `switch` rows), **`group`** (`"markdown"` or `"source"` settings card group; plugin buttons use `"markdown"`), and **`preview`** (array of `UIIcon`s actually rendered in the titlebar, ready to pass into `icon_strip.icons`—e.g. `zoom` is `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}]`, slots not drawn in the titlebar such as `reveal` return `[]`, and plugin buttons return a 1-element inline-vector array).
+   - `groups` lists each mode group (`"markdown"` / `"source"`), localized `label` (`"Markdown"` / `"Source Mode"`), and left-to-right titlebar `order` (with active plugin buttons expanded as `"plugin:<pluginID>/<buttonID>"`). Older hosts omit `group`, `preview`, and `groups` (and earlier hosts omit `icon`).
+   - Built-in slot IDs: `feedback`, `ai`, `send_all`, `wrap`, `zoom`, `reveal`, `more` (`locked: true`); plugin buttons use `plugin:<pluginID>/<buttonID>`.
+2. **`host.titlebar.set_hidden`** (requires `contributes.titlebar_manager: true` and **explicit** `"ui:titlebar"`): `{"hidden": [...]}` persisted in `contrib-state.json` (`"more"` is permanently locked and cannot be hidden); returns `{"ok": true, "items": [...], "groups": [...]}`.
+3. **`host.titlebar.set_button`** (checks `"ui:titlebar"`, default-allowed; requires `id` in `contributes.titlebar_buttons`): `{"id", "badge"?, "active"?}` (`badge <= 3` runes).
+4. **`host.status.set`** (checks `"ui:status"`, default-allowed; requires `id` in `contributes.status_items`): `{"id", "text"?, "tooltip"?, "icon"?, "show_plugin_icon"?, "clear_icon"?}` (`text <= 40` runes, no Emoji; `tooltip <= 200` runes).
+5. **`host.ui.toast`** (no permission check): in-app top-right notification banner (`message` required `<= 160`, optional `body <= 1000`, `tone`, `icon`, `show_plugin_icon`, `action` callback to `plugin.action` with `surface: "toast"`). Returns `{"ok": true, "shown", "queued"}`.
+5.1. **`host.ui.open_settings`** (no permission check; requires `"open_settings"` capability and `"settings_page"` surface): opens the plugin's Settings page.
+6. **`host.ui.open_dialog` / `host.ui.close_dialog`** (checks `"ui:notify"`, default-allowed; requires `id` in `contributes.dialogs`): `{"id"}`. `open_dialog` returns `{"ok": true, "dialog_token": "dlg-..."}`. Actions from that `dialog:*` surface carry the active dialog instance's `dialog_token` (reused across actions within the same open dialog instance).
+7. **`host.ui.open_panel` / `close_panel` / `toggle_panel`** (checks `"ui:panels"`, default-allowed; requires `id` in `contributes.panels`): `{"id"}`; `toggle_panel` returns `{"ok": true, "open": true|false}`.
+8. **`host.ui.refresh`** (no permission check; requires declared `surface`): `{"surface"}` asynchronously re-renders an already-opened surface; returns `{"ok": true}` or `{"ok": true, "skipped": true}` if notebook scope does not match.
+9. **`host.sidebar.set_badges` / `get_badges`** (checks `"ui:sidebar"`, default-allowed; `set_badges` requires `badge_id` in `contributes.file_badges`): `{"badge_id": "review-mark", "notebook_root"?, "clear"?, "patch"?, "entries": {...}}` (`<= 512` entries, `text <= 4` no Emoji, `tooltip <= 120` no Emoji, `tone` in `accent|success|warning|danger`).
+9.1. **`host.sidebar.set_file_icons` / `get_file_icons`** (checks `"ui:sidebar"`, default-allowed; `set_file_icons` requires `contributes.file_icons`): `entries` (`<= 2048`, `"."` for notebook itself), `tint` (`none|blue|teal|green|amber|red|purple`), `prefs` (`picker`, `sync_tabs`).
 9.2. **`host.sidebar.set_ignored_dirs` / `host.sidebar.get_ignored_dirs`** both require an explicit `"ui:sidebar"` declaration. See the [JSON-RPC protocol](protocol-and-ui.md) for request and response shapes.
 10. **`host.editor.selection`** (`"editor:read"`): `{"note", "text", "has_focus"}`.
 11. **`host.editor.insert`** (`"editor:write"`): `{"text", "note"?, "mode": "replace"|"insert"}` (`text` required string `<= 4 MiB`; parses Markdown into native blocks and saves immediately; rejects folder/out-of-notebook context menu targets with `-32004`).
-12. **`host.menubar.set`**: `{"id", "title"?, "tooltip"?, "menu"?, "clear_menu"?}` (`title <= 16` no Emoji, `menu <= 20` dynamic items in memory, `payload <= 4096` bytes).
-13. **`host.ui.set_background_error` / `clear_background_error`**: `{"key", "label", "detail", "retry_action", "retry_label", "retry_payload", "severity": "danger"|"warning"}` (max 32 keys/plugin; omitting `key` on clear clears all).
-14. **`host.ui.theme_skin_state` / `set_theme_skin`** (requires `contributes.themes` and `"ui:appearance"`): gets or switches active plugin theme skin.
-15. **`host.stage.*`** (requires `contributes.stages` and matching UI permission): `host.stage.open` (`{"id", "route", "state"}`; `state` accepts any valid JSON `<= 2 MiB`), `close`, `state`, and `emit` (`{"id", "event", "payload"}`; `payload <= 2 MiB`).
+12. **`host.menubar.set`** (checks `"ui:menubar"`, default-allowed; requires `id` in `contributes.menubar_items`): `{"id", "title"?, "tooltip"?, "menu"?, "clear_menu"?}` (`title <= 16` no Emoji, `menu <= 20` dynamic items in memory, `payload <= 4096` bytes).
+13. **`host.ui.set_background_error` / `clear_background_error`** (no permission check): `{"key", "label", "detail", "retry_action", "retry_label", "retry_payload", "severity": "danger"|"warning"}` (max 32 keys/plugin; omitting `key` on clear clears all).
+14. **`host.ui.theme_skin_state` / `set_theme_skin`** (requires `contributes.themes` and **explicit** `"ui:appearance"`): gets or switches active plugin theme skin.
+15. **`host.stage.*`** (requires `contributes.stages` and **explicit** `"ui:appearance"`, `"ui:commands"`, or `"ui:panels"`): `host.stage.open` (`{"id", "route", "state"}`; `state` accepts any valid JSON `<= 2 MiB`), `close`, `state`, and `emit` (`{"id", "event", "payload"}`; `payload <= 2 MiB`).
 
 ### 7.5 Editor Backdrop Methods (`host.ui.backdrop` / `host.ui.set_backdrop`)
 
-Controls editor vector or paper-grain backdrops declared in `contributes.backdrops` (no extra permission required):
+Controls editor vector or paper-grain backdrops declared in `contributes.backdrops` (checks `"ui:appearance"`, default-allowed; `set_backdrop` requires `contributes.backdrops`):
 
 - **`host.ui.backdrop`** (`{}`): returns persisted backdrop state `{"id", "enabled", "pattern", "density", "contrast", "opacity", "tint", "dark_glow"}`.
 - **`host.ui.set_backdrop`**: updates and persists backdrop state in `contrib-state.json` (omitted style fields keep existing or manifest defaults; disabled automatically when the plugin is turned off) and returns the normalized state object.

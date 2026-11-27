@@ -138,21 +138,63 @@
 
 ### 7.4 通用 UI 贡献宿主方法（Plugin -> Host）
 
-1. **`host.titlebar.get_items`**（无需声明权限，参数 `{}`）
-   - 返回：`{"items": [{"id": "feedback", "label": "反馈", "locked": false, "hidden": false, "plugin": "", "icon": {"name": "message-square"}}]}`
-   - `icon` 为该槽位在顶栏实际使用的图标：内置槽位为宿主图标名 `{"name": ...}`（`send_all` 为文字胶囊 `{"chip": "统一发送", "dot": true}`；`reveal` 目前只出现在标签页右键菜单，不在顶栏绘制），插件按钮为其声明的内联矢量（`view_box` / `stroke_paths` 等），可直接透传到 `switch.icon` 或 `icon_strip.icons`（旧宿主不返回该字段）。
+> 注：下述标注「`ui:*`（默认放行，无需声明）」的方法在宿主运行时按对应权限校验，但因属于默认放行权限，通常无需在 `manifest.permissions` 中重复声明；明确标注「须显式声明」或涉及编辑器读写的方法必须声明在 `manifest.permissions` 中。完整 78 个 `host.*` 方法索引见 [宿主方法总表](protocol-and-ui.md#宿主方法总表)。
+
+1. **`host.titlebar.get_items`**（代码检查 `"ui:titlebar"`，默认放行，无需显式声明；参数 `{}`）
+   - 返回：
+     ```json
+     {
+       "items": [
+         {
+           "id": "feedback",
+           "label": "反馈",
+           "locked": false,
+           "hidden": false,
+           "icon": {"name": "message-square"},
+           "group": "markdown",
+           "preview": [{"name": "message-square"}]
+         },
+         {
+           "id": "zoom",
+           "label": "缩放",
+           "locked": false,
+           "hidden": false,
+           "icon": {"name": "tb-plus"},
+           "group": "source",
+           "preview": [{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}]
+         },
+         {
+           "id": "reveal",
+           "label": "在文件夹中显示",
+           "locked": false,
+           "hidden": false,
+           "icon": {"name": "folder-reveal"},
+           "group": "source",
+           "preview": []
+         }
+       ],
+       "groups": [
+         {"id": "markdown", "label": "Markdown", "order": ["plugin:my-plugin/btn", "feedback", "ai", "send_all", "more"]},
+         {"id": "source", "label": "源码模式", "order": ["wrap", "zoom", "plugin:my-plugin/btn", "feedback", "ai", "more"]}
+       ]
+     }
+     ```
+   - `items[].icon` 为该槽位在设置行使用的图标：内置槽位为宿主图标名 `{"name": ...}`（`send_all` 为文字胶囊 `{"chip": "统一发送", "dot": true}`），插件按钮为其声明的内联矢量（`view_box` / `stroke_paths` 等），可直接透传到 `switch.icon`。
+   - `items[].group` 为该槽位在设置页归属的分组 ID（`"markdown"` 或 `"source"`；插件按钮归属 `"markdown"`）。
+   - `items[].preview` 为该槽位在顶栏右侧实际绘制的 `UIIcon` 数组，可直接展开透传到 `icon_strip.icons`：`zoom` 为 `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}]`；仅出现在菜单、不在顶栏绘制的槽位（如 `reveal`）返回空数组 `[]`；插件按钮返回单元素内联矢量数组。
+   - `groups` 按从左到右真实顶栏顺序描述各模式分组：`id`（`"markdown"` | `"source"`）、`label`（随语言本地化）与 `order`（从左到右真实槽位 ID，已将启用中的插件按钮按 `"plugin:<pluginID>/<buttonID>"` 展开；同一插件按钮可同时出现在 `"markdown"` 与 `"source"` 的 `order` 中）。旧宿主不返回 `group`、`preview` 与 `groups`（更早版本亦无 `icon`）。
    - 内置槽位 ID：`"feedback"`、`"ai"`、`"send_all"`、`"wrap"`、`"zoom"`、`"reveal"`、`"more"`（`locked: true`）；插件按钮槽位 ID 为 `"plugin:<pluginID>/<buttonID>"`。
-2. **`host.titlebar.set_hidden`**（需在清单声明 `contributes.titlebar_manager: true`）
+2. **`host.titlebar.set_hidden`**（**须显式声明 `"ui:titlebar"`** 与 `contributes.titlebar_manager: true`）
    - 参数：`{"hidden": ["feedback", "plugin:my-plugin/btn"]}`（按插件隔离持久化于 `<BlockAppData>/plugins/contrib-state.json`，停用插件时自动收回其隐藏设置）。
    - **不可隐藏约束**：内置槽位 `"more"`（页面 `…` 操作按钮）永久锁定，**永远不可隐藏**（传入 `"more"` 或未知槽位 ID 会被宿主忽略）。
-   - 返回：`{"ok": true, "items": [...]}`（返回更新后的完整槽位列表）。
-3. **`host.titlebar.set_button`**（无需声明权限）
+   - 返回：`{"ok": true, "items": [...], "groups": [...]}`（返回更新后的完整槽位列表与分组顺序）。
+3. **`host.titlebar.set_button`**（代码检查 `"ui:titlebar"`，默认放行，无需显式声明；需在 `contributes.titlebar_buttons` 中声明 `id`）
    - 参数：`{"id": "<button_id>", "badge": "3", "active": true}`（`id` 必填且须为本插件声明的 `titlebar_buttons[].id`；`badge` 可选，会去首尾空白并截断至最多 3 个 Unicode 字符；`active` 可选布尔值）。
    - 返回：`{"ok": true}`。
-4. **`host.status.set`**（无需声明权限）
+4. **`host.status.set`**（代码检查 `"ui:status"`，默认放行，无需显式声明；需在 `contributes.status_items` 中声明 `id`）
    - 参数：`{"id": "<item_id>", "text": "Synced", "tooltip": "上次同步 10:00", "icon": {...}, "show_plugin_icon": true, "clear_icon": false}`（`id` 必填且须为本插件声明的 `status_items[].id`；`text` 禁止含 Emoji 并截断至 40 个字符；`tooltip` 截断至 200 个字符；`icon` / `show_plugin_icon` / `clear_icon` 均为可选）。
    - 返回：`{"ok": true}`。
-5. **`host.ui.toast`**（无需声明权限，开放给所有插件）
+5. **`host.ui.toast`**（无需权限，开放给所有插件）
    - 在窗口右上角（顶栏下方、固定宽 360px、最多同时叠放 3 条、总队列 6 条、单插件上限 4 条且相同内容自动合并去重）弹出应用内全局通知横幅，与主应用共用同一套视觉与队列。需要操作系统原生通知中心横幅时请使用 `host.system.notify`。
    - **最简调用（只传一句话）**：
      ```json
@@ -174,22 +216,22 @@
      - **停留与交互**：`info` / `success` 4 秒自动收起，`warning` 6 秒自动收起，`error` 及带 `action` 的横幅不自动消失（须手动关闭）；鼠标悬停时暂停倒计时。
      - `action`：可选单个按钮（`id` 匹配 `^[a-z][a-z0-9_-]{0,31}$`，`label` 非空、禁 Emoji、截断至 24 字符，可选 `payload` 对象）。用户点击后关闭横幅并回调 `plugin.action`（`surface: "toast"`，`action_id: action.id`，`values: action.payload`）。
    - 返回：`{"ok": true, "shown": true|false, "queued": true|false}`（`shown: true` 表示已立即上屏，`queued: true` 表示已进入等待队列，两者均为 `false` 表示因队列限流被丢弃）。
-5.1. **`host.ui.open_settings`**（无需声明权限；需先检查 `ui_capabilities` 包含 `"open_settings"` 且插件声明了 `"settings_page"`）
+5.1. **`host.ui.open_settings`**（无需权限；需先检查 `ui_capabilities` 包含 `"open_settings"` 且插件声明了 `"settings_page"`）
    - 参数：`{}`。直接打开当前插件的设置页，适合在 `surface: "toast"` 的动作回调中引导用户查看详情或配置。
    - 返回：`{"ok": true}`（无宿主 UI 时返回 `-32005`）。
-6. **`host.ui.open_dialog` / `host.ui.close_dialog`**（无需声明权限）
+6. **`host.ui.open_dialog` / `host.ui.close_dialog`**（代码检查 `"ui:notify"`，默认放行，无需显式声明；需在 `contributes.dialogs` 中声明 `id`）
    - 参数：`{"id": "<dialog_id>"}`（`id` 须为本插件声明的 `dialogs[].id`）。
    - 返回：`open_dialog` 在宿主成功打开后返回 `{"ok": true, "dialog_token": "dlg-..."}`（无宿主 UI 时返回 `-32005`），且用户在对应 `dialog:*` 表面触发 `plugin.action` 时宿主会随参数附带当前活动弹窗实例的 `"dialog_token"`（同一打开实例内的多次动作复用同一个令牌），插件可核对来源表面与当前弹窗实例；`close_dialog` 返回 `{"ok": true}`。
-7. **`host.ui.open_panel` / `host.ui.close_panel` / `host.ui.toggle_panel`**（无需声明权限）
+7. **`host.ui.open_panel` / `host.ui.close_panel` / `host.ui.toggle_panel`**（代码检查 `"ui:panels"`，默认放行，无需显式声明；需在 `contributes.panels` 中声明 `id`）
    - 参数：`{"id": "<panel_id>"}`（`id` 须为本插件声明的 `panels[].id`）。
    - 返回：`open_panel` / `close_panel` 返回 `{"ok": true}`；`toggle_panel` 返回 `{"ok": true, "open": true|false}`（由宿主原子切换并回传当前开关态，避免插件自维护状态与宿主关闭按钮失步）。
-8. **`host.ui.refresh`**（无需声明权限，仅要求目标表面属于 `"settings_page"` 或本插件 `contributes` 声明的表面）
+8. **`host.ui.refresh`**（无需权限，仅要求目标表面属于 `"settings_page"` 或本插件 `contributes` 声明的表面）
    - 参数：`{"surface": "panel:outline"}`（异步触发对应表面的后台 `plugin.render` 重绘；用户在当前笔记本中尚未打开过的表面不会渲染，首次打开时自然加载最新内容）。
    - 返回：`{"ok": true}`；若调用时的笔记本上下文与当前打开笔记本不匹配，可能返回 `{"ok": true, "skipped": true}`。
-9. **`host.sidebar.set_badges` / `host.sidebar.get_badges`**（无需声明权限）
+9. **`host.sidebar.set_badges` / `host.sidebar.get_badges`**（代码检查 `"ui:sidebar"`，默认放行，无需显式声明；`set_badges` 另需在 `contributes.file_badges` 中声明 `badge_id`）
    - `host.sidebar.set_badges` 参数：`{"badge_id": "review-mark", "notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {"welcome.md": {"text": "2", "tooltip": "含 2 处标记", "tone": "accent"}}}`（`notebook_root` 可选，省略时取当前笔记本；`entries` 最多 512 项，相对路径不可包含 `..` 或 `:`，`text` 禁 Emoji 且 <= 4 字符，`tooltip` 禁 Emoji 且 <= 120 字符，`tone` 支持 `"accent"` | `"success"` | `"warning"` | `"danger"`；`patch: true` 时传 `null` 可删除单项，`clear: true` 一键清空；按插件与笔记本持久化于 `contrib-state.json`）。
    - `host.sidebar.get_badges` 参数：`{"badge_id": "review-mark", "notebook_root": "..."}` -> 返回 `{"entries": {...}}`。
-9.1. **`host.sidebar.set_file_icons` / `host.sidebar.get_file_icons`**（无需声明权限，需声明 `contributes.file_icons`）
+9.1. **`host.sidebar.set_file_icons` / `host.sidebar.get_file_icons`**（代码检查 `"ui:sidebar"`，默认放行，无需显式声明；`set_file_icons` 另需声明 `contributes.file_icons`）
    - `host.sidebar.set_file_icons` 参数：`{"notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {".": {"icon": "book", "tint": "blue"}, "welcome.md": {"icon": "wave", "tint": "blue"}}, "prefs": {"picker": true, "sync_tabs": true}}`（`notebook_root` 省略时取当前笔记本；`"."` 表示笔记本自身图标，其余为笔记本内相对路径；`entries` 最多 2048 项，`icon` 须存在于图标包，`tint` 支持 `"none"` | `"blue"` | `"teal"` | `"green"` | `"amber"` | `"red"` | `"purple"`；`patch: true` 时传 `null` 删除单项，`clear: true` 清空当前笔记本映射；`prefs` 覆盖选择器与标签页同步开关；文件重命名/移入回收站时宿主自动同步路径）。
    - `host.sidebar.get_file_icons` 参数：`{"notebook_root": "..."}` -> 返回 `{"notebook_root": "...", "entries": {...}, "recent": [...], "prefs": {"picker": true, "sync_tabs": true}}`。
 9.2. **`host.sidebar.set_ignored_dirs` / `host.sidebar.get_ignored_dirs`** 需要显式声明 `"ui:sidebar"`。参数和返回值见 [双向 JSON-RPC 2.0 协议](protocol-and-ui.md)。
@@ -198,19 +240,19 @@
 11. **`host.editor.insert`**（需 `"editor:write"`）
     - 参数：`{"text": "插入内容", "note": "welcome.md", "mode": "replace"|"insert"}`（**`text` 必填字符串**，省略或传 `null` 直接返回 `-32602`，不会误删当前选区；按 Markdown 解析为原生块后插入，并在写入磁盘时保留块级隐藏 HTML 注释签名且立即落盘，避免编辑器未保存状态与 `host.notes.read/write` 竞争；`mode` 默认 `"replace"` 替换当前选区，传 `"insert"` 时将选区折叠到末尾后再插入、不覆盖选中正文；`note` 可选：给定时主线程联合校验运行时存活、笔记本代次与绝对路径；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记，若右键菜单命令的目标是文件夹或笔记本外文件则直接返回 `-32004` 拒绝写入，不会落入其他活动标签页。`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
-12. **`host.menubar.set`**（无需声明权限）
+12. **`host.menubar.set`**（代码检查 `"ui:menubar"`，默认放行，无需显式声明；需在 `contributes.menubar_items` 中声明 `id`）
     - 参数：`{"id": "<item_id>", "title": "3", "tooltip": "上传中", "menu": [{"id": "r1", "title": "shot.png", "subtitle": "https://...", "command": "copy_link", "payload": "https://..."}, {"separator": true}], "clear_menu": false}`（`id` 必填且须为本插件声明的 `menubar_items[].id`，其余字段可选，省略的字段保持原值）。
     - `title`：图标右侧的短文字（禁止 Emoji，截断至 16 个字符，传 `""` 清除）；`tooltip`：覆盖清单里的提示（截断至 200 个字符）。
     - `menu`：动态条目，整体替换上一次的动态条目，显示在静态 `menu` 下方（最多 20 条）。`title` 必填（截断至 60 个字符），`subtitle` 可选（截断至 80 个字符）；`command` 须引用 `commands[].id`，省略时条目置灰；`payload` 为最多 4096 字节的字符串，点击时作为 `context.payload` 随命令下发。`clear_menu: true` 清空动态条目。
     - 动态内容只保存在内存中。宿主按需启动插件，Block 重开后要等插件首次运行（如 `plugin.initialize`）重新推送，动态条目才会恢复。
     - 返回：`{"ok": true}`。
-13. **`host.ui.set_background_error` / `host.ui.clear_background_error`**（无需声明权限）
+13. **`host.ui.set_background_error` / `host.ui.clear_background_error`**（无需权限）
     - `host.ui.set_background_error`：在设置侧栏插件项与顶栏错误胶囊展示后台告警或错误（每插件最多 32 个 `key`，默认 `"default"`）：`{"key", "label", "detail", "retry_action", "retry_label", "retry_payload", "severity": "danger"|"warning"}`（`label` 必填且 <= 120 字，禁 Emoji）-> `{"ok": true, "key"}`。
     - `host.ui.clear_background_error`：`{"key"}`（省略 `key` 清空本插件全部后台错误）-> `{"ok": true}`。
-14. **`host.ui.theme_skin_state` / `host.ui.set_theme_skin`**（需声明 `contributes.themes` 与 `"ui:appearance"`）
+14. **`host.ui.theme_skin_state` / `host.ui.set_theme_skin`**（需声明 `contributes.themes` 并显式声明 `"ui:appearance"`）
     - `host.ui.theme_skin_state`（`{}`）：返回 `{"id", "enabled", "skin_id"}`。
     - `host.ui.set_theme_skin`（`{"id", "enabled": true|false}`）：应用或关闭声明的主题皮肤并持久化于 `contrib-state.json`，同时停用其他插件皮肤。
-15. **`host.stage.*`**（需声明 `contributes.stages` 与对应界面权限）
+15. **`host.stage.*`**（需声明 `contributes.stages` 并显式声明 `"ui:appearance"` / `"ui:commands"` / `"ui:panels"` 之一）
     - `host.stage.open`：`{"id", "route", "state"}`（`route` 兼容别名 `room`；`state` 接受任意合法 JSON，<= 2 MiB）-> `{"ok": true, "open": true, "stage": {...}}`。
     - `host.stage.close`：`{"id"}` -> `{"ok": true, "closed": true|false}`。
     - `host.stage.state`（`{}`）：返回 `{"open": true|false, "stage_id", "route", "state"}`。
@@ -218,7 +260,7 @@
 
 ### 7.5 编辑区背景能力（`host.ui.backdrop` / `host.ui.set_backdrop`）
 
-以下接口用于控制声明在 `contributes.backdrops` 中的编辑区矢量或纸纹背景（无需额外声明权限，按需调用）：
+以下接口用于控制声明在 `contributes.backdrops` 中的编辑区矢量或纸纹背景（代码检查 `"ui:appearance"`，默认放行，无需显式声明；`set_backdrop` 需声明 `contributes.backdrops`）：
 
 - **`host.ui.backdrop`**（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
 - **`host.ui.set_backdrop`**（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。

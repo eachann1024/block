@@ -96,6 +96,97 @@
 
 ---
 
+### 宿主方法总表
+
+下表列出当前宿主实际分发的全部 78 个 `host.*` JSON-RPC 方法及权限/清单条件。标记「默认放行，无需声明」的能力在 `manifest.permissions` 中可省略（除非另有显式声明要求）；标记「须显式声明」或敏感权限的能力必须写入 `manifest.permissions`。
+
+<!-- host-methods-table:start -->
+| 方法 | 所需权限或清单条件 | 一句话用途 | 详细说明 |
+| --- | --- | --- | --- |
+| `host.storage.get` | `storage`（默认放行，无需声明） | 读取插件私有持久化键值或全量配置 | [§4.2 · 1](protocol-and-ui.md) |
+| `host.storage.set` | `storage`（默认放行，无需声明） | 写入或覆盖单个插件私有持久化键 | [§4.2 · 2](protocol-and-ui.md) |
+| `host.storage.set_many` | `storage`（默认放行，无需声明） | 一次原子写入 1–64 个插件私有持久化键 | [§4.2 · 2](protocol-and-ui.md) |
+| `host.notes.active` | `notes:read` | 获取当前活动标签相对路径 | [§4.2 · 3](protocol-and-ui.md) |
+| `host.notebooks.list` | `notes:read` | 列举已知笔记本路径与当前激活态 | [§4.2 · 4](protocol-and-ui.md) |
+| `host.notes.list` | `notes:read` | 列举指定笔记本内的可见 Markdown 笔记 | [§4.2 · 5](protocol-and-ui.md) |
+| `host.notes.read` | `notes:read` | 读取笔记正文与 SHA-256 `revision` | [§4.2 · 6](protocol-and-ui.md) |
+| `host.notes.write` | `notes:write` | 写入或更新笔记（支持 `expected_revision` 校验） | [§4.2 · 7](protocol-and-ui.md) |
+| `host.notes.trash` | `notes:write` | 按 `expected_revision` 无弹窗移入系统回收站 | [§4.2 · 8](protocol-and-ui.md) |
+| `host.notes.open` | `notes:read`（无 UI 环境报 `-32005`） | 在桌面编辑器中切换打开指定笔记 | [§4.2 · 9](protocol-and-ui.md) |
+| `host.action.progress` | 无需权限（检查 `action_progress`；分通道需 `progress_bar`） | 上报 `plugin.action` 实时进度与通道状态 | [§4.2 · 10](protocol-and-ui.md) |
+| `host.perf.snapshot` | `notes:read`（检查 `host_perf`） | 获取宿主资源占用与 7 类磁盘占用快照 | [§4.2 · 11](protocol-and-ui.md) |
+| `host.store.changelog` | 无需权限（检查 `store_changelog`） | 查询应用商店插件更新日志 | [§4.2 · 12](protocol-and-ui.md) |
+| `host.log` | 无需权限 | 追加诊断日志到宿主 `logs/block.log` | [§4.2 · 13](protocol-and-ui.md) |
+| `host.fs.list_grants` | `system:fs`（附带笔记本列举需 `notes:read`/`notes:write`） | 列举已授权路径、数据/下载目录与可访问笔记本 | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.stat` | `system:fs` | 查询授权路径元数据与 iCloud 占位状态 | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.list` | `system:fs` | 列出授权目录内文件与子目录（支持递归） | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.read` | `system:fs` | 以 UTF-8 或 Base64 读取授权路径文件 | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.write` | `system:fs` | 向授权路径写入文本或二进制文件（支持原子写） | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.mkdir` | `system:fs` | 在授权目录下创建目录 | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.delete` | `system:fs` | 删除授权路径文件或目录 | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.rename` | `system:fs` | 在授权范围重命名或移动文件/目录 | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.copy` | `system:fs` | 宿主机流式原子复制普通文件（不经 Wasm 内存） | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.atomic_swap` | `system:fs` | 同目录下两个授权文件原子交换内容 | [§4.2 · 14](protocol-and-ui.md) |
+| `host.crypto.hash` | 无需权限（传 `file_path` 需 `system:fs`） | 计算文本、Base64 或授权文件的 SHA/MD5 哈希 | [§4.2 · 15](protocol-and-ui.md) |
+| `host.crypto.hmac` | 无需权限 | 计算 SHA-1 / SHA-256 / SHA-512 HMAC 签名 | [§4.2 · 15](protocol-and-ui.md) |
+| `host.http.request` | `network`（受 `network_domains` 约束；文件流转另需 `system:fs`） | 由宿主代发 HTTP(S) 请求并返回或落盘响应 | [§4.2 · 16](protocol-and-ui.md) |
+| `host.exec.run` | `system:exec` + 程序须在 `manifest.exec_allowlist` | 无 Shell 运行白名单命令行程序并获取输出 | [§4.2 · 17](protocol-and-ui.md) |
+| `host.scheduler.register` | `events:system` | 注册或更新周期/唤醒/联网/聚焦触发的后台任务 | [§4.2 · 18](protocol-and-ui.md) |
+| `host.scheduler.unregister` | `events:system` | 注销指定后台定时任务 | [§4.2 · 18](protocol-and-ui.md) |
+| `host.scheduler.list` | `events:system` | 列出当前插件已注册的全部后台定时任务 | [§4.2 · 18](protocol-and-ui.md) |
+| `host.ai.status` | `ai:complete` | 查询宿主 AI 功能是否启用、就绪及流式状态 | [§4.2 · 19](protocol-and-ui.md) |
+| `host.ai.complete` | `ai:complete` | 调用宿主已配置 AI 模型执行单轮文本生成 | [§4.2 · 19](protocol-and-ui.md) |
+| `host.ai.open_with_prompt` | `ai:complete` | 预填提示词并打开宿主 AI 面板 | [§4.2 · 19](protocol-and-ui.md) |
+| `host.sidebar.get_ignored_dirs` | **须显式声明 `ui:sidebar`**（检查 `sidebar_ignored_dirs`） | 读取本插件当前的运行时目录忽略列表 | [§4.2 · 20](protocol-and-ui.md) |
+| `host.sidebar.set_ignored_dirs` | **须显式声明 `ui:sidebar`**（检查 `sidebar_ignored_dirs`） | 替换或清空本插件的运行时目录忽略列表 | [§4.2 · 20](protocol-and-ui.md) |
+| `host.system.capabilities` | 无需权限（检查 `system_integration`） | 查询当前平台可用的系统集成能力布尔表 | [§4.3](protocol-and-ui.md) |
+| `host.system.notify` | `system:notify`（默认放行，无需声明；笔记跳转需 `notes:read`） | 发送操作系统原生通知中心横幅 | [§4.3](protocol-and-ui.md) |
+| `host.system.open_url` | `system:open` + 用户交互动作且窗口聚焦 | 在系统默认浏览器打开 HTTP(S) 链接 | [§4.3](protocol-and-ui.md) |
+| `host.system.reveal` | `system:open` + `notes:read` + 用户交互动作且窗口聚焦 | 在系统文件管理器中显示笔记本内文件 | [§4.3](protocol-and-ui.md) |
+| `host.system.open_dialog` | `system:dialogs` + 用户交互动作且窗口聚焦 | 弹出系统原生文件或文件夹选择框 | [§4.3](protocol-and-ui.md) |
+| `host.system.save_dialog` | `system:dialogs` + 用户交互动作且窗口聚焦 | 弹出系统原生保存位置选择框 | [§4.3](protocol-and-ui.md) |
+| `host.system.trash` | `system:trash` + `notes:write` + 用户交互动作且窗口聚焦 | 经原生确认框后将笔记本内普通文件移入回收站 | [§4.3](protocol-and-ui.md) |
+| `host.system.badge` | `system:badge`（默认放行，无需声明） | 设置或清除应用图标数字角标 | [§4.3](protocol-and-ui.md) |
+| `host.clipboard.read` | `system:clipboard_read` + 用户交互动作且窗口聚焦 | 读取系统剪贴板 UTF-8 文本 | [§4.3](protocol-and-ui.md) |
+| `host.clipboard.write` | `system:clipboard_write` + 用户交互动作且窗口聚焦 | 写入系统剪贴板 UTF-8 文本 | [§4.3](protocol-and-ui.md) |
+| `host.secrets.get` | `system:secrets` | 从系统凭据库读取插件隔离凭据 | [§4.3](protocol-and-ui.md) |
+| `host.secrets.set` | `system:secrets` | 向系统凭据库写入或更新插件隔离凭据 | [§4.3](protocol-and-ui.md) |
+| `host.secrets.delete` | `system:secrets` | 从系统凭据库删除指定凭据 | [§4.3](protocol-and-ui.md) |
+| `host.titlebar.get_items` | `ui:titlebar`（默认放行，无需声明） | 获取顶栏槽位（含 `group`/`preview`）与分组顺序 `groups` | [§7.4 · 1](ui-contributions.md) |
+| `host.titlebar.set_hidden` | **须显式声明 `ui:titlebar`** + `contributes.titlebar_manager: true` | 持久化设置隐藏的顶栏槽位（`"more"` 不可隐藏） | [§7.4 · 2](ui-contributions.md) |
+| `host.titlebar.set_button` | `ui:titlebar`（默认放行，无需声明）+ `contributes.titlebar_buttons` | 更新本插件顶栏按钮的角标文本与激活高亮态 | [§7.4 · 3](ui-contributions.md) |
+| `host.menubar.set` | `ui:menubar`（默认放行，无需声明）+ `contributes.menubar_items` | 更新系统菜单栏图标标题、提示与动态菜单条目 | [§7.4 · 12](ui-contributions.md) |
+| `host.status.set` | `ui:status`（默认放行，无需声明）+ `contributes.status_items` | 更新底部状态栏条目的文案、提示与图标 | [§7.4 · 4](ui-contributions.md) |
+| `host.ui.toast` | 无需权限 | 在窗口右上角弹出应用内通知横幅（可选操作回调） | [§7.4 · 5](ui-contributions.md) |
+| `host.ui.open_settings` | 无需权限 + `surfaces` 含 `"settings_page"`（检查 `open_settings`） | 跳转打开当前插件的设置页 | [§7.4 · 5.1](ui-contributions.md) |
+| `host.ui.open_dialog` | `ui:notify`（默认放行，无需声明）+ `contributes.dialogs` | 打开声明的模态对话框并返回 `dialog_token` | [§7.4 · 6](ui-contributions.md) |
+| `host.ui.close_dialog` | `ui:notify`（默认放行，无需声明）+ `contributes.dialogs` | 关闭指定的插件模态对话框 | [§7.4 · 6](ui-contributions.md) |
+| `host.ui.open_panel` | `ui:panels`（默认放行，无需声明）+ `contributes.panels` | 打开右侧边栏插件面板 | [§7.4 · 7](ui-contributions.md) |
+| `host.ui.close_panel` | `ui:panels`（默认放行，无需声明）+ `contributes.panels` | 关闭右侧边栏插件面板 | [§7.4 · 7](ui-contributions.md) |
+| `host.ui.toggle_panel` | `ui:panels`（默认放行，无需声明）+ `contributes.panels` | 原子切换右侧边栏插件面板并返回开关态 | [§7.4 · 7](ui-contributions.md) |
+| `host.ui.refresh` | 无需权限 + 目标 `surface` 须已在本插件声明 | 异步触发已打开插件表面的 `plugin.render` 重绘 | [§7.4 · 8](ui-contributions.md) |
+| `host.ui.set_background_error` | 无需权限 | 注册或更新设置侧栏与顶栏胶囊的后台错误告警 | [§7.4 · 13](ui-contributions.md) |
+| `host.ui.clear_background_error` | 无需权限 | 清除指定或全部插件后台错误告警 | [§7.4 · 13](ui-contributions.md) |
+| `host.ui.backdrop` | `ui:appearance`（默认放行，无需声明） | 读取本插件当前持久化的编辑区背景状态 | [§7.5](ui-contributions.md) |
+| `host.ui.set_backdrop` | `ui:appearance`（默认放行，无需声明）+ `contributes.backdrops` | 更新并持久化编辑区矢量或纸纹背景状态 | [§7.5](ui-contributions.md) |
+| `host.ui.theme_skin_state` | **须显式声明 `ui:appearance`**（配合 `contributes.themes`） | 查询当前主题皮肤启用与激活状态 | [§7.4 · 14](ui-contributions.md) |
+| `host.ui.set_theme_skin` | **须显式声明 `ui:appearance`** + `contributes.themes` | 应用或关闭声明的主题皮肤 | [§7.4 · 14](ui-contributions.md) |
+| `host.stage.open` | **须显式声明 `ui:appearance` / `ui:commands` / `ui:panels` 之一** + `contributes.stages` | 打开离线 `block-plugin://` WebView 舞台并传入初始状态 | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.close` | `ui:appearance` / `ui:commands` / `ui:panels` 之一（声明 `stages` 时须显式声明） | 关闭当前插件打开的 WebView 舞台 | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.state` | `ui:appearance` / `ui:commands` / `ui:panels` 之一（声明 `stages` 时须显式声明） | 查询当前插件舞台打开态、路由与状态 | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.emit` | **须显式声明 `ui:appearance` / `ui:commands` / `ui:panels` 之一** + `contributes.stages` | 向打开中的舞台 WebView 推送事件载荷 | [§7.4 · 15](ui-contributions.md) |
+| `host.sidebar.get_badges` | `ui:sidebar`（默认放行，无需声明） | 读取当前插件写入的文件树行角标映射 | [§7.4 · 9](ui-contributions.md) |
+| `host.sidebar.set_badges` | `ui:sidebar`（默认放行，无需声明）+ `contributes.file_badges` | 写入、局部修补或清空文件树笔记行尾角标 | [§7.4 · 9](ui-contributions.md) |
+| `host.sidebar.get_file_icons` | `ui:sidebar`（默认放行，无需声明） | 读取当前笔记本自定义文件/文件夹图标映射与偏好 | [§7.4 · 9.1](ui-contributions.md) |
+| `host.sidebar.set_file_icons` | `ui:sidebar`（默认放行，无需声明）+ `contributes.file_icons` | 更新或清空自定义文件/文件夹/笔记本图标映射与偏好 | [§7.4 · 9.1](ui-contributions.md) |
+| `host.editor.selection` | `editor:read` | 读取当前编辑器选中文本、笔记路径与聚焦状态 | [§7.4 · 10](ui-contributions.md) |
+| `host.editor.insert` | `editor:write` | 按 Markdown 解析并在光标/选区插入或替换正文 | [§7.4 · 11](ui-contributions.md) |
+<!-- host-methods-table:end -->
+
+> **已移除方法提示**：早期测试版存在过的 `host.ui.editor_background`、`host.ui.set_editor_background`、`host.ui.mindmap_state`、`host.ui.set_mindmap` 已移除，当前宿主统一返回 `-32601`（分别由通用的 `host.ui.backdrop` / `host.ui.set_backdrop` 与 `contributes.block_decorators` 替代）。
+
+---
+
 ### 4.2 插件调用宿主能力（Plugin -> Host）
 
 插件在处理 `plugin.initialize`、`plugin.render`、`plugin.action`、`plugin.command` 或 `plugin.event` 请求期间，可向 `stdout` 发送 JSON-RPC 请求调用 `host.*`，并从 `stdin` 读取匹配 `id` 的响应后再返回外层结果（同时在途不超过 8 个；`plugin.shutdown` 期间宿主不再响应 `host.*`）。

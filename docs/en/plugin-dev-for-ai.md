@@ -31,7 +31,7 @@ External plugins **require no PR to the main repository and no manual approval**
 
 ### 1.3 Standard Workflow
 
-1. **Read the matching chapters before coding**: interactive plugins read [Manifest & Permissions](https://docs.block.cooool.top/en/plugins/manifest) + [Protocol, UI & SDK](https://docs.block.cooool.top/en/plugins/protocol-and-ui) (plus [Host UI Contributions](https://docs.block.cooool.top/en/plugins/ui-contributions) if extending host chrome); language extensions read [Manifest & Permissions](https://docs.block.cooool.top/en/plugins/manifest) + [Language Extensions](https://docs.block.cooool.top/en/plugins/languages).
+1. **Read the matching chapters before coding**: interactive plugins read [Manifest & Permissions](https://docs.block.cooool.top/en/plugins/manifest) + [Protocol, UI & SDK](https://docs.block.cooool.top/en/plugins/protocol-and-ui) (look up RPCs in the [Host Method Index](https://docs.block.cooool.top/en/plugins/protocol-and-ui#host-method-index), plus [Host UI Contributions](https://docs.block.cooool.top/en/plugins/ui-contributions) if extending host chrome); language extensions read [Manifest & Permissions](https://docs.block.cooool.top/en/plugins/manifest) + [Language Extensions](https://docs.block.cooool.top/en/plugins/languages).
 2. **Create a standalone repository**: include `manifest.json` and `README.md` at the root (official and bilingual plugins also include English `README.en.md`).
 3. **Implement core logic and declarative UI**: start interactive plugins from the locale-aware `entry.js` + `/runtime/block-sdk.js` skeleton in [Protocol, UI & SDK](https://docs.block.cooool.top/en/plugins/protocol-and-ui); language extensions only need `manifest.json` and `grammars/*.json`.
 4. **Complete verification (1.4)**: static checks → `block-plugin-check` `[PASS]` → desktop verification. If Go or the desktop app is unavailable in your environment, report unexecuted steps explicitly instead of fabricating pass results.
@@ -340,6 +340,97 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
 
 ---
 
+### Host Method Index
+
+This table lists all 78 `host.*` JSON-RPC methods currently dispatched by the host and their exact permission / manifest requirements. Capabilities marked "default-allowed" may be omitted from `manifest.permissions` unless an explicit declaration is noted; all other permissions must be declared explicitly.
+
+<!-- host-methods-table:start -->
+| Method | Required Permission / Manifest Condition | Purpose | Details |
+| --- | --- | --- | --- |
+| `host.storage.get` | `storage` (default-allowed) | Read one private storage key or the full key-value map | [§4.2 · 1](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.storage.set` | `storage` (default-allowed) | Write or overwrite a single private storage key | [§4.2 · 2](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.storage.set_many` | `storage` (default-allowed) | Atomically write 1–64 private storage keys at once | [§4.2 · 2](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notes.active` | `notes:read` | Get the active tab's relative note path | [§4.2 · 3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notebooks.list` | `notes:read` | List known notebooks and which notebook is active | [§4.2 · 4](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notes.list` | `notes:read` | List visible Markdown notes inside a notebook | [§4.2 · 5](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notes.read` | `notes:read` | Read note Markdown content and SHA-256 `revision` | [§4.2 · 6](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notes.write` | `notes:write` | Write or update a note (supports `expected_revision`) | [§4.2 · 7](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notes.trash` | `notes:write` | Trash a notebook file by `expected_revision` without prompt | [§4.2 · 8](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notes.open` | `notes:read` (`-32005` in headless CLI) | Open a notebook note in the desktop editor | [§4.2 · 9](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.action.progress` | None (check `action_progress`; channel mode needs `progress_bar`) | Report live `plugin.action` progress and channel status | [§4.2 · 10](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.perf.snapshot` | `notes:read` (check `host_perf`) | Snapshot host CPU, RSS, and 7 disk categories | [§4.2 · 11](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.store.changelog` | None (check `store_changelog`) | Fetch App Store plugin release changelog | [§4.2 · 12](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.log` | None | Append structured diagnostic entries to `logs/block.log` | [§4.2 · 13](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.list_grants` | `system:fs` (notebook listing also needs `notes:read`/`notes:write`) | List granted directories, data/downloads dirs, and notebooks | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.stat` | `system:fs` | Inspect metadata and iCloud placeholder state of a granted path | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.list` | `system:fs` | List entries in a granted directory (optionally recursive) | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.read` | `system:fs` | Read a granted file as UTF-8 or Base64 | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.write` | `system:fs` | Write UTF-8 or Base64 data to a granted path (supports atomic) | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.mkdir` | `system:fs` | Create a directory under a granted path | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.delete` | `system:fs` | Delete a granted file or directory | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.rename` | `system:fs` | Rename or move a granted file or directory | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.copy` | `system:fs` | Stream-copy a regular file on the host without Wasm buffering | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.fs.atomic_swap` | `system:fs` | Atomically exchange two granted files in the same directory | [§4.2 · 14](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.crypto.hash` | None (`system:fs` when `file_path` is passed) | Compute SHA/MD5 hash of text, Base64, or a granted file | [§4.2 · 15](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.crypto.hmac` | None | Compute SHA-1, SHA-256, or SHA-512 HMAC | [§4.2 · 15](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.http.request` | `network` (restricted by `network_domains`; file I/O needs `system:fs`) | Perform HTTP(S) request on the host with optional file streaming | [§4.2 · 16](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.exec.run` | `system:exec` + binary in `manifest.exec_allowlist` | Run an allowlisted executable without a shell | [§4.2 · 17](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.scheduler.register` | `events:system` | Register or update a periodic/wake/network/focus background job | [§4.2 · 18](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.scheduler.unregister` | `events:system` | Unregister a scheduled background job | [§4.2 · 18](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.scheduler.list` | `events:system` | List all registered background jobs for this plugin | [§4.2 · 18](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.ai.status` | `ai:complete` | Query host AI enabled, ready, and streaming flags | [§4.2 · 19](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.ai.complete` | `ai:complete` | Run a single-turn AI completion using the host model | [§4.2 · 19](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.ai.open_with_prompt` | `ai:complete` | Open the host AI panel prefilled with a prompt | [§4.2 · 19](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.sidebar.get_ignored_dirs` | **Explicit `ui:sidebar`** (check `sidebar_ignored_dirs`) | Read this plugin's runtime ignored directory names | [§4.2 · 20](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.sidebar.set_ignored_dirs` | **Explicit `ui:sidebar`** (check `sidebar_ignored_dirs`) | Replace or clear this plugin's runtime ignored directory names | [§4.2 · 20](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.system.capabilities` | None (check `system_integration`) | Query boolean availability of OS integration features | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.system.notify` | `system:notify` (default-allowed; note link needs `notes:read`) | Send a native OS notification banner | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.system.open_url` | `system:open` + active user action & window focus | Open an HTTP(S) URL in the default browser | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.system.reveal` | `system:open` + `notes:read` + user action & focus | Reveal a notebook file in the OS file manager | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.system.open_dialog` | `system:dialogs` + active user action & window focus | Show a native OS file or directory picker | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.system.save_dialog` | `system:dialogs` + active user action & window focus | Show a native OS save-location picker | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.system.trash` | `system:trash` + `notes:write` + user action & focus | Confirm natively and move a regular notebook file to Trash | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.system.badge` | `system:badge` (default-allowed) | Set or clear this plugin's app icon badge count | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.clipboard.read` | `system:clipboard_read` + user action & window focus | Read UTF-8 text from the OS clipboard | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.clipboard.write` | `system:clipboard_write` + user action & window focus | Write UTF-8 text to the OS clipboard | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.secrets.get` | `system:secrets` | Read a plugin-isolated credential from the OS keychain | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.secrets.set` | `system:secrets` | Store or update a plugin-isolated credential | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.secrets.delete` | `system:secrets` | Delete a stored credential from the OS keychain | [§4.3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.titlebar.get_items` | `ui:titlebar` (default-allowed) | Get titlebar slots (`group`/`preview`) and ordered `groups` | [§7.4 · 1](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.titlebar.set_hidden` | **Explicit `ui:titlebar`** + `contributes.titlebar_manager: true` | Persist hidden titlebar slot IDs (`"more"` cannot be hidden) | [§7.4 · 2](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.titlebar.set_button` | `ui:titlebar` (default-allowed) + `contributes.titlebar_buttons` | Update badge text and active highlight of a titlebar button | [§7.4 · 3](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.menubar.set` | `ui:menubar` (default-allowed) + `contributes.menubar_items` | Update OS menu bar icon title, tooltip, and dynamic menu | [§7.4 · 12](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.status.set` | `ui:status` (default-allowed) + `contributes.status_items` | Update text, tooltip, and icon of a status bar item | [§7.4 · 4](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.toast` | None | Show an in-app top-right notification banner | [§7.4 · 5](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.open_settings` | None + `surfaces` includes `"settings_page"` (`open_settings`) | Open this plugin's dedicated Settings page | [§7.4 · 5.1](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.open_dialog` | `ui:notify` (default-allowed) + `contributes.dialogs` | Open a declared modal dialog and return `dialog_token` | [§7.4 · 6](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.close_dialog` | `ui:notify` (default-allowed) + `contributes.dialogs` | Close a declared modal dialog | [§7.4 · 6](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.open_panel` | `ui:panels` (default-allowed) + `contributes.panels` | Open a declared right-side panel | [§7.4 · 7](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.close_panel` | `ui:panels` (default-allowed) + `contributes.panels` | Close a declared right-side panel | [§7.4 · 7](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.toggle_panel` | `ui:panels` (default-allowed) + `contributes.panels` | Atomically toggle a side panel and return open state | [§7.4 · 7](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.refresh` | None + target `surface` must be declared by plugin | Asynchronously re-render an already-opened surface | [§7.4 · 8](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.set_background_error` | None | Register or update a background error indicator in Settings/titlebar | [§7.4 · 13](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.clear_background_error` | None | Clear one or all background errors for this plugin | [§7.4 · 13](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.backdrop` | `ui:appearance` (default-allowed) | Read persisted editor backdrop state | [§7.5](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.set_backdrop` | `ui:appearance` (default-allowed) + `contributes.backdrops` | Update and persist editor vector or paper backdrop state | [§7.5](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.theme_skin_state` | **Explicit `ui:appearance`** (with `contributes.themes`) | Query active state of this plugin's theme skin | [§7.4 · 14](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.ui.set_theme_skin` | **Explicit `ui:appearance`** + `contributes.themes` | Activate or deactivate a declared theme skin | [§7.4 · 14](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.stage.open` | **Explicit `ui:appearance` / `ui:commands` / `ui:panels`** + `contributes.stages` | Open an offline `block-plugin://` WebView stage | [§7.4 · 15](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.stage.close` | `ui:appearance` / `ui:commands` / `ui:panels` (explicit with `stages`) | Close the plugin's active WebView stage | [§7.4 · 15](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.stage.state` | `ui:appearance` / `ui:commands` / `ui:panels` (explicit with `stages`) | Query whether the plugin's WebView stage is open | [§7.4 · 15](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.stage.emit` | **Explicit `ui:appearance` / `ui:commands` / `ui:panels`** + `contributes.stages` | Emit an event payload to the open stage WebView | [§7.4 · 15](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.sidebar.get_badges` | `ui:sidebar` (default-allowed) | Read file tree badge entries written by this plugin | [§7.4 · 9](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.sidebar.set_badges` | `ui:sidebar` (default-allowed) + `contributes.file_badges` | Set, patch, or clear file tree note badges | [§7.4 · 9](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.sidebar.get_file_icons` | `ui:sidebar` (default-allowed) | Read custom file/folder icons and preferences for a notebook | [§7.4 · 9.1](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.sidebar.set_file_icons` | `ui:sidebar` (default-allowed) + `contributes.file_icons` | Update or clear custom file/folder/notebook icons and preferences | [§7.4 · 9.1](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.editor.selection` | `editor:read` | Read the active editor selection, note path, and focus flag | [§7.4 · 10](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+| `host.editor.insert` | `editor:write` | Parse Markdown and insert or replace at the active selection | [§7.4 · 11](https://docs.block.cooool.top/en/plugins/ui-contributions) |
+<!-- host-methods-table:end -->
+
+> **Removed methods**: Legacy RPCs `host.ui.editor_background`, `host.ui.set_editor_background`, `host.ui.mindmap_state`, and `host.ui.set_mindmap` have been removed and now return `-32601` (superseded by `host.ui.backdrop` / `host.ui.set_backdrop` and `contributes.block_decorators`).
+
+---
+
 ### 4.2 Plugin -> Host RPC Methods
 
 Plugins may call `host.*` while handling `plugin.initialize`, `plugin.render`, `plugin.action`, `plugin.command`, or `plugin.event` (max 8 concurrent in-flight calls; unavailable during `plugin.shutdown`).
@@ -586,28 +677,33 @@ Shared validation rules:
 
 ### 7.4 Host UI RPC Methods (Plugin -> Host)
 
-1. **`host.titlebar.get_items`** (`{}`): returns all built-in (`feedback`, `ai`, `send_all`, `wrap`, `zoom`, `reveal`, `more` [locked]) and plugin (`plugin:<pluginID>/<buttonID>`) titlebar slots with their `icon` specs.
-2. **`host.titlebar.set_hidden`** (requires `contributes.titlebar_manager: true` and `"ui:titlebar"`): `{"hidden": [...]}` persisted in `contrib-state.json` (`"more"` is permanently locked and cannot be hidden).
-3. **`host.titlebar.set_button`**: `{"id", "badge"?, "active"?}` (`badge <= 3` runes).
-4. **`host.status.set`**: `{"id", "text"?, "tooltip"?, "icon"?, "show_plugin_icon"?, "clear_icon"?}` (`text <= 40` runes, no Emoji; `tooltip <= 200` runes).
-5. **`host.ui.toast`**: in-app top-right notification banner (`message` required `<= 160`, optional `body <= 1000`, `tone`, `icon`, `show_plugin_icon`, `action` callback to `plugin.action` with `surface: "toast"`). Returns `{"ok": true, "shown", "queued"}`.
-5.1. **`host.ui.open_settings`** (`{}`; requires `"open_settings"` capability and `"settings_page"` surface): opens the plugin's Settings page.
-6. **`host.ui.open_dialog` / `host.ui.close_dialog`**: `{"id"}`. `open_dialog` returns `{"ok": true, "dialog_token": "dlg-..."}`. Actions from that `dialog:*` surface carry the active dialog instance's `dialog_token` (reused across actions within the same open dialog instance).
-7. **`host.ui.open_panel` / `close_panel` / `toggle_panel`**: `{"id"}`; `toggle_panel` returns `{"ok": true, "open": true|false}`.
-8. **`host.ui.refresh`**: `{"surface"}` asynchronously re-renders an already-opened surface; returns `{"ok": true}` or `{"ok": true, "skipped": true}` if notebook scope does not match.
-9. **`host.sidebar.set_badges` / `get_badges`**: `{"badge_id": "review-mark", "notebook_root"?, "clear"?, "patch"?, "entries": {...}}` (`<= 512` entries, `text <= 4` no Emoji, `tooltip <= 120` no Emoji, `tone` in `accent|success|warning|danger`).
-9.1. **`host.sidebar.set_file_icons` / `get_file_icons`** (requires `contributes.file_icons`): `entries` (`<= 2048`, `"."` for notebook itself), `tint` (`none|blue|teal|green|amber|red|purple`), `prefs` (`picker`, `sync_tabs`).
+> Note: Methods marked `"ui:*" (default-allowed)` are checked against that permission in code, which is auto-granted without declaring it in `manifest.permissions`. Methods marked **explicit** or sensitive permissions must be declared in `manifest.permissions`. See the [Host Method Index](https://docs.block.cooool.top/en/plugins/protocol-and-ui#host-method-index) for all 78 `host.*` methods.
+
+1. **`host.titlebar.get_items`** (checks `"ui:titlebar"`, default-allowed; `{}`): returns `{"items": [...], "groups": [...]}`.
+   - Each `item` includes `id`, `label`, `locked`, `hidden`, `plugin`, `icon` (for `switch` rows), **`group`** (`"markdown"` or `"source"` settings card group; plugin buttons use `"markdown"`), and **`preview`** (array of `UIIcon`s actually rendered in the titlebar, ready to pass into `icon_strip.icons`—e.g. `zoom` is `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}]`, slots not drawn in the titlebar such as `reveal` return `[]`, and plugin buttons return a 1-element inline-vector array).
+   - `groups` lists each mode group (`"markdown"` / `"source"`), localized `label` (`"Markdown"` / `"Source Mode"`), and left-to-right titlebar `order` (with active plugin buttons expanded as `"plugin:<pluginID>/<buttonID>"`). Older hosts omit `group`, `preview`, and `groups` (and earlier hosts omit `icon`).
+   - Built-in slot IDs: `feedback`, `ai`, `send_all`, `wrap`, `zoom`, `reveal`, `more` (`locked: true`); plugin buttons use `plugin:<pluginID>/<buttonID>`.
+2. **`host.titlebar.set_hidden`** (requires `contributes.titlebar_manager: true` and **explicit** `"ui:titlebar"`): `{"hidden": [...]}` persisted in `contrib-state.json` (`"more"` is permanently locked and cannot be hidden); returns `{"ok": true, "items": [...], "groups": [...]}`.
+3. **`host.titlebar.set_button`** (checks `"ui:titlebar"`, default-allowed; requires `id` in `contributes.titlebar_buttons`): `{"id", "badge"?, "active"?}` (`badge <= 3` runes).
+4. **`host.status.set`** (checks `"ui:status"`, default-allowed; requires `id` in `contributes.status_items`): `{"id", "text"?, "tooltip"?, "icon"?, "show_plugin_icon"?, "clear_icon"?}` (`text <= 40` runes, no Emoji; `tooltip <= 200` runes).
+5. **`host.ui.toast`** (no permission check): in-app top-right notification banner (`message` required `<= 160`, optional `body <= 1000`, `tone`, `icon`, `show_plugin_icon`, `action` callback to `plugin.action` with `surface: "toast"`). Returns `{"ok": true, "shown", "queued"}`.
+5.1. **`host.ui.open_settings`** (no permission check; requires `"open_settings"` capability and `"settings_page"` surface): opens the plugin's Settings page.
+6. **`host.ui.open_dialog` / `host.ui.close_dialog`** (checks `"ui:notify"`, default-allowed; requires `id` in `contributes.dialogs`): `{"id"}`. `open_dialog` returns `{"ok": true, "dialog_token": "dlg-..."}`. Actions from that `dialog:*` surface carry the active dialog instance's `dialog_token` (reused across actions within the same open dialog instance).
+7. **`host.ui.open_panel` / `close_panel` / `toggle_panel`** (checks `"ui:panels"`, default-allowed; requires `id` in `contributes.panels`): `{"id"}`; `toggle_panel` returns `{"ok": true, "open": true|false}`.
+8. **`host.ui.refresh`** (no permission check; requires declared `surface`): `{"surface"}` asynchronously re-renders an already-opened surface; returns `{"ok": true}` or `{"ok": true, "skipped": true}` if notebook scope does not match.
+9. **`host.sidebar.set_badges` / `get_badges`** (checks `"ui:sidebar"`, default-allowed; `set_badges` requires `badge_id` in `contributes.file_badges`): `{"badge_id": "review-mark", "notebook_root"?, "clear"?, "patch"?, "entries": {...}}` (`<= 512` entries, `text <= 4` no Emoji, `tooltip <= 120` no Emoji, `tone` in `accent|success|warning|danger`).
+9.1. **`host.sidebar.set_file_icons` / `get_file_icons`** (checks `"ui:sidebar"`, default-allowed; `set_file_icons` requires `contributes.file_icons`): `entries` (`<= 2048`, `"."` for notebook itself), `tint` (`none|blue|teal|green|amber|red|purple`), `prefs` (`picker`, `sync_tabs`).
 9.2. **`host.sidebar.set_ignored_dirs` / `host.sidebar.get_ignored_dirs`** both require an explicit `"ui:sidebar"` declaration. See the [JSON-RPC protocol](https://docs.block.cooool.top/en/plugins/protocol-and-ui) for request and response shapes.
 10. **`host.editor.selection`** (`"editor:read"`): `{"note", "text", "has_focus"}`.
 11. **`host.editor.insert`** (`"editor:write"`): `{"text", "note"?, "mode": "replace"|"insert"}` (`text` required string `<= 4 MiB`; parses Markdown into native blocks and saves immediately; rejects folder/out-of-notebook context menu targets with `-32004`).
-12. **`host.menubar.set`**: `{"id", "title"?, "tooltip"?, "menu"?, "clear_menu"?}` (`title <= 16` no Emoji, `menu <= 20` dynamic items in memory, `payload <= 4096` bytes).
-13. **`host.ui.set_background_error` / `clear_background_error`**: `{"key", "label", "detail", "retry_action", "retry_label", "retry_payload", "severity": "danger"|"warning"}` (max 32 keys/plugin; omitting `key` on clear clears all).
-14. **`host.ui.theme_skin_state` / `set_theme_skin`** (requires `contributes.themes` and `"ui:appearance"`): gets or switches active plugin theme skin.
-15. **`host.stage.*`** (requires `contributes.stages` and matching UI permission): `host.stage.open` (`{"id", "route", "state"}`; `state` accepts any valid JSON `<= 2 MiB`), `close`, `state`, and `emit` (`{"id", "event", "payload"}`; `payload <= 2 MiB`).
+12. **`host.menubar.set`** (checks `"ui:menubar"`, default-allowed; requires `id` in `contributes.menubar_items`): `{"id", "title"?, "tooltip"?, "menu"?, "clear_menu"?}` (`title <= 16` no Emoji, `menu <= 20` dynamic items in memory, `payload <= 4096` bytes).
+13. **`host.ui.set_background_error` / `clear_background_error`** (no permission check): `{"key", "label", "detail", "retry_action", "retry_label", "retry_payload", "severity": "danger"|"warning"}` (max 32 keys/plugin; omitting `key` on clear clears all).
+14. **`host.ui.theme_skin_state` / `set_theme_skin`** (requires `contributes.themes` and **explicit** `"ui:appearance"`): gets or switches active plugin theme skin.
+15. **`host.stage.*`** (requires `contributes.stages` and **explicit** `"ui:appearance"`, `"ui:commands"`, or `"ui:panels"`): `host.stage.open` (`{"id", "route", "state"}`; `state` accepts any valid JSON `<= 2 MiB`), `close`, `state`, and `emit` (`{"id", "event", "payload"}`; `payload <= 2 MiB`).
 
 ### 7.5 Editor Backdrop Methods (`host.ui.backdrop` / `host.ui.set_backdrop`)
 
-Controls editor vector or paper-grain backdrops declared in `contributes.backdrops` (no extra permission required):
+Controls editor vector or paper-grain backdrops declared in `contributes.backdrops` (checks `"ui:appearance"`, default-allowed; `set_backdrop` requires `contributes.backdrops`):
 
 - **`host.ui.backdrop`** (`{}`): returns persisted backdrop state `{"id", "enabled", "pattern", "density", "contrast", "opacity", "tint", "dark_glow"}`.
 - **`host.ui.set_backdrop`**: updates and persists backdrop state in `contrib-state.json` (omitted style fields keep existing or manifest defaults; disabled automatically when the plugin is turned off) and returns the normalized state object.

@@ -20,7 +20,7 @@ External plugins live in standalone public GitHub repositories (add the `blockmd
 | --- | --- | --- |
 | 1. Overview & AI Guide | [plugins/README.md](plugins/README.md) | No-PR publishing boundary, 3 development paths, 8 hard rules, validation checklist, sandbox boundaries, and runtime migration |
 | 2. Manifest & Permissions | [plugins/manifest.md](plugins/manifest.md) | Directory layout, `manifest.json` required and allowlist fields, 30 valid permissions (15 sensitive across 5 groups + 3 silent events + 12 default-allowed), and `permission_reasons` |
-| 3. Protocol, UI & SDK | [plugins/protocol-and-ui.md](plugins/protocol-and-ui.md) | Bidirectional JSON-RPC 2.0, `host.*` methods, 16 `UIItem` controls, bilingual `block-sdk.js` starter skeleton, and platform behavior |
+| 3. Protocol, UI & SDK | [plugins/protocol-and-ui.md](plugins/protocol-and-ui.md) | Bidirectional JSON-RPC 2.0, [Host Method Index](plugins/protocol-and-ui.md#host-method-index), 16 `UIItem` controls, bilingual `block-sdk.js` starter skeleton, and platform behavior |
 | 4. Host UI Contributions | [plugins/ui-contributions.md](plugins/ui-contributions.md) | Multi-surface model, `manifest.contributes` fields, `plugin.command` / workspace events, and host UI RPC methods |
 | 5. Language Extensions | [plugins/languages.md](plugins/languages.md) | Zero-process, zero-permission declarative syntax highlighting (`contributes.languages` + `grammars/*.json`) and file associations |
 | 6. Check & Store | [plugins/check-and-store.md](plugins/check-and-store.md) | `block-plugin-check` usage and coverage limits, bilingual gate, `blockmd-plugin` crawling rules (top 100 cap), and offline catalog fallback |
