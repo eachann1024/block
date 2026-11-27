@@ -1271,7 +1271,7 @@ func (s *Session) textMetrics(kind model.BlockKind) (fontSize float32, weight in
 
 func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, isFocused, isHovered, readOnly, deleteArmed bool) {
 	pal := theme.Ocean()
-	dark := theme.IsDark()
+	dark := pal.Dark
 	fontSize, weight, lh := s.textMetrics(b.Kind)
 
 	wrap := ui.Column(c.Key("text-wrap")).FillWidth()
@@ -1873,7 +1873,7 @@ func stabilizeSystemUICJKPunctBeforeFontChange(spans []ui.Span, baseFont string)
 // ever splitting spans on selection, find, or annotations (so PaddingX and ligatures never shift).
 func buildPureSpan(sp model.Span, baseSize float32, baseWeight int, codeFG, codeBG ui.Color, codePadX, codePadY, codeRadius float32) (ui.Span, bool) {
 	pal := theme.Ocean()
-	dark := theme.IsDark()
+	dark := pal.Dark
 	u := ui.Span{Text: sp.Text}
 	if sp.Marks&model.MarkBold != 0 {
 		u.Weight = max(baseWeight, 600)
@@ -2009,6 +2009,7 @@ type cachedCodeSyntax struct {
 	code    string
 	canon   string
 	dark    bool
+	colors  syntaxColorKey
 	langGen uint64
 	spans   []ui.Span
 	ranges  []ui.TextRange
@@ -2206,7 +2207,7 @@ func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, b
 
 func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 	pal := theme.Ocean()
-	dark := theme.IsDark()
+	dark := pal.Dark
 	var out []ui.TextRange
 	pos := 0
 	for _, sp := range b.Spans {
@@ -2282,7 +2283,7 @@ func (s *Session) rangeHasFindMatch(idx, start, end int) bool {
 
 func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocused, isHovered, readOnly bool) {
 	pal := theme.Ocean()
-	dark := theme.IsDark()
+	dark := pal.Dark
 	id := b.ID
 	canon := codepreview.CanonicalLanguage(b.Language)
 	if canon == "mindmap" {
@@ -2672,8 +2673,12 @@ func (s *Session) cachedCodeSyntaxFor(id model.BlockID, code, canon string, dark
 	if s.codeSyntaxCache == nil {
 		s.codeSyntaxCache = make(map[model.BlockID]cachedCodeSyntax)
 	}
+	// Resolve colors once and key the cache on them, so a skin swap or recolor
+	// between reads can never pin stale highlight colors.
+	synPal := syntaxPalette(dark)
+	colors := syntaxColorKey{syn: synPal.Syntax(), add: synPal.DiffAddFG, del: synPal.DiffDelFG}
 	langGen := plugins.LanguageGeneration()
-	if entry, ok := s.codeSyntaxCache[id]; ok && entry.code == code && entry.canon == canon && entry.dark == dark && entry.langGen == langGen {
+	if entry, ok := s.codeSyntaxCache[id]; ok && entry.code == code && entry.canon == canon && entry.dark == dark && entry.colors == colors && entry.langGen == langGen {
 		return entry.spans, entry.ranges
 	}
 	var spans []ui.Span
@@ -2688,7 +2693,7 @@ func (s *Session) cachedCodeSyntaxFor(id model.BlockID, code, canon string, dark
 			spans = make([]ui.Span, 0, len(toks)*2+1)
 			cursor := 0
 			for i, tk := range toks {
-				col := syntaxTokenColor(tk.Kind, dark)
+				col := colors.color(tk.Kind)
 				ranges[i] = ui.TextRange{Start: tk.Start, End: tk.End, Color: col}
 				if tk.Start > cursor {
 					spans = append(spans, ui.Span{Text: string(r[cursor:tk.Start])})
@@ -2705,6 +2710,7 @@ func (s *Session) cachedCodeSyntaxFor(id model.BlockID, code, canon string, dark
 		code:    code,
 		canon:   canon,
 		dark:    dark,
+		colors:  colors,
 		langGen: langGen,
 		spans:   spans,
 		ranges:  ranges,
@@ -2803,7 +2809,39 @@ func mermaidNodeBox(c *ui.Context, label string, fontSize float32) {
 	})
 }
 
-func syntaxTokenColor(kind syntaxTokenKind, dark bool) ui.Color {
+// syntaxColorKey is the resolved highlight color set; it doubles as a cache key.
+type syntaxColorKey struct {
+	syn      theme.SyntaxColors
+	add, del ui.Color
+}
+
+func (k syntaxColorKey) color(kind syntaxTokenKind) ui.Color {
+	syn := k.syn
+	switch kind {
+	case tokKeyword:
+		return syn.Keyword
+	case tokString:
+		return syn.String
+	case tokComment:
+		return syn.Comment
+	case tokNumber:
+		return syn.Number
+	case tokType:
+		return syn.Type
+	case tokFunc:
+		return syn.Func
+	case tokInserted:
+		return k.add
+	case tokDeleted:
+		return k.del
+	default:
+		return syn.Default
+	}
+}
+
+// syntaxPalette returns the current palette, falling back to the stock palette
+// when the requested darkness differs from the active surface.
+func syntaxPalette(dark bool) theme.Palette {
 	pal := theme.Ocean()
 	if dark != pal.Dark {
 		if dark {
@@ -2812,6 +2850,11 @@ func syntaxTokenColor(kind syntaxTokenKind, dark bool) ui.Color {
 			pal = theme.OceanLight
 		}
 	}
+	return pal
+}
+
+func syntaxTokenColor(kind syntaxTokenKind, dark bool) ui.Color {
+	pal := syntaxPalette(dark)
 	syn := pal.Syntax()
 	switch kind {
 	case tokKeyword:
@@ -2840,7 +2883,7 @@ func codeSyntaxRanges(src, lang string) []ui.TextRange {
 	if len(toks) == 0 {
 		return nil
 	}
-	dark := theme.IsDark()
+	dark := theme.Ocean().Dark
 	out := make([]ui.TextRange, len(toks))
 	for i, tk := range toks {
 		out[i] = ui.TextRange{Start: tk.Start, End: tk.End, Color: syntaxTokenColor(tk.Kind, dark)}
@@ -2856,7 +2899,7 @@ func codeSyntaxSpans(src, lang string) []ui.Span {
 	if len(toks) == 0 {
 		return []ui.Span{{Text: src}}
 	}
-	dark := theme.IsDark()
+	dark := theme.Ocean().Dark
 	r := []rune(src)
 	var spans []ui.Span
 	cursor := 0
@@ -3874,10 +3917,14 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 	barW, barH := s.measuredOrEstSize("image-toolbar", 307, 38)
 	x, y := appUi.ResolveOrigin(spec, barW, barH, winW, winH)
 
+	imgToolbarBorder := pal.Hairline
+	if pal.Dark || theme.IsSkinActive() {
+		imgToolbarBorder = pal.MenuBorder
+	}
 	ui.Overlay(c, func() {
 		bar := ui.Row(c.Key(fmt.Sprintf("image-toolbar-%d", id))).Absolute().Left(x).Top(y).
 			Height(38).PaddingX(theme.Space6).Gap(theme.Space4).AlignItems(ui.Center).
-			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).Cursor(ui.CursorDefault).
+			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, imgToolbarBorder).Cursor(ui.CursorDefault).
 			Transition(appUi.PopoverSpringTransition())
 		appUi.Elevate(bar, theme.ElevationPopover)
 		appUi.Probe(bar, "image-toolbar")
