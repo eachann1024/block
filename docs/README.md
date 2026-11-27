@@ -18,8 +18,8 @@
 | 章节 | 文件 | 说明 |
 | --- | --- | --- |
 | 1. 开发前必读与 AI 指南 | [plugins/README.md](plugins/README.md) | 无需提 PR 上架边界、三类开发路径、8 条必避红线、不可跳过开发步骤、4 步验收清单与宿主硬边界 |
-| 2. 清单与权限 | [plugins/manifest.md](plugins/manifest.md) | 目录结构、`manifest.json` 必填与低频字段、27 项有效权限（5 类 12 项敏感权限 + 3 项静默事件 + 12 项默认放行）与 `permission_reasons` |
-| 3. 协议、UI 与骨架 | [plugins/protocol-and-ui.md](plugins/protocol-and-ui.md) | 双向 JSON-RPC 2.0、`host.*` 方法、16 种 `UIItem` 控件、Python 标准库骨架与兼容性/平台实现说明 |
+| 2. 清单与权限 | [plugins/manifest.md](plugins/manifest.md) | 目录结构、`manifest.json` 必填与白名单字段、30 项有效权限（5 类 15 项敏感权限 + 3 项静默事件 + 12 项默认放行）与 `permission_reasons` |
+| 3. 协议、UI 与骨架 | [plugins/protocol-and-ui.md](plugins/protocol-and-ui.md) | 双向 JSON-RPC 2.0、`host.*` 方法、16 种 `UIItem` 控件、`block-sdk.js` 与遗留 Python 骨架、兼容性/平台实现说明 |
 | 4. 宿主界面扩展 | [plugins/ui-contributions.md](plugins/ui-contributions.md) | 多表面模型、`manifest.contributes` 字段、`plugin.command`/工作区事件、通用及特定场景宿主方法 |
 | 5. 语言扩展 | [plugins/languages.md](plugins/languages.md) | 零子进程、零权限声明式语法高亮扩展（`contributes.languages` + `grammars/*.json`）与宿主文件关联参考 |
 | 6. 检查与上架 | [plugins/check-and-store.md](plugins/check-and-store.md) | `block-plugin-check` 命令与通过标准、双语门禁、`blockmd-plugin` 采集规则（前 100 上限）与离线兜底索引 / `builtin://` 机制 |

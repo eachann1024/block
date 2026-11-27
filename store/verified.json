@@ -6,6 +6,5 @@
   "block-titlebar": "blockmd-plugins/block-titlebar",
   "block-tarot": "blockmd-plugins/block-tarot",
   "block-copy-path": "blockmd-plugins/block-copy-path",
-  "block-file-icons": "blockmd-plugins/block-file-icons",
-  "block-mindmap": "blockmd-plugins/block-mindmap"
+  "block-file-icons": "blockmd-plugins/block-file-icons"
 }

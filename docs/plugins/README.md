@@ -5,7 +5,7 @@
 
 本目录按主题拆分了 Block 应用商店插件（`blockmd`）的完整开发规范。你可以按需分章阅读，也可以直接使用同源合成单文件 [plugin-dev-for-ai.md](../plugin-dev-for-ai.md)。
 
-> **AI 开发助手**：直接拉取纯文本全量规范 [https://docs.block.cooool.top/plugin-dev-for-ai.md](https://docs.block.cooool.top/plugin-dev-for-ai.md)，单文件已包含全部 Schema、RPC、16 种控件与 Python 骨架；若按章浏览，写代码前**必须**按下方「不可跳过」步骤读完对应章节，**严禁**靠猜测编造字段。
+> **AI 开发助手**：直接拉取纯文本全量规范 [https://docs.block.cooool.top/plugin-dev-for-ai.md](https://docs.block.cooool.top/plugin-dev-for-ai.md)，单文件已包含全部 Schema、RPC、16 种控件与内置 QuickJS SDK 骨架；若按章浏览，写代码前**必须**按下方「不可跳过」步骤读完对应章节，**严禁**靠猜测编造字段。
 
 ---
 <!-- ai-guide:skip-end -->
@@ -18,26 +18,26 @@
 
 | 开发路径 | 适用场景 | 交付结构 | 关键说明 |
 | --- | --- | --- | --- |
-| 功能 / 社区插件 | 同步、图床、导出、AI 面板、宿主 UI 扩展等交互功能 | 独立仓库 + `manifest.json` + `entry.command`（JSON-RPC 2.0 子进程） | 加 `blockmd-plugin` Topic 发正式 Release 参与自动采集 |
+| 功能 / 社区插件 | 同步、图床、导出、AI 面板、宿主 UI 扩展等交互功能 | 独立仓库 + `manifest.json` + `entry.js`（内置 `wazero` + `quickjs-ng` 沙盒；重计算可用 `entry.wasm`） | 零外部运行时依赖；加 `blockmd-plugin` Topic 发正式 Release 参与自动采集 |
 | 纯语法高亮语言扩展 | 为小众语言提供代码块与源码编辑器高亮 | 独立仓库 + `manifest.json`（`category: "language"`）+ `grammars/*.json` | 零子进程、零权限，安装自动启用，详见 [语言扩展](languages.md) |
 | `blockmd-plugins/*` 官方认证 | 官方维护且在 `store/verified.json` 1:1 绑定的插件 | 独立仓库 + `manifest.json` + 入口或语法 | 强制要求中英双语 `README` 与 `locale="en"` 英文界面门禁 |
 
 ### 1.2 开发前必须规避的 8 条红线
 
 1. **禁向主仓提 PR 或写进主仓 `plugins/`**：外部插件一律独立建仓发布。
-2. **禁写 WebView / HTML / 自绘启停开关与卸载按钮**：宿主仅渲染声明式 `UIPage` JSON，启停开关、顶栏控制与卸载菜单由宿主托管（见下文「原生设置挂载、商店展示与 README 渲染」）。
+2. **禁自绘启停开关、卸载按钮或越界直写宿主 UI**：设置页与常规扩展优先声明 `UIPage` JSON，启停开关、顶栏控制与卸载菜单由宿主托管（见下文「原生设置挂载、商店展示与 README 渲染」）；确需自定义交互画布时，仅可使用 `contributes.stages` 声明的离线 `block-plugin://` WebView 舞台（禁止加载外网资源，详见 [宿主界面扩展](ui-contributions.md)）。
 3. **严禁静态文案出现任何 Emoji**：违规直接拒载；图标仅用 `manifest.icon` 双色 SVG，`view_box` 为 `"0 0 24 24"`，`stroke_paths` 至少 1 条（见下文「进程通信、环境变量与强制校验细则」与 [清单与权限](manifest.md) 的「字段约束」）。
 4. **严禁编造未定义字段或非法键值**：`manifest.json`（`<= 256 KiB` 禁重复键）与 `UIPage` 启用 `DisallowUnknownFields`；`id` 须匹配 `^[a-z0-9][a-z0-9-]{1,47}$` 且不得为 `block-diagnostics`；`surfaces` 仅允许 `["settings_page"]` 或空数组；`category` 选 5 个展示分类之一，纯语言扩展必填 `"language"`，禁用已停用的 `sync` / `publish`（见 [清单与权限](manifest.md) 的「字段约束」）。
-5. **禁污染 `stdout`、禁假设目标机已装第三方依赖**：`stdout` 仅输出 `\n` 分隔 JSON-RPC 2.0，日志全写 `stderr` 并即时刷新，Python 推荐 `["python3", "-u", "main.py"]`；`entry.command[0]` 须为 `PATH` 解释器或包内相对普通文件，禁符号链接/越界；优先用标准库或将依赖打包进插件目录（见下文「进程通信、环境变量与强制校验细则」与「超时与体积上限」）。
-6. **禁依赖 `Path.home()` 或非白名单环境变量**：Windows 不传 `USERPROFILE` / `APPDATA`，读写数据与导出输出须用 `plugin.initialize` 传入的 `data_dir` 与 `downloads_dir`（见下文「进程通信、环境变量与强制校验细则」）。
-7. **禁过度申请权限、禁忽略关闭信号**：仅按需声明 5 类 12 项敏感权限，移除默认放行的冗余权限 `storage` / `ui:*` / `system:notify` / `system:badge`，敏感权限建议填 `permission_reasons`；收到 `plugin.shutdown` 须在 2s 内退出且不再调 `host.*`（见 [清单与权限](manifest.md) 的「字段约束」与下文「超时与体积上限」）。
+5. **禁污染 `stdout`、禁假设目标机已装 Python / Node**：推荐优先使用内置 `wazero` + `quickjs-ng` 零依赖沙盒（`entry.js` + `/runtime/block-sdk.js`，重计算用 `entry.wasm`），`entry.command` 仅作遗留兼容；`stdout` 仅输出 `\n` 分隔 JSON-RPC 2.0，日志全写 `stderr` 并即时刷新（见下文「进程通信、环境变量与强制校验细则」与「超时与体积上限」）。
+6. **禁依赖 `Path.home()` 或非白名单环境变量**：沙盒与子进程均不提供 `USERPROFILE` / `APPDATA`，读写数据与导出输出须用 `plugin.initialize` 传入的 `data_dir` / `downloads_dir` 或 `host.fs.*`（见下文「进程通信、环境变量与强制校验细则」）。
+7. **禁过度申请权限、禁忽略关闭信号**：仅按需声明 5 类 15 项敏感权限，移除默认放行的冗余权限 `storage` / `ui:*` / `system:notify` / `system:badge`，敏感权限建议填 `permission_reasons`；收到 `plugin.shutdown` 须在 2s 内退出且不再调 `host.*`（见 [清单与权限](manifest.md) 的「字段约束」与下文「超时与体积上限」）。
 8. **禁让初始页按钮在空/默认配置下崩溃或执行破坏性操作**：`block-plugin-check` 会以无参与默认值渲染、逐项切换选项并调用初始页全部 `header_actions` 与顶层 `actions`，且忽略 `visible_when`；配置未齐时应安全返回 `{ok: false, message: "..."}`（见 [检查与上架](check-and-store.md) 的「本地协议检查命令」）。
 
 ### 1.3 标准开发步骤（标「不可跳过」的严禁省略）
 
 1. **【不可跳过】按路径通读对应规范再写代码**：交互式插件读 [清单与权限](manifest.md) + [协议、UI 与骨架](protocol-and-ui.md)（涉及顶栏/侧栏/状态栏/命令/内置设置再读 [宿主界面扩展](ui-contributions.md)）；纯语言扩展读 [清单与权限](manifest.md) + [语言扩展](languages.md)。
 2. **创建独立仓库结构与清单**：根目录放 `manifest.json` 与 `README.md`（官方或双语插件同步放纯英文 `README.en.md`）。
-3. **实现核心逻辑与声明式界面**：交互式插件从 [协议、UI 与骨架](protocol-and-ui.md) 的「Python 标准库双向通信骨架」起步实现 `initialize` / `render` / `action` / `shutdown`（及所需 `command` / `event`）；纯语言扩展仅写 `manifest.json` 与 `grammars/*.json`。
+3. **实现核心逻辑与声明式界面**：交互式插件从 [协议、UI 与骨架](protocol-and-ui.md) 的「`entry.js` + `/runtime/block-sdk.js` 通信骨架」起步实现 `initialize` / `render` / `action` / `shutdown`（及所需 `command` / `event`）；纯语言扩展仅写 `manifest.json` 与 `grammars/*.json`。
 4. **【不可跳过】按 `1.4` 逐项完成开发后验收**：静态自查 → `block-plugin-check` `[PASS]` → Block 桌面端实机加载验收，**禁止跳过**直接发版；本地有条件时必须亲自跑完第 1–3 步，若缺少 Go 工具链或桌面端环境，须跑完第 1 步并如实交接未测项，**严禁**伪造通过。
 5. **【发布时不可跳过】独立仓打 Topic 与发正式 Release**：推送到公开/非 Fork/未归档仓库、核对 `manifest.repo` 一致、添加 `blockmd-plugin` Topic、发布非 Draft / 非 Prerelease 的 GitHub Release（详见 [检查与上架](check-and-store.md) 的「发布到应用商店（`blockmd-plugin` 自动采集）」）。
 
@@ -48,7 +48,7 @@
 - [ ] `manifest.json` 为单个合法 JSON 对象（`<= 256 KiB`、无重复键、无未定义字段），`app` 为 `"blockmd"`、`id` 匹配 `^[a-z0-9][a-z0-9-]{1,47}$` 且非 `block-diagnostics`、`category` 合法、`surfaces` 仅 `["settings_page"]` 或 `[]`、`icon` 为 `"0 0 24 24"` 且至少含 1 条 `stroke_paths`。
 - [ ] 全量静态文案（`manifest.json` 与 `UIPage` 静态字段）扫描 0 Emoji。
 - [ ] 仅声明用到的 5 类敏感权限并为敏感权限填写 `permission_reasons`，已移除 `storage` / `ui:*` / `system:notify` / `system:badge` 等默认放行冗余权限。
-- [ ] 入口命令为 `PATH` 解释器或包内相对普通文件，无符号链接/越界；`stdout` 仅输出 `\n` 分隔 JSON-RPC 2.0，日志写 `stderr` 且即时刷新；不依赖 `Path.home()` 或非白名单环境变量，读写使用 `data_dir` / `downloads_dir`；无未打包第三方依赖且包体积未超限。
+- [ ] 入口采用 `entry.js`（或 `entry.wasm` / 遗留 `entry.command`），无符号链接/越界；`stdout` 仅输出 `\n` 分隔 JSON-RPC 2.0，日志写 `stderr` 且即时刷新；不依赖 `Path.home()` 或非白名单环境变量，读写使用 `data_dir` / `downloads_dir` 与 `host.fs.*`；HTTP 与子进程严格受 `network_domains` / `exec_allowlist` 约束，包体积未超限。
 - [ ] 根目录已放置 `README.md`（官方或双语插件同步提供纯英文 `README.en.md` 且配图路径各自有效）。
 
 **第 2 步：自动协议检查（`block-plugin-check`，有 Block 源码或克隆后必跑）**
@@ -82,9 +82,8 @@
 
 ### 2.1 进程通信、环境变量与强制校验细则
 
-- **跨语言双向 JSON-RPC 2.0**：宿主以独立子进程启动 `manifest.json` 中的 `entry.command`（推荐 `["python3", "-u", "main.py"]`、`["node", "main.mjs"]` 或编译后可执行文件），通过 UTF-8 **按行分隔（`\n`）的 JSON-RPC 2.0** 在 `stdin` / `stdout` 双向通信，`stderr` 仅用于调试（宿主用 64 KiB 环形缓冲区保留尾部）。切换桌面笔记本或界面语言（`zh` / `en`）不会立即重启全部后台进程：仅在下次调用该插件且目标笔记本或语言发生变化时，宿主才关闭旧进程并按新上下文重新初始化（当前打开的活跃表面会随切换触发重渲染，从而立即按新上下文重启）。
-- **入口命令校验**：`entry.command[0]` 必须是 `PATH` 可执行文件名（走 `LookPath`），或插件目录内解析后的相对普通文件（如 `"./bin/plugin"`，禁止符号链接、冒号或越出插件目录）。
-- **环境变量白名单**：宿主仅显式传入 `PATH`、`HOME`、`TMPDIR`、`PYTHONUNBUFFERED=1`、`BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR`、`BLOCKMD_DOWNLOADS_DIR`，不继承其他宿主环境变量。Windows 上不传入 `USERPROFILE` / `APPDATA` 等目录变量，插件应直接使用 `plugin.initialize` 传入的 `data_dir` / `downloads_dir` 或上述环境变量，避免依赖 `Path.home()`。
+- **内置零依赖沙盒运行时（`wazero` + `quickjs-ng`）**：推荐交互式插件使用 `manifest.entry.js`（`.js` / `.mjs`），由宿主内嵌 `wazero` WASI 沙盒运行 `quickjs-ng` 执行，自动注入 `/runtime/block-sdk.js` 并以只读方式挂载 `/plugin` 与 `/runtime`（内存上限 512 页 = 32 MiB，QuickJS 堆 16 MiB / 栈 1 MiB）；重计算模块可使用 `manifest.entry.wasm`（独立 WASI `.wasm` 模块，上限 32 MiB）。旧 `entry.command` 保留为遗留兼容（`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件，禁止符号链接、冒号或越出插件目录）。均通过 UTF-8 **按行分隔（`\n`）的 JSON-RPC 2.0** 在 `stdin` / `stdout` 双向通信，`stderr` 仅用于调试（宿主用 64 KiB 环形缓冲区保留尾部）。切换桌面笔记本或界面语言（`zh` / `en`）不会立即重启全部后台进程：仅在下次调用该插件且目标笔记本或语言发生变化时，宿主才关闭旧进程并按新上下文重新初始化（当前打开的活跃表面会随切换触发重渲染，从而立即按新上下文重启）。
+- **环境变量白名单**：`entry.js` / `entry.wasm` 沙盒仅注入 `BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR`、`BLOCKMD_DOWNLOADS_DIR`；遗留 `entry.command` 子进程额外注入 `PATH`、`HOME`、`TMPDIR`、`PYTHONUNBUFFERED=1`，不继承其他宿主环境变量。Windows 上不传入 `USERPROFILE` / `APPDATA` 等目录变量，插件应直接使用 `plugin.initialize` 传入的 `data_dir` / `downloads_dir` 或上述环境变量，避免依赖 `Path.home()`。
 - **两项强制校验规则（违规直接拒绝加载）**：
   1. **禁止 Emoji**：`manifest.json` 的 `name`、`author`、`summary`、`permission_reasons`、`contributes` 静态文案，以及 `UIPage` 的静态界面文案（`page.title`、`card.title`、控件 `label`、按钮 `label`、`placeholder`、`empty_text`、`kv.rows[].label`、`metrics[].label`、`checklist.options[].badge`、`treemap` 瓦片 `label`/`detail` 与 `summary.total_label`、`preview.badge`/`cards[].badge`）**严禁包含 Emoji**（覆盖标准与扩展 Emoji 区块、变体选择符 `U+FE00–U+FE0F`、区域指示符/标签序列、ZWJ/键帽组合及常见 Emoji 符号如 `⭐`/`⌚`/`‼` 等），图标仅通过 `manifest.icon` 双色 SVG 路径定义。用户笔记内容、路径等动态字段（如 `page.status`、`card.meta`、`options[].label`/`detail`、`kv.rows[].value`、`metrics[].value`、`preview` 标题与正文、`log_list.entries`）放行用户原有字符，但插件自写文案仍应避免 Emoji。
   2. **严格 JSON 解码**：`manifest.json`（上限 256 KiB，须为单个 JSON 对象，且禁止重复键）与 `UIPage` 启用 `DisallowUnknownFields`，**严禁出现未定义字段名**（外层 JSON-RPC 包与 `host.*` 参数使用普通解码；`UIItem` 为共享结构，已知字段仅在消费它的 `kind` 上生效）。

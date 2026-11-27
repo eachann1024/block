@@ -109,7 +109,6 @@ const (
 	StoreHeroToneFileIcons StoreHeroTone = "file-icons"
 	StoreHeroToneSync      StoreHeroTone = "sync"
 	StoreHeroToneTitlebar  StoreHeroTone = "titlebar"
-	StoreHeroToneMindmap   StoreHeroTone = "mindmap"
 )
 
 // StoreHeroColors holds the atmospheric backdrop gradient, ambient blooms,
@@ -203,41 +202,6 @@ func (p Palette) StoreHero(tone StoreHeroTone) StoreHeroColors {
 			SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.80),
 			SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.96),
 			SurfaceBtnBorder:  ui.RGBA(158, 170, 192, 0.36),
-		}
-	case StoreHeroToneMindmap:
-		if p.Dark {
-			return StoreHeroColors{
-				BGStart:           ui.Hex("#27201b"),
-				BGMid:             ui.Hex("#201a16"),
-				BGEnd:             ui.Hex("#2a211b"),
-				GlowPrimary:       ui.RGBA(242, 155, 75, 0.18),
-				GlowSecondary:     ui.RGBA(146, 118, 224, 0.10),
-				Border:            ui.RGBA(232, 158, 92, 0.24),
-				HoverBorder:       ui.RGBA(232, 158, 92, 0.44),
-				AccentBG:          ui.Hex("#df7c3e"),
-				AccentHoverBG:     ui.Hex("#ec8b4e"),
-				AccentPressedBG:   ui.Hex("#c86a2f"),
-				AccentFG:          ui.Hex("#111416"),
-				SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.08),
-				SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.14),
-				SurfaceBtnBorder:  ui.RGBA(255, 255, 255, 0.14),
-			}
-		}
-		return StoreHeroColors{
-			BGStart:           ui.Hex("#fffdf7"),
-			BGMid:             ui.Hex("#fdf5e8"),
-			BGEnd:             ui.Hex("#f7e8d2"),
-			GlowPrimary:       ui.RGBA(242, 155, 75, 0.17),
-			GlowSecondary:     ui.RGBA(133, 101, 216, 0.09),
-			Border:            ui.RGBA(218, 146, 78, 0.28),
-			HoverBorder:       ui.RGBA(212, 128, 56, 0.48),
-			AccentBG:          ui.Hex("#b45d27"),
-			AccentHoverBG:     ui.Hex("#af571f"),
-			AccentPressedBG:   ui.Hex("#aa4f1b"),
-			AccentFG:          ui.Hex("#ffffff"),
-			SurfaceBtnBG:      ui.RGBA(255, 255, 255, 0.78),
-			SurfaceBtnHoverBG: ui.RGBA(255, 255, 255, 0.96),
-			SurfaceBtnBorder:  ui.RGBA(206, 166, 126, 0.36),
 		}
 	default: // StoreHeroToneFileIcons
 		if p.Dark {

@@ -14,7 +14,7 @@ CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/�
 
 终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。若清单仍声明了已默认放行的权限（如 `storage`、`ui:*`、`system:notify`、`system:badge`），校验器会输出 `[WARN]` 提示删减（不阻断通过）。
 
-- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `permission_reasons` 键匹配、字数与禁 Emoji 规则）、目录安装、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无需子进程，仅校验清单、双语文档与语法编译）。
+- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `network_domains`、`exec_allowlist`、`permission_reasons` 键匹配、字数与禁 Emoji 规则）、`languages` / `file_icons` / `themes` / `stages`（含 `web/` 离线四层外网隔离与体积校验）、目录安装、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无需运行时入口，仅校验清单、双语文档与语法编译；`entry.js` / `entry.wasm` 在内置 `wazero` + `quickjs-ng` 沙盒中实跑验证）。
 - **双语门禁**：当 `manifest.repo` 属于官方仓库（`blockmd-plugins/*`）时，校验器会**自动启用双语检查**（官方仓库 CI 建议显式追加 `-bilingual` 参数，避免清单漏写 `repo` 时跳过双语门禁；社区插件也可追加 `-bilingual` 主动开启）：
   1. 校验清单中 `name.en`、`summary.en`、`contributes.*.en` 及已声明的 `permission_reasons[*].en` 均为非空纯英文且不含中文字符或中文标点；
   2. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；若 README 引用了本地图片或 SVG，本地资产须存在，位图与含中文资源须为中英文版本分别提供独立路径，纯英文 UTF-8 `.svg`（零中文字符及全角标点）可由 `README.md` 与 `README.en.md` 共用同一路径（英文版引用的 `.svg` 不得包含中文字符或全角标点）；
@@ -29,7 +29,7 @@ Block 应用商店采用无审批自动采集机制。**硬门槛与采集上限
 
 发布步骤：
 
-1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过「本地协议检查命令」检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，其上架认证以 `verified.json` 为准）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），README 引用的位图及含中文资源须提供独立的中英文版本（纯英文 `.svg` 可共用），有子进程 UI 的插件还须支持 `locale="en"` 英文界面**；已审核作者（`eachann1024/*`）与社区插件同样建议提供双语文档、双语配图与 `permission_reasons`。
+1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过「本地协议检查命令」检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，其上架认证以 `verified.json` 为准）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），README 引用的位图及含中文资源须提供独立的中英文版本（纯英文 `.svg` 可共用），交互式插件还须支持 `locale="en"` 英文界面**；已审核作者（`eachann1024/*`）与社区插件同样建议提供双语文档、双语配图与 `permission_reasons`。
 2. 在 GitHub 仓库主页右侧 **About -> Topics** 添加标签：**`blockmd-plugin`**。
 3. 发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致）：
    - **官方推荐自动版本号与发布门禁**：复用 `blockmd-plugins/block-sync` 的 `.github/workflows/release.yml`（`Daily Release`）。仓库 `manifest.json` 仅保留主次版本基线（如 `"1.2.0"`），日常改动直接推送 `main`；工作流每天 `00:00 UTC`（或手动 `workflow_dispatch`）检测代码或双语 README 变更，**打包前强制执行 `README.md` / `README.en.md` 与 `locale="en"` 英文界面门禁（未通过即中止发布）**，通过后以 `<major>.<minor>.<提交总数>` 生成候选版本（若不高于已有最高版本则递增）动态写入产物包并发布 Release，不向 `main` 回写提交。

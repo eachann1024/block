@@ -33,7 +33,6 @@ var storeHeroCatalog = []storeHeroSpec{
 	{pluginID: "block-file-icons", heroFile: "hero-block-file-icons.svg", tone: theme.StoreHeroToneFileIcons},
 	{pluginID: "block-sync", heroFile: "hero-block-sync.svg", tone: theme.StoreHeroToneSync},
 	{pluginID: "block-titlebar", heroFile: "hero-block-titlebar.svg", tone: theme.StoreHeroToneTitlebar},
-	{pluginID: "block-mindmap", heroFile: "hero-block-mindmap.svg", tone: theme.StoreHeroToneMindmap},
 }
 
 var (

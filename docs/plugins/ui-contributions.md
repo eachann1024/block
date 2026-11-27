@@ -8,7 +8,7 @@
 
 ## 7. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区自定义矢量背景、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](manifest.md) 的「字段约束」：所有 `ui:*` 界面扩展均已默认放行，仅编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）需要按需声明。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](manifest.md) 的「字段约束」：所有 `ui:*` 界面扩展均已默认放行（注：`block_decorators`、`themes`、`stages` 在清单校验阶段仍要求显式列出对应权限），编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）按需声明。
 
 ### 7.1 多表面（Surfaces）渲染与状态隔离
 
@@ -25,11 +25,12 @@
 通用校验规则：
 - 所有贡献项 `id` 必须匹配正则 `^[a-z][a-z0-9_-]{0,31}$`，且在同一类别内不可重复。
 - 所有 `LocalizedText`（`title`、`tooltip` 等）均须同时提供非空 `zh` 与 `en`，且禁止包含 Emoji；所有 `icon`（`DuoIconSpec`）须满足 `view_box == "0 0 24 24"` 且至少包含 1 条 `stroke_paths`；三层路径合计最多 16 条、路径数据合计最多 4096 字节。
-- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`tab_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`file_icons` 1、`backdrops` 8、`status_items` 4、`dialogs` 16、`menubar_items` 2。
+- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`tab_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`file_icons` 1、`backdrops` 8、`block_decorators` 8、`themes` 8、`stages` 8、`status_items` 4、`dialogs` 16、`menubar_items` 2。
 
 1. **`titlebar_buttons`**（最多 **3** 个）：在顶栏右侧挂载图标按钮。顶栏有空位时所有插件按钮都直接显示，仅在空间不足时把放不下的按钮收起；用户可在「更多插件」菜单（点星标或在选中/悬停行按 `P`）或右键/聚焦顶栏插件图标（按 `P` / `Shift+F10`）固定常用按钮（最多固定 3 个，优先展示；槽位满时优先回收已停用/卸载项，有效项满 3 个时替换最早固定项并提示），其余按声明顺序收进顶栏的「更多插件」菜单（带计数角标、插件图标与活跃/角标提示）。菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
    - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（必填 `LocalizedText`）。
    - `command`（可选）与 `panel`（可选）：**必须且只能二选一**，分别引用同清单 `commands[].id` 或 `panels[].id`（点击时执行命令或切换面板）。
+   - **`titlebar_manager`**（可选布尔值）：设为 `true` 时允许该插件调用 `host.titlebar.set_hidden` 隐藏/恢复顶栏槽位。
 2. **`settings_sections`**：在内置设置标签页末尾追加一张声明式设置分区卡片（单卡片标题与分区标题一致时宿主自动去重）。
    - **允许但不建议**：插件设置应放在插件自己的设置页（`manifest.surfaces: ["settings_page"]`），用户在插件页里就能找到全部选项；只有确实属于宿主某个内置页的单项（极少数）才考虑用本扩展点，且不要把同一组设置在两处重复展示。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
@@ -61,9 +62,9 @@
 9.1. **`file_icons`**（最多 **1** 个）：声明笔记本、文件与文件夹自定义图标包及原生交互选择器；停用或卸载插件时立即恢复默认图标。
    - `id`（必填）、`pack`（必填，插件目录内相对 `.json` 路径，<= 512 KiB）、`title`（可选 `LocalizedText`）、`picker`（可选 bool，启用点击侧栏/笔记本切换器/顶栏图标打开选择器）、`sync_tabs`（可选 bool，同步在顶栏标签页显示自定义图标）。
    - 图标包 JSON 顶层字段：`schema_version`（固定 `1`）、`categories`（1–16 项，含 `id`、`name`、`icon`）与 `icons`（1–256 项，含 `id`、`category`、`name`、可选 `keywords`，且 `ref` 宿主内置图标名与 `spec` 内联 `DuoIconSpec` 二选一）。
-10. **`backdrops`**（最多 **8** 个）：声明编辑区自定义矢量背景图案，运行时通过 `host.ui.set_backdrop` 启用、切换或调节（宿主自动钳制透明度在 `0.03`–`0.25` 以保证正文清晰可读，停用或卸载插件立即消失）。
+10. **`backdrops`**（最多 **8** 个）：声明编辑区自定义矢量背景或统一纸纹背景，运行时通过 `host.ui.set_backdrop` 启用、切换或调节（宿主自动钳制透明度在 `0.03`–`0.25` 以保证正文清晰可读，停用或卸载插件立即消失）。
     - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
-    - `pattern`（可选：`"scatter"` | `"grid"` | `"watermark"` | `"corners"`，默认 `"scatter"`）、`density`（可选：`"sparse"` | `"medium"` | `"dense"`，默认 `"medium"`）、`opacity`（可选：`0.01`–`0.35`，渲染钳制 `0.03`–`0.25`，默认 `0.09`）、`tint`（可选：`"accent"` | `"muted"` | `"warm"` | `"glow"`，默认 `"accent"`）、`dark_glow`（可选 bool，深色主题下提亮为夜光质感）。
+    - `pattern`（可选：`"scatter"` | `"grid"` | `"watermark"` | `"corners"` | `"paper_dots"` | `"paper_grid"`，默认 `"scatter"`，其中 `paper_dots` 与 `paper_grid` 为与编辑器行高对齐的纸纹背景）、`density`（可选：`"sparse"` | `"medium"` | `"dense"`，默认 `"medium"`）、`contrast`（可选：`"standard"` | `"high"`，默认 `"standard"`，用于纸纹对比度）、`opacity`（可选：`0.01`–`0.35`，渲染钳制 `0.03`–`0.25`，默认 `0.09`）、`tint`（可选：`"accent"` | `"muted"` | `"warm"` | `"glow"`，默认 `"accent"`）、`dark_glow`（可选 bool，深色主题下提亮为夜光质感）。
 11. **`status_items`**：注册底部状态栏条目。
     - `id`（必填）、`text`（可选 `LocalizedText`，作为 `host.status.set` 覆盖前的初始文案；解析后为空白时不显示）、`command`（可选，非空时须引用 `commands[].id`）、`icon`（可选 `DuoIconSpec`）。
 12. **`dialogs`**：注册模态弹窗（由 `host.ui.open_dialog` 打开，标题栏渲染图标）。
@@ -85,6 +86,18 @@
         "drop": {"command": "upload", "accept": ["files", "image"], "extensions": ["png", "jpg", "jpeg", "gif", "webp"]}
       }]
       ```
+14. **`block_decorators`**（最多 **8** 个，须在 `manifest.permissions` 中声明 `"ui:appearance"` 或 `"editor:write"`）：按块级隐藏 HTML 注释签名匹配引用/段落/提示块，为其应用通用 Callout 样式与空块占位提示。
+    - `id`（必填）、`signature_prefix`（必填，匹配 `^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,63}$`）、`default_callout`（必填：`"note"` | `"tip"` | `"important"` | `"warning"` | `"caution"`）。
+    - `block_kind`（可选：`"quote"` | `"paragraph"` | `"callout"`）、`legacy_tag_prefix`（可选，兼容旧括号前缀）、`callout_by_kind`（可选 `map<string, callout>`）、`empty_placeholder`（可选 `LocalizedText`）。
+15. **`themes`**（最多 **8** 个，须在 `manifest.permissions` 中声明 `"ui:appearance"`）：声明外部 JSON 主题皮肤，通过 `host.ui.set_theme_skin` 切换。
+    - `id`（必填）、`title`（必填 `LocalizedText`）、`file`（必填，插件目录内相对 `.json` 路径，<= 512 KiB；JSON 须含 `id`、至少定义 `light`/`dark`/`surfaces` 颜色之一，可选 `fonts`、`chrome_dark`、`quick_note`、`ai_indicator`）。
+16. **`stages`**（最多 **8** 个，须在 `manifest.permissions` 中声明 `"ui:appearance"`、`"ui:commands"` 或 `"ui:panels"`）：声明全离线插件专属 WebView 舞台（本地资源位于 `web/`，最多 128 个普通文件、单文件校验上限 4 MiB / 服务上限 16 MiB），通过 `host.stage.open` 展示。
+    - `id`（必填）、`title`（必填 `LocalizedText`）、`entry`（必填，须为 `web/` 下相对路径，如 `"web/index.html"`）、`full_window`（可选 bool）。
+    - **前端运行时与四层外网隔离**：舞台页面运行在只读 `block-plugin://<plugin-id>/...` 协议上，宿主预注入 `window.blockView`（`getInitState()`、`invoke(action, payload)`、`onEvent(fn)`、`close()`，接收 `"stage.state"` / `"theme.changed"` / `"locale.changed"` 及 `host.stage.emit` 事件）并实施四层外网隔离：
+      1. 静态校验拒绝 `web/` 内任何文件出现 `http://` 或 `https://` 字面量；
+      2. WebView `ContentRules` 拦截所有 `^https?://` 与 `^wss?://` 请求（仅豁免内部 `http://*.block-plugin.localhost/`）；
+      3. `OnWillNavigate` 与 `SetWindowOpenHandler` 锁定仅允许当前 `block-plugin://<plugin-id>/` 同源导航且禁止弹窗；
+      4. 严格 CSP（`connect-src 'none'; frame-src 'none'; object-src 'none'; script-src 'self'`）并禁用 DevTools。
 
 ### 7.3 `plugin.command` 与工作区 `plugin.event`
 
@@ -128,7 +141,7 @@
    - 返回：`{"items": [{"id": "feedback", "label": "反馈", "locked": false, "hidden": false, "plugin": "", "icon": {"name": "message-square"}}]}`
    - `icon` 为该槽位在顶栏实际使用的图标：内置槽位为宿主图标名 `{"name": ...}`（`send_all` 为文字胶囊 `{"chip": "统一发送", "dot": true}`；`reveal` 目前只出现在标签页右键菜单，不在顶栏绘制），插件按钮为其声明的内联矢量（`view_box` / `stroke_paths` 等），可直接透传到 `switch.icon` 或 `icon_strip.icons`（旧宿主不返回该字段）。
    - 内置槽位 ID：`"feedback"`、`"ai"`、`"send_all"`、`"wrap"`、`"zoom"`、`"reveal"`、`"more"`（`locked: true`）；插件按钮槽位 ID 为 `"plugin:<pluginID>/<buttonID>"`。
-2. **`host.titlebar.set_hidden`**（无需声明权限）
+2. **`host.titlebar.set_hidden`**（需在清单声明 `contributes.titlebar_manager: true`）
    - 参数：`{"hidden": ["feedback", "plugin:my-plugin/btn"]}`（按插件隔离持久化于 `<BlockAppData>/plugins/contrib-state.json`，停用插件时自动收回其隐藏设置）。
    - **不可隐藏约束**：内置槽位 `"more"`（页面 `…` 操作按钮）永久锁定，**永远不可隐藏**（传入 `"more"` 或未知槽位 ID 会被宿主忽略）。
    - 返回：`{"ok": true, "items": [...]}`（返回更新后的完整槽位列表）。
@@ -189,22 +202,26 @@
     - `menu`：动态条目，整体替换上一次的动态条目，显示在静态 `menu` 下方（最多 20 条）。`title` 必填（截断至 60 个字符），`subtitle` 可选（截断至 80 个字符）；`command` 须引用 `commands[].id`，省略时条目置灰；`payload` 为最多 4096 字节的字符串，点击时作为 `context.payload` 随命令下发。`clear_menu: true` 清空动态条目。
     - 动态内容只保存在内存中。宿主按需启动插件，Block 重开后要等插件首次运行（如 `plugin.initialize`）重新推送，动态条目才会恢复。
     - 返回：`{"ok": true}`。
+13. **`host.ui.set_background_error` / `host.ui.clear_background_error`**（无需声明权限）
+    - `host.ui.set_background_error`：在设置侧栏插件项与顶栏错误胶囊展示后台告警或错误（每插件最多 32 个 `key`，默认 `"default"`）：`{"key", "label", "detail", "retry_action", "retry_label", "retry_payload", "severity": "danger"|"warning"}`（`label` 必填且 <= 120 字，禁 Emoji）-> `{"ok": true, "key"}`。
+    - `host.ui.clear_background_error`：`{"key"}`（省略 `key` 清空本插件全部后台错误）-> `{"ok": true}`。
+14. **`host.ui.theme_skin_state` / `host.ui.set_theme_skin`**（需声明 `contributes.themes` 与 `"ui:appearance"`）
+    - `host.ui.theme_skin_state`（`{}`）：返回 `{"id", "enabled", "skin_id"}`。
+    - `host.ui.set_theme_skin`（`{"id", "enabled": true|false}`）：应用或关闭声明的主题皮肤并持久化于 `contrib-state.json`，同时停用其他插件皮肤。
+15. **`host.stage.*`**（需声明 `contributes.stages` 与对应界面权限）
+    - `host.stage.open`：`{"id", "route", "state"}`（`route` 兼容别名 `room`；`state` 为 JSON 对象，<= 2 MiB）-> `{"ok": true, "open": true, "stage": {...}}`。
+    - `host.stage.close`：`{"id"}` -> `{"ok": true, "closed": true|false}`。
+    - `host.stage.state`（`{}`）：返回 `{"open": true|false, "stage_id", "route", "state"}`。
+    - `host.stage.emit`：`{"id", "event", "payload"}` -> `{"ok": true}`（向打开中的舞台 WebView 推送事件）。
 
-### 7.5 特定场景与官方专属宿主方法
+### 7.5 特定场景与通用视觉宿主方法
 
-以下接口服务于编辑区背景装饰、原生思维导图与原生塔罗模式等特定视觉能力（无需声明权限，按实际场景按需调用）：
+以下接口服务于编辑区背景装饰与原生塔罗模式等特定视觉能力（无需声明权限，按实际场景按需调用）：
 
-1. **`host.ui.backdrop` / `host.ui.set_backdrop`**（编辑区矢量背景，适用于壁纸/背景装饰类插件如 `block-poop-everywhere`）
-   - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的编辑区矢量背景状态 `{"id": "...", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
-   - `host.ui.set_backdrop`（参数：`{"id": "poop-wallpaper", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
-   - 「到处拉屎」插件在 `plugin.initialize` 读取已保存的背景设置并调用 `host.ui.set_backdrop`，外观设置中的控件变化通过 `plugin.render` 的 `values` 即时保存和应用。
-2. **`host.ui.editor_background` / `host.ui.set_editor_background`**（编辑器点阵/方格背景，适用于 `block-canvas-dots` 等外观扩展）
-   - `host.ui.editor_background`（参数 `{}`）：返回当前插件设置的编辑器背景状态 `{"mode": "off"|"dots"|"grid", "contrast": "standard"|"high"}`。
-   - `host.ui.set_editor_background`（参数 `{"mode": "dots", "contrast": "standard"}`）：设置与编辑器行高对齐的点阵（`"dots"`）、方格（`"grid"`）或关闭（`"off"`）背景及对比度（`"standard"` | `"high"`，兼容 `"strong"` 归一化为 `"high"`），持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动失效，返回归一化后的状态对象。
-3. **`host.ui.mindmap_state` / `host.ui.set_mindmap`**（原生思维导图配置，适用于 `block-mindmap` 官方扩展）
-   - `host.ui.mindmap_state`（参数 `{}`）：返回当前插件设置的原生思维导图配置 `{"layout": "right"|"both", "height": "compact"|"standard"|"tall", "show_hints": true}`。
-   - `host.ui.set_mindmap`（参数 `{"layout": "right"|"both", "height": "compact"|"standard"|"tall", "show_hints": true}`，字段均可选）：更新原生思维导图块（```` ```mindmap ````）的默认布局、行内画布高度与底部快捷键提示栏显隐，持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动恢复默认，返回归一化后的状态对象。
-4. **`host.ui.tarot_state` / `host.ui.set_tarot`**（宿主原生塔罗模式，适用于 `block-tarot` 官方扩展）
+1. **`host.ui.backdrop` / `host.ui.set_backdrop`**（编辑区矢量/纸纹背景，适用于壁纸装饰与点阵/方格纸纹插件如 `block-poop-everywhere`、`block-canvas-dots`）
+   - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
+   - `host.ui.set_backdrop`（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
+2. **`host.ui.tarot_state` / `host.ui.set_tarot`**（宿主原生塔罗模式，适用于 `block-tarot` 官方扩展）
    - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
    - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
 

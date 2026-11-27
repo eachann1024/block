@@ -1,5 +1,5 @@
 <!-- ai-guide:skip-start -->
-# 双向 JSON-RPC 2.0 协议、声明式 UI 与 Python 骨架
+# 双向 JSON-RPC 2.0 协议、声明式 UI 与 SDK 骨架
 
 > [← 清单与权限](manifest.md) · [文档中心](../README.md) · [宿主界面扩展 →](ui-contributions.md)
 
@@ -68,10 +68,13 @@
        "tone": "success",
        "values": { "protocol": "local_mirror" },
        "status": "已同步 2 篇笔记",
+       "busy_label": "同步中...",
+       "success_label": "已同步",
        "open_path": "/Users/name/Downloads/欢迎使用 Block.html",
        "reveal_path": "/Users/name/Downloads/欢迎使用 Block.html"
      }
      ```
+     - **按钮态标签覆盖**：可选返回 `busy_label`、`success_label`、`error_label`、`retry_label`（均禁 Emoji），动态覆盖按钮在运行、成功、失败与重试态的展示文案。
      - **表单更新顺序**：若同时返回 `page` 与 `values`，宿主先用新 `page` 的控件默认值覆盖对应键，再应用 `result.values` 并清除对应字段的未同步标记；若 `page.status` 为空且 `result.status` 非空，宿主自动将 `result.status` 填入 `page.status`。
      - **动作反馈（`ok` / `tone` / `status`）**：合法 `tone`（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`）优先级最高；未知或空 `tone` 回退按 `ok` 判定（`true` 为 `success`，`false` 为 `danger`）；两者均省略时按 `status` 关键词推断，未命中默认 `"success"`。卡片内按钮返回 `danger`/`warning` 且 `status` 非空时，在按钮上方显示提示条，`success`/`info` 在按钮旁显示单行状态；`header_actions` 在顶栏展示状态。`success` 态按钮会短暂切换为绿色勾选态（2.4s）；`action_id` 为 `test_conn`、以 `test_` 开头或以 `_test` 结尾的连接测试按钮会保持成功态，直到用户修改表单或触发下一次动作。
      - **打开与定位输出文件（`open_path` / `reveal_path`）**：切勿在插件内自行调用 `open`/`xdg-open` 子进程。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
@@ -84,7 +87,10 @@
    - 宿主按 `(plugin_id, notebook_root, 路径/dir:目录)` 合并排队：同文件在队/在途时若发生删除会覆盖为 `note.deleted` 并重新派发；目录删除会清除该目录前缀下挂起的单文件错误与后续补发（跨文件无全局顺序保证）。
    - 响应要求：宿主会将 `result` 解码为 `{"handled": <bool>, "outcome": <string>}`（返回 `{"handled": true}`、`{"handled": false}` 或 `{}` 均视为成功；`handled` 为 `false` 且 `outcome` 为空时按 `"skipped"` 处理以兼容未订阅删除事件的旧插件；返回非对象如 `true` 或错误类型如 `{"handled": "false"}` 会因解码失败报错）。业务失败须返回 JSON-RPC `error`，宿主才会在侧栏标错并在空闲、同路径未重新排队且无更高优先错误时展示重试入口（可能来自另一笔记本）。成功后若该笔记本已有缓存页且无忙碌动作，宿主会自动触发 `plugin.render` 刷新（即使当前未停留在插件页）。
 
-5. **`plugin.shutdown`**
+5. **`plugin.stage_action`**（舞台 WebView 调用，需声明 `contributes.stages`）
+   - 前端调用 `window.blockView.invoke(action, payload)` 时触发，请求 `params` 为 `{"stage_id": "<stage_id>", "action": "<action>", "payload": {...}}`，返回值直接透传给前端 `Promise`。
+
+6. **`plugin.shutdown`**
    - 请求 `params`：`{}`
    - 宿主发出 `plugin.shutdown` 前已将运行时标为关闭并停止受理反向 `host.*` 调用，因此关闭阶段**切勿调用 `host.storage.set` 等宿主 RPC**。推荐直接返回 `{"ok": true}`（宿主不校验响应内容），随后在 2 秒内正常退出。
 
@@ -163,6 +169,33 @@
     - `{"entries": [{"level": "info", "event": "delete_remote", "notebook_root": "/abs/path/to/notebook", "path": "notes/old.md", "protocol": "webdav", "detail": "成功"}]}` -> `{"ok": true}`，把插件自己的操作记录写进宿主诊断日志 `logs/block.log`，便于用户反馈时一并导出。
     - `level` 取 `info`（默认）/`warn`/`error`；每次最多 200 条，超出部分丢弃；各字段折叠为单行并截断至 400 字节。合法的笔记本相对 `path` 会被换成绝对路径再脱敏，与宿主自身日志的路径代号一致。**不得传入笔记正文或密钥。**
 
+14. **`host.fs.*`**（需 `"system:fs"`，仅限 `data_dir`、`downloads_dir`、已授权笔记本及 `granted-paths.json` 授权路径，经 `os.Root` 拒绝符号链接与路径逃逸）
+    - `host.fs.list_grants`（`{}`）：返回 `{"grants": [...], "data_dir", "downloads_dir", "notebooks": [{"path", "writable"}]}`。
+    - `host.fs.stat`（`{"path"}`） / `host.fs.list`（`{"path", "recursive"}`，最多 10000 条）。
+    - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、上限 64 MiB） / `host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`，上限 64 MiB）。
+    - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive"}`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents"}`） / `host.fs.atomic_swap`（`{"path_a", "path_b"}`，同目录两文件交换）。
+
+15. **`host.crypto.*`**（内存计算无需额外权限；`host.crypto.hash` 传入 `file_path` 时需 `"system:fs"`）
+    - `host.crypto.hash`：`{"algorithm": "sha1"|"sha256"|"sha512"|"md5", "text"|"base64"|"file_path"}`（三选一）-> `{"algorithm", "hex", "base64", "size"}`。
+    - `host.crypto.hmac`：`{"algorithm": "sha1"|"sha256"|"sha512", "key_text"|"key_base64", "data_text"|"data_base64"}` -> `{"algorithm", "hex", "base64"}`。
+
+16. **`host.http.request`**（需 `"network"`，受 `manifest.network_domains` 白名单限制）
+    - 参数：`{"url", "method", "headers", "body"|"body_base64"|"body_file_path", "save_to_path", "mkdir_parents", "response_encoding": "utf8"|"base64"|"none", "timeout_ms", "max_response_bytes"}`。
+    - 支持 `GET`/`POST`/`PUT`/`DELETE`/`HEAD`/`PATCH`/`OPTIONS`/`PROPFIND`/`MKCOL`/`MOVE`/`COPY`；超时默认 30s（上限 120s），响应默认 16 MiB（上限 64 MiB），最多 10 次重定向（跨域自动剥离 `Authorization` 与 `Cookie`），`body_file_path` / `save_to_path` 额外要求 `"system:fs"`；返回 `{"status", "headers", "bytes", "final_url", "body"|"body_base64", "saved_path"}`。
+
+17. **`host.exec.run`**（需 `"system:exec"`，无 Shell 执行 `manifest.exec_allowlist` 白名单程序）
+    - 参数：`{"program", "args", "cwd", "env", "stdin", "timeout_ms", "max_output_bytes"}`（`cwd` 须为授权目录，默认 `data_dir`；`env` 仅放行安全变量与最多 16 项安全 `GIT_CONFIG_*`，强制 `GIT_TERMINAL_PROMPT=0`；超时默认 30s/上限 120s，输出默认 1 MiB/上限 8 MiB）。
+    - 返回：`{"exit_code", "stdout", "stderr", "stdout_truncated", "stderr_truncated", "timed_out"}`。
+
+18. **`host.scheduler.*`**（需 `"events:system"`，持久化于 `scheduler.json`，每插件最多 32 个任务）
+    - `host.scheduler.register`：`{"id", "interval_sec", "event", "require_network", "run_on_wake", "run_on_network_restore", "run_on_focus"}`（`interval_sec` 钳制 `60`–`86400`，`event` 默认 `"scheduler.tick"`）-> `{"ok": true, "id"}`。
+    - `host.scheduler.unregister`（`{"id"}` -> `{"ok": true}`）与 `host.scheduler.list`（`{}` -> `{"jobs": [...]}`）。
+
+19. **`host.ai.*`**（需 `"ai:complete"`）
+    - `host.ai.status`（`{}`）：返回 `{"enabled", "ready", "streaming"}`。
+    - `host.ai.complete`：`{"system_prompt", "user_prompt", "max_tokens"}`（提示词合计 <= 128 KiB、`max_tokens` <= 16384、120s 超时）-> `{"text", "model"}`。
+    - `host.ai.open_with_prompt`：`{"prompt", "note_path"}` -> `{"ok": true}`（预填提示词并打开 AI 面板）。
+
 ### 4.3 系统集成
 
 桌面宿主在 `plugin.initialize.ui_capabilities` 中提供 `"system_integration"`。`host.system.capabilities {}` 无需额外权限，返回布尔值对象，字段为 `notify`、`notify_click`、`secrets`、`open_url`、`reveal`、`open_dialog`、`save_dialog`、`clipboard_read`、`clipboard_write`、`trash`、`badge`、`wake`、`network`、`focus`。结果反映当前桌面可用性，实际调用还受清单权限、系统授权和服务状态影响。
@@ -230,7 +263,7 @@
 - `progress`：可选 `0`–`1` 浮点数，用于声明式独立后台任务在空闲轮询刷新时展示百分比进度；`plugin.action` 执行期间请使用 `host.action.progress`。
 - `cards`：必填，最多 64 张卡片；所有卡片的 `items` 合计最多 400 项。
 - `refresh_interval_ms`：可选定时刷新间隔（`500`–`60000` 毫秒，`0` 或省略表示不自动轮询；仅在最近绘制时间窗口内且空闲时触发）。
-- `header_actions`：可选标题栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。宿主将首个 `variant: "primary"`（无 primary 时回退首个 `danger`）放在标题栏主操作位，并**统一强制渲染为轻量幽灵按钮**（`26px` 高、透明底、悬停轻灰底；运行中变为同高轻量进度与 `■` 取消按钮），其余 `secondary` / `danger` / 多余按钮自动收进标题栏 `⋯` 菜单顶部。
+- `header_actions`：可选标题栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`），并支持可选 `busy_label`、`success_label`、`error_label`、`retry_label`（均禁 Emoji）自定义各阶段按钮文案。宿主将首个 `variant: "primary"`（无 primary 时回退首个 `danger`）放在标题栏主操作位，并**统一强制渲染为轻量幽灵按钮**（`26px` 高、透明底、悬停轻灰底；运行中变为同高轻量进度与 `■` 取消按钮），其余 `secondary` / `danger` / 多余按钮自动收进标题栏 `⋯` 菜单顶部。
 - `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（可选）、`meta`（可选右侧副信息）、`badge`（可选右侧胶囊徽章）、`collapsible` / `default_collapsed`（可选折叠配置卡片，展开状态保存在当前控制器内存中）、`items`（必填非空数组；若卡片内所有顶层项均被 `visible_when` 隐藏，整个卡片自动隐藏）。
 
 ### 16 种 `UIItem` 控件（按 `kind` 区分）
@@ -303,13 +336,13 @@
    }
    ```
    - **`icon`（可选，需 `"item_icons"` 能力；`kv` 的每行 `rows[].icon` 同理）**：行首图标。二选一：`{"name": "<宿主内置图标名>"}`（小写字母、数字与 `-`，未知名称渲染为空白），或与 `DuoIconSpec` 同形的内联矢量 `{"view_box": "0 0 24 24", "stroke_paths": [...], "fill_paths": [...], "accent_paths": [...]}`；可加 `tooltip`。第三种为文字胶囊 `{"chip": "统一发送", "dot": true}`（`chip` 最多 16 字，`dot` 加强调圆点，不可与图标字段混用）：行首只绘制圆点，`icon_strip` 中绘制为顶栏同款胶囊。`host.titlebar.get_items` 返回的 `items[].icon` 可直接透传。
-7. **`actions`（卡片内操作按钮行）**：不含 `id`/`label`，仅含非空 `buttons` 数组：
+7. **`actions`（卡片内操作按钮行）**：不含 `id`/`label`，仅含非空 `buttons` 数组；按钮除 `id`、`label`、`variant`、`icon` 外，均可选填 `busy_label`、`success_label`、`error_label`、`retry_label`（禁 Emoji）：
    ```json
    {
      "kind": "actions",
      "buttons": [
-       { "id": "save_config", "label": "保存配置", "variant": "primary" },
-       { "id": "test_conn", "label": "测试连接", "variant": "secondary" }
+       { "id": "save_config", "label": "保存配置", "busy_label": "保存中...", "success_label": "已保存", "variant": "primary" },
+       { "id": "test_conn", "label": "测试连接", "error_label": "连接失败", "retry_label": "重试连接", "variant": "secondary" }
      ]
    }
    ```
@@ -468,7 +501,33 @@
 
 ---
 
-## 6. Python 标准库双向通信骨架
+## 6. `entry.js` + `/runtime/block-sdk.js` 通信骨架
+
+宿主内置 `wazero` + `quickjs-ng` 沙盒会自动注入 `/runtime/block-sdk.js`（同时挂到 `globalThis` 的 `BlockSDK`、`serve`、`callHost`、`notifyHost`、`send`、`log`、`HostRPCError`）：
+
+```javascript
+serve((method, params) => {
+  switch (method) {
+    case 'plugin.initialize':
+      return { ready: true };
+    case 'plugin.render':
+      return {
+        page: {
+          title: 'Example',
+          cards: [{ id: 'main', items: [{ kind: 'kv', rows: [{ label: '状态', value: '正常' }] }] }],
+        },
+      };
+    case 'plugin.action':
+      return { ok: true, tone: 'success', status: '已完成' };
+    case 'plugin.shutdown':
+      return { ok: true };
+    default:
+      return {};
+  }
+});
+```
+
+### 遗留 `entry.command` Python 通信骨架（仅兼容旧插件）
 
 ```python
 #!/usr/bin/env python3
