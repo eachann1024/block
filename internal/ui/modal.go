@@ -11,6 +11,7 @@ type ModalLayout struct {
 	Width, MaxHeight float32
 	Centered         bool
 	Offset           ui.Point
+	NoScroll         bool
 }
 
 func ModalCard(c *ui.Context, id, title string, open *bool, width, maxHeight float32, body func()) {
@@ -39,7 +40,13 @@ func Dialog(c *ui.Context, id, title string, open *bool, layout ModalLayout, bod
 			layer.Justify(ui.Center)
 		}
 		layer.Children(func() {
-			card := Scroll(c.Key(id)).Column().Width(width).MaxHeight(height).
+			var card ui.Element
+			if layout.NoScroll {
+				card = ui.Column(c.Key(id)).Clip()
+			} else {
+				card = Scroll(c.Key(id)).Column()
+			}
+			card.Width(width).MaxHeight(height).
 				Left(layout.Offset.X).Top(layout.Offset.Y).Radius(theme.RadiusXL).
 				Background(pal.Menu).Border(1, pal.MenuBorder).
 				Role(ui.RoleDialog).Label(title).Transition(ModalSpringTransition())

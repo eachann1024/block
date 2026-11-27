@@ -19,7 +19,6 @@ type pendingPermissionPrompt struct {
 	currentVersion string
 	nextVersion    string
 	isUpdate       bool
-	sourceChanged  bool
 	requested      []plugins.Permission
 	existing       []plugins.Permission
 	allNext        []plugins.Permission
@@ -103,7 +102,7 @@ func (c *Controller) RequestInstallEntry(entry plugins.StoreAppEntry, onInstalle
 	if !isInstalled {
 		sensitive := plugins.SensitivePermissions(entry.Permissions)
 		if len(sensitive) == 0 {
-			c.sup.InstallEntryConfirmedAsync(entry, nil, false, onInstalled)
+			c.sup.InstallEntryConfirmedAsync(entry, nil, true, onInstalled)
 			return
 		}
 		entryCopy := entry
@@ -123,33 +122,12 @@ func (c *Controller) RequestInstallEntry(entry plugins.StoreAppEntry, onInstalle
 		return
 	}
 
-	sourceChanged := !c.sup.MatchesEntrySource(installed, entry)
 	allNext := plugins.SensitivePermissions(entry.Permissions)
-	if !sourceChanged {
-		added := plugins.AddedSensitivePermissions(installed.Manifest.Permissions, entry.Permissions)
-		if len(added) == 0 {
-			c.sup.InstallEntryConfirmedAsync(entry, installed.Manifest.Permissions, false, onInstalled)
-			return
-		}
-		entryCopy := entry
-		c.enqueuePermissionPrompt(pendingPermissionPrompt{
-			pluginID:       entry.ID,
-			name:           entry.Name,
-			icon:           entry.Icon,
-			author:         entry.Author,
-			currentVersion: installed.Manifest.Version,
-			nextVersion:    strings.TrimPrefix(entry.Version, "v"),
-			isUpdate:       true,
-			requested:      added,
-			existing:       plugins.SensitivePermissions(installed.Manifest.Permissions),
-			allNext:        allNext,
-			reasons:        plugins.ClonePermissionReasons(entry.PermissionReasons),
-			entry:          &entryCopy,
-			onInstalled:    onInstalled,
-		})
+	added := plugins.AddedSensitivePermissions(installed.Manifest.Permissions, entry.Permissions)
+	if len(added) == 0 {
+		c.sup.InstallEntryConfirmedAsync(entry, installed.Manifest.Permissions, true, onInstalled)
 		return
 	}
-
 	entryCopy := entry
 	c.enqueuePermissionPrompt(pendingPermissionPrompt{
 		pluginID:       entry.ID,
@@ -159,8 +137,8 @@ func (c *Controller) RequestInstallEntry(entry plugins.StoreAppEntry, onInstalle
 		currentVersion: installed.Manifest.Version,
 		nextVersion:    strings.TrimPrefix(entry.Version, "v"),
 		isUpdate:       true,
-		sourceChanged:  true,
-		requested:      allNext,
+		requested:      added,
+		existing:       plugins.SensitivePermissions(installed.Manifest.Permissions),
 		allNext:        allNext,
 		reasons:        plugins.ClonePermissionReasons(entry.PermissionReasons),
 		entry:          &entryCopy,
@@ -169,8 +147,8 @@ func (c *Controller) RequestInstallEntry(entry plugins.StoreAppEntry, onInstalle
 }
 
 // RequestUpdateAll updates all entries that require no new sensitive
-// permissions immediately, and holds back any permission-escalating or
-// source-changing updates for explicit user review.
+// permissions immediately, and holds back any permission-escalating updates
+// for explicit user review.
 func (c *Controller) RequestUpdateAll(entries []plugins.StoreAppEntry, onInstalled func(pluginID string)) {
 	if c == nil || c.sup == nil || len(entries) == 0 {
 		return
@@ -187,7 +165,7 @@ func (c *Controller) RequestUpdateAll(entries []plugins.StoreAppEntry, onInstall
 			}
 			continue
 		}
-		if !c.sup.MatchesEntrySource(inst, entry) || len(plugins.AddedSensitivePermissions(inst.Manifest.Permissions, entry.Permissions)) > 0 {
+		if len(plugins.AddedSensitivePermissions(inst.Manifest.Permissions, entry.Permissions)) > 0 {
 			escalated = append(escalated, entry)
 		} else {
 			safe = append(safe, entry)
@@ -234,27 +212,7 @@ func (c *Controller) enqueueEscalatedEntries(entries []plugins.StoreAppEntry, on
 	for _, entry := range entries {
 		inst, isInstalled := c.sup.GetInstalled(entry.ID)
 		if isInstalled {
-			sourceChanged := !c.sup.MatchesEntrySource(inst, entry)
 			allNext := plugins.SensitivePermissions(entry.Permissions)
-			if sourceChanged {
-				entryCopy := entry
-				c.enqueuePermissionPrompt(pendingPermissionPrompt{
-					pluginID:       entry.ID,
-					name:           entry.Name,
-					icon:           entry.Icon,
-					author:         entry.Author,
-					currentVersion: inst.Manifest.Version,
-					nextVersion:    strings.TrimPrefix(entry.Version, "v"),
-					isUpdate:       true,
-					sourceChanged:  true,
-					requested:      allNext,
-					allNext:        allNext,
-					reasons:        plugins.ClonePermissionReasons(entry.PermissionReasons),
-					entry:          &entryCopy,
-					onInstalled:    onInstalled,
-				})
-				continue
-			}
 			added := plugins.AddedSensitivePermissions(inst.Manifest.Permissions, entry.Permissions)
 			if len(added) == 0 {
 				continue
@@ -348,31 +306,28 @@ func (c *Controller) RequestManualInstall(spec string, onInstalled func(pluginID
 			return
 		}
 		prompt := pendingPermissionPrompt{
-			pluginID:      staged.Manifest.ID,
-			name:          staged.Manifest.Name,
-			icon:          staged.Manifest.Icon,
-			author:        staged.Manifest.Author,
-			nextVersion:   staged.Manifest.Version,
-			isUpdate:      staged.IsUpdate,
-			sourceChanged: staged.SourceChanged,
-			requested:     staged.RequestedPermissions(),
-			allNext:       plugins.SensitivePermissions(staged.Manifest.Permissions),
-			reasons:       plugins.ClonePermissionReasons(staged.Manifest.PermissionReasons),
-			staged:        staged,
-			onInstalled:   onInstalled,
+			pluginID:    staged.Manifest.ID,
+			name:        staged.Manifest.Name,
+			icon:        staged.Manifest.Icon,
+			author:      staged.Manifest.Author,
+			nextVersion: staged.Manifest.Version,
+			isUpdate:    staged.IsUpdate,
+			requested:   staged.RequestedPermissions(),
+			allNext:     plugins.SensitivePermissions(staged.Manifest.Permissions),
+			reasons:     plugins.ClonePermissionReasons(staged.Manifest.PermissionReasons),
+			staged:      staged,
+			onInstalled: onInstalled,
 		}
 		if staged.Previous != nil {
 			prompt.currentVersion = staged.Previous.Version
-			if !staged.SourceChanged {
-				prompt.existing = plugins.SensitivePermissions(staged.Previous.Permissions)
-			}
+			prompt.existing = plugins.SensitivePermissions(staged.Previous.Permissions)
 		}
 		c.enqueuePermissionPrompt(prompt)
 	}, onInstalled)
 }
 
 func (c *Controller) enqueuePermissionPrompt(prompt pendingPermissionPrompt) {
-	if len(prompt.requested) == 0 && !prompt.sourceChanged {
+	if len(prompt.requested) == 0 {
 		if prompt.staged != nil {
 			prompt.staged.Cleanup()
 		}
@@ -439,7 +394,7 @@ func (c *Controller) confirmPermissionPrompt(promptID uint64) {
 	if prompt.staged != nil {
 		started = c.sup.CommitStagedInstallAsync(prompt.staged, prompt.allNext, prompt.onInstalled)
 	} else if prompt.entry != nil {
-		started = c.sup.InstallEntryConfirmedAsync(*prompt.entry, prompt.allNext, prompt.sourceChanged, prompt.onInstalled)
+		started = c.sup.InstallEntryConfirmedAsync(*prompt.entry, prompt.allNext, true, prompt.onInstalled)
 	}
 	if !started {
 		var dropStaged *plugins.StagedPlugin
@@ -480,9 +435,7 @@ func (c *Controller) RenderPermissionModal(ctx *ui.Context) {
 	busy := installingID != ""
 
 	modalTitle := theme.Tr("确认插件权限", "Confirm Plugin Permissions")
-	if prompt.sourceChanged {
-		modalTitle = theme.Tr("确认替换插件来源", "Confirm Source Replacement")
-	} else if prompt.isUpdate {
+	if prompt.isUpdate {
 		modalTitle = theme.Tr("更新请求了新权限", "Update Requests New Permissions")
 	}
 	pluginName := prompt.name.Resolve(locale)
@@ -507,66 +460,63 @@ func (c *Controller) RenderPermissionModal(ctx *ui.Context) {
 	}
 	metaLine := strings.Join(metaParts, " · ")
 
+	_, vpH := ctx.Size()
+	dialogMaxH := max(vpH-theme.Space20*2, 1)
+	if theme.PermissionModalMaxHeight > 0 {
+		dialogMaxH = min(dialogMaxH, theme.PermissionModalMaxHeight)
+	}
+	// Reserve vertical space for fixed header, two 1px hairlines, fixed footer, and card border.
+	const modalChromeHeight float32 = 144
+	bodyMaxH := max(dialogMaxH-modalChromeHeight, 80)
+
 	open := true
 	bui.Dialog(ctx, "plugin-permission-modal", modalTitle, &open, bui.ModalLayout{
 		Width:     theme.PermissionModalWidth,
 		MaxHeight: theme.PermissionModalMaxHeight,
 		Centered:  true,
+		NoScroll:  true,
 	}, func() {
-		ui.Column(ctx).FillWidth().MinWidth(0).Children(func() {
-			// Header
-			ui.Row(ctx).FillWidth().MinWidth(0).
-				Padding(theme.Space20, theme.Space20, theme.Space16, theme.Space20).
-				Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
-				ui.Row(ctx).Size(theme.PermissionModalIconBox, theme.PermissionModalIconBox).
-					Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.Hairline).
-					AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
-					iconSpec := prompt.icon
-					if len(iconSpec.StrokePaths) == 0 {
-						iconSpec = plugins.AppStoreIconSpec()
-					}
-					DrawDuoSpec(ctx, iconSpec, theme.IconAction, pal.DuoIconColors(pal.Accent))
-				})
-				ui.Column(ctx).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
-					ui.Text(ctx, modalTitle).
-						FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).
-						MinWidth(0).SingleLine().Ellipsis("…")
-					ui.Text(ctx, metaLine).
-						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-						TextColor(pal.TextSecondary).
-						MinWidth(0).SingleLine().Ellipsis("…")
-				})
-			})
-
-			ui.Box(ctx).Height(1).FillWidth().Background(pal.Hairline)
-
-			// Grouped sensitive permissions
-			byCat := make(map[plugins.PermissionCategory][]plugins.Permission, len(plugins.PermissionCategoryOrder))
-			for _, p := range prompt.requested {
-				if cat, ok := plugins.PermissionCategoryOf(p); ok {
-					byCat[cat] = append(byCat[cat], p)
+		// Fixed Header
+		ui.Row(ctx).FillWidth().MinWidth(0).Shrink(0).
+			Padding(theme.Space20, theme.Space20, theme.Space16, theme.Space20).
+			Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+			ui.Row(ctx).Size(theme.PermissionModalIconBox, theme.PermissionModalIconBox).
+				Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.Hairline).
+				AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
+				iconSpec := prompt.icon
+				if len(iconSpec.StrokePaths) == 0 {
+					iconSpec = plugins.AppStoreIconSpec()
 				}
-			}
+				DrawDuoSpec(ctx, iconSpec, theme.IconAction, pal.DuoIconColors(pal.Accent))
+			})
+			ui.Column(ctx).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
+				ui.Text(ctx, modalTitle).
+					FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
+					FontWeight(theme.WeightTitle).TextColor(pal.Text).
+					MinWidth(0).SingleLine().Ellipsis("…")
+				ui.Text(ctx, metaLine).
+					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+					TextColor(pal.TextSecondary).
+					MinWidth(0).SingleLine().Ellipsis("…")
+			})
+		})
 
+		ui.Box(ctx).Height(1).FillWidth().Shrink(0).Background(pal.Hairline)
+
+		// Grouped sensitive permissions (scrollable middle body)
+		byCat := make(map[plugins.PermissionCategory][]plugins.Permission, len(plugins.PermissionCategoryOrder))
+		for _, p := range prompt.requested {
+			if cat, ok := plugins.PermissionCategoryOf(p); ok {
+				byCat[cat] = append(byCat[cat], p)
+			}
+		}
+
+		bodyScroll := bui.Scroll(ctx.Key(fmt.Sprintf("plugin-permission-body-%d", prompt.id))).
+			Column().FillWidth().MinWidth(0).Shrink(1).MinHeight(0).MaxHeight(bodyMaxH)
+		bui.Probe(bodyScroll, "plugin-permission-body")
+		bodyScroll.Children(func() {
 			ui.Column(ctx).FillWidth().MinWidth(0).
 				Padding(theme.Space16, theme.Space20).Gap(theme.Space12).Children(func() {
-				if prompt.sourceChanged {
-					ui.Column(ctx.Key("perm-source-change")).FillWidth().MinWidth(0).
-						Radius(theme.RadiusMD).Background(pal.WarningSurface).
-						Border(1, pal.Warning.Alpha(0.35)).
-						Padding(theme.Space10, theme.Space12).Gap(theme.Space4).Children(func() {
-						ui.Text(ctx, theme.Tr("安装来源与当前已安装插件不同", "Installation source differs from the installed plugin")).
-							FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-							FontWeight(theme.WeightControl).TextColor(pal.Warning).MinWidth(0)
-						ui.Text(ctx, fmt.Sprintf(
-							theme.Tr("继续将替换现有插件，并沿用其启用状态与私有数据（apps-data/%s）。", "Continuing replaces the installed plugin and hands over its enabled state and private data (apps-data/%s)."),
-							prompt.pluginID,
-						)).
-							FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-							TextColor(pal.Text).MinWidth(0)
-					})
-				}
 				for _, cat := range plugins.PermissionCategoryOrder {
 					perms := byCat[cat]
 					if len(perms) == 0 {
@@ -601,7 +551,7 @@ func (c *Controller) RenderPermissionModal(ctx *ui.Context) {
 											FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 											FontWeight(theme.WeightControl).TextColor(pal.Text).
 											MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
-										if prompt.isUpdate && !prompt.sourceChanged {
+										if prompt.isUpdate {
 											ui.Row(ctx).Height(theme.KeycapHeight).PaddingX(theme.Space6).
 												Radius(theme.RadiusXS).Background(pal.WarningSurface).
 												AlignItems(ui.Center).Shrink(0).Children(func() {
@@ -639,47 +589,45 @@ func (c *Controller) RenderPermissionModal(ctx *ui.Context) {
 						TextColor(pal.TextSecondary).MinWidth(0)
 				}
 			})
+		})
 
-			ui.Box(ctx).Height(1).FillWidth().Background(pal.Hairline)
+		ui.Box(ctx).Height(1).FillWidth().Shrink(0).Background(pal.Hairline)
 
-			// Footer actions
-			ui.Row(ctx).FillWidth().MinWidth(0).
-				Padding(theme.Space12, theme.Space20, theme.Space16, theme.Space20).
-				Gap(theme.Space8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-				cancelLabel := theme.Tr("取消", "Cancel")
-				if queueLen > 1 {
-					cancelLabel = theme.Tr("跳过", "Skip")
-				}
-				cancelBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
-					ID:     fmt.Sprintf("plugin-permission-cancel-%d", prompt.id),
-					Label:  cancelLabel,
-					Style:  bui.ButtonSecondary,
-					Height: theme.HeightControl,
-				})
-				if cancelBtn.Clicked() {
-					c.dismissPermissionPrompt(prompt.id)
-					ctx.Invalidate()
-				}
-
-				confirmLabel := theme.Tr("允许并安装", "Allow & Install")
-				if prompt.sourceChanged {
-					confirmLabel = theme.Tr("允许并替换", "Allow & Replace")
-				} else if prompt.isUpdate {
-					confirmLabel = theme.Tr("允许并更新", "Allow & Update")
-				}
-				confirmBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
-					ID:       fmt.Sprintf("plugin-permission-confirm-%d", prompt.id),
-					Label:    confirmLabel,
-					Style:    bui.ButtonPrimary,
-					Height:   theme.HeightControl,
-					Disabled: busy,
-					Loading:  busy,
-				})
-				if confirmBtn.Clicked() && !busy {
-					c.confirmPermissionPrompt(prompt.id)
-					ctx.Invalidate()
-				}
+		// Fixed Footer actions
+		ui.Row(ctx).FillWidth().MinWidth(0).Shrink(0).
+			Padding(theme.Space12, theme.Space20, theme.Space16, theme.Space20).
+			Gap(theme.Space8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+			cancelLabel := theme.Tr("取消", "Cancel")
+			if queueLen > 1 {
+				cancelLabel = theme.Tr("跳过", "Skip")
+			}
+			cancelBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
+				ID:     fmt.Sprintf("plugin-permission-cancel-%d", prompt.id),
+				Label:  cancelLabel,
+				Style:  bui.ButtonSecondary,
+				Height: theme.HeightControl,
 			})
+			if cancelBtn.Clicked() {
+				c.dismissPermissionPrompt(prompt.id)
+				ctx.Invalidate()
+			}
+
+			confirmLabel := theme.Tr("允许并安装", "Allow & Install")
+			if prompt.isUpdate {
+				confirmLabel = theme.Tr("允许并更新", "Allow & Update")
+			}
+			confirmBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
+				ID:       fmt.Sprintf("plugin-permission-confirm-%d", prompt.id),
+				Label:    confirmLabel,
+				Style:    bui.ButtonPrimary,
+				Height:   theme.HeightControl,
+				Disabled: busy,
+				Loading:  busy,
+			})
+			if confirmBtn.Clicked() && !busy {
+				c.confirmPermissionPrompt(prompt.id)
+				ctx.Invalidate()
+			}
 		})
 	})
 

@@ -796,12 +796,11 @@ type StagedPlugin struct {
 }
 
 // NeedsConfirmation reports whether committing p requires explicit user consent.
+// Fresh installs prompt when sensitive permissions are requested; updates only
+// prompt when new sensitive permissions are added.
 func (p *StagedPlugin) NeedsConfirmation() bool {
 	if p == nil {
 		return false
-	}
-	if p.SourceChanged {
-		return true
 	}
 	if p.IsUpdate {
 		return len(p.Added) > 0
@@ -814,7 +813,7 @@ func (p *StagedPlugin) RequestedPermissions() []Permission {
 	if p == nil {
 		return nil
 	}
-	if p.SourceChanged || !p.IsUpdate {
+	if !p.IsUpdate {
 		return append([]Permission(nil), p.Sensitive...)
 	}
 	return append([]Permission(nil), p.Added...)
@@ -872,12 +871,12 @@ func (s *StoreManager) InstallEntryConfirmed(ctx context.Context, entry StoreApp
 	return inst, err
 }
 
-// UpdateEntryNoEscalation updates an installed catalog entry only if it comes
-// from the same installation source and introduces no new sensitive permissions.
+// UpdateEntryNoEscalation updates an installed catalog entry as long as it
+// introduces no new sensitive permissions.
 func (s *StoreManager) UpdateEntryNoEscalation(ctx context.Context, entry StoreAppEntry) (*InstalledApp, error) {
 	inst, err := s.installEntryCore(ctx, entry, installPolicy{
 		allowReplace:       true,
-		enforceSourceMatch: true,
+		enforceSourceMatch: false,
 		forbidEscalation:   true,
 	})
 	if err == nil && inst != nil {
@@ -1048,7 +1047,7 @@ func (s *StoreManager) CommitStagedPlugin(staged *StagedPlugin, approvedPermissi
 	defer staged.Cleanup()
 	inst, err := s.installDirectory(staged.PluginRoot, staged.Source, staged.CatalogEntry, installPolicy{
 		allowReplace:       true,
-		enforceSourceMatch: !staged.SourceChanged,
+		enforceSourceMatch: false,
 		enforceApproved:    true,
 		approvedSensitive:  approvedPermissions,
 		expectedID:         staged.Manifest.ID,
@@ -1122,11 +1121,7 @@ func (s *StoreManager) finalizeStagedPlugin(stagingDir, pluginRoot, source strin
 		staged.Previous = prev
 		staged.IsUpdate = true
 		staged.SourceChanged = !sourceMatchesInstalled(dstDir, source, entry)
-		if staged.SourceChanged {
-			staged.Added = append([]Permission(nil), staged.Sensitive...)
-		} else {
-			staged.Added = AddedSensitivePermissions(prev.Permissions, m.Permissions)
-		}
+		staged.Added = AddedSensitivePermissions(prev.Permissions, m.Permissions)
 	}
 	return staged, nil
 }
