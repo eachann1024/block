@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T15:22:48.049Z",
-  "latest_version": "1.0.963",
-  "latest_tag": "v1.0.963",
+  "updated_at": "2026-11-27T16:04:14.117Z",
+  "latest_version": "1.0.964",
+  "latest_tag": "v1.0.964",
   "releases": [
+    {
+      "version": "1.0.964",
+      "tag": "v1.0.964",
+      "published_at": "2026-11-27T16:04:13Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.964",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "编辑器：色块图中间层会按内容保底高度并裁切溢出，避免文字超出区域。",
+          "编辑器：明细列表按最高分类固定高度，悬停切换分类时不再抖动。",
+          "编辑器：色块图底排加宽并每行排列三个，大小改用紧凑格式显示，避免内容被截断。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Editor: Treemap middle layers now maintain a minimum height based on their content and clip overflow to prevent text from spilling out.",
+          "Editor: The detail list now keeps a consistent height based on the tallest category, preventing it from shifting when hovering between categories.",
+          "Editor: Treemap bottom row items are wider and wrap three per row; compact size formatting prevents values from being cut off."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-macos-arm64.dmg",
+          "size": 18808933,
+          "sha256": "0d6e4dee36bc08f1f99b41c7d7e088d73b2d75c7a725f08cdc97deeb51d57b6b"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-macos-x64.dmg",
+          "size": 20759835,
+          "sha256": "d9378ea2a68a1d382525ce2fc69a05b38123eb4e5cf52e267602d725941884b9"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-windows-x64-setup.exe",
+          "size": 16287782,
+          "sha256": "c58ad3096507b718f87791b430cc62c28a5aadab5501847c8cf547feec9c898f"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-linux-x64.deb",
+          "size": 13234812,
+          "sha256": "465400b5bc44f50573a2eedcbc477b7e0de65973db4fef89feafa4d7981baa14"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-linux-x64.AppImage",
+          "size": 26507768,
+          "sha256": "0dce9067738ba750d6f8b8f3f548ffb52fc4a7cddbe64e30380a59c79817f1ce"
+        }
+      ]
+    },
     {
       "version": "1.0.963",
       "tag": "v1.0.963",
@@ -46,38 +106,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-macos-arm64.dmg",
-          "size": 18808099,
-          "sha256": "ee535ae44836b24a8e2b97c9fc4a20978643f2babc1189222ba1005b1cc87404"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-macos-x64.dmg",
-          "size": 20756692,
-          "sha256": "ecc3f03d880467f90b9af55f4499097dd6c2e1b8402c787eab1e61d5017adca8"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-windows-x64-setup.exe",
-          "size": 16285693,
-          "sha256": "71b2f05347e01e7e6e93e6ff4cfb75d2899f791d2f0d292ed40ae8c486434422"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-linux-x64.deb",
-          "size": 13234286,
-          "sha256": "93310cb7f295c08362a8ca61e27fde42d6ff5c4804bf5655546046c1773730bc"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-linux-x64.AppImage",
-          "size": 26499576,
-          "sha256": "799386837c45d75656d380436d47371c8c8a761e630b55852f4303117f746417"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.962",
@@ -1683,47 +1712,6 @@
           "Disabled plugins now display highlighted banners and sidebar status pills in settings, making inactive plugins easier to identify."
         ],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.911",
-      "tag": "v1.0.911",
-      "published_at": "2026-11-22T12:12:03Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.911",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "浮动设置导航现在提供用于关闭面板的底栏。"
-        ],
-        "improvements": [
-          "快捷键符号现在能完整显示在槽位中，并保持垂直对齐。",
-          "快捷键符号的槽位宽度和符号间距现在保持一致。",
-          "侧边栏收起时现在会使用灵动过渡，展开时也会显示更清晰的提示。",
-          "进入窄版设置抽屉时，抽屉现在会保持打开，展开提示也会以动画呈现。"
-        ],
-        "fixes": [
-          "现在需要更明显的指针移动才会开始拖动，避免滚动时点击意外触发拖动。",
-          "打开视频时不再自动进入系统全屏，全屏切换也增加了频率限制。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Floating settings navigation now has a footer bar for dismissing the panel."
-        ],
-        "improvements": [
-          "Shortcut key glyphs now fit their slots and align vertically.",
-          "Shortcut key slots now have consistent widths and spacing between symbols.",
-          "The sidebar now uses a genie-style transition when collapsing and shows a clearer cue when expanding.",
-          "The narrow settings drawer now stays open when entered, and its expansion cue animates."
-        ],
-        "fixes": [
-          "Dragging now requires more pointer movement, preventing clicks from accidentally triggering a drag while scrolling.",
-          "Opening a video no longer automatically enters native fullscreen, and fullscreen toggles are now throttled."
-        ],
         "other": []
       },
       "assets": []
