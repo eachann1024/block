@@ -896,6 +896,9 @@ func (w *Workspace) wireModalCallbacks() {
 		if prevState.Folder != next.Folder || !scanOptionsEqual(prevScan, nextScan) {
 			w.RescanNotebook()
 		}
+		if prevScan.ShowHidden != nextScan.ShowHidden && next.Folder != "" {
+			w.startWatching(next.Folder)
+		}
 		if sup := w.Plugins(); sup != nil {
 			if prevState.Theme != next.Theme {
 				mode := string(next.Theme)
@@ -991,6 +994,7 @@ func (w *Workspace) scanOptionsLocked() files.ScanOptions {
 	return files.ScanOptions{
 		HideNonMarkdown: hideNonMD,
 		HideAssets:      hideAssets,
+		ShowHidden:      w.state.ShowHiddenFiles,
 		AssetsFolder:    assetsFolder,
 		FileOrder:       w.state.FileOrder,
 		SortMode:        w.state.TreeSort,
@@ -1024,6 +1028,7 @@ func shortcutsMapEqual(a, b map[string]string) bool {
 func scanOptionsEqual(a, b files.ScanOptions) bool {
 	if a.HideNonMarkdown != b.HideNonMarkdown ||
 		a.HideAssets != b.HideAssets ||
+		a.ShowHidden != b.ShowHidden ||
 		a.AssetsFolder != b.AssetsFolder ||
 		a.SortMode != b.SortMode ||
 		len(a.FileOrder) != len(b.FileOrder) {
@@ -5181,8 +5186,17 @@ func (w *Workspace) startWatching(folder string) {
 		Recursive: true,
 		HintsOnly: true,
 		Ignore: func(p string, isDir bool) bool {
+			if !isDir {
+				return false
+			}
 			base := filepath.Base(p)
-			return isDir && (strings.HasPrefix(base, ".") || base == "node_modules")
+			if base == "node_modules" || base == ".git" || base == ".next" || base == ".nuxt" || base == ".venv" {
+				return true
+			}
+			w.mu.RLock()
+			showHidden := w.state.ShowHiddenFiles
+			w.mu.RUnlock()
+			return !showHidden && strings.HasPrefix(base, ".")
 		},
 	})
 	if err != nil {
@@ -6940,6 +6954,7 @@ func (w *Workspace) renderSidebarColumn(
 		SortMode:          stSnap.TreeSort,
 		HideNonMarkdown:   hideNonMD,
 		HideAssets:        hideAssets,
+		ShowHiddenFiles:   stSnap.ShowHiddenFiles,
 		ShortcutSearch:    modals.EffectiveShortcut(stSnap, "search"),
 		ShortcutNewFolder: "cmd-shift-n",
 		ShortcutNewNote:   modals.EffectiveShortcut(stSnap, "new_note"),
@@ -6967,6 +6982,13 @@ func (w *Workspace) renderSidebarColumn(
 					}
 					next := !cur
 					s.HideNonMarkdownFiles = &next
+				})
+			}
+		},
+		OnToggleShowHiddenFiles: func() {
+			if w.modals.OnStateChanged != nil {
+				w.modals.OnStateChanged(func(s *model.AppState) {
+					s.ShowHiddenFiles = !s.ShowHiddenFiles
 				})
 			}
 		},

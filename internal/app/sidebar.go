@@ -279,15 +279,17 @@ type SidebarProps struct {
 	SortMode        model.TreeSortMode
 	HideNonMarkdown bool
 	HideAssets      bool
+	ShowHiddenFiles bool
 
 	ShortcutSearch    string
 	ShortcutNewFolder string
 	ShortcutNewNote   string
 
-	OnOpenSearch         func()
-	OnSetSortMode        func(mode model.TreeSortMode)
-	OnToggleShowNonMD    func()
-	OnToggleShowAssets   func()
+	OnOpenSearch            func()
+	OnSetSortMode           func(mode model.TreeSortMode)
+	OnToggleShowNonMD       func()
+	OnToggleShowHiddenFiles func()
+	OnToggleShowAssets      func()
 	OnNewFolder          func()
 	OnNewNote            func()
 	OnNewNoteIn          func(dir string)
@@ -1379,6 +1381,16 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					},
 				},
 				{
+					ID:      "filter-hidden-files",
+					Label:   theme.Tr("显示隐藏文件和文件夹", "Show Hidden Files & Folders"),
+					Checked: p.ShowHiddenFiles,
+					OnClick: func() {
+						if p.OnToggleShowHiddenFiles != nil {
+							p.OnToggleShowHiddenFiles()
+						}
+					},
+				},
+				{
 					ID:      "filter-assets",
 					Label:   theme.Tr("显示附件文件夹", "Show Assets Folder"),
 					Checked: !p.HideAssets,
@@ -1389,7 +1401,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					},
 				},
 			}
-			menuW := min(float32(204), max(vpW-16, 1))
+			menuW := min(float32(228), max(vpW-16, 1))
 			estH := estimateMenuHeight(items)
 			anchor := p.State.SortFilterBounds
 			if anchor.W <= 0 {

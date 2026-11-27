@@ -1963,6 +1963,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 	st := m.currentState()
 	hideNonMD := st.HideNonMarkdownFiles == nil || *st.HideNonMarkdownFiles
 	showNonMD := !hideNonMD
+	showHidden := st.ShowHiddenFiles
 	hideAssets := st.HideAssetsFolder == nil || *st.HideAssetsFolder
 	assetsName := st.AssetsFolder
 	if strings.TrimSpace(assetsName) == "" {
@@ -1987,6 +1988,22 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 					m.mutateState(func(s *model.AppState) {
 						v := nextHide
 						s.HideNonMarkdownFiles = &v
+					})
+				}
+			})
+
+			hiddenFilesRow := internalui.SettingsRowFrame(ui.Row(c.Key("folder-row-hidden-files"))).Justify(ui.SpaceBetween)
+			hiddenFilesRow.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+				internalui.RecordBounds("folder-show-hidden-files", r)
+				internalui.RecordBounds("settings-show-hidden-files", r)
+			})
+			hiddenFilesRow.Children(func() {
+				ui.Text(c, theme.Tr("显示隐藏文件和文件夹", "Show Hidden Files and Folders")).
+					FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+				if internalui.TogglePill(c, "settings-show-hidden-files-pill", theme.Tr("显示隐藏文件和文件夹", "Show Hidden Files and Folders"), &showHidden, false) {
+					nextShow := showHidden
+					m.mutateState(func(s *model.AppState) {
+						s.ShowHiddenFiles = nextShow
 					})
 				}
 			})
