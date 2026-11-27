@@ -254,9 +254,17 @@ func RenderStorageTreemap(
 					FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(0).SingleLine()
 			})
 
+			// Reserve the tallest category's list height so hovering tiles never resizes the dialog.
+			var listH float32
+			for _, it := range ranked {
+				listH = max(listH, treemapDetailListHeight(it))
+			}
+
 			if len(active.Entries) == 0 {
-				ui.Text(c, theme.Tr("暂无文件占用", "No files in this category")).
-					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+				ui.Column(c.Key(detailKey+"-entries")).FillWidth().MinWidth(0).Height(listH).Shrink(0).Children(func() {
+					ui.Text(c, theme.Tr("暂无文件占用", "No files in this category")).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+				})
 				return
 			}
 
@@ -269,7 +277,7 @@ func RenderStorageTreemap(
 
 			var shownBytes uint64
 			var shownCount int
-			ui.Column(c.Key(detailKey + "-entries")).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+			ui.Column(c.Key(detailKey+"-entries")).FillWidth().MinWidth(0).Height(listH).Shrink(0).Gap(theme.Space6).Children(func() {
 				for i, ent := range active.Entries {
 					e := ent
 					shownBytes += e.Bytes
@@ -388,6 +396,25 @@ func renderTreemapSummaryHeader(c *ui.Context, sum *TreemapSummary) {
 			})
 		}
 	})
+}
+
+// treemapDetailListHeight is the exact height of one category's breakdown list (rows + "other files" row).
+func treemapDetailListHeight(it TreemapItem) float32 {
+	if len(it.Entries) == 0 {
+		return theme.LineSmall
+	}
+	n := len(it.Entries)
+	h := float32(n)*theme.HeightControl + float32(n-1)*theme.Space6
+	var shownBytes uint64
+	shownCount := 0
+	for _, e := range it.Entries {
+		shownBytes += e.Bytes
+		shownCount += max(e.Count, 1)
+	}
+	if it.FileCount > shownCount || it.Bytes > shownBytes {
+		h += theme.Space6 + theme.Space4 + theme.LineMeta
+	}
+	return h
 }
 
 type bentoTier int
