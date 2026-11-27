@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T07:46:16.480Z",
-  "latest_version": "1.0.950",
-  "latest_tag": "v1.0.950",
+  "updated_at": "2026-11-27T07:55:54.677Z",
+  "latest_version": "1.0.951",
+  "latest_tag": "v1.0.951",
   "releases": [
+    {
+      "version": "1.0.951",
+      "tag": "v1.0.951",
+      "published_at": "2026-11-27T07:55:54Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.951",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "代码编辑器：制表符空白现在支持显示全宽箭头指示符号。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "源码编辑器：制表符全宽箭头现在可以在源码与文档源码编辑器中正常渲染。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Code Editor: Tab whitespace now supports displaying full-width arrow indicators."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Source Editor: Full-width tab arrows now render correctly in source and markdown source editors."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-macos-arm64.dmg",
+          "size": 18769491,
+          "sha256": "a8b1a9711a4c649272880369d64dbfe6073ad45ea88e3d4e03713945f301aeb6"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-macos-x64.dmg",
+          "size": 20697848,
+          "sha256": "a8d0a468d5ba478a36cd3fb9ed36e01ddfa221ad20d613ab57815d127a9402a4"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-windows-x64-setup.exe",
+          "size": 16223842,
+          "sha256": "2d3cc5382332bb86b09d3172d233452aab38435d024fac1932d982790157fc48"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-linux-x64.deb",
+          "size": 13185820,
+          "sha256": "e1416e43f3a68b7626b23e31b195d35e21275bc08d1357225a0048ffecb13332"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-linux-x64.AppImage",
+          "size": 26454520,
+          "sha256": "a171967e5a8c65f200d3758cd47b28949015d9d1ea3ca922a605e5d941667a2b"
+        }
+      ]
+    },
     {
       "version": "1.0.950",
       "tag": "v1.0.950",
@@ -32,38 +92,7 @@
           "Plugin API: The plugin file and network access boundaries are more strictly enforced, and webview staging handles concurrent operations more safely."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-macos-arm64.dmg",
-          "size": 18750295,
-          "sha256": "9fdfb0e68ea4cadf320a2cda2f8e208af078387e748eb4b0d78cb4381008170b"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-macos-x64.dmg",
-          "size": 20680371,
-          "sha256": "f7ad7e56035b477f14658e7aad9fb4fbe329141493aae198079f724f939da6ba"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-windows-x64-setup.exe",
-          "size": 16212709,
-          "sha256": "c298e6c7473933b4075d657d281d8b9cddba876a96beb3b1cb89d51079e3a1e2"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-linux-x64.deb",
-          "size": 13171294,
-          "sha256": "d282f36c2fbb422bab8ca4021c035f25b740f38c89ffb98b14a2264777ed0893"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.950/block-linux-x64.AppImage",
-          "size": 26429944,
-          "sha256": "3e6081e120365f833d305873e61bfb0d64ca74bd6e55ecad7cd2befcfb65a410"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.949",
@@ -1674,33 +1703,6 @@
           "Hero switches now outline their tracks so title bar toggles remain visible.",
           "Disabled plugin notices now appear within the dormant overview card."
         ],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.899",
-      "tag": "v1.0.899",
-      "published_at": "2026-11-21T10:08:49Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.899",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "插件系统现已支持从商店获取并读取版本更新日志。",
-          "应用商店的插件详情页新增了更新日志标签页，便于查阅各版本的历史更新记录。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "The plugin system now supports fetching and reading version changelogs from the store.",
-          "Plugin detail pages in the App Store now feature a dedicated Changelog tab to display version update histories."
-        ],
-        "improvements": [],
         "fixes": [],
         "other": []
       },
