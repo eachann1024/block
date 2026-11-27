@@ -3,10 +3,12 @@ package editor
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"block/internal/codepreview"
 	"block/internal/icons"
@@ -1782,11 +1784,89 @@ func inlineCodeStyle(baseSize float32) (fg, bg ui.Color, padX, padY, radius floa
 	fg = pal.InlineCodeFG
 	bg = pal.InlineCodeBG
 	scale := min(baseSize/16, 1)
-	padX = min(baseSize*0.25+1.5*scale, 9)
+	padX = min(baseSize*0.2+0.8*scale, 7)
 	targetH := float32(math.Round(float64(baseSize + 5*scale)))
 	padY = max((targetH-baseSize*1.32)*0.5, 0)
 	radius = max(min(float32(math.Round(float64(4*scale))), 5), 3)
 	return
+}
+
+func isMacSystemUICJKLeakPunct(r rune) bool {
+	switch r {
+	case '：', '，', '、', '。', '；', '！', '？',
+		'）', '】', '》', '」', '』', '〕', '〉', '｝', '］', '”', '’':
+		return true
+	default:
+		return false
+	}
+}
+
+// stabilizeSystemUICJKPunctBeforeFontChange works around a macOS CoreText bug where
+// trailing fullwidth CJK punctuation shaped with system-ui (.AppleSystemUIFont /
+// .PingFangUI) right before a different-font span (such as inline code/math) collapses
+// to half-width and leaks its missing advance (+3.75~7.5pt) onto the last glyph of the
+// following span. Assigning that trailing punctuation slice to PingFang SC keeps the
+// punctuation fullwidth and leaves the following code span's glyph advances exact.
+func stabilizeSystemUICJKPunctBeforeFontChange(spans []ui.Span, baseFont string) []ui.Span {
+	if runtime.GOOS != "darwin" || len(spans) < 2 || !strings.HasPrefix(baseFont, "system-ui") {
+		return spans
+	}
+	var cuts []int
+	needBreak := false
+	for i := len(spans) - 1; i >= 0; i-- {
+		sp := spans[i]
+		if sp.Text == "" {
+			continue
+		}
+		if sp.Font != "" {
+			needBreak = true
+			continue
+		}
+		if !needBreak {
+			continue
+		}
+		cut := len(sp.Text)
+		for cut > 0 {
+			r, sz := utf8.DecodeLastRuneInString(sp.Text[:cut])
+			if !isMacSystemUICJKLeakPunct(r) {
+				break
+			}
+			cut -= sz
+		}
+		if cut < len(sp.Text) {
+			if cuts == nil {
+				cuts = make([]int, len(spans))
+				for k := range cuts {
+					cuts[k] = -1
+				}
+			}
+			cuts[i] = cut
+			needBreak = cut == 0
+		} else {
+			needBreak = false
+		}
+	}
+	if cuts == nil {
+		return spans
+	}
+	out := make([]ui.Span, 0, len(spans)+2)
+	for i, sp := range spans {
+		cut := cuts[i]
+		if cut < 0 {
+			out = append(out, sp)
+			continue
+		}
+		if cut > 0 {
+			head := sp
+			head.Text = sp.Text[:cut]
+			out = append(out, head)
+		}
+		punct := sp
+		punct.Text = sp.Text[cut:]
+		punct.Font = "PingFang SC"
+		out = append(out, punct)
+	}
+	return out
 }
 
 // buildPureSpan converts a single model.Span into its layout-invariant ui.Span without
@@ -1874,7 +1954,7 @@ func (s *Session) buildRenderDisplaySpans(b *model.Block, baseSize float32, base
 		}
 		out = append(out, u)
 	}
-	return out
+	return stabilizeSystemUICJKPunctBeforeFontChange(out, resolvedEditorFont())
 }
 
 func (s *Session) buildPureDisplaySpans(b *model.Block, baseSize float32, baseWeight int) []ui.Span {
@@ -1887,7 +1967,7 @@ func (s *Session) buildPureDisplaySpans(b *model.Block, baseSize float32, baseWe
 		u, _ := buildPureSpan(sp, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
 		out = append(out, u)
 	}
-	return out
+	return stabilizeSystemUICJKPunctBeforeFontChange(out, resolvedEditorFont())
 }
 
 func (s *Session) buildDisplaySpan(idx int, b *model.Block, sp model.Span, start, end int, baseSize float32, baseWeight int, codeFG, codeBG ui.Color, codePadX, codePadY, codeRadius float32) (ui.Span, bool) {
@@ -1948,13 +2028,37 @@ type cachedCodePreview struct {
 
 func (s *Session) renderDisplaySpansChildren(c *ui.Context, _ int, b *model.Block, baseSize float32, baseWeight int) {
 	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize)
-	for i, sp := range b.Spans {
+	raw := make([]ui.Span, 0, len(b.Spans))
+	for _, sp := range b.Spans {
 		u, hasNamedBG := buildPureSpan(sp, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
 		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 && !hasNamedBG {
 			u.Background = ui.Color{}
 		}
+		raw = append(raw, u)
+	}
+	stabilized := stabilizeSystemUICJKPunctBeforeFontChange(raw, resolvedEditorFont())
+	spanLinks := make([]string, len(stabilized))
+	if len(stabilized) == len(b.Spans) {
+		for i, sp := range b.Spans {
+			spanLinks[i] = sp.Link
+		}
+	} else {
+		// Map split spans back to their source span's Link by byte progress.
+		srcIdx, srcOff := 0, 0
+		for i, u := range stabilized {
+			for srcIdx < len(b.Spans) && srcOff >= len(b.Spans[srcIdx].Text) {
+				srcIdx++
+				srcOff = 0
+			}
+			if srcIdx < len(b.Spans) {
+				spanLinks[i] = b.Spans[srcIdx].Link
+				srcOff += len(u.Text)
+			}
+		}
+	}
+	for i, u := range stabilized {
 		el := ui.RichText(c.Key(spanUIKey{idx: i}), u)
-		if sp.Link != "" {
+		if spanLinks[i] != "" {
 			if el.Hovered() {
 				el.Underline()
 			}
@@ -2080,7 +2184,7 @@ func (s *Session) buildInlineDiffDisplaySpans(idx int, b *model.Block, baseSize 
 			}
 		}
 	}
-	return out
+	return stabilizeSystemUICJKPunctBeforeFontChange(out, resolvedEditorFont())
 }
 
 func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, baseWeight int) []ui.Span {
@@ -2097,7 +2201,7 @@ func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, b
 		out = append(out, u)
 		pos += n
 	}
-	return out
+	return stabilizeSystemUICJKPunctBeforeFontChange(out, resolvedEditorFont())
 }
 
 func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {

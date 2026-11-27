@@ -2192,6 +2192,7 @@ func (s *Session) cachedShapeBlock(
 			u, _ := buildPureSpan(sp, fontSize, weight, codeFG, codeBG, codePadX, codePadY, codeRadius)
 			uiSpans = append(uiSpans, u)
 		}
+		uiSpans = stabilizeSystemUICJKPunctBeforeFontChange(uiSpans, fontFamily)
 		layout = ui.ShapeRichText(uiSpans, font, width)
 	} else {
 		layout = ui.ShapeText(plain, font, width)

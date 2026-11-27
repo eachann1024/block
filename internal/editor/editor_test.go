@@ -1795,7 +1795,7 @@ func TestEditorRenderingParity(t *testing.T) {
 	if spans[0].Weight != 600 {
 		t.Fatalf("bold weight: got %d, want 600", spans[0].Weight)
 	}
-	if spans[1].Size != 16 || spans[1].Weight != 400 || spans[1].Color != pal.InlineCodeFG || spans[1].PaddingX != 5.5 || spans[1].Radius != 4 {
+	if spans[1].Size != 16 || spans[1].Weight != 400 || spans[1].Color != pal.InlineCodeFG || spans[1].PaddingX != 4 || spans[1].Radius != 4 {
 		t.Fatalf("inline code span mismatch: %+v", spans[1])
 	}
 	if spans[2].Color != pal.Link || spans[2].Underline {
