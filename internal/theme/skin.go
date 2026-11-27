@@ -286,6 +286,13 @@ func ActiveSkin() *ThemeSkinSpec {
 	return cloneThemeSkinSpec(activeSkin)
 }
 
+// skinActive reports whether a theme skin is active without cloning it.
+func skinActive() bool {
+	skinMu.RLock()
+	defer skinMu.RUnlock()
+	return activeSkin != nil
+}
+
 // ActiveSkinOwner returns the plugin ID that owns the currently active theme skin.
 func ActiveSkinOwner() string {
 	skinMu.RLock()

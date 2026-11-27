@@ -21,6 +21,23 @@ type ShellChromeColors struct {
 
 // ShellChrome returns the window shell and floating-card token set for p.
 func (p Palette) ShellChrome() ShellChromeColors {
+	// A plugin theme skin repaints the shell from its own palette so the window
+	// ground, sidebar, and titlebar follow the skin instead of fixed greys.
+	if skinActive() {
+		return ShellChromeColors{
+			Ground:           p.Shell,
+			Card:             p.Paper,
+			CardBorder:       p.Hairline,
+			PathBarBorder:    p.Hairline,
+			TabBorder:        p.SelectedBorder,
+			Hover:            p.Hover,
+			FieldBG:          p.Card,
+			FieldBorder:      p.BtnBorder,
+			FieldBorderHover: p.SelectedBorder,
+			KbdBG:            p.Card,
+			BadgeFG:          p.Accent,
+		}
+	}
 	if p.Dark {
 		return ShellChromeColors{
 			Ground:           ui.Hex("#222222"),
