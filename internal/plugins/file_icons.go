@@ -749,6 +749,53 @@ func (s *Supervisor) DeleteFileIconPath(notebookRoot, relPath string) {
 	}
 }
 
+// RenameNotebookRoot rebases custom file, folder, and notebook icon mappings
+// when a notebook root directory is moved or renamed externally.
+func (s *Supervisor) RenameNotebookRoot(oldRoot, newRoot string) {
+	if s == nil || s.contrib == nil {
+		return
+	}
+	oldKey := cleanNotebookKey(oldRoot)
+	newKey := cleanNotebookKey(newRoot)
+	if oldKey == "" || newKey == "" || oldKey == newKey {
+		return
+	}
+	changed := false
+	s.contrib.mu.Lock()
+	for _, byRoot := range s.contrib.fileIcons {
+		if len(byRoot) == 0 {
+			continue
+		}
+		oldEntries, ok := byRoot[oldKey]
+		if !ok {
+			continue
+		}
+		if len(oldEntries) == 0 {
+			delete(byRoot, oldKey)
+			changed = true
+			continue
+		}
+		if existing := byRoot[newKey]; existing != nil {
+			for rel, ent := range oldEntries {
+				if _, exists := existing[rel]; !exists {
+					existing[rel] = ent
+				}
+			}
+		} else {
+			byRoot[newKey] = oldEntries
+		}
+		delete(byRoot, oldKey)
+		changed = true
+	}
+	if changed {
+		s.contrib.saveLocked()
+	}
+	s.contrib.mu.Unlock()
+	if changed {
+		s.notifyChanged()
+	}
+}
+
 func (s *Supervisor) resolveFileIconPrefsLocked(m Manifest) (picker, syncTabs bool) {
 	if m.Contributes != nil && len(m.Contributes.FileIcons) > 0 {
 		picker = m.Contributes.FileIcons[0].Picker

@@ -120,6 +120,38 @@ func normalizeState(st *model.AppState) {
 	}
 	st.Notebooks = dedup
 
+	if len(st.NotebookIdentities) > 0 {
+		validNotebooks := make(map[string]bool, len(st.Notebooks)+1)
+		for _, nb := range st.Notebooks {
+			validNotebooks[nb] = true
+		}
+		if st.Folder != "" {
+			validNotebooks[st.Folder] = true
+		}
+		cleanIDs := make(map[string]string, len(st.NotebookIdentities))
+		for rawPath, rawID := range st.NotebookIdentities {
+			p := strings.TrimSpace(rawPath)
+			id := strings.TrimSpace(rawID)
+			if p == "" || id == "" {
+				continue
+			}
+			cleanPath := filepath.Clean(p)
+			if !validNotebooks[cleanPath] {
+				continue
+			}
+			if _, exists := cleanIDs[cleanPath]; !exists || rawPath == cleanPath {
+				cleanIDs[cleanPath] = id
+			}
+		}
+		if len(cleanIDs) == 0 {
+			st.NotebookIdentities = nil
+		} else {
+			st.NotebookIdentities = cleanIDs
+		}
+	} else if st.NotebookIdentities != nil {
+		st.NotebookIdentities = nil
+	}
+
 	// Deduplicate open tabs preserving order and skipping empty entries.
 	if len(st.OpenTabs) > 0 {
 		cleanTabs := make([]string, 0, len(st.OpenTabs))

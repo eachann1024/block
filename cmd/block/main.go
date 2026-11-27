@@ -36,9 +36,9 @@ func main() {
 	theme.ConfigureDefaultFontSmoothing()
 
 	var (
-		dataDirFlag   string
-		notebookFlag  string
-		hiddenFlag    bool
+		dataDirFlag         string
+		notebookFlag        string
+		hiddenFlag          bool
 		smokeFlag           bool
 		smokeOnceFlag       bool
 		mockAIFlag          bool
@@ -593,6 +593,7 @@ func main() {
 			return
 		}
 		isQuitting = true
+		ws.StopExternalSync()
 		modals.SetAppQuitting(true)
 		ws.FlushWindowBounds()
 		ws.FlushPendingState()
@@ -609,6 +610,7 @@ func main() {
 	mygo.App.OnQuitCanceled(func() {
 		isQuitting = false
 		modals.SetAppQuitting(false)
+		ws.ResumeExternalSync()
 		ws.ResumeTelemetrySession()
 		files.ResumeFileDialogs()
 	})

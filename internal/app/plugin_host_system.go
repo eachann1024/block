@@ -52,54 +52,11 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 			Tone:    "warning",
 		})
 	})
-	mygo.Power.OnResume(func() { sup.EmitSystemEvent("system.wake", mygo.Network.Status().Online) })
 	mygo.Network.OnChanged(func(status mygo.NetworkStatus) {
 		sup.EmitSystemEvent("network.changed", status.Online)
 	})
 	go watchPluginNetworkInterfaces(w.pluginUI.closing, sup)
 	go tickPluginSyncInterval(w.pluginUI.closing, sup)
-	onFocus := func() { sup.EmitSystemEvent("app.focus", false) }
-	if runtime.GOOS == "darwin" {
-		mygo.App.OnDidBecomeActive(onFocus)
-		return
-	}
-	active := false
-	var blurTimer *time.Timer
-	updateFocus := func() {
-		focused := false
-		for _, win := range mygo.Windows() {
-			if win.IsFocused() {
-				focused = true
-				break
-			}
-		}
-		if focused && !active {
-			onFocus()
-		}
-		active = focused
-	}
-	watchWindow := func(win *mygo.Window) {
-		win.OnFocus(updateFocus)
-		lostFocus := func() {
-			if blurTimer != nil {
-				blurTimer.Stop()
-			}
-			blurTimer = time.AfterFunc(75*time.Millisecond, func() {
-				select {
-				case <-w.pluginUI.closing:
-				default:
-					mygo.RunOnMain(updateFocus)
-				}
-			})
-		}
-		win.OnBlur(lostFocus)
-		win.OnClosed(lostFocus)
-	}
-	mygo.App.OnWindowCreated(watchWindow)
-	for _, win := range mygo.Windows() {
-		watchWindow(win)
-	}
-	updateFocus()
 }
 
 func tickPluginSyncInterval(closing <-chan struct{}, sup *plugins.Supervisor) {

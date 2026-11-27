@@ -223,6 +223,12 @@ func rebasePath(p, from, to string) (string, bool) {
 	return p, false
 }
 
+// RebaseFileOrder updates persisted custom file_order entries after a file or
+// directory moves from from to to.
+func RebaseFileOrder(from, to string) {
+	rebaseFileOrder(from, to)
+}
+
 func rebaseFileOrder(from, to string) {
 	stateMu.Lock()
 	defer stateMu.Unlock()

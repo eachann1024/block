@@ -209,6 +209,7 @@ type PersistedTabBinding struct {
 type AppState struct {
 	Folder               string                         `json:"folder,omitempty"`
 	Notebooks            []string                       `json:"notebooks,omitempty"`
+	NotebookIdentities   map[string]string              `json:"notebook_identities,omitempty"`
 	FileOrder            map[string][]string            `json:"file_order,omitempty"`
 	IgnoredSearchFolders []string                       `json:"ignored_search_folders,omitempty"`
 	SidebarWidth         *float32                       `json:"sidebar_width,omitempty"`
@@ -341,6 +342,7 @@ type FileEntry struct {
 	IsMarkdown bool
 	ModUnix    int64
 	Size       int64
+	Identity   string `json:"-"`
 	Children   []FileEntry
 }
 

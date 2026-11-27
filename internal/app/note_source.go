@@ -193,7 +193,7 @@ func (w *Workspace) toggleNoteSource(tab string, sess *editor.Session) {
 		}
 	} else if sessDirty && !isVirtual {
 		if hasLastDisk {
-			savedText = lastDiskMD
+			savedText = lastDiskMD.diskText
 		} else if diskText, _, err := w.readTabDiskNote(tab); err == nil {
 			savedText = diskText
 		} else {

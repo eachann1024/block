@@ -224,8 +224,10 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 				children = nil
 			}
 			var modUnix int64
+			var identity string
 			if info, infoErr := de.Info(); infoErr == nil {
 				modUnix = info.ModTime().Unix()
+				identity = FileIdentityToken(info, nil)
 			}
 			out = append(out, model.FileEntry{
 				Path:       fullPath,
@@ -234,6 +236,7 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 				IsDir:      true,
 				IsMarkdown: false,
 				ModUnix:    modUnix,
+				Identity:   identity,
 				Children:   children,
 			})
 			continue
@@ -262,9 +265,11 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 		}
 
 		var modUnix, size int64
+		var identity string
 		if info != nil {
 			modUnix = info.ModTime().Unix()
 			size = info.Size()
+			identity = FileIdentityToken(info, nil)
 		}
 		out = append(out, model.FileEntry{
 			Path:       fullPath,
@@ -274,6 +279,7 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 			IsMarkdown: mdExt != "",
 			ModUnix:    modUnix,
 			Size:       size,
+			Identity:   identity,
 		})
 	}
 
