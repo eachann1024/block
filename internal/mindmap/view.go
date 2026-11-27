@@ -2959,18 +2959,12 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				}
 				return true
 			}
-			wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
-			hit := HitTestWithActions(st.Root, [2]int{st.HoveredID, 0}, cb.ReadOnly, wx, wy, st.Camera.Scale)
-			if hit.Node != nil {
-				st.HoveredID = hit.Node.ID
-				st.HoveredHit = hit.Kind
-			} else {
-				st.HoveredID = 0
-				st.HoveredHit = HitNone
-			}
+			st.refreshHoverAt(ev.X, ev.Y, cb.ReadOnly)
 			return false
 
 		case ui.InputPointerDown:
+			// Decide action-button hits with the visibility state the user saw before this click clears it.
+			actionsLive := st.canvasActionsLive()
 			st.ExportMenuOpen = false
 			st.ShortcutsOpen = false
 			st.ImportResult = nil
@@ -2984,7 +2978,11 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				st.finishEdit(true, cb)
 			}
 			wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
-			hit := HitTestWithActions(st.Root, [2]int{st.HoveredID, 0}, cb.ReadOnly, wx, wy, st.Camera.Scale)
+			activeID := st.HoveredID
+			if !actionsLive {
+				activeID = 0
+			}
+			hit := HitTestWithActions(st.Root, [2]int{activeID, 0}, cb.ReadOnly, wx, wy, st.Camera.Scale)
 
 			if ev.Button == 1 {
 				// Right-click selects hit node before ContextMenu opens.
@@ -3018,12 +3016,16 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				st.openNodeLink(c.Now(), hit.Node, cb)
 				return true
 			case HitHoverFold:
-				st.SelectedID = hit.Node.ID
-				hit.Node.Folded = !hit.Node.Folded
+				if !cb.ReadOnly {
+					st.SelectedID = hit.Node.ID
+					hit.Node.Folded = true
+					st.HoveredHit = HitNone
+				}
 				return true
 			case HitHoverAdd:
 				if !cb.ReadOnly {
 					st.SelectedID = hit.Node.ID
+					st.HoveredHit = HitNone
 					st.opAddChild(cb)
 				}
 				return true
@@ -3033,6 +3035,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			case HitFoldBadge:
 				hit.Node.Folded = false
 				st.SelectedID = hit.Node.ID
+				st.HoveredHit = HitNone
 				return true
 			case HitNode:
 				st.SelectedID = hit.Node.ID
@@ -3082,6 +3085,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 		case ui.InputZoom:
 			if ev.Scale > 0 && st.Camera.Scale > 0 {
 				st.zoomAt(ev.X, ev.Y, st.Camera.Scale*ev.Scale)
+				st.refreshHoverAt(ev.X, ev.Y, cb.ReadOnly)
 				return true
 			}
 			return false
@@ -3094,6 +3098,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			if ev.Mods&(ui.Cmd|ui.Ctrl) != 0 {
 				factor := float32(math.Exp(float64(-ev.DY) * 0.008))
 				st.zoomAt(ev.X, ev.Y, st.Camera.Scale*factor)
+				st.refreshHoverAt(ev.X, ev.Y, cb.ReadOnly)
 				return true
 			}
 			// In fullscreen or when actively holding Shift/horizontal scroll, pan the canvas.
@@ -3101,6 +3106,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				st.fsCamAnimActive = false
 				st.Camera.X += ev.DX / st.Camera.Scale
 				st.Camera.Y += ev.DY / st.Camera.Scale
+				st.refreshHoverAt(ev.X, ev.Y, cb.ReadOnly)
 				return true
 			}
 			return false
@@ -3204,8 +3210,14 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 		canvas.Cursor(ui.CursorGrabbing)
 	case canvasHovered && st.HoveredID != 0:
 		switch st.HoveredHit {
-		case HitLinkBadge, HitCheckbox, HitFoldBadge, HitHoverFold, HitHoverAdd:
+		case HitLinkBadge, HitFoldBadge:
 			canvas.Cursor(ui.CursorPointer)
+		case HitCheckbox, HitHoverFold, HitHoverAdd:
+			if !cb.ReadOnly {
+				canvas.Cursor(ui.CursorPointer)
+			} else {
+				canvas.Cursor(ui.CursorDefault)
+			}
 		case HitNode:
 			if !cb.ReadOnly && st.Root != nil {
 				if hn := st.Root.FindByID(st.HoveredID); hn != nil && hn.Parent != nil {
@@ -3311,7 +3323,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 		}
 		hoveredID := st.HoveredID
 		hoveredHit := st.HoveredHit
-		if !canvasHovered {
+		if !canvasHovered || st.LinkNodeID != 0 || st.ExportMenuOpen || st.ShortcutsOpen || st.ImportResult != nil {
 			hoveredID = 0
 			hoveredHit = HitNone
 		}
@@ -3589,6 +3601,34 @@ func (st *BlockState) FitCanvas() {
 	}
 	st.fsCamAnimActive = false
 	st.AutoFitPending = true
+}
+
+// canvasActionsLive reports whether floating −/+ action buttons are currently drawn,
+// so hit-testing never triggers a button the user cannot see.
+func (st *BlockState) canvasActionsLive() bool {
+	return st.EditingID == 0 && st.DragNodeID == 0 && st.LinkNodeID == 0 &&
+		!st.ExportMenuOpen && !st.ShortcutsOpen && st.ImportResult == nil
+}
+
+// refreshHoverAt recomputes hover state for the pointer at screen (sx, sy),
+// e.g. after the camera moved under a stationary pointer.
+func (st *BlockState) refreshHoverAt(sx, sy float32, readOnly bool) {
+	if st.Root == nil || st.Camera.Scale <= 0 {
+		return
+	}
+	activeID := st.HoveredID
+	if !st.canvasActionsLive() {
+		activeID = 0
+	}
+	wx, wy := st.Camera.ScreenToWorld(sx, sy)
+	hit := HitTestWithActions(st.Root, [2]int{activeID, 0}, readOnly, wx, wy, st.Camera.Scale)
+	if hit.Node != nil {
+		st.HoveredID = hit.Node.ID
+		st.HoveredHit = hit.Kind
+	} else {
+		st.HoveredID = 0
+		st.HoveredHit = HitNone
+	}
 }
 
 func (st *BlockState) zoomAt(sx, sy, targetScale float32) {

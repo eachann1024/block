@@ -1,9 +1,10 @@
 package mindmap
 
 import (
-	"fmt"
 	"math"
+	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"block/internal/theme"
@@ -11,23 +12,24 @@ import (
 )
 
 const (
-	layoutHGap        float32 = 34
-	layoutVGapPrimary float32 = 18
-	layoutVGapLeaf    float32 = 9
-	layoutRootH       float32 = 40
-	layoutPrimaryH    float32 = 30
-	layoutLeafH       float32 = 24
-	layoutRootLineH   float32 = 21
-	layoutBranchLineH float32 = 18
-	layoutLeafGap     float32 = 3
-	layoutTaskBox     float32 = 13
-	layoutTaskGap     float32 = 5
-	layoutLinkBadge   float32 = 16
-	layoutLinkGap     float32 = 5
-	layoutFoldOffset  float32 = 13
-	layoutFoldRadius  float32 = 8.5
-	layoutActionBtnR  float32 = 7.5
-	layoutActionGap   float32 = 17
+	layoutHGap         float32 = 34
+	layoutVGapPrimary  float32 = 18
+	layoutVGapLeaf     float32 = 9
+	layoutRootH        float32 = 40
+	layoutPrimaryH     float32 = 30
+	layoutLeafH        float32 = 24
+	layoutRootLineH    float32 = 21
+	layoutBranchLineH  float32 = 18
+	layoutLeafGap      float32 = 3
+	layoutTaskBox      float32 = 13
+	layoutTaskGap      float32 = 5
+	layoutLinkBadge    float32 = 16
+	layoutLinkGap      float32 = 5
+	layoutFoldStem     float32 = 8
+	layoutFoldPillH    float32 = 18
+	layoutFoldPillMinW float32 = 24
+	layoutFoldPillPadX float32 = 6
+	layoutActionBtnR   float32 = 7.5
 )
 
 // Bounds holds the world-space bounding box of a laid-out mind map.
@@ -371,6 +373,9 @@ func ComputeLayout(root *Node, mode LayoutMode, tm TextMeasurer, mc *MeasureCach
 			place(ch, -root.W/2-layoutHGap, curY+ch.SubH/2, -1)
 			curY += ch.SubH + layoutVGapPrimary
 		}
+	} else if mode == LayoutBoth {
+		// Keep a collapsed root centered so folding doesn't shift it sideways.
+		place(root, -root.W/2, 0, 1)
 	} else {
 		place(root, 0, 0, 1)
 	}
@@ -389,18 +394,12 @@ func ComputeLayout(root *Node, mode LayoutMode, tm TextMeasurer, mc *MeasureCach
 		bounds.MinY = min(bounds.MinY, n.Y-n.H/2)
 		bounds.MaxY = max(bounds.MaxY, n.Y+n.H/2)
 		if n.Folded && len(n.Children) > 0 {
-			bx := n.X - layoutFoldOffset
-			if n.Dir > 0 {
-				bx = n.X + n.W + layoutFoldOffset
-			}
-			bounds.MinX = min(bounds.MinX, bx-layoutFoldRadius-2)
-			bounds.MaxX = max(bounds.MaxX, bx+layoutFoldRadius+2)
-			by := n.Y
-			if n.Depth > 1 {
-				by = n.Y + n.H/2
-			}
-			bounds.MinY = min(bounds.MinY, by-layoutFoldRadius-2)
-			bounds.MaxY = max(bounds.MaxY, by+layoutFoldRadius+2)
+			// Same measured capsule as painting/hit-testing (export geometry at 1:1).
+			fb := nodeFoldBadgeAtScale(n, 1, true)
+			bounds.MinX = min(bounds.MinX, fb.x-2)
+			bounds.MaxX = max(bounds.MaxX, fb.x+fb.w+2)
+			bounds.MinY = min(bounds.MinY, fb.y-2)
+			bounds.MaxY = max(bounds.MaxY, fb.y+fb.h+2)
 			return
 		}
 		for _, ch := range n.Children {
@@ -461,6 +460,8 @@ func nodePadRight(n *Node) float32 {
 const (
 	minLinkBadgeScreenR float32 = 5.5
 	minActionBtnScreenR float32 = 6.0
+	minFoldPillScreenH  float32 = 14.0
+	minFoldStemScreen   float32 = 5.0
 )
 
 func effectiveWorldRadius(worldR, scale, minScreenR float32) float32 {
@@ -471,6 +472,147 @@ func effectiveWorldRadius(worldR, scale, minScreenR float32) float32 {
 		return worldR
 	}
 	return max(worldR, minScreenR/scale)
+}
+
+func nodeAnchor(n *Node) (edgeX, ay, sign float32) {
+	ay = n.Y
+	if n.Depth > 1 {
+		ay = n.Y + n.H/2
+	}
+	dir := n.Dir
+	if dir == 0 {
+		dir = 1
+	}
+	if dir < 0 {
+		return n.X, ay, -1
+	}
+	return n.X + n.W, ay, 1
+}
+
+type foldBadgeLayout struct {
+	x, y, w, h float32 // world-space capsule rect
+	nearX      float32 // world X of capsule edge closest to node
+	stem       float32 // world stem length from node edge to nearX
+	cy         float32 // world Y center of stem and capsule
+	effScale   float32 // screen scale used for capsule and label
+	textW      float32 // screen-space shaped label width
+	glyphs     []ui.Glyph
+	fm         ui.FontMetrics
+}
+
+func (fb foldBadgeLayout) hit(wx, wy, pad float32) bool {
+	r := fb.h*0.5 + pad
+	cy := fb.cy
+	leftCX := fb.x + fb.h*0.5
+	rightCX := fb.x + fb.w - fb.h*0.5
+	if wx >= leftCX && wx <= rightCX {
+		return wy >= cy-r && wy <= cy+r
+	}
+	cx := leftCX
+	if wx > rightCX {
+		cx = rightCX
+	}
+	dx, dy := wx-cx, wy-cy
+	return dx*dx+dy*dy <= r*r
+}
+
+func nodeFoldBadgeBase(n *Node, scale float32, exportMode bool) (edgeX, ay, sign, stem, nearX, worldH, effScale float32) {
+	if scale <= 0 {
+		scale = 1
+	}
+	edgeX, ay, sign = nodeAnchor(n)
+	effScale = scale
+	stem = layoutFoldStem
+	if !exportMode {
+		if layoutFoldPillH*scale < minFoldPillScreenH {
+			effScale = minFoldPillScreenH / layoutFoldPillH
+		}
+		stem = max(layoutFoldStem, minFoldStemScreen/scale)
+	}
+	worldH = layoutFoldPillH * (effScale / scale)
+	nearX = edgeX + sign*stem
+	return
+}
+
+type foldLabelKey struct {
+	label string
+	size  float32
+}
+
+type foldLabelShape struct {
+	glyphs []ui.Glyph
+	textW  float32
+	fm     ui.FontMetrics
+}
+
+var foldLabelCache struct {
+	sync.Mutex
+	m map[foldLabelKey]foldLabelShape
+}
+
+// shapeFoldLabel caches shaped capsule digits per (label, font size) so painting
+// and hit-testing don't reshape text every frame.
+func shapeFoldLabel(label string, size float32) foldLabelShape {
+	key := foldLabelKey{label: label, size: size}
+	foldLabelCache.Lock()
+	defer foldLabelCache.Unlock()
+	if s, ok := foldLabelCache.m[key]; ok {
+		return s
+	}
+	if foldLabelCache.m == nil || len(foldLabelCache.m) > 256 {
+		foldLabelCache.m = make(map[foldLabelKey]foldLabelShape)
+	}
+	fnt := ui.Font{
+		Family: theme.DefaultUIFontStack(),
+		Size:   size,
+		Weight: theme.WeightControl,
+	}
+	s := foldLabelShape{glyphs: ui.Shape(label, fnt), fm: fnt.Metrics()}
+	for _, g := range s.glyphs {
+		s.textW = max(s.textW, g.X+g.Advance)
+	}
+	foldLabelCache.m[key] = s
+	return s
+}
+
+// foldBadgeCoarseRect is a cheap upper bound of the capsule rect (no text shaping),
+// used for viewport culling and hit-test rejection.
+func foldBadgeCoarseRect(n *Node, scale float32, exportMode bool) (x0, y0, x1, y1 float32) {
+	_, ay, sign, _, nearX, worldH, effScale := nodeFoldBadgeBase(n, scale, exportMode)
+	maxW := max(layoutFoldPillMinW, float32(10)*theme.FontMicro) * (effScale / scale)
+	x0, x1 = nearX, nearX+maxW
+	if sign < 0 {
+		x0, x1 = nearX-maxW, nearX
+	}
+	return x0, ay - worldH*0.5, x1, ay + worldH*0.5
+}
+
+func nodeFoldBadgeAtScale(n *Node, scale float32, exportMode bool) foldBadgeLayout {
+	if scale <= 0 {
+		scale = 1
+	}
+	_, ay, sign, stem, nearX, worldH, effScale := nodeFoldBadgeBase(n, scale, exportMode)
+	shaped := shapeFoldLabel(strconv.Itoa(n.DescendantCount()), theme.FontMicro*effScale)
+	glyphs, textW := shaped.glyphs, shaped.textW
+	screenW := max(layoutFoldPillMinW*effScale, textW+layoutFoldPillPadX*2*effScale)
+	worldW := screenW / scale
+	x := nearX
+	if sign < 0 {
+		x = nearX - worldW
+	}
+	return foldBadgeLayout{
+		x:        x,
+		y:        ay - worldH*0.5,
+		w:        worldW,
+		h:        worldH,
+		nearX:    nearX,
+		stem:     stem,
+		cy:       ay,
+		effScale: effScale,
+		textW:    textW,
+		glyphs:   glyphs,
+		fm:       shaped.fm,
+	}
 }
 
 func nodeLinkBadgeCircle(n *Node) worldCircle {
@@ -486,53 +628,26 @@ func nodeLinkBadgeCircleAtScale(n *Node, scale float32) worldCircle {
 }
 
 func nodeActionButtonsAtScale(n *Node, readOnly bool, scale float32) (foldBtn worldCircle, showFold bool, addBtn worldCircle, showAdd bool) {
-	if n == nil {
+	if n == nil || readOnly {
 		return
 	}
 	if scale <= 0 {
 		scale = 1
 	}
-	r := effectiveWorldRadius(layoutActionBtnR, scale, minActionBtnScreenR)
-	minGap := max(float32(layoutActionGap), r*2+4/scale)
-	edgeGap := max(float32(11), r+3/scale)
-	ay := n.Y
-	if n.Depth > 1 {
-		ay = n.Y + n.H/2
-	}
-	dir := n.Dir
-	if dir == 0 {
-		dir = 1
-	}
-	edgeX := n.X + n.W
-	sign := float32(1)
-	if dir < 0 {
-		edgeX = n.X
-		sign = -1
-	}
 	if n.Folded && len(n.Children) > 0 {
-		if !readOnly {
-			showAdd = true
-			addBtn = worldCircle{
-				cx: edgeX + sign*(layoutFoldOffset+layoutFoldRadius+r+4/scale),
-				cy: ay,
-				r:  r,
-			}
-		}
+		// Collapsed nodes show only the fold count capsule (click to expand); never show quick-add +.
 		return
 	}
+	r := effectiveWorldRadius(layoutActionBtnR, scale, minActionBtnScreenR)
+	edgeGap := max(float32(12), r+4/scale)
+	edgeX, ay, sign := nodeAnchor(n)
 	if len(n.Children) > 0 {
 		showFold = true
 		foldBtn = worldCircle{cx: edgeX + sign*edgeGap, cy: ay, r: r}
-		if !readOnly {
-			showAdd = true
-			addBtn = worldCircle{cx: edgeX + sign*(edgeGap+minGap), cy: ay, r: r}
-		}
 		return
 	}
-	if !readOnly {
-		showAdd = true
-		addBtn = worldCircle{cx: edgeX + sign*max(float32(12), r+3/scale), cy: ay, r: r}
-	}
+	showAdd = true
+	addBtn = worldCircle{cx: edgeX + sign*edgeGap, cy: ay, r: r}
 	return
 }
 
@@ -548,9 +663,28 @@ func isNodeVisibleInTree(n *Node) bool {
 	return true
 }
 
-// HitTestWithActions extends HitTestAtScale by testing the floating collapse (−) and add (+)
-// action buttons on activeIDs (typically [HoveredID, SelectedID]) and preserving a small
-// hover bridge between the node edge and those buttons.
+func hoverBridgeHit(n *Node, wx, wy, targetX, targetHalfH, hitPad float32) bool {
+	edgeX, ay, _ := nodeAnchor(n)
+	dx := targetX - edgeX
+	if dx == 0 {
+		return false
+	}
+	t := (wx - edgeX) / dx
+	if t < 0 || t > 1 {
+		return false
+	}
+	nTop, nBot := n.Y-n.H/2, n.Y+n.H/2
+	tTop, tBot := ay-targetHalfH-hitPad, ay+targetHalfH+hitPad
+	startTop := min(nTop, tTop)
+	startBot := max(nBot, tBot)
+	top := startTop + (tTop-startTop)*t
+	bot := startBot + (tBot-startBot)*t
+	return wy >= top && wy <= bot
+}
+
+// HitTestWithActions extends HitTestAtScale by testing the floating collapse (−) or add (+)
+// action button on activeIDs (typically [HoveredID, SelectedID]) and preserving a tapered
+// hover bridge between the node edge and that button or fold capsule.
 func HitTestWithActions(root *Node, activeIDs [2]int, readOnly bool, wx, wy, scale float32) HitResult {
 	if root == nil {
 		return HitResult{}
@@ -559,22 +693,24 @@ func HitTestWithActions(root *Node, activeIDs [2]int, readOnly bool, wx, wy, sca
 		scale = 1
 	}
 	hitPad := 2.0 / scale
-	seen := [2]int{}
-	for idx, id := range activeIDs {
-		if id == 0 || (idx == 1 && id == seen[0]) {
-			continue
-		}
-		seen[idx] = id
-		n := root.FindByID(id)
-		if n == nil || !isNodeVisibleInTree(n) {
-			continue
-		}
-		foldBtn, showFold, addBtn, showAdd := nodeActionButtonsAtScale(n, readOnly, scale)
-		if showFold && foldBtn.hit(wx, wy, hitPad) {
-			return HitResult{Kind: HitHoverFold, Node: n}
-		}
-		if showAdd && addBtn.hit(wx, wy, hitPad) {
-			return HitResult{Kind: HitHoverAdd, Node: n}
+	if !readOnly {
+		seen := [2]int{}
+		for idx, id := range activeIDs {
+			if id == 0 || (idx == 1 && id == seen[0]) {
+				continue
+			}
+			seen[idx] = id
+			n := root.FindByID(id)
+			if n == nil || !isNodeVisibleInTree(n) {
+				continue
+			}
+			foldBtn, showFold, addBtn, showAdd := nodeActionButtonsAtScale(n, readOnly, scale)
+			if showFold && foldBtn.hit(wx, wy, hitPad) {
+				return HitResult{Kind: HitHoverFold, Node: n}
+			}
+			if showAdd && addBtn.hit(wx, wy, hitPad) {
+				return HitResult{Kind: HitHoverAdd, Node: n}
+			}
 		}
 	}
 
@@ -583,30 +719,21 @@ func HitTestWithActions(root *Node, activeIDs [2]int, readOnly bool, wx, wy, sca
 		return hit
 	}
 
-	// Keep hover sticky across the small gap between the hovered node's edge and its action buttons.
+	// Keep hover sticky across the small corridor between the hovered node's edge and its action button or fold badge.
 	if activeIDs[0] != 0 {
 		if n := root.FindByID(activeIDs[0]); n != nil && isNodeVisibleInTree(n) {
-			foldBtn, showFold, addBtn, showAdd := nodeActionButtonsAtScale(n, readOnly, scale)
-			if showFold || showAdd {
-				ay := n.Y
-				if n.Depth > 1 {
-					ay = n.Y + n.H/2
+			if n.Folded && len(n.Children) > 0 {
+				_, _, sign, _, nearX, worldH, _ := nodeFoldBadgeBase(n, scale, false)
+				// Extend to the cap's circle center so the bridge meets the capsule hit shape without a gap.
+				if hoverBridgeHit(n, wx, wy, nearX+sign*worldH*0.5, worldH*0.5, hitPad) {
+					return HitResult{Kind: HitNone, Node: n}
 				}
-				minX, maxX := n.X, n.X+n.W
-				btnR := float32(0)
-				if showFold {
-					minX = min(minX, foldBtn.cx-foldBtn.r-hitPad)
-					maxX = max(maxX, foldBtn.cx+foldBtn.r+hitPad)
-					btnR = max(btnR, foldBtn.r)
+			} else if !readOnly {
+				foldBtn, showFold, addBtn, showAdd := nodeActionButtonsAtScale(n, readOnly, scale)
+				if showFold && hoverBridgeHit(n, wx, wy, foldBtn.cx, foldBtn.r, hitPad) {
+					return HitResult{Kind: HitNone, Node: n}
 				}
-				if showAdd {
-					minX = min(minX, addBtn.cx-addBtn.r-hitPad)
-					maxX = max(maxX, addBtn.cx+addBtn.r+hitPad)
-					btnR = max(btnR, addBtn.r)
-				}
-				top := min(n.Y-n.H/2, ay-btnR-hitPad)
-				bot := max(n.Y+n.H/2, ay+btnR+hitPad)
-				if wx >= minX && wx <= maxX && wy >= top && wy <= bot {
+				if showAdd && hoverBridgeHit(n, wx, wy, addBtn.cx, addBtn.r, hitPad) {
 					return HitResult{Kind: HitNone, Node: n}
 				}
 			}
@@ -629,26 +756,44 @@ func HitTestAtScale(root *Node, wx, wy, scale float32) HitResult {
 		scale = 1
 	}
 	badgePad := 2.0 / scale
+
+	// Fold capsules: collect candidates in paint order, then test topmost-first,
+	// exact shape before the tolerance pad, so overlapping capsules at low zoom
+	// expand the one actually drawn under the pointer.
+	var badges []*Node
+	var collect func(n *Node)
+	collect = func(n *Node) {
+		if n.Folded {
+			if len(n.Children) > 0 {
+				x0, y0, x1, y1 := foldBadgeCoarseRect(n, scale, false)
+				if wx >= x0-badgePad && wx <= x1+badgePad && wy >= y0-badgePad && wy <= y1+badgePad {
+					badges = append(badges, n)
+				}
+			}
+			return
+		}
+		for _, ch := range n.Children {
+			collect(ch)
+		}
+	}
+	collect(root)
+	if len(badges) > 0 {
+		fbs := make([]foldBadgeLayout, len(badges))
+		for i, n := range badges {
+			fbs[i] = nodeFoldBadgeAtScale(n, scale, false)
+		}
+		for _, pad := range [2]float32{0, badgePad} {
+			for i := len(badges) - 1; i >= 0; i-- {
+				if fbs[i].hit(wx, wy, pad) {
+					return HitResult{Kind: HitFoldBadge, Node: badges[i]}
+				}
+			}
+		}
+	}
+
 	var hit HitResult
 	var walk func(n *Node) bool
 	walk = func(n *Node) bool {
-		// Check fold badge first (when folded).
-		if n.Folded && len(n.Children) > 0 {
-			bx := n.X - layoutFoldOffset
-			if n.Dir > 0 {
-				bx = n.X + n.W + layoutFoldOffset
-			}
-			by := n.Y
-			if n.Depth > 1 {
-				by = n.Y + n.H/2
-			}
-			dx, dy := wx-bx, wy-by
-			r := layoutFoldRadius + 4
-			if dx*dx+dy*dy <= r*r {
-				hit = HitResult{Kind: HitFoldBadge, Node: n}
-				return true
-			}
-		}
 
 		// Check link badge using the exact scale-clamped circle geometry used for painting.
 		if strings.TrimSpace(n.Link) != "" {
@@ -918,33 +1063,25 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 			}
 
 			if n.Folded && len(n.Children) > 0 {
-				bx := n.X - layoutFoldOffset
-				startX := n.X
-				if n.Dir > 0 {
-					bx = n.X + n.W + layoutFoldOffset
-					startX = n.X + n.W
-				}
+				edgeX, by, sign, _, nearX, worldH, _ := nodeFoldBadgeBase(n, scale, opt.ExportMode)
+				startX := edgeX
 				if n.Depth > 1 && n.ID == opt.EditingID {
 					tuck := min(float32(6), n.W*0.5)
-					if n.Dir > 0 {
-						startX -= tuck
-					} else {
-						startX += tuck
-					}
+					startX -= sign * tuck
 				}
-				by := n.Y
-				if n.Depth > 1 {
-					by = n.Y + n.H/2
-				}
-				if max(startX, bx) >= visMinX && min(startX, bx) <= visMaxX && by >= visMinY && by <= visMaxY {
+				// Tuck stem inside the opaque fold capsule so there is never an antialiasing seam.
+				tuckEndX := nearX + sign*(worldH*0.25)
+				if max(startX, tuckEndX) >= visMinX && min(startX, tuckEndX) <= visMaxX && by >= visMinY && by <= visMaxY {
 					bc := branches[0]
 					if n.Depth > 0 {
 						bc = branches[n.Branch%len(branches)]
 					}
 					if draggedNode != nil && draggedNode.IsAncestorOf(n) {
 						bc = bc.Alpha(0.35)
+					} else if opt.FindActive && !opt.FindMatchIDs[n.ID] {
+						bc = bc.Alpha(0.28)
 					}
-					p.Line(wxToScreen(startX), wyToScreen(by), wxToScreen(bx), wyToScreen(by), max(1.6*scale, 1), bc)
+					p.Line(wxToScreen(startX), wyToScreen(by), wxToScreen(tuckEndX), wyToScreen(by), max(1.6*scale, 1), bc)
 				}
 				return
 			}
@@ -1268,17 +1405,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				}
 			}
 
-			// Fold badge (+hidden count) when collapsed.
+			// Fold capsule (hidden descendant count) when collapsed.
 			if n.Folded && len(n.Children) > 0 {
-				bx := n.X - layoutFoldOffset
-				if n.Dir > 0 {
-					bx = n.X + n.W + layoutFoldOffset
-				}
-				by := n.Y
-				if n.Depth > 1 {
-					by = n.Y + n.H/2
-				}
-				if bx+layoutFoldRadius*2 >= visMinX && bx-layoutFoldRadius*2 <= visMaxX && by+layoutFoldRadius >= visMinY && by-layoutFoldRadius <= visMaxY {
+				cx0, cy0, cx1, cy1 := foldBadgeCoarseRect(n, scale, opt.ExportMode)
+				if cx1 >= visMinX && cx0 <= visMaxX && cy1 >= visMinY && cy0 <= visMaxY {
+					fb := nodeFoldBadgeAtScale(n, scale, opt.ExportMode)
 					bc := branches[0]
 					if n.Depth > 0 {
 						bc = branches[n.Branch%len(branches)]
@@ -1289,30 +1420,43 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					} else if findDimmed {
 						dimFactor = 0.28
 					}
-					if dimFactor < 1 {
-						bc = bc.Alpha(dimFactor)
+					isHot := !opt.ExportMode && n.ID == opt.HoveredID && opt.HoveredHit == HitFoldBadge
+					mixT := float32(0.12)
+					if pal.Dark {
+						mixT = 0.18
 					}
-					scx := wxToScreen(bx)
-					scy := wyToScreen(by)
-					sr := layoutFoldRadius * scale
-					label := fmt.Sprintf("+%d", n.DescendantCount())
-					fs := max(float32(9.5)*scale, 6)
+					if isHot {
+						mixT = 0.24
+						if pal.Dark {
+							mixT = 0.34
+						}
+					}
+					// Keep capsule fill opaque against bg so the incoming stem ends cleanly at the border.
+					fillC := bg.Mix(bc, mixT*dimFactor)
+					strokeC := bc.Alpha(0.80 * dimFactor)
+					strokeW := max(1.2*scale, 1.0)
+					if isHot {
+						strokeC = bc.Alpha(dimFactor)
+						strokeW = max(1.5*scale, 1.1)
+					}
 					txtC := pal.Text
 					if dimFactor < 1 {
 						txtC = txtC.Alpha(dimFactor)
 					}
-					sp := ui.Span{Text: label, Size: fs, Weight: theme.WeightMono, Color: txtC}
-					tw, th := p.MeasureText(0, sp)
-					pillW := max(sr*2, tw+7*scale)
-					pillH := sr * 2
-					badgeR := ui.Rect{X: scx - pillW*0.5, Y: scy - pillH*0.5, W: pillW, H: pillH}
-					fillC := bg
-					if !opt.ExportMode && n.ID == opt.HoveredID && opt.HoveredHit == HitFoldBadge {
-						fillC = pal.Hover
-					}
-					p.Fill(badgeR, fillC, sr)
-					p.Stroke(badgeR, bc, sr, max(1.2*scale, 1))
-					p.RichText(scx-tw*0.5, scy-th*0.5, 0, sp)
+					sx := wxToScreen(fb.x)
+					sy := wyToScreen(fb.y)
+					sw := fb.w * scale
+					sh := fb.h * scale
+					rad := sh * 0.5
+					badgeR := ui.Rect{X: sx, Y: sy, W: sw, H: sh}
+					p.Fill(badgeR, fillC, rad)
+					p.Stroke(badgeR, strokeC, rad, strokeW)
+
+					scx := sx + sw*0.5
+					scy := sy + sh*0.5
+					textX := scx - fb.textW*0.5
+					baselineY := scy + (fb.fm.Ascent-fb.fm.Descent)*0.5
+					p.Glyphs(fb.glyphs, textX, baselineY, txtC)
 				}
 				return
 			}
@@ -1322,16 +1466,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 		}
 		paintNodes(root)
 
-		// Pass 2.5: Floating hover/selected collapse (−) and quick-add (+) action circles.
-		if !opt.ExportMode && opt.EditingID == 0 && opt.DragNodeID == 0 {
-			paintActionsFor := func(nodeID int) {
-				if nodeID == 0 {
-					return
-				}
-				n := root.FindByID(nodeID)
-				if n == nil || !isNodeVisibleInTree(n) {
-					return
-				}
+		// Pass 2.5: Floating hover collapse (−) or quick-add (+) action circle.
+		if !opt.ExportMode && !opt.ReadOnly && opt.EditingID == 0 && opt.DragNodeID == 0 && opt.HoveredID != 0 {
+			if n := root.FindByID(opt.HoveredID); n != nil && isNodeVisibleInTree(n) {
 				foldBtn, showFold, addBtn, showAdd := nodeActionButtonsAtScale(n, opt.ReadOnly, scale)
 				col := branches[n.Branch%len(branches)]
 				if n.Depth == 0 {
@@ -1346,8 +1483,6 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					paintCanvasCircleAction(p, wxToScreen(addBtn.cx), wyToScreen(addBtn.cy), addBtn.r*scale, scale, pal, pal.Accent, true, hot)
 				}
 			}
-			// Only show on hover; a selected node alone keeps the canvas clean.
-			paintActionsFor(opt.HoveredID)
 		}
 
 		// Pass 3: Drag-and-drop insertion indicator and semantic floating ghost card.
@@ -1548,7 +1683,7 @@ func paintCanvasCircleAction(p *ui.Painter, cx, cy, sr, scale float32, pal theme
 		return
 	}
 	r := ui.Rect{X: cx - sr, Y: cy - sr, W: sr * 2, H: sr * 2}
-	bg := pal.Paper
+	bg := pal.Card
 	border := accent.Alpha(0.55)
 	fg := pal.TextSecondary
 	if isPlus {
