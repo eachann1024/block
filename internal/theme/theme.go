@@ -924,16 +924,62 @@ func CurrentThemeMode() model.ThemeMode {
 	return themeMode
 }
 
+var (
+	harmonyEnsurerMu sync.RWMutex
+	harmonyEnsurer   func()
+)
+
+// SetHarmonyFontEnsurer registers a callback invoked when typography or an
+// active theme skin explicitly requests HarmonyOS Sans SC.
+func SetHarmonyFontEnsurer(fn func()) {
+	harmonyEnsurerMu.Lock()
+	harmonyEnsurer = fn
+	harmonyEnsurerMu.Unlock()
+}
+
+func containsHarmonyFont(raw string) bool {
+	lower := strings.ToLower(raw)
+	return strings.Contains(lower, "harmonyos sans sc") || strings.Contains(lower, "harmonyos_sans_sc")
+}
+
+// NeedsHarmonyFont reports whether the active typography or skin explicitly
+// requests HarmonyOS Sans SC.
+func NeedsHarmonyFont() bool {
+	modeMu.RLock()
+	ed := editorFont
+	cd := codeFont
+	modeMu.RUnlock()
+	return containsHarmonyFont(ed) || containsHarmonyFont(cd) ||
+		containsHarmonyFont(ActiveSerifFont()) || containsHarmonyFont(ActiveDisplayFont())
+}
+
+func maybeEnsureHarmonyFont(fonts ...string) {
+	for _, f := range fonts {
+		if containsHarmonyFont(f) {
+			harmonyEnsurerMu.RLock()
+			fn := harmonyEnsurer
+			harmonyEnsurerMu.RUnlock()
+			if fn != nil {
+				fn()
+			}
+			return
+		}
+	}
+}
+
 func SetTypography(edFont, cdFont string, lh model.LineHeightMode) {
+	ed := strings.TrimSpace(edFont)
+	cd := strings.TrimSpace(cdFont)
 	modeMu.Lock()
-	editorFont = strings.TrimSpace(edFont)
-	if strings.TrimSpace(cdFont) != "" {
-		codeFont = strings.TrimSpace(cdFont)
+	editorFont = ed
+	if cd != "" {
+		codeFont = cd
 	}
 	if lh != "" {
 		lineHeight = lh
 	}
 	modeMu.Unlock()
+	maybeEnsureHarmonyFont(ed, cd)
 }
 
 func Typography() (edFont, cdFont string, lh model.LineHeightMode) {

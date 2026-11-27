@@ -102,7 +102,7 @@ func lookupStagePage(page *mygo.Page) (stagePageBinding, bool) {
 }
 
 // RegisterPluginStageRuntime registers the read-only block-plugin:// protocol,
-// window.blockView IPC bridge, and stage event channel once before windows are created.
+// window.blockView IPC bridge, and stage event channel once (lazily on first WebView stage).
 func RegisterPluginStageRuntime() error {
 	pluginStageRuntimeOnce.Do(func() {
 		if err := mygo.Protocol.Handle(pluginStageScheme, http.HandlerFunc(servePluginStageProtocol)); err != nil {
@@ -781,6 +781,19 @@ func (c *pluginStageController) ensureWebView(win *mygo.Window, sup *plugins.Sup
 	createFn := c.createWebView
 	c.mu.Unlock()
 	cleanupDetachedWebView(oldH, oldPage, oldUnsub)
+
+	if err := RegisterPluginStageRuntime(); err != nil {
+		files.LogErrorf("register plugin stage runtime failed: %v", err)
+		c.mu.Lock()
+		cur := sup.ActiveStage()
+		if c.generation == gen && cur != nil && pluginStageKey(cur) == stageKey {
+			c.failedKey = stageKey
+			c.failedWin = win
+			c.createErr = err.Error()
+		}
+		c.mu.Unlock()
+		return nil, err.Error()
+	}
 
 	if createFn == nil {
 		createFn = func(w *mygo.Window, opts mygo.WebViewOptions) (stageWebViewHandle, error) {

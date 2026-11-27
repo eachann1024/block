@@ -364,7 +364,7 @@ type DuoIconSpec struct {
 // AppStoreIconSpec returns the three-tiles-plus-add icon for the App Store sidebar entry.
 func AppStoreIconSpec() DuoIconSpec {
 	return DuoIconSpec{
-		ViewBox:   "0 0 24 24",
+		ViewBox: "0 0 24 24",
 		FillPaths: []string{
 			"M6 4.25H9A1.75 1.75 0 0 1 10.75 6V9A1.75 1.75 0 0 1 9 10.75H6A1.75 1.75 0 0 1 4.25 9V6A1.75 1.75 0 0 1 6 4.25Z",
 			"M15 4.25H18A1.75 1.75 0 0 1 19.75 6V9A1.75 1.75 0 0 1 18 10.75H15A1.75 1.75 0 0 1 13.25 9V6A1.75 1.75 0 0 1 15 4.25Z",
@@ -380,16 +380,16 @@ func AppStoreIconSpec() DuoIconSpec {
 }
 
 type Manifest struct {
-	App           string        `json:"app"`
-	SchemaVersion int           `json:"schema_version"`
-	ID            string        `json:"id"`
-	Category      Category      `json:"category,omitempty"`
-	Name          LocalizedText `json:"name"`
-	Version       string        `json:"version"`
-	Beta          bool          `json:"beta,omitempty"`
-	Author        string        `json:"author"`
-	Repo          string        `json:"repo,omitempty"`
-	Summary       LocalizedText `json:"summary"`
+	App               string                       `json:"app"`
+	SchemaVersion     int                          `json:"schema_version"`
+	ID                string                       `json:"id"`
+	Category          Category                     `json:"category,omitempty"`
+	Name              LocalizedText                `json:"name"`
+	Version           string                       `json:"version"`
+	Beta              bool                         `json:"beta,omitempty"`
+	Author            string                       `json:"author"`
+	Repo              string                       `json:"repo,omitempty"`
+	Summary           LocalizedText                `json:"summary"`
 	Entry             EntrySpec                    `json:"entry,omitempty"`
 	Permissions       []Permission                 `json:"permissions,omitempty"`
 	PermissionReasons map[Permission]LocalizedText `json:"permission_reasons,omitempty"`

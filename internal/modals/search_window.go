@@ -415,8 +415,8 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 		scopeTrigger = renderSearchHeaderView(
 			c, pal, &s.st, activeNotebook, &s.query, &s.lastQuery, &s.inputHandle,
 			searchHeaderCallbacks{
-				onRunSearch:     s.runSearch,
-				onInputChanged:  s.runSearchDebounced,
+				onRunSearch:    s.runSearch,
+				onInputChanged: s.runSearchDebounced,
 				onMoveSelection: func(delta int) {
 					stepHitSelection(&s.selected, len(s.hits), &s.st, delta)
 				},

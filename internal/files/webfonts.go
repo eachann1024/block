@@ -58,9 +58,9 @@ var harmonyCDNBaseURLs = []string{
 const harmonyTarballMirrorURL = "https://registry.npmmirror.com/@fontpkg/harmony-os-sans-sc/-/harmony-os-sans-sc-1.0.3.tgz"
 
 var (
-	harmonyMu         sync.Mutex
-	harmonyLoadedFace = make(map[string]bool, len(harmonyFontFaces))
-	harmonyAsyncOnce  sync.Once
+	harmonyMu          sync.Mutex
+	harmonyLoadedFace  = make(map[string]bool, len(harmonyFontFaces))
+	harmonyDownloading bool
 )
 
 func hasValidFontHeader(data []byte) bool {
@@ -166,6 +166,11 @@ func seedFromSystemFontDirs(cacheDir string, missing []harmonyFontFace) map[stri
 // LoadCachedHarmonyFonts synchronously registers any verified HarmonyOS Sans SC
 // weights already cached under <dataDir>/fonts (or matching local system font files).
 func LoadCachedHarmonyFonts(dataDir string) (allPresent bool) {
+	allPresent, _ = loadCachedHarmonyFonts(dataDir)
+	return allPresent
+}
+
+func loadCachedHarmonyFonts(dataDir string) (allPresent bool, registeredAny bool) {
 	if dataDir == "" {
 		dataDir = AppDataDir()
 	}
@@ -173,7 +178,6 @@ func LoadCachedHarmonyFonts(dataDir string) (allPresent bool) {
 
 	harmonyMu.Lock()
 	var missing []harmonyFontFace
-	registeredAny := false
 	for _, face := range harmonyFontFaces {
 		if harmonyLoadedFace[face.fileName] {
 			continue
@@ -212,22 +216,39 @@ func LoadCachedHarmonyFonts(dataDir string) (allPresent bool) {
 	if registeredAny {
 		theme.BumpFontEpoch()
 	}
-	return len(missing) == 0
+	return len(missing) == 0, registeredAny
 }
 
 // EnsureHarmonyFontsAsync loads any cached HarmonyOS Sans SC faces immediately and,
-// when weights are missing on disk, fetches them once in the background from CDN mirrors
+// when weights are missing on disk, fetches them in the background from CDN mirrors
 // into <dataDir>/fonts without bloating the application binary.
 func EnsureHarmonyFontsAsync(dataDir string, onUpdated func()) {
 	if dataDir == "" {
 		dataDir = AppDataDir()
 	}
-	if LoadCachedHarmonyFonts(dataDir) {
+	allPresent, registeredAny := loadCachedHarmonyFonts(dataDir)
+	if registeredAny && onUpdated != nil {
+		onUpdated()
+	}
+	if allPresent {
 		return
 	}
-	harmonyAsyncOnce.Do(func() {
-		go downloadMissingHarmonyFonts(dataDir, onUpdated)
-	})
+	harmonyMu.Lock()
+	if harmonyDownloading {
+		harmonyMu.Unlock()
+		return
+	}
+	harmonyDownloading = true
+	harmonyMu.Unlock()
+
+	go func() {
+		defer func() {
+			harmonyMu.Lock()
+			harmonyDownloading = false
+			harmonyMu.Unlock()
+		}()
+		downloadMissingHarmonyFonts(dataDir, onUpdated)
+	}()
 }
 
 func downloadMissingHarmonyFonts(dataDir string, onUpdated func()) {

@@ -1729,10 +1729,11 @@ func scoreFontCandidate(item fontCandidateItem, q string, qTokens []string) (tie
 }
 
 func buildSortedFontCatalog(families []ui.FontFamily, role string) []fontCandidateItem {
-	raw := make([]ui.FontFamily, 0, len(families)+2)
+	raw := make([]ui.FontFamily, 0, len(families)+3)
 	raw = append(raw, families...)
 	raw = append(raw,
 		ui.FontFamily{Name: resolvedBodyFontName(families)},
+		ui.FontFamily{Name: "HarmonyOS Sans SC"},
 		ui.FontFamily{Name: resolvedCodeFontName(families), Monospaced: true},
 	)
 

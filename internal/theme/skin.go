@@ -259,6 +259,7 @@ func SetActiveSkin(pluginID string, spec *ThemeSkinSpec) {
 	activeSkin = cp
 	activeSkinOwner = strings.TrimSpace(pluginID)
 	skinMu.Unlock()
+	maybeEnsureHarmonyFont(cp.Fonts.Serif, cp.Fonts.Display)
 	BumpFontEpoch()
 }
 
