@@ -249,8 +249,8 @@ func (s *Session) Stdout() io.ReadCloser {
 
 func (s *Session) Kill() error {
 	s.cancel()
-	closePipePair(s.stdinR, s.stdinW, io.ErrClosedPipe)
-	closePipePair(s.stdoutR, s.stdoutW, io.ErrClosedPipe)
+	go closePipePair(s.stdinR, s.stdinW, io.ErrClosedPipe)
+	go closePipePair(s.stdoutR, s.stdoutW, io.ErrClosedPipe)
 	return nil
 }
 
