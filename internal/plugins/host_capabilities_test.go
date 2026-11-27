@@ -11,6 +11,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -231,6 +232,163 @@ func TestHostFSGrantsScopeAndOperations(t *testing.T) {
 	}
 	// Sibling in outsideDir remains blocked when only single.txt was granted.
 	mustFailDispatch(t, rt, "host.fs.read", map[string]any{"path": outsideFile}, -32001)
+}
+
+func TestHostFSProtectedControlFilesCaseAndTrailingChars(t *testing.T) {
+	rt, _, dataDir, downloadsDir, _ := newTestCapabilityRuntime(t, []Permission{PermSystemFS, PermNetwork}, nil, nil)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("pwned"))
+	}))
+	defer srv.Close()
+
+	dlFile := filepath.Join(downloadsDir, "payload.json")
+	if err := os.WriteFile(dlFile, []byte(`[{"path":"/"}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	normalSrc := filepath.Join(dataDir, "normal.txt")
+	if err := os.WriteFile(normalSrc, []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	variants := []string{
+		"GRANTED-PATHS.JSON",
+		"Granted-Paths.Json.",
+		"granted-paths.json ",
+		"GRANTED-PATHS.JSON/sub.txt",
+		"SCHEDULER.JSON",
+		"Scheduler.Json. ",
+		"sub/SCHEDULER.JSON",
+		"STATE.JSON",
+		"state.json.",
+	}
+	for _, rel := range variants {
+		target := filepath.Join(dataDir, rel)
+		mustFailDispatch(t, rt, "host.fs.write", map[string]any{
+			"path":          target,
+			"content":       `{"tampered":true}`,
+			"mkdir_parents": true,
+		}, -32001)
+		mustFailDispatch(t, rt, "host.fs.delete", map[string]any{
+			"path": target,
+		}, -32001)
+		mustFailDispatch(t, rt, "host.fs.rename", map[string]any{
+			"from":          normalSrc,
+			"to":            target,
+			"overwrite":     true,
+			"mkdir_parents": true,
+		}, -32001)
+		mustFailDispatch(t, rt, "host.fs.rename", map[string]any{
+			"from": target,
+			"to":   filepath.Join(downloadsDir, "stolen.json"),
+		}, -32001)
+		mustFailDispatch(t, rt, "host.http.request", map[string]any{
+			"url":           srv.URL,
+			"save_to_path":  target,
+			"mkdir_parents": true,
+		}, -32001)
+	}
+}
+
+func TestHostFSCrossRootRenameAndSymlinkBlocked(t *testing.T) {
+	rt, tmp, dataDir, downloadsDir, _ := newTestCapabilityRuntime(t, []Permission{PermSystemFS}, nil, nil)
+
+	// Cross-root regular file move from DownloadsDir to DataDir succeeds without leaving source.
+	srcFile := filepath.Join(downloadsDir, "move-me.txt")
+	dstFile := filepath.Join(dataDir, "moved", "dest.txt")
+	if err := os.WriteFile(srcFile, []byte("cross-root-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustDispatch(t, rt, "host.fs.rename", map[string]any{
+		"from":          srcFile,
+		"to":            dstFile,
+		"mkdir_parents": true,
+	})
+	if _, err := os.Stat(srcFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected source file removed after cross-root rename, err=%v", err)
+	}
+	gotBytes, err := os.ReadFile(dstFile)
+	if err != nil || string(gotBytes) != "cross-root-data" {
+		t.Fatalf("dstFile = %q, err=%v", string(gotBytes), err)
+	}
+
+	// Cross-root rename overwrite=false fails when destination exists; overwrite=true replaces it.
+	srcFile2 := filepath.Join(downloadsDir, "move-me-2.txt")
+	if err := os.WriteFile(srcFile2, []byte("updated-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustFailDispatch(t, rt, "host.fs.rename", map[string]any{
+		"from":      srcFile2,
+		"to":        dstFile,
+		"overwrite": false,
+	}, -32004)
+	mustDispatch(t, rt, "host.fs.rename", map[string]any{
+		"from":      srcFile2,
+		"to":        dstFile,
+		"overwrite": true,
+	})
+	gotBytes, err = os.ReadFile(dstFile)
+	if err != nil || string(gotBytes) != "updated-data" {
+		t.Fatalf("dstFile after overwrite = %q, err=%v", string(gotBytes), err)
+	}
+
+	// Cross-root directory move is rejected.
+	srcDir := filepath.Join(downloadsDir, "folder-move")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustFailDispatch(t, rt, "host.fs.rename", map[string]any{
+		"from": srcDir,
+		"to":   filepath.Join(dataDir, "folder-dest"),
+	}, -32602)
+
+	// Cross-root symlink move (dangling, escaping, and direct root-level symlink) is rejected.
+	outsideFile := filepath.Join(tmp, "outside-secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	escapingLink := filepath.Join(downloadsDir, "escape-link.txt")
+	if err := os.Symlink(outsideFile, escapingLink); err != nil {
+		t.Fatal(err)
+	}
+	mustFailDispatch(t, rt, "host.fs.rename", map[string]any{
+		"from": escapingLink,
+		"to":   filepath.Join(dataDir, "escaped.txt"),
+	}, -32001)
+
+	danglingLink := filepath.Join(downloadsDir, "dangling-link.txt")
+	if err := os.Symlink(filepath.Join(downloadsDir, "missing.txt"), danglingLink); err != nil {
+		t.Fatal(err)
+	}
+	mustFailDispatch(t, rt, "host.fs.rename", map[string]any{
+		"from": danglingLink,
+		"to":   filepath.Join(dataDir, "dangling.txt"),
+	}, -32602)
+
+	// Direct renameCrossRoot call against a symlink inside fromRoot (simulating post-resolve TOCTOU swap) must reject.
+	inScopeTarget := filepath.Join(downloadsDir, "real.txt")
+	if err := os.WriteFile(inScopeTarget, []byte("real"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inScopeLink := filepath.Join(downloadsDir, "sym.txt")
+	if err := os.Symlink("real.txt", inScopeLink); err != nil {
+		t.Fatal(err)
+	}
+	toRoot, err := os.OpenRoot(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer toRoot.Close()
+	rerr := renameCrossRoot(
+		&resolvedFSTarget{rootDir: downloadsDir, rel: "sym.txt", isDirRoot: true, writable: true},
+		&resolvedFSTarget{rootDir: dataDir, rel: "sym-dest.txt", isDirRoot: true, writable: true},
+		toRoot,
+		true,
+		false,
+	)
+	if rerr == nil || rerr.Code != -32602 {
+		t.Fatalf("expected -32602 for symlink in renameCrossRoot, got %v", rerr)
+	}
 }
 
 func TestSupervisorAndMenubarAutoGrantFSPath(t *testing.T) {
@@ -483,6 +641,126 @@ func TestHostHTTPRequest(t *testing.T) {
 	}
 	if matchNetworkDomains(&url.URL{Scheme: "https", Host: "example.com"}, []string{"*.example.com"}) {
 		t.Fatal("did not expect *.example.com to match bare example.com")
+	}
+}
+
+func TestHostHTTPProxyAuthStripAndDNSRebindingSSRF(t *testing.T) {
+	var seenProxyAuthOnTarget string
+	var seenAuthOnTarget string
+	var seenCookieOnTarget string
+	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenProxyAuthOnTarget = r.Header.Get("Proxy-Authorization")
+		seenAuthOnTarget = r.Header.Get("Authorization")
+		seenCookieOnTarget = r.Header.Get("Cookie")
+		_, _ = w.Write([]byte("target-ok"))
+	}))
+	defer targetSrv.Close()
+
+	redirSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, targetSrv.URL+"/landing", http.StatusFound)
+	}))
+	defer redirSrv.Close()
+
+	u1, _ := url.Parse(redirSrv.URL)
+	u2, _ := url.Parse(targetSrv.URL)
+
+	// Cross-origin redirect strips Proxy-Authorization along with Authorization and Cookie.
+	rt, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermNetwork}, []string{u1.Host, u2.Host}, nil)
+	mustDispatch(t, rt, "host.http.request", map[string]any{
+		"url": redirSrv.URL,
+		"headers": map[string]string{
+			"Authorization":       "Bearer topsecret",
+			"Proxy-Authorization": "Basic cHJveHk=",
+			"Cookie":              "sid=xyz",
+		},
+	})
+	if seenProxyAuthOnTarget != "" || seenAuthOnTarget != "" || seenCookieOnTarget != "" {
+		t.Fatalf("cross-origin redirect leaked headers: auth=%q proxy=%q cookie=%q", seenAuthOnTarget, seenProxyAuthOnTarget, seenCookieOnTarget)
+	}
+
+	// Explicit 127.0.0.1 in NetworkDomains is allowed (httptest compatibility).
+	resDirect := mustDispatch(t, rt, "host.http.request", map[string]any{"url": targetSrv.URL})
+	if resDirect["body"] != "target-ok" {
+		t.Fatalf("expected target-ok for explicit 127.0.0.1 allowlist, got %v", resDirect["body"])
+	}
+
+	// Link-local / cloud metadata / unspecified IPs are ALWAYS blocked regardless of NetworkDomains (even with proxy env set).
+	rtOpen, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermNetwork}, nil, nil)
+	rtMetaAllow, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermNetwork}, []string{"169.254.169.254", "0.0.0.0"}, nil)
+	for _, blockedURL := range []string{
+		"http://169.254.169.254/latest/meta-data/",
+		"http://[::ffff:169.254.169.254]/latest/meta-data/",
+		"http://[fe80::1]/",
+		"http://0.0.0.0:8080/",
+		"http://[::]:8080/",
+	} {
+		mustFailDispatch(t, rtOpen, "host.http.request", map[string]any{"url": blockedURL}, -32005)
+	}
+	mustFailDispatch(t, rtMetaAllow, "host.http.request", map[string]any{"url": "http://169.254.169.254/latest/meta-data/"}, -32005)
+	mustFailDispatch(t, rtMetaAllow, "host.http.request", map[string]any{"url": "http://0.0.0.0:8080/"}, -32005)
+
+	// Clear proxy env vars so DialContext exercises our mock DNS lookup directly.
+	for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		t.Setenv(k, "")
+	}
+
+	// DNS Rebinding SSRF: non-empty NetworkDomains with hostname resolving to loopback/private/link-local is blocked.
+	port := u2.Port()
+	for _, rebindIP := range []string{
+		"127.0.0.1",
+		"::1",
+		"10.0.0.5",
+		"172.16.0.1",
+		"192.168.1.10",
+		"fc00::1",
+		"169.254.169.254",
+		"fe80::1",
+		"::ffff:127.0.0.1",
+	} {
+		rtRebind, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermNetwork}, []string{"rebind.example.com:" + port}, nil)
+		addr := netip.MustParseAddr(rebindIP)
+		rtRebind.lookupNetIP = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+			return []netip.Addr{addr}, nil
+		}
+		mustFailDispatch(t, rtRebind, "host.http.request", map[string]any{
+			"url": "http://rebind.example.com:" + port + "/",
+		}, -32005)
+	}
+
+	// Empty NetworkDomains allows LAN/NAS/local hostnames (e.g. WebDAV/NAS), while still blocking 169.254.169.254.
+	rtEmpty, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermNetwork}, nil, nil)
+	rtEmpty.lookupNetIP = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+	}
+	resLAN := mustDispatch(t, rtEmpty, "host.http.request", map[string]any{
+		"url": "http://nas.local:" + port + "/",
+	})
+	if resLAN["body"] != "target-ok" {
+		t.Fatalf("expected empty network_domains LAN host to succeed, got %v", resLAN)
+	}
+	rtEmpty.lookupNetIP = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("169.254.169.254")}, nil
+	}
+	mustFailDispatch(t, rtEmpty, "host.http.request", map[string]any{
+		"url": "http://nas.local:" + port + "/",
+	}, -32005)
+
+	// Explicitly allowed localhost / *.localhost resolves to 127.0.0.1 cleanly.
+	rtLocalhost, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermNetwork}, []string{"localhost:" + port, "*.localhost"}, nil)
+	rtLocalhost.lookupNetIP = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+	}
+	resLocal := mustDispatch(t, rtLocalhost, "host.http.request", map[string]any{
+		"url": "http://localhost:" + port + "/",
+	})
+	if resLocal["body"] != "target-ok" {
+		t.Fatalf("expected explicit localhost allowlist to succeed, got %v", resLocal)
+	}
+	resSubLocal := mustDispatch(t, rtLocalhost, "host.http.request", map[string]any{
+		"url": "http://dev.localhost:" + port + "/",
+	})
+	if resSubLocal["body"] != "target-ok" {
+		t.Fatalf("expected explicit *.localhost allowlist to succeed, got %v", resSubLocal)
 	}
 }
 

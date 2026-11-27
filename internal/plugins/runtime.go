@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path"
@@ -257,6 +258,8 @@ type Runtime struct {
 	stdin     io.WriteCloser
 	stdout    io.ReadCloser
 	stderr    *ringBuffer
+
+	lookupNetIP func(ctx context.Context, network, host string) ([]netip.Addr, error)
 
 	writeGate    chan struct{}
 	callGate     chan struct{}

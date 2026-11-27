@@ -36,7 +36,7 @@ const (
 
 const pluginStageOfflineRulesJSON = `[
   {"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}},
-  {"trigger":{"url-filter":"^http://.*\\.block-plugin\\.localhost/"},"action":{"type":"ignore-previous-rules"}},
+  {"trigger":{"url-filter":"^http://[^/]+\\.block-plugin\\.localhost/"},"action":{"type":"ignore-previous-rules"}},
   {"trigger":{"url-filter":"^wss?://"},"action":{"type":"block"}}
 ]`
 
@@ -494,11 +494,77 @@ func emitStageEvent(page *mygo.Page, event string, payload any) {
 	})
 }
 
+type stageWebViewHandle interface {
+	Page() *mygo.Page
+	IsDestroyed() bool
+	Destroy()
+	AttachHandlers(onNav func(*mygo.NavigateEvent)) func()
+	LoadURL(url string) error
+	WebView() *mygo.WebView
+}
+
+type mygoStageWebView struct {
+	wv *mygo.WebView
+}
+
+func (h *mygoStageWebView) Page() *mygo.Page {
+	if h == nil || h.wv == nil {
+		return nil
+	}
+	return h.wv.Page()
+}
+
+func (h *mygoStageWebView) IsDestroyed() bool {
+	return h == nil || h.wv == nil || h.wv.IsDestroyed()
+}
+
+func (h *mygoStageWebView) Destroy() {
+	if h != nil && h.wv != nil && !h.wv.IsDestroyed() {
+		h.wv.Destroy()
+	}
+}
+
+func (h *mygoStageWebView) AttachHandlers(onNav func(*mygo.NavigateEvent)) func() {
+	page := h.Page()
+	if page == nil {
+		return nil
+	}
+	page.SetWindowOpenHandler(func(_ mygo.WindowOpenRequest) *mygo.WindowOptions {
+		return nil
+	})
+	return page.OnWillNavigate(onNav)
+}
+
+func (h *mygoStageWebView) LoadURL(rawURL string) error {
+	page := h.Page()
+	if page == nil {
+		return errors.New("stage webview page unavailable")
+	}
+	return page.LoadURL(rawURL)
+}
+
+func (h *mygoStageWebView) WebView() *mygo.WebView {
+	if h == nil {
+		return nil
+	}
+	return h.wv
+}
+
+func pluginStageKey(stage *plugins.ActiveStage) string {
+	if stage == nil {
+		return ""
+	}
+	return stage.PluginID + "\x00" + stage.StageID + "\x00" + stage.Entry
+}
+
 type pluginStageController struct {
 	w *Workspace
 
+	createWebView func(win *mygo.Window, opts mygo.WebViewOptions) (stageWebViewHandle, error)
+
 	mu         sync.Mutex
 	win        *mygo.Window
+	handle     stageWebViewHandle
 	wv         *mygo.WebView
 	page       *mygo.Page
 	unsubNav   func()
@@ -509,17 +575,21 @@ type pluginStageController struct {
 	lastDark   bool
 	lastLocale string
 	createErr  string
+	failedKey  string
+	failedWin  *mygo.Window
+	generation uint64
 }
 
 func newPluginStageController(w *Workspace) *pluginStageController {
 	return &pluginStageController{w: w}
 }
 
-func (c *pluginStageController) detachWebViewLocked() (*mygo.WebView, *mygo.Page, func()) {
-	wv := c.wv
+func (c *pluginStageController) detachWebViewLocked() (stageWebViewHandle, *mygo.Page, func()) {
+	handle := c.handle
 	page := c.page
 	unsub := c.unsubNav
 	c.win = nil
+	c.handle = nil
 	c.wv = nil
 	c.page = nil
 	c.unsubNav = nil
@@ -528,16 +598,17 @@ func (c *pluginStageController) detachWebViewLocked() (*mygo.WebView, *mygo.Page
 	c.entry = ""
 	c.route = ""
 	c.createErr = ""
-	return wv, page, unsub
+	c.generation++
+	return handle, page, unsub
 }
 
-func cleanupDetachedWebView(wv *mygo.WebView, page *mygo.Page, unsub func()) {
+func cleanupDetachedWebView(handle stageWebViewHandle, page *mygo.Page, unsub func()) {
 	unregisterStagePage(page)
 	if unsub != nil {
 		unsub()
 	}
-	if wv != nil && !wv.IsDestroyed() {
-		wv.Destroy()
+	if handle != nil && !handle.IsDestroyed() {
+		handle.Destroy()
 	}
 }
 
@@ -547,9 +618,11 @@ func (c *pluginStageController) Destroy() {
 		return
 	}
 	c.mu.Lock()
-	wv, page, unsub := c.detachWebViewLocked()
+	handle, page, unsub := c.detachWebViewLocked()
+	c.failedKey = ""
+	c.failedWin = nil
 	c.mu.Unlock()
-	cleanupDetachedWebView(wv, page, unsub)
+	cleanupDetachedWebView(handle, page, unsub)
 }
 
 // OnStageChange responds to supervisor ActiveStage transitions.
@@ -558,25 +631,31 @@ func (c *pluginStageController) OnStageChange(stage *plugins.ActiveStage) {
 		return
 	}
 	var (
-		oldWV    *mygo.WebView
+		oldH     stageWebViewHandle
 		oldPage  *mygo.Page
 		oldUnsub func()
 		emitPage *mygo.Page
 	)
 	c.mu.Lock()
 	if stage == nil {
-		oldWV, oldPage, oldUnsub = c.detachWebViewLocked()
-	} else if c.wv != nil && !c.wv.IsDestroyed() &&
+		oldH, oldPage, oldUnsub = c.detachWebViewLocked()
+		c.failedKey = ""
+		c.failedWin = nil
+	} else if c.handle != nil && !c.handle.IsDestroyed() &&
 		c.pluginID == stage.PluginID && c.stageID == stage.StageID && c.entry == stage.Entry {
 		c.route = stage.Route
 		c.createErr = ""
 		emitPage = c.page
 	} else {
-		oldWV, oldPage, oldUnsub = c.detachWebViewLocked()
+		oldH, oldPage, oldUnsub = c.detachWebViewLocked()
+		if c.failedKey != pluginStageKey(stage) {
+			c.failedKey = ""
+			c.failedWin = nil
+		}
 	}
 	c.mu.Unlock()
 
-	cleanupDetachedWebView(oldWV, oldPage, oldUnsub)
+	cleanupDetachedWebView(oldH, oldPage, oldUnsub)
 	if emitPage != nil && stage != nil {
 		emitStageEvent(emitPage, "stage.state", buildStageStatePayload(stage))
 	}
@@ -592,7 +671,7 @@ func (c *pluginStageController) OnStageEmit(ev plugins.StageEvent) {
 	}
 	c.mu.Lock()
 	var target *mygo.Page
-	if c.page != nil && c.wv != nil && !c.wv.IsDestroyed() &&
+	if c.page != nil && c.handle != nil && !c.handle.IsDestroyed() &&
 		c.pluginID == ev.PluginID && c.stageID == ev.StageID {
 		target = c.page
 	}
@@ -618,7 +697,7 @@ func (c *pluginStageController) NotifyThemeChanged(mode string) {
 	dark := theme.IsDark()
 	c.mu.Lock()
 	var target *mygo.Page
-	if c.page != nil && c.wv != nil && !c.wv.IsDestroyed() {
+	if c.page != nil && c.handle != nil && !c.handle.IsDestroyed() {
 		c.lastDark = dark
 		target = c.page
 	}
@@ -643,7 +722,7 @@ func (c *pluginStageController) NotifyLocaleChanged() {
 	locale := string(theme.Language())
 	c.mu.Lock()
 	var target *mygo.Page
-	if c.page != nil && c.wv != nil && !c.wv.IsDestroyed() && c.lastLocale != locale {
+	if c.page != nil && c.handle != nil && !c.handle.IsDestroyed() && c.lastLocale != locale {
 		c.lastLocale = locale
 		target = c.page
 	}
@@ -661,14 +740,19 @@ func stagePaletteHex(col ui.Color) string {
 }
 
 func (c *pluginStageController) ensureWebView(win *mygo.Window, sup *plugins.Supervisor, stage *plugins.ActiveStage, pal theme.Palette) (*mygo.WebView, string) {
-	if c == nil || win == nil || win.IsDestroyed() || stage == nil {
+	if c == nil || sup == nil || stage == nil {
 		return nil, ""
 	}
 	locale := string(theme.Language())
 	dark := pal.Dark
+	stageKey := pluginStageKey(stage)
 
 	c.mu.Lock()
-	if c.wv != nil && !c.wv.IsDestroyed() && c.win == win &&
+	if c.createWebView == nil && (win == nil || win.IsDestroyed()) {
+		c.mu.Unlock()
+		return nil, ""
+	}
+	if c.handle != nil && !c.handle.IsDestroyed() && c.win == win &&
 		c.pluginID == stage.PluginID && c.stageID == stage.StageID && c.entry == stage.Entry {
 		wv := c.wv
 		page := c.page
@@ -685,12 +769,31 @@ func (c *pluginStageController) ensureWebView(win *mygo.Window, sup *plugins.Sup
 		}
 		return wv, ""
 	}
-	oldWV, oldPage, oldUnsub := c.detachWebViewLocked()
+	if c.failedKey == stageKey && c.failedWin == win {
+		errMsg := c.createErr
+		c.mu.Unlock()
+		return nil, errMsg
+	}
+	oldH, oldPage, oldUnsub := c.detachWebViewLocked()
+	c.failedKey = ""
+	c.failedWin = nil
+	gen := c.generation
+	createFn := c.createWebView
 	c.mu.Unlock()
-	cleanupDetachedWebView(oldWV, oldPage, oldUnsub)
+	cleanupDetachedWebView(oldH, oldPage, oldUnsub)
+
+	if createFn == nil {
+		createFn = func(w *mygo.Window, opts mygo.WebViewOptions) (stageWebViewHandle, error) {
+			wv, err := w.NewWebView(opts)
+			if err != nil {
+				return nil, err
+			}
+			return &mygoStageWebView{wv: wv}, nil
+		}
+	}
 
 	rules := ensurePluginStageContentRules()
-	wv, err := win.NewWebView(mygo.WebViewOptions{
+	handle, err := createFn(win, mygo.WebViewOptions{
 		BackgroundColor: stagePaletteHex(pal.Paper),
 		Page: mygo.PageOptions{
 			PreloadScript: pluginStagePreloadScript,
@@ -700,38 +803,56 @@ func (c *pluginStageController) ensureWebView(win *mygo.Window, sup *plugins.Sup
 	})
 	if err != nil {
 		c.mu.Lock()
-		c.createErr = err.Error()
+		cur := sup.ActiveStage()
+		if c.generation == gen && cur != nil && pluginStageKey(cur) == stageKey {
+			c.failedKey = stageKey
+			c.failedWin = win
+			c.createErr = err.Error()
+		}
 		c.mu.Unlock()
 		return nil, err.Error()
 	}
 
-	page := wv.Page()
+	page := handle.Page()
 	if page == nil {
-		wv.Destroy()
-		return nil, "stage webview page unavailable"
+		handle.Destroy()
+		errMsg := "stage webview page unavailable"
+		c.mu.Lock()
+		cur := sup.ActiveStage()
+		if c.generation == gen && cur != nil && pluginStageKey(cur) == stageKey {
+			c.failedKey = stageKey
+			c.failedWin = win
+			c.createErr = errMsg
+		}
+		c.mu.Unlock()
+		return nil, errMsg
 	}
 
-	pluginID := stage.PluginID
-	stageID := stage.StageID
-	entry := stage.Entry
-
-	// Confirm the stage did not close or change while NewWebView was initializing.
+	c.mu.Lock()
 	cur := sup.ActiveStage()
-	if cur == nil || cur.PluginID != pluginID || cur.StageID != stageID || cur.Entry != entry {
-		wv.Destroy()
+	if c.generation != gen || cur == nil || pluginStageKey(cur) != stageKey || (c.createWebView == nil && win.IsDestroyed()) {
+		c.mu.Unlock()
+		handle.Destroy()
 		return nil, ""
 	}
+	if c.handle != nil && !c.handle.IsDestroyed() {
+		// Another frame/goroutine already installed a WebView; discard this one.
+		existing := c.wv
+		c.mu.Unlock()
+		handle.Destroy()
+		return existing, ""
+	}
 
+	pluginID := cur.PluginID
+	stageID := cur.StageID
+	entry := cur.Entry
 	registerStagePage(page, stagePageBinding{
 		workspace: c.w,
 		pluginID:  pluginID,
 		stageID:   stageID,
 		entry:     entry,
 	})
-	page.SetWindowOpenHandler(func(_ mygo.WindowOpenRequest) *mygo.WindowOptions {
-		return nil
-	})
-	unsubNav := page.OnWillNavigate(func(e *mygo.NavigateEvent) {
+	unsubNav := handle.AttachHandlers(func(e *mygo.NavigateEvent) {
 		if e == nil {
 			return
 		}
@@ -740,15 +861,9 @@ func (c *pluginStageController) ensureWebView(win *mygo.Window, sup *plugins.Sup
 		}
 	})
 
-	c.mu.Lock()
-	if c.wv != nil {
-		// Another frame/goroutine already installed a WebView; discard this one.
-		c.mu.Unlock()
-		cleanupDetachedWebView(wv, page, unsubNav)
-		return c.wv, ""
-	}
 	c.win = win
-	c.wv = wv
+	c.handle = handle
+	c.wv = handle.WebView()
 	c.page = page
 	c.unsubNav = unsubNav
 	c.pluginID = pluginID
@@ -758,11 +873,14 @@ func (c *pluginStageController) ensureWebView(win *mygo.Window, sup *plugins.Sup
 	c.lastDark = dark
 	c.lastLocale = locale
 	c.createErr = ""
+	c.failedKey = ""
+	c.failedWin = nil
+	wv := c.wv
 	c.mu.Unlock()
 
 	relEntry := strings.TrimPrefix(entry, "web/")
 	targetURL := pluginStageScheme + "://" + pluginID + "/" + strings.TrimPrefix(relEntry, "/")
-	if err := page.LoadURL(targetURL); err != nil {
+	if err := handle.LoadURL(targetURL); err != nil {
 		files.LogWarnf("load plugin stage URL %s failed: %v", targetURL, err)
 	}
 	return wv, ""

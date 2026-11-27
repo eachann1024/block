@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 
 const (
 	grantedPathsFile     = "granted-paths.json"
+	pluginStateFile      = "state.json"
 	maxGrantedPathsBytes = 512 * 1024
 	maxGrantedPathsCount = 512
 	maxFSReadDefault     = 16 * 1024 * 1024
@@ -297,6 +299,18 @@ func pathWithinDir(target, dir string) (string, bool) {
 	return filepath.ToSlash(rel), true
 }
 
+func matchProtectedDataFile(rel string) (string, bool) {
+	for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
+		trimmed := strings.TrimRight(seg, ". ")
+		for _, reserved := range []string{grantedPathsFile, schedulerFile, pluginStateFile} {
+			if strings.EqualFold(trimmed, reserved) {
+				return reserved, true
+			}
+		}
+	}
+	return "", false
+}
+
 func (rt *Runtime) resolveFSScope(rawPath string, write bool) (*resolvedFSTarget, *rpcError) {
 	canon, err := resolveCanonicalPath(rawPath)
 	if err != nil {
@@ -305,6 +319,16 @@ func (rt *Runtime) resolveFSScope(rawPath string, write bool) (*resolvedFSTarget
 	scopes, err := rt.collectFSScopes()
 	if err != nil {
 		return nil, rpcErr(-32004, err.Error())
+	}
+
+	if write && strings.TrimSpace(rt.cfg.DataDir) != "" {
+		if dataCanon, err := resolveCanonicalPath(rt.cfg.DataDir); err == nil {
+			if relInData, ok := pathWithinDir(canon, dataCanon); ok {
+				if reserved, blocked := matchProtectedDataFile(relInData); blocked {
+					return nil, rpcErr(-32001, "cannot modify "+reserved+" directly")
+				}
+			}
+		}
 	}
 
 	var matchedReadOnly bool
@@ -330,11 +354,10 @@ func (rt *Runtime) resolveFSScope(rawPath string, write bool) (*resolvedFSTarget
 			matchedReadOnly = true
 			continue
 		}
-		if write && sc.isDataDir && rel == grantedPathsFile {
-			return nil, rpcErr(-32001, "cannot modify granted-paths.json directly")
-		}
-		if write && sc.isDataDir && rel == schedulerFile {
-			return nil, rpcErr(-32001, "cannot modify scheduler.json directly")
+		if write && sc.isDataDir {
+			if reserved, blocked := matchProtectedDataFile(rel); blocked {
+				return nil, rpcErr(-32001, "cannot modify "+reserved+" directly")
+			}
 		}
 		return &resolvedFSTarget{
 			canonPath: canon,
@@ -842,35 +865,26 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 	}
 	defer toRoot.Close()
 
-	if p.MkdirParents {
-		parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(toTarget.rel)))
-		if parentRel != "." && parentRel != "" {
-			if err := toRoot.MkdirAll(parentRel, 0o755); err != nil {
-				return nil, rpcErr(-32004, err.Error())
+	if fromTarget.rootDir == toTarget.rootDir {
+		if p.MkdirParents {
+			parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(toTarget.rel)))
+			if parentRel != "." && parentRel != "" {
+				if err := toRoot.MkdirAll(parentRel, 0o755); err != nil {
+					return nil, rpcErr(-32004, err.Error())
+				}
 			}
 		}
-	}
-	if !p.Overwrite {
-		if _, err := toRoot.Lstat(toTarget.rel); err == nil {
-			return nil, rpcErr(-32004, os.ErrExist.Error())
+		if !p.Overwrite {
+			if _, err := toRoot.Lstat(toTarget.rel); err == nil {
+				return nil, rpcErr(-32004, os.ErrExist.Error())
+			}
 		}
-	}
-	if fromTarget.rootDir == toTarget.rootDir {
 		if err := toRoot.Rename(fromTarget.rel, toTarget.rel); err != nil {
 			return nil, rpcErr(-32004, err.Error())
 		}
 	} else {
-		fromRoot, err := os.OpenRoot(fromTarget.rootDir)
-		if err != nil {
-			return nil, rpcErr(-32004, err.Error())
-		}
-		_, lerr := fromRoot.Lstat(fromTarget.rel)
-		_ = fromRoot.Close()
-		if lerr != nil {
-			return nil, rpcErr(-32004, lerr.Error())
-		}
-		if err := os.Rename(fromTarget.canonPath, toTarget.canonPath); err != nil {
-			return nil, rpcErr(-32004, err.Error())
+		if rerr := renameCrossRoot(fromTarget, toTarget, toRoot, p.Overwrite, p.MkdirParents); rerr != nil {
+			return nil, rerr
 		}
 	}
 	return map[string]any{
@@ -878,6 +892,88 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 		"from": fromTarget.canonPath,
 		"to":   toTarget.canonPath,
 	}, nil
+}
+
+func renameCrossRoot(fromTarget, toTarget *resolvedFSTarget, toRoot *os.Root, overwrite, mkdirParents bool) *rpcError {
+	fromRoot, err := os.OpenRoot(fromTarget.rootDir)
+	if err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	defer fromRoot.Close()
+
+	srcInfo, err := fromRoot.Lstat(fromTarget.rel)
+	if err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	if srcInfo.Mode()&os.ModeSymlink != 0 || srcInfo.IsDir() || !srcInfo.Mode().IsRegular() {
+		return rpcErr(-32602, "cross-root rename only supports regular non-symlink files")
+	}
+	srcFile, actualInfo, err := openPluginFile(fromRoot, fromTarget.rel)
+	if err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	srcClosed := false
+	defer func() {
+		if !srcClosed {
+			_ = srcFile.Close()
+		}
+	}()
+
+	if mkdirParents {
+		parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(toTarget.rel)))
+		if parentRel != "." && parentRel != "" {
+			if err := toRoot.MkdirAll(parentRel, 0o755); err != nil {
+				return rpcErr(-32004, err.Error())
+			}
+		}
+	}
+	if err := checkPluginParents(toRoot, toTarget.rel); err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	if dstInfo, err := toRoot.Lstat(toTarget.rel); err == nil {
+		if !overwrite {
+			return rpcErr(-32004, os.ErrExist.Error())
+		}
+		if dstInfo.Mode()&os.ModeSymlink != 0 || dstInfo.IsDir() || !dstInfo.Mode().IsRegular() {
+			return rpcErr(-32602, "cannot overwrite directory or symlink across roots")
+		}
+	}
+
+	tmpFile, tmpRel, err := createTempInRoot(toRoot, toTarget.rel)
+	if err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = tmpFile.Close()
+			_ = toRoot.Remove(tmpRel)
+		}
+	}()
+
+	if _, err := io.Copy(tmpFile, srcFile); err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	if err := tmpFile.Chmod(actualInfo.Mode().Perm()); err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	if err := tmpFile.Sync(); err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	if err := tmpFile.Close(); err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	if err := toRoot.Rename(tmpRel, toTarget.rel); err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	cleanup = false
+
+	_ = srcFile.Close()
+	srcClosed = true
+	if err := fromRoot.Remove(fromTarget.rel); err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	return nil
 }
 
 func (rt *Runtime) fsAtomicSwap(params json.RawMessage) (any, *rpcError) {

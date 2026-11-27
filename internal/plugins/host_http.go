@@ -6,8 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -66,6 +69,133 @@ func matchNetworkDomains(u *url.URL, patterns []string) bool {
 		}
 	}
 	return false
+}
+
+var (
+	v4LinkLocalPrefix   = netip.MustParsePrefix("169.254.0.0/16")
+	v6LinkLocalPrefix   = netip.MustParsePrefix("fe80::/10")
+	v4ThisNetworkPrefix = netip.MustParsePrefix("0.0.0.0/8")
+	v4LoopbackPrefix    = netip.MustParsePrefix("127.0.0.0/8")
+	v6LoopbackPrefix    = netip.MustParsePrefix("::1/128")
+	v4Private10         = netip.MustParsePrefix("10.0.0.0/8")
+	v4Private172        = netip.MustParsePrefix("172.16.0.0/12")
+	v4Private192        = netip.MustParsePrefix("192.168.0.0/16")
+	v6UniqueLocal       = netip.MustParsePrefix("fc00::/7")
+)
+
+func isLocalhostDomain(host string) bool {
+	h := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	return h == "localhost" || strings.HasSuffix(h, ".localhost")
+}
+
+func validateDialAddr(addr netip.Addr, reqHost string, networkDomains []string) error {
+	ip := addr.Unmap()
+	if !ip.IsValid() {
+		return errors.New("invalid remote IP address")
+	}
+	ipNoZone := ip.WithZone("")
+	if ipNoZone.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		v4LinkLocalPrefix.Contains(ipNoZone) || v6LinkLocalPrefix.Contains(ipNoZone) ||
+		v4ThisNetworkPrefix.Contains(ipNoZone) {
+		return fmt.Errorf("connection to restricted IP %s is forbidden", ip)
+	}
+	if len(networkDomains) > 0 {
+		trimmedHost := strings.TrimSuffix(strings.TrimSpace(reqHost), ".")
+		if _, err := netip.ParseAddr(trimmedHost); err != nil && !isLocalhostDomain(trimmedHost) {
+			if ipNoZone.IsLoopback() || ipNoZone.IsPrivate() ||
+				v4LoopbackPrefix.Contains(ipNoZone) || v6LoopbackPrefix.Contains(ipNoZone) ||
+				v4Private10.Contains(ipNoZone) || v4Private172.Contains(ipNoZone) ||
+				v4Private192.Contains(ipNoZone) || v6UniqueLocal.Contains(ipNoZone) {
+				return fmt.Errorf("connection to private or loopback IP %s via hostname %q is forbidden", ip, reqHost)
+			}
+		}
+	}
+	return nil
+}
+
+func (rt *Runtime) newHTTPTransport(timeout time.Duration) *http.Transport {
+	var tr *http.Transport
+	if base, ok := http.DefaultTransport.(*http.Transport); ok && base != nil {
+		tr = base.Clone()
+	} else {
+		tr = &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			ForceAttemptHTTP2:     true,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+	}
+	dialer := &net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: 30 * time.Second,
+	}
+	lookup := rt.lookupNetIP
+	if lookup == nil {
+		lookup = net.DefaultResolver.LookupNetIP
+	}
+	domains := append([]string(nil), rt.manifest.NetworkDomains...)
+
+	tr.Proxy = func(req *http.Request) (*url.URL, error) {
+		if req != nil && req.URL != nil {
+			host := strings.TrimSuffix(strings.TrimSpace(req.URL.Hostname()), ".")
+			if ip, err := netip.ParseAddr(host); err == nil {
+				if err := validateDialAddr(ip, host, domains); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if rt.lookupNetIP != nil {
+			return nil, nil
+		}
+		return http.ProxyFromEnvironment(req)
+	}
+
+	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		trimmedHost := strings.TrimSuffix(strings.TrimSpace(host), ".")
+		if ip, perr := netip.ParseAddr(trimmedHost); perr == nil {
+			if err := validateDialAddr(ip, host, domains); err != nil {
+				return nil, err
+			}
+			return dialer.DialContext(ctx, network, addr)
+		}
+
+		lookupNet := "ip"
+		switch network {
+		case "tcp4":
+			lookupNet = "ip4"
+		case "tcp6":
+			lookupNet = "ip6"
+		}
+		ips, err := lookup(ctx, lookupNet, host)
+		if err != nil {
+			return nil, err
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("no IP addresses found for %s", host)
+		}
+		for _, ip := range ips {
+			if err := validateDialAddr(ip, host, domains); err != nil {
+				return nil, err
+			}
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		if lastErr == nil {
+			lastErr = fmt.Errorf("dial %s failed", addr)
+		}
+		return nil, lastErr
+	}
+	return tr
 }
 
 func sameHTTPOrigin(a, b *url.URL) bool {
@@ -240,8 +370,12 @@ func (rt *Runtime) dispatchHTTPHostMethod(params json.RawMessage) (any, *rpcErro
 		req.Header.Set(k, v)
 	}
 
+	tr := rt.newHTTPTransport(time.Duration(timeoutMS) * time.Millisecond)
+	defer tr.CloseIdleConnections()
+
 	client := &http.Client{
-		Timeout: time.Duration(timeoutMS) * time.Millisecond,
+		Timeout:   time.Duration(timeoutMS) * time.Millisecond,
+		Transport: tr,
 		CheckRedirect: func(nextReq *http.Request, via []*http.Request) error {
 			if len(via) >= maxHTTPRedirects {
 				return errors.New("stopped after 10 redirects")
@@ -255,6 +389,7 @@ func (rt *Runtime) dispatchHTTPHostMethod(params json.RawMessage) (any, *rpcErro
 			}
 			if len(via) > 0 && !sameHTTPOrigin(via[0].URL, nextReq.URL) {
 				nextReq.Header.Del("Authorization")
+				nextReq.Header.Del("Proxy-Authorization")
 				nextReq.Header.Del("Cookie")
 			}
 			return nil

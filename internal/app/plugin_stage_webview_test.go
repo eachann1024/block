@@ -2,12 +2,17 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"block/internal/plugins"
 	"block/internal/theme"
@@ -262,5 +267,261 @@ func TestPluginStageRuntimeIdempotentAndHeadlessPlaceholder(t *testing.T) {
 	st := ws.pluginUI.Status()
 	if st.Ready {
 		t.Fatalf("expected unconfigured AI status Ready=false, got %+v", st)
+	}
+}
+
+func evalOfflineContentRules(t *testing.T, rawURL string) bool {
+	t.Helper()
+	var rules []struct {
+		Trigger struct {
+			URLFilter     string `json:"url-filter"`
+			CaseSensitive bool   `json:"url-filter-is-case-sensitive"`
+		} `json:"trigger"`
+		Action struct {
+			Type string `json:"type"`
+		} `json:"action"`
+	}
+	if err := json.Unmarshal([]byte(pluginStageOfflineRulesJSON), &rules); err != nil {
+		t.Fatalf("unmarshal pluginStageOfflineRulesJSON: %v", err)
+	}
+	blocked := false
+	for _, r := range rules {
+		pat := r.Trigger.URLFilter
+		if !r.Trigger.CaseSensitive {
+			pat = "(?i)" + pat
+		}
+		re, err := regexp.Compile(pat)
+		if err != nil {
+			t.Fatalf("compile rule %q: %v", r.Trigger.URLFilter, err)
+		}
+		if re.MatchString(rawURL) {
+			switch r.Action.Type {
+			case "block":
+				blocked = true
+			case "ignore-previous-rules":
+				blocked = false
+			}
+		}
+	}
+	return blocked
+}
+
+func TestPluginStageOfflineContentRulesRejectsPathBypass(t *testing.T) {
+	// Valid mapped localhost stage asset URL must be permitted.
+	if evalOfflineContentRules(t, "http://alpha-plugin.block-plugin.localhost/index.html") {
+		t.Fatal("expected http://alpha-plugin.block-plugin.localhost/index.html to be allowed")
+	}
+
+	// Path-based bypass attempts must remain blocked by content rules AND navigation filter.
+	for _, bypassURL := range []string{
+		"http://evil.com/.block-plugin.localhost/",
+		"http://evil.com/alpha.block-plugin.localhost/x",
+		"https://alpha-plugin.block-plugin.localhost/index.html",
+		"https://evil.com/data",
+		"http://evil.com/data",
+		"wss://evil.com/socket",
+	} {
+		if !evalOfflineContentRules(t, bypassURL) {
+			t.Fatalf("expected offline content rules to block %q", bypassURL)
+		}
+		if isAllowedStageNavigation(bypassURL, "alpha-plugin") {
+			t.Fatalf("expected isAllowedStageNavigation to reject %q", bypassURL)
+		}
+	}
+}
+
+type fakeStageWebView struct {
+	mu        sync.Mutex
+	page      *mygo.Page
+	destroyed bool
+	loadedURL string
+	navHook   func(*mygo.NavigateEvent)
+}
+
+func (f *fakeStageWebView) Page() *mygo.Page {
+	return f.page
+}
+
+func (f *fakeStageWebView) IsDestroyed() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.destroyed
+}
+
+func (f *fakeStageWebView) Destroy() {
+	f.mu.Lock()
+	f.destroyed = true
+	f.mu.Unlock()
+}
+
+func (f *fakeStageWebView) AttachHandlers(onNav func(*mygo.NavigateEvent)) func() {
+	f.mu.Lock()
+	f.navHook = onNav
+	f.mu.Unlock()
+	return func() {}
+}
+
+func (f *fakeStageWebView) LoadURL(rawURL string) error {
+	f.mu.Lock()
+	f.loadedURL = rawURL
+	f.mu.Unlock()
+	return nil
+}
+
+func (f *fakeStageWebView) WebView() *mygo.WebView {
+	return nil
+}
+
+func setupStageTestPlugin(t *testing.T, appDataDir, pluginID string) {
+	t.Helper()
+	srcDir := filepath.Join(t.TempDir(), pluginID)
+	if err := os.MkdirAll(filepath.Join(srcDir, "web"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "web", "index.html"), []byte("<!doctype html><html><body>ok</body></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mainJS := `
+import { callHost, serve } from '/runtime/block-sdk.js';
+serve((method, params) => {
+  if (method === 'plugin.initialize') return { ready: true };
+  if (method === 'plugin.command' && params?.command_id === 'open') {
+    callHost('host.stage.open', { id: 'main-stage' });
+    return { ok: true };
+  }
+  if (method === 'plugin.shutdown') return { ok: true };
+  return {};
+});
+`
+	if err := os.WriteFile(filepath.Join(srcDir, "main.js"), []byte(mainJS), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := plugins.Manifest{
+		App:           plugins.TargetApp,
+		SchemaVersion: plugins.CurrentSchemaVersion,
+		ID:            pluginID,
+		Name:          plugins.LocalizedText{Zh: "测试舞台", En: "Test Stage"},
+		Version:       "1.0.0",
+		Author:        "tester",
+		Summary:       plugins.LocalizedText{Zh: "舞台测试", En: "Stage test"},
+		Entry:         plugins.EntrySpec{JS: "main.js"},
+		Permissions:   []plugins.Permission{plugins.PermUICommands},
+		Icon:          plugins.DuoIconSpec{ViewBox: "0 0 24 24", StrokePaths: []string{"M4 4H20V20H4Z"}},
+		Contributes: &plugins.Contributes{
+			Commands: []plugins.CommandContrib{{
+				ID:    "open",
+				Title: plugins.LocalizedText{Zh: "打开", En: "Open"},
+			}},
+			Stages: []plugins.StageContrib{{
+				ID:         "main-stage",
+				Title:      plugins.LocalizedText{Zh: "主舞台", En: "Main Stage"},
+				Entry:      "web/index.html",
+				FullWindow: true,
+			}},
+		},
+	}
+	raw, _ := json.Marshal(manifest)
+	if err := os.WriteFile(filepath.Join(srcDir, "manifest.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := plugins.NewStoreManager(appDataDir)
+	if _, err := store.InstallFromDirectory(srcDir); err != nil {
+		t.Fatalf("InstallFromDirectory: %v", err)
+	}
+	if err := store.SetEnabled(pluginID, true); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
+	}
+}
+
+func openStageAndWait(t *testing.T, sup *plugins.Supervisor, pluginID string, stageCh <-chan *plugins.ActiveStage) *plugins.ActiveStage {
+	t.Helper()
+	sup.RunCommandAsync(pluginID, "open", plugins.CommandContext{})
+	deadline := time.After(15 * time.Second)
+	for {
+		select {
+		case st := <-stageCh:
+			if st != nil && st.PluginID == pluginID {
+				return st
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for stage %s to open", pluginID)
+		}
+	}
+}
+
+func TestPluginStageControllerConcurrentCloseAndFailedKey(t *testing.T) {
+	t.Setenv("PATH", "")
+
+	appDataDir := t.TempDir()
+	setupStageTestPlugin(t, appDataDir, "race-stage-plugin")
+
+	var ctrl *pluginStageController
+	stageCh := make(chan *plugins.ActiveStage, 8)
+	sup := plugins.NewSupervisor(plugins.SupervisorConfig{
+		AppDataDir: appDataDir,
+		GetLocale:  func() string { return "en" },
+		OnStageChange: func(st *plugins.ActiveStage) {
+			if ctrl != nil {
+				ctrl.OnStageChange(st)
+			}
+			select {
+			case stageCh <- st:
+			default:
+			}
+		},
+	})
+	t.Cleanup(sup.ShutdownAll)
+	ctrl = newPluginStageController(nil)
+	t.Cleanup(ctrl.Destroy)
+
+	stage := openStageAndWait(t, sup, "race-stage-plugin", stageCh)
+
+	// 1) Concurrent CloseStage while NewWebView is in flight must destroy the stale WebView and never mount it.
+	createdHandle := &fakeStageWebView{page: &mygo.Page{}}
+	ctrl.createWebView = func(_ *mygo.Window, _ mygo.WebViewOptions) (stageWebViewHandle, error) {
+		sup.CloseStage(stage.PluginID, stage.StageID)
+		return createdHandle, nil
+	}
+	wv, errMsg := ctrl.ensureWebView(nil, sup, stage, theme.Ocean())
+	if wv != nil || errMsg != "" {
+		t.Fatalf("expected nil webview and empty err after concurrent close, got wv=%v err=%q", wv, errMsg)
+	}
+	if !createdHandle.IsDestroyed() {
+		t.Fatal("expected stale WebView created during concurrent CloseStage to be destroyed")
+	}
+	if _, ok := lookupStagePage(createdHandle.page); ok {
+		t.Fatal("stale WebView page must not remain registered")
+	}
+	ctrl.mu.Lock()
+	mounted := ctrl.handle != nil || ctrl.page != nil
+	ctrl.mu.Unlock()
+	if mounted {
+		t.Fatal("stale WebView must not be mounted on controller")
+	}
+
+	// 2) Re-open stage and simulate WebView creation failure -> failedKey suppresses per-frame retries.
+	stage = openStageAndWait(t, sup, "race-stage-plugin", stageCh)
+
+	attempts := 0
+	ctrl.createWebView = func(_ *mygo.Window, _ mygo.WebViewOptions) (stageWebViewHandle, error) {
+		attempts++
+		return nil, errors.New("webview init failed")
+	}
+	for i := 0; i < 5; i++ {
+		_, gotErr := ctrl.ensureWebView(nil, sup, stage, theme.Ocean())
+		if gotErr != "webview init failed" {
+			t.Fatalf("frame %d: expected cached/create error, got %q", i, gotErr)
+		}
+	}
+	if attempts != 1 {
+		t.Fatalf("expected failedKey to prevent retries across frames, got %d attempts", attempts)
+	}
+
+	// Closing and reopening clears failedKey so creation can be retried once again.
+	sup.CloseStage(stage.PluginID, stage.StageID)
+	stage = openStageAndWait(t, sup, "race-stage-plugin", stageCh)
+	_, _ = ctrl.ensureWebView(nil, sup, stage, theme.Ocean())
+	if attempts != 2 {
+		t.Fatalf("expected retry after close/reopen, got %d attempts", attempts)
 	}
 }
