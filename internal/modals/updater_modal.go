@@ -136,6 +136,7 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 	}
 
 	title := updaterModalTitle(snap, showEn)
+	wasSourceMenuOpen := m.updaterSourceMenu.Open
 
 	internalui.Dialog(c, "updater-modal", title, &open, internalui.ModalLayout{
 		Width:     theme.UpdaterModalWidth,
@@ -246,7 +247,7 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 		})
 	})
 
-	if !open {
+	if !open && !wasSourceMenuOpen {
 		m.CloseUpdater()
 	}
 }
