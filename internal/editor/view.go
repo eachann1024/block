@@ -3095,7 +3095,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						prevOff = s.selHead.Offset - curBase
 					}
 					s.clearAutoConvertState()
-					if !s.hasMultiBlockSelection() {
+					// 跨格拖选期间由 updateFocusedRichTableCellDrag 接管选区，这里再回写单格选区会与之逐帧互相覆盖导致闪烁。
+					crossCellDrag := s.isMouseDragging() && s.mouseOriginBlock == blockIdx && s.hasMultiCellTableSelection()
+					if !s.hasMultiBlockSelection() && !crossCellDrag {
 						s.selAnchor = Position{Block: blockIdx, Offset: curBase + anchor}
 						s.selHead = Position{Block: blockIdx, Offset: curBase + caret}
 						if prevOff >= 0 {
