@@ -1,10 +1,78 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T08:52:25.784Z",
-  "latest_version": "1.0.953",
-  "latest_tag": "v1.0.953",
+  "updated_at": "2026-11-27T10:05:35.970Z",
+  "latest_version": "1.0.954",
+  "latest_tag": "v1.0.954",
   "releases": [
+    {
+      "version": "1.0.954",
+      "tag": "v1.0.954",
+      "published_at": "2026-11-27T10:05:35Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.954",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "插件接口：文件列表方法现在会报告结果是否被截断。",
+          "设置：不再显示侧边栏丰富装饰选项。"
+        ],
+        "fixes": [
+          "插件商店：已停止维护的插件安装现在会标记为需要更新。",
+          "插件商店：已停止维护插件的操作控件和状态说明更加清晰。"
+        ],
+        "other": [
+          "插件接口：已移除外部插件运行环境。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Plugin API: The filesystem listing method now reports when its results are truncated.",
+          "Settings: The rich sidebar decoration option is no longer shown."
+        ],
+        "fixes": [
+          "Plugin Store: Retired plugin installations are now marked as needing updates.",
+          "Plugin Store: Controls and status for retired plugins are now clearer."
+        ],
+        "other": [
+          "Plugin API: The external plugin runtime has been removed."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-macos-arm64.dmg",
+          "size": 18756584,
+          "sha256": "4f67adf6b57def733a038c635cd194a68d79bd3819a4224977a82d3203f6b67f"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-macos-x64.dmg",
+          "size": 20687000,
+          "sha256": "c12750dbd6c4b672732102329136bfca5b245ee9d88e9ca0f3ff38d073fe28da"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-windows-x64-setup.exe",
+          "size": 16219055,
+          "sha256": "05be2bf25694bc05260329fd8f8d9f66d4e3bd49faed4eb4bb00c7aa585920b8"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-linux-x64.deb",
+          "size": 13175516,
+          "sha256": "ff111825acff713c1daf501f325df418f9633b57c6948537f7204398e65ceda6"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.954/block-linux-x64.AppImage",
+          "size": 26446328,
+          "sha256": "b89bea16bf8206ed063f6779033d722f034386f771108e34a54357815c48bae3"
+        }
+      ]
+    },
     {
       "version": "1.0.953",
       "tag": "v1.0.953",
@@ -30,38 +98,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-macos-arm64.dmg",
-          "size": 18768284,
-          "sha256": "65942349177680bf8396d7d2c8adc4308b74a3f7ba58fcadad748fcfe0f940f1"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-macos-x64.dmg",
-          "size": 20710272,
-          "sha256": "3893bee95f082d9a2295e07d7e360d55cedaab7239954a7a2a651833d1f60a38"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-windows-x64-setup.exe",
-          "size": 16227546,
-          "sha256": "e91a473783f9382bc38d186c3a538e88c2a47338c5c5ee1ad2da0edf20d20292"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-linux-x64.deb",
-          "size": 13190696,
-          "sha256": "d9cbc0107e481c8f6609a5926941502325af5b608c8914b014eed032d2402c3b"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-linux-x64.AppImage",
-          "size": 26458616,
-          "sha256": "538a71191519de041c1682f011450c060c5d87fe127104533c1d5fead2576839"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.952",
@@ -1674,33 +1711,6 @@
         "other": [
           "Added a theme design token to define the maximum width for annotation cards placed below content."
         ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.902",
-      "tag": "v1.0.902",
-      "published_at": "2026-11-22T07:21:58Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.902",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "插件管理器现在支持按顺序批量应用更新。",
-          "插件商店的搜索框旁新增「全部更新」按钮。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "The plugin supervisor now supports applying batch updates sequentially.",
-          "The plugin store now has an Update All button beside the search box."
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
       },
       "assets": []
     }
