@@ -7,13 +7,27 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_DIRS = {"testdata", "store", "docs"}
+SKIP_DIRS = {"testdata", "store", "docs", ".git", "node_modules", "dist", "build"}
 ALLOWED_LINES = {
     # Hide historical sync recovery directories in existing notebooks. Their
     # names are already on disk and may survive an upgrade or uninstall.
     ("internal/files/scan.go", '".block-sync-replaced": true,'),
     ("internal/files/scan.go", '".block-sync-recovery": true,'),
 }
+
+
+def iter_go_files():
+    if (ROOT / ".git").exists():
+        paths = subprocess.check_output(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*.go"],
+            cwd=ROOT,
+        )
+        return sorted(set(paths.decode().split("\0")) - {""})
+    return sorted(
+        path.relative_to(ROOT).as_posix()
+        for path in ROOT.rglob("*.go")
+        if not SKIP_DIRS.intersection(path.relative_to(ROOT).parts[:-1])
+    )
 
 
 def main():
@@ -26,12 +40,8 @@ def main():
         return 0
     ordered_ids = sorted(plugin_ids, key=lambda plugin_id: (-len(plugin_id), plugin_id))
     pattern = re.compile("|".join(map(re.escape, ordered_ids)))
-    paths = subprocess.check_output(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*.go"],
-        cwd=ROOT,
-    )
     failed = False
-    for name in sorted(set(paths.decode().split("\0")) - {""}):
+    for name in iter_go_files():
         rel = Path(name)
         if name.endswith("_test.go") or SKIP_DIRS.intersection(rel.parts[:-1]):
             continue

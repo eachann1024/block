@@ -5,7 +5,10 @@ set -euo pipefail
 out_dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ci-bins"
 mkdir -p "$out_dir"
 
-python3 scripts/lint_design.py &
+(
+  python3 scripts/lint_design.py
+  python3 scripts/lint_plugin_ids.py
+) &
 pid_lint=$!
 
 echo "==> Checking linux/amd64"
