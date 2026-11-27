@@ -81,8 +81,16 @@ func initMacProxy() {
 		}
 		cfnLib, err := purego.Dlopen("/System/Library/Frameworks/CFNetwork.framework/CFNetwork", purego.RTLD_NOW|purego.RTLD_GLOBAL)
 		if err != nil {
+			_ = purego.Dlclose(cfLib)
 			return
 		}
+		ready := false
+		defer func() {
+			if !ready {
+				_ = purego.Dlclose(cfnLib)
+				_ = purego.Dlclose(cfLib)
+			}
+		}()
 
 		sCopy, e0 := purego.Dlsym(cfnLib, "CFNetworkCopySystemProxySettings")
 		sStrCreate, e1 := purego.Dlsym(cfLib, "CFStringCreateWithCString")
@@ -149,6 +157,7 @@ func initMacProxy() {
 				return
 			}
 		}
+		ready = true
 		macProxyReady = true
 	})
 }
@@ -356,9 +365,6 @@ func systemProxyForRequest(u *url.URL) *url.URL {
 	case "https":
 		if snap.httpsProxy != nil {
 			return snap.httpsProxy
-		}
-		if snap.httpProxy != nil {
-			return snap.httpProxy
 		}
 	case "http":
 		if snap.httpProxy != nil {

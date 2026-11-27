@@ -113,9 +113,18 @@ func validateDialAddr(addr netip.Addr, reqHost string, networkDomains []string) 
 	return nil
 }
 
+func envProxyConfigured() bool {
+	for _, k := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy"} {
+		if strings.TrimSpace(os.Getenv(k)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func proxyForRequest(req *http.Request) (*url.URL, error) {
-	if u, err := http.ProxyFromEnvironment(req); err != nil || u != nil {
-		return u, err
+	if envProxyConfigured() {
+		return http.ProxyFromEnvironment(req)
 	}
 	if req == nil || req.URL == nil {
 		return nil, nil
@@ -157,7 +166,26 @@ func (rt *Runtime) newHTTPTransport(timeout time.Duration) *http.Transport {
 		if rt.lookupNetIP != nil {
 			return nil, nil
 		}
-		return proxyForRequest(req)
+		proxyURL, err := proxyForRequest(req)
+		if err != nil || proxyURL == nil || req == nil || req.URL == nil {
+			return proxyURL, err
+		}
+		// The proxy resolves the target itself, so DialContext only sees the
+		// proxy address. Pre-resolve the target locally and enforce the same
+		// IP policy before handing the request to the proxy.
+		host := strings.TrimSuffix(strings.TrimSpace(req.URL.Hostname()), ".")
+		if _, perr := netip.ParseAddr(host); perr != nil {
+			ips, lerr := lookup(req.Context(), "ip", host)
+			if lerr != nil {
+				return nil, lerr
+			}
+			for _, ip := range ips {
+				if verr := validateDialAddr(ip, host, domains); verr != nil {
+					return nil, verr
+				}
+			}
+		}
+		return proxyURL, nil
 	}
 
 	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
