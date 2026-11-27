@@ -444,7 +444,7 @@ var (
 	semverRe               = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
 	repoSlugRe             = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 	execAllowlistNameRe    = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
-	versionedInterpreterRe = regexp.MustCompile(`^python[0-9]+(\.[0-9]+)*$`)
+	versionedInterpreterRe = regexp.MustCompile(`^(pythonw?|pyw?)[0-9]+(\.[0-9]+)*$`)
 )
 
 var forbiddenExecPrograms = map[string]bool{
@@ -458,7 +458,9 @@ var forbiddenExecPrograms = map[string]bool{
 	"powershell": true,
 	"pwsh":       true,
 	"python":     true,
+	"pythonw":    true,
 	"py":         true,
+	"pyw":        true,
 	"node":       true,
 	"perl":       true,
 	"ruby":       true,
@@ -473,7 +475,13 @@ func validateExecAllowlistProgram(prog string) error {
 		return fmt.Errorf("manifest.exec_allowlist entry %q must be a bare executable basename matching ^[a-zA-Z0-9._-]+$", prog)
 	}
 	lower := strings.ToLower(prog)
-	base := strings.TrimSuffix(lower, ".exe")
+	base := lower
+	for _, ext := range []string{".exe", ".cmd", ".bat", ".com"} {
+		if trimmed, ok := strings.CutSuffix(base, ext); ok {
+			base = trimmed
+			break
+		}
+	}
 	if forbiddenExecPrograms[lower] || forbiddenExecPrograms[base] || versionedInterpreterRe.MatchString(base) {
 		return fmt.Errorf("manifest.exec_allowlist forbids shell or script interpreter %q", prog)
 	}
@@ -843,8 +851,10 @@ func (m *Manifest) validate(retiredEntry bool) error {
 	}
 	seenExec := map[string]bool{}
 	for _, prog := range m.ExecAllowlist {
-		if err := validateExecAllowlistProgram(prog); err != nil {
-			return err
+		if !retiredEntry {
+			if err := validateExecAllowlistProgram(prog); err != nil {
+				return err
+			}
 		}
 		if seenExec[prog] {
 			return fmt.Errorf("manifest.exec_allowlist duplicates %q", prog)
