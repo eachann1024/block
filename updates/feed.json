@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T13:48:18.713Z",
-  "latest_version": "1.0.961",
-  "latest_tag": "v1.0.961",
+  "updated_at": "2026-11-27T14:13:22.121Z",
+  "latest_version": "1.0.962",
+  "latest_tag": "v1.0.962",
   "releases": [
+    {
+      "version": "1.0.962",
+      "tag": "v1.0.962",
+      "published_at": "2026-11-27T14:13:21Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.962",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：插件现在可以启用表单自动保存并添加链接按钮。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Plugins can now enable form autosave and add link buttons."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-macos-arm64.dmg",
+          "size": 18786649,
+          "sha256": "a775ed7f560939550bf6f20f06f79351807af22aabb402f43590475d2fc305a2"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-macos-x64.dmg",
+          "size": 20723334,
+          "sha256": "2ed16e168454beeb4c406e60ed5c5fd30fd957f2f623c414c471faebf8655eb7"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-windows-x64-setup.exe",
+          "size": 16255352,
+          "sha256": "ea9c653a4d5f03107ff3d3256a0fb97d70e240a0449ba570994a83558ac04478"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-linux-x64.deb",
+          "size": 13204302,
+          "sha256": "207e6038002e3d203b2627727bb3538ccaabc413be7da3d9660e07d34a864da4"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-linux-x64.AppImage",
+          "size": 26470904,
+          "sha256": "197971900a1c0a7ea78c3fcdd28438bcff7295111bcaf7c0068fb6fe2f0af06c"
+        }
+      ]
+    },
     {
       "version": "1.0.961",
       "tag": "v1.0.961",
@@ -30,38 +86,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.961/block-macos-arm64.dmg",
-          "size": 18773558,
-          "sha256": "a316a799409e787d8dd1e6bd000f400f45a6b7469b21b935afff79b9d159d0b5"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.961/block-macos-x64.dmg",
-          "size": 20708264,
-          "sha256": "cf2bcf2f4392d5c6ab4a9164bf47bb056309aada57f94419b11f1acbc8966515"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.961/block-windows-x64-setup.exe",
-          "size": 16229938,
-          "sha256": "08e1b3b7184ca3120c187bd64d5a5ee692d314060747d23ce5c5ca244edc0f49"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.961/block-linux-x64.deb",
-          "size": 13192420,
-          "sha256": "10ff40e329917856b70ca7555ccbb26d4ad429d6e3f00815b56a548fe8ea97ac"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.961/block-linux-x64.AppImage",
-          "size": 26466808,
-          "sha256": "2dcbd52eb61f138e06f8ba19ed4d6499de05791ac88accd055104eff76073ad0"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.960",
@@ -1685,31 +1710,6 @@
         ],
         "improvements": [],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.909",
-      "tag": "v1.0.909",
-      "published_at": "2026-11-22T11:33:20Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.909",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "侧边栏右键菜单中，定位条目的选项现已调整至移至废纸篓之前。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "The sidebar context menu now places the option to reveal an item before the option to move it to the trash."
-        ],
         "other": []
       },
       "assets": []
