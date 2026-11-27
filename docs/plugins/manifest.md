@@ -98,10 +98,9 @@ example-sync/
   - **谁说了算**：插件出现在哪个标签只由本字段决定，商店与宿主不做人工改判；要换分类，改 `category` 后发布新版本，商店索引下一轮采集即生效。
   - 已停用的 `"sync"` 与 `"publish"` 仍可通过校验，但统一归入 `"tools"`；新插件不要再使用。
   - **未填与校验**：未填 `category` 时默认归入 `"tools"`。`block-plugin-check` 对未填或使用停用值的插件输出 `[WARN]`；**官方插件（`blockmd-plugins/*` 或 `verified.json` 认证）必须显式填写当前分类**，否则检查失败且商店采集拒收。商店索引会自动同步 `category` 与 `file_extensions`。
-- `entry`：纯声明式语言扩展可省略；交互式插件须在 `js`、`wasm`、`command` 中**恰选一项**（不可同时指定多个）：
-  - `entry.js`（**推荐**）：插件目录内 `.js` / `.mjs` 相对路径，由宿主内置 `wazero` + `quickjs-ng` 零依赖沙盒执行，并自动注入 `/runtime/block-sdk.js`（禁符号链接、禁 `..` 越界）。
-  - `entry.wasm`：插件目录内 `.wasm` WASI 模块相对路径（<= 32 MiB），适合重计算模块。
-  - `entry.command`（**遗留兼容**）：非空字符串数组，工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（Python 须传 `"-u"` 并确保标准流使用 UTF-8）。若 `category: "language"` 同时声明了 `entry` 或 `surfaces`/`permissions`，则按交互式插件生命周期运行。
+- 纯声明式语言扩展可省略 `entry`。交互式插件必须指定以下一个入口，使用插件目录内的相对路径，禁止符号链接与越界。
+  - `entry.js` 指向 `.js` 或 `.mjs`，由内置 `quickjs-ng` 沙盒执行并自动注入 `/runtime/block-sdk.js`。
+  - `entry.wasm` 指向 `.wasm` WASI 模块（最多 32 MiB），适合重计算。
 - `surfaces`：可选数组；需要独立设置页时声明 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见 [宿主界面扩展](ui-contributions.md) 的「多表面（Surfaces）渲染与状态隔离」）。语言扩展、主题/外观等无需独立设置页的插件可省略或为空数组 `[]`，安装后不占用侧栏设置页，直接在应用商店详情页管理与卸载。
 - `permissions`：可选数组（按需声明），不可重复。有效权限共 **30 项**（5 类 15 项敏感权限 + 3 项静默事件 + 12 项默认放行），按是否涉及用户数据或外部系统分为三层：
   - **5 类敏感权限（需用户安装/更新确认，共 15 项）**：仅当插件用到以下能力时才需声明；首次安装或更新新增其中任一项时，宿主会弹出确认卡片请用户点头：
@@ -114,10 +113,10 @@ example-sync/
   - **静默事件订阅（按需声明，不弹窗确认，共 3 项）**：仅作为事件订阅开关，不会触发安装/更新权限弹窗：
     - `"events:note_saved"`：订阅笔记保存事件（`plugin.event`）
     - `"events:system"`：订阅系统唤醒、网络变化、焦点事件及 `host.scheduler.*` 后台定时任务
-    - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已运行进程）
+    - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已启动的沙盒）
   - **已免声明能力（默认放行，无需写入 `permissions`，共 12 项）**：插件私有存储 `"storage"`、全部 9 项界面扩展 `"ui:*"`（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）、系统原生通知 `"system:notify"` 与 Dock 角标 `"system:badge"` 均已默认放行，新插件直接调用或通过 `contributes` 声明即可（注：`contributes.block_decorators`、`contributes.themes`、`contributes.stages` 在清单校验阶段仍要求显式写出对应权限以完成声明校验）。旧插件清单保留这些字段仍完全兼容，`block-plugin-check` 会以 `[WARN]` 提醒可删减。
 - `network_domains`：可选字符串数组（最多 64 项、不可重复），限制 `host.http.request` 目标主机与重定向目标；支持精确域名（`"api.example.com"`）、端口形式（`"127.0.0.1:8080"`）或单前缀通配（`"*.example.com"`），禁止协议前缀、路径与空白。省略时仅依赖 `"network"` 声明。
-- `exec_allowlist`：可选字符串数组（最多 8 项、不可重复），限制 `host.exec.run` 允许执行的裸可执行程序名（须匹配 `^[a-zA-Z0-9._-]+$`，如 `"git"`、`"rclone"`），禁止路径分隔符及 `sh`/`bash`/`zsh`/`cmd`/`powershell`/`pwsh`/`python`/`python3`/`node`/`perl`/`ruby`/`osascript` 等 Shell 与脚本解释器。
+- `exec_allowlist` 为可选字符串数组，最多 8 项且不可重复。`host.exec.run` 只执行列表内的程序名（如 `git` 或 `rclone`）。程序名须匹配 `^[a-zA-Z0-9._-]+$`，禁止路径分隔符、Shell 和脚本解释器。
 - `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见 [宿主界面扩展](ui-contributions.md) 与 [语言扩展](languages.md)。
 - `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。
 

@@ -31,7 +31,7 @@
        ]
      }
      ```
-     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
+     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧沙盒并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities`：渐进能力声明数组，旧宿主可能省略部分键；全部 34 项能力键说明见下文「兼容性与平台实现说明」。
    - 返回 `result`：`{"ready": true}`。
@@ -77,7 +77,7 @@
      - **按钮态标签覆盖**：可选返回 `busy_label`、`success_label`、`error_label`、`retry_label`（均禁 Emoji），动态覆盖按钮在运行、成功、失败与重试态的展示文案。
      - **表单更新顺序**：若同时返回 `page` 与 `values`，宿主先用新 `page` 的控件默认值覆盖对应键，再应用 `result.values` 并清除对应字段的未同步标记；若 `page.status` 为空且 `result.status` 非空，宿主自动将 `result.status` 填入 `page.status`。
      - **动作反馈（`ok` / `tone` / `status`）**：合法 `tone`（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`）优先级最高；未知或空 `tone` 回退按 `ok` 判定（`true` 为 `success`，`false` 为 `danger`）；两者均省略时按 `status` 关键词推断，未命中默认 `"success"`。卡片内按钮返回 `danger`/`warning` 且 `status` 非空时，在按钮上方显示提示条，`success`/`info` 在按钮旁显示单行状态；`header_actions` 在顶栏展示状态。`success` 态按钮会短暂切换为绿色勾选态（2.4s）；`action_id` 为 `test_conn`、以 `test_` 开头或以 `_test` 结尾的连接测试按钮会保持成功态，直到用户修改表单或触发下一次动作。
-     - **打开与定位输出文件（`open_path` / `reveal_path`）**：切勿在插件内自行调用 `open`/`xdg-open` 子进程。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
+     - **打开与定位输出文件（`open_path` / `reveal_path`）**：使用 `open_path`、`reveal_path` 请求宿主处理输出文件。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
 
 4. **`plugin.event`**（笔记保存/删除事件需声明 `"events:note_saved"`，系统事件见下文「系统集成」）
    - 请求 `params`：
@@ -211,7 +211,7 @@
 | `host.system.badge` | 无需声明（旧清单 `system:badge` 仍兼容） | `{"count":3}`，范围 0–999，0 清除本插件角标。宿主合计已启用插件的数值，上限 999。 |
 | `host.secrets.get`、`host.secrets.set`、`host.secrets.delete` | `system:secrets` | `{"key":"auth.token"}`，写入另传 `value`（1–1536 字节，无 NUL）。键以 ASCII 字母或数字开头，后续允许字母、数字、`.`、`_`、`-`，总长最多 128 字符。读取返回 `{"ok":true,"found":true,"value":"..."}` 或 `{"ok":true,"found":false}`。删除支持重复调用。宿主按应用数据目录、插件 ID 和安装来源隔离凭据。缺少宿主安装来源记录时，凭据接口返回不可用。 |
 
-其余写操作成功返回 `{"ok":true}`。打开网页、定位文件、文件选择、剪贴板和回收站操作需要由用户触发的 `plugin.action` 或 `plugin.command`，且 Block 窗口有焦点。授权随动作结束或切换笔记本而失效。笔记本路径使用 `/` 分隔，相对路径须指向可见项目，路径组件须为真实文件或目录。省略 `notebook_root` 时使用运行时笔记本。系统能力不可用时返回 `-32005`，繁忙时返回 `-32006`，操作取消或失效时返回 `-32007`。系统通知（`host.system.notify`）与右上角全局通知横幅（`host.ui.toast`）均无需声明权限，开放给所有插件直接调用。宿主生成的 Sync 失败提醒投递失败后，可在应用恢复焦点时补送，补送前复查插件身份和 Sync 通知开关。
+其余写操作成功返回 `{"ok":true}`。打开网页、定位文件、文件选择、剪贴板和回收站操作需要由用户触发的 `plugin.action` 或 `plugin.command`，且 Block 窗口有焦点。授权随动作结束或切换笔记本而失效。笔记本路径使用 `/` 分隔，相对路径须指向可见项目，路径组件须为真实文件或目录。省略 `notebook_root` 时使用运行时笔记本。系统能力不可用时返回 `-32005`，繁忙时返回 `-32006`，操作取消或失效时返回 `-32007`。系统通知（`host.system.notify`）与右上角全局通知横幅（`host.ui.toast`）均无需声明权限，开放给所有插件直接调用。
 
 `events:system` 通过 `plugin.event` 接收 `system.wake`、`network.changed`、`app.focus`。事件包含 `event` 和 UTC `timestamp`，唤醒和网络变化包含系统报告的 `online` 布尔值。需要笔记权限或保存事件权限才能收到 `notebook_root`。宿主可启动已启用的订阅插件，并按插件串行处理，排队中的同类事件只保留最新一条。`network.changed` 涵盖系统报告的状态变化和检测到的网卡地址变化。服务器可达性由插件自行判断。（macOS / Windows / Linux 平台实现及安全回收细节见下文「兼容性与平台实现说明」。）
 
@@ -222,7 +222,7 @@
 - **各平台系统集成细节**：
   macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 需要通知服务支持 `actions` 才能点击通知，`notify_click:false` 时仍可能显示通知。Linux 系统凭据需在系统凭据管理器中先解锁。单次运行最多保留最近 128 条插件原生通知。系统选择框已打开时，原生后端可能需要用户关闭窗口，宿主会丢弃已过期动作的选择结果。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
 - **安全回收实现机制**：
-  回收确认前，宿主先保存正在编辑的内容。确认后，宿主记录恢复位置，将文件移到同卷的暂存目录并复核文件身份。Block 数据目录与原文件分处不同卷时，暂存目录建在原文件旁。Windows 还需要文件所在卷支持硬链接。条件不满足时保留原文件。回收失败时优先恢复原路径，原路径已被占用时保留暂存文件。系统「还原」会将文件放回暂存目录。Block 会保留原路径记录，启动时提示可恢复文件及其原路径。凭据权限约束宿主 RPC，独立插件进程仍以当前系统用户运行，其直接访问由操作系统控制。
+  回收确认前，宿主先保存正在编辑的内容。确认后，宿主记录恢复位置，将文件移到同卷的暂存目录并复核文件身份。Block 数据目录与原文件分处不同卷时，暂存目录建在原文件旁。Windows 还需要文件所在卷支持硬链接。条件不满足时保留原文件。回收失败时优先恢复原路径，原路径已被占用时保留暂存文件。系统「还原」会将文件放回暂存目录。Block 会保留原路径记录，启动时提示可恢复文件及其原路径。凭据通过宿主 RPC 访问，受清单权限和安装来源约束。
 
 ---
 
@@ -525,92 +525,6 @@ serve((method, params) => {
       return {};
   }
 });
-```
-
-### 遗留 `entry.command` Python 通信骨架（仅兼容旧插件）
-
-```python
-#!/usr/bin/env python3
-import json
-import sys
-
-if hasattr(sys.stdin, "reconfigure"):
-    sys.stdin.reconfigure(encoding="utf-8")
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-
-
-class HostRPCError(RuntimeError):
-    def __init__(self, code, message):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
-class HostBridge:
-    def __init__(self):
-        self._seq = 1000
-
-    def send(self, obj):
-        sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
-
-    def notify_host(self, method, params=None):
-        self.send({"jsonrpc": "2.0", "method": method, "params": params or {}})
-
-    def call_host(self, method, params=None):
-        self._seq += 1
-        req_id = f"p-{self._seq}"
-        self.send({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}})
-        while True:
-            line = sys.stdin.readline()
-            if not line:
-                raise RuntimeError("stdin closed while awaiting host response")
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(msg, dict):
-                continue
-            if str(msg.get("id")) == req_id:
-                if "error" in msg and msg["error"]:
-                    err = msg["error"]
-                    raise HostRPCError(err.get("code", -32000), err.get("message", "host error"))
-                return msg.get("result", {})
-
-    def serve(self, handler):
-        while True:
-            line = sys.stdin.readline()
-            if not line:
-                break
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                req = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(req, dict):
-                continue
-            method = req.get("method")
-            if not isinstance(method, str) or not method:
-                continue
-            req_id = req.get("id")
-            params = req.get("params")
-            if not isinstance(params, dict):
-                params = {}
-            try:
-                result = handler(self, method, params)
-                if req_id is not None:
-                    self.send({"jsonrpc": "2.0", "id": req_id, "result": result})
-                if method == "plugin.shutdown":
-                    break
-            except Exception as exc:
-                if req_id is not None:
-                    self.send({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(exc)}})
 ```
 
 <!-- ai-guide:skip-start -->

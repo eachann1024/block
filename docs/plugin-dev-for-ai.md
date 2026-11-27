@@ -24,8 +24,8 @@
 2. **禁自绘启停开关、卸载按钮或越界直写宿主 UI**：设置页与常规扩展优先声明 `UIPage` JSON，启停开关、顶栏控制与卸载菜单由宿主托管（见下文「原生设置挂载、商店展示与 README 渲染」）；确需自定义交互画布时，仅可使用 `contributes.stages` 声明的离线 `block-plugin://` WebView 舞台（禁止加载外网资源，详见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions)）。
 3. **严禁静态文案出现任何 Emoji**：违规直接拒载；图标仅用 `manifest.icon` 双色 SVG，`view_box` 为 `"0 0 24 24"`，`stroke_paths` 至少 1 条（见下文「进程通信、环境变量与强制校验细则」与 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」）。
 4. **严禁编造未定义字段或非法键值**：`manifest.json`（`<= 256 KiB` 禁重复键）与 `UIPage` 启用 `DisallowUnknownFields`；`id` 须匹配 `^[a-z0-9][a-z0-9-]{1,47}$` 且不得为 `block-diagnostics`；`surfaces` 仅允许 `["settings_page"]` 或空数组；`category` 选 5 个展示分类之一，纯语言扩展必填 `"language"`，禁用已停用的 `sync` / `publish`（见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」）。
-5. **禁污染 `stdout`、禁假设目标机已装 Python / Node**：推荐优先使用内置 `wazero` + `quickjs-ng` 零依赖沙盒（`entry.js` + `/runtime/block-sdk.js`，重计算用 `entry.wasm`），`entry.command` 仅作遗留兼容；`stdout` 仅输出 `\n` 分隔 JSON-RPC 2.0，日志全写 `stderr` 并即时刷新（见下文「进程通信、环境变量与强制校验细则」与「超时与体积上限」）。
-6. **禁依赖 `Path.home()` 或非白名单环境变量**：沙盒与子进程均不提供 `USERPROFILE` / `APPDATA`，读写数据与导出输出须用 `plugin.initialize` 传入的 `data_dir` / `downloads_dir` 或 `host.fs.*`（见下文「进程通信、环境变量与强制校验细则」）。
+5. **交互式插件必须使用内置沙盒**。入口字段见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」。`stdout` 仅输出按行分隔的 JSON-RPC 2.0，日志写入 `stderr` 并即时刷新。
+6. **读写数据使用宿主提供的路径**。使用 `plugin.initialize` 传入的 `data_dir`、`downloads_dir` 或 `host.fs.*`。可用环境变量见下文「进程通信、环境变量与强制校验细则」。
 7. **禁过度申请权限、禁忽略关闭信号**：仅按需声明 5 类 15 项敏感权限，移除默认放行的冗余权限 `storage` / `ui:*` / `system:notify` / `system:badge`，敏感权限建议填 `permission_reasons`；收到 `plugin.shutdown` 须在 2s 内退出且不再调 `host.*`（见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」与下文「超时与体积上限」）。
 8. **禁让初始页按钮在空/默认配置下崩溃或执行破坏性操作**：`block-plugin-check` 会以无参与默认值渲染、逐项切换选项并调用初始页全部 `header_actions` 与顶层 `actions`，且忽略 `visible_when`；配置未齐时应安全返回 `{ok: false, message: "..."}`（见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「本地协议检查命令」）。
 
@@ -44,7 +44,7 @@
 - [ ] `manifest.json` 为单个合法 JSON 对象（`<= 256 KiB`、无重复键、无未定义字段），`app` 为 `"blockmd"`、`id` 匹配 `^[a-z0-9][a-z0-9-]{1,47}$` 且非 `block-diagnostics`、`category` 合法、`surfaces` 仅 `["settings_page"]` 或 `[]`、`icon` 为 `"0 0 24 24"` 且至少含 1 条 `stroke_paths`。
 - [ ] 全量静态文案（`manifest.json` 与 `UIPage` 静态字段）扫描 0 Emoji。
 - [ ] 仅声明用到的 5 类敏感权限并为敏感权限填写 `permission_reasons`，已移除 `storage` / `ui:*` / `system:notify` / `system:badge` 等默认放行冗余权限。
-- [ ] 入口采用 `entry.js`（或 `entry.wasm` / 遗留 `entry.command`），无符号链接/越界；`stdout` 仅输出 `\n` 分隔 JSON-RPC 2.0，日志写 `stderr` 且即时刷新；不依赖 `Path.home()` 或非白名单环境变量，读写使用 `data_dir` / `downloads_dir` 与 `host.fs.*`；HTTP 与子进程严格受 `network_domains` / `exec_allowlist` 约束，包体积未超限。
+- [ ] 交互式插件的入口采用 `entry.js` 或 `entry.wasm`，路径无符号链接或越界。`stdout` 输出按行分隔的 JSON-RPC 2.0，日志写入 `stderr` 并即时刷新。读写使用 `data_dir`、`downloads_dir` 与 `host.fs.*`。`host.http.request` 和 `host.exec.run` 分别受 `network_domains` 与 `exec_allowlist` 约束，包体积符合上限。
 - [ ] 根目录已放置 `README.md`（官方或双语插件同步提供纯英文 `README.en.md` 且配图路径各自有效）。
 
 **第 2 步：自动协议检查（`block-plugin-check`，有 Block 源码或克隆后必跑）**
@@ -64,7 +64,7 @@
 - [ ] 在桌面端通过「设置 → 应用商店 → 本地目录」安装，核对敏感权限确认卡片文案与范围。
 - [ ] 验证生命周期：交互式插件首次安装默认停用、手动拨动 Pluck Switch 后正常启动；纯语言扩展首次安装自动启用。
 - [ ] 覆盖 CLI 未测边界：`plugin.command`、宿主扩展点（顶栏/侧栏/状态栏/命令面板/菜单）、浅深色主题、`zh`/`en` 语言切换、多笔记本切换、保存/删除事件、编辑器脏状态写保护、详情页 `README` 渲染与媒体展示。
-- [ ] 验证重新加载、停用与卸载均无报错，且卸载/退出后无残留子进程。
+- [ ] 验证重新加载、停用与卸载均能正常回收沙盒。
 
 **第 4 步：发布前与上架后复核（公开发布时必做）**
 
@@ -78,25 +78,25 @@
 
 ### 2.1 进程通信、环境变量与强制校验细则
 
-- **内置零依赖沙盒运行时（`wazero` + `quickjs-ng`）**：推荐交互式插件使用 `manifest.entry.js`（`.js` / `.mjs`），由宿主内嵌 `wazero` WASI 沙盒运行 `quickjs-ng` 执行，自动注入 `/runtime/block-sdk.js` 并以只读方式挂载 `/plugin` 与 `/runtime`（内存上限 512 页 = 32 MiB，QuickJS 堆 16 MiB / 栈 1 MiB）；重计算模块可使用 `manifest.entry.wasm`（独立 WASI `.wasm` 模块，上限 32 MiB）。旧 `entry.command` 保留为遗留兼容（`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件，禁止符号链接、冒号或越出插件目录）。均通过 UTF-8 **按行分隔（`\n`）的 JSON-RPC 2.0** 在 `stdin` / `stdout` 双向通信，`stderr` 仅用于调试（宿主用 64 KiB 环形缓冲区保留尾部）。切换桌面笔记本或界面语言（`zh` / `en`）不会立即重启全部后台进程：仅在下次调用该插件且目标笔记本或语言发生变化时，宿主才关闭旧进程并按新上下文重新初始化（当前打开的活跃表面会随切换触发重渲染，从而立即按新上下文重启）。
-- **环境变量白名单**：`entry.js` / `entry.wasm` 沙盒仅注入 `BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR`、`BLOCKMD_DOWNLOADS_DIR`；遗留 `entry.command` 子进程额外注入 `PATH`、`HOME`、`TMPDIR`、`PYTHONUNBUFFERED=1`，不继承其他宿主环境变量。Windows 上不传入 `USERPROFILE` / `APPDATA` 等目录变量，插件应直接使用 `plugin.initialize` 传入的 `data_dir` / `downloads_dir` 或上述环境变量，避免依赖 `Path.home()`。
+- **内置沙盒**使用 `wazero` 运行 WASI 模块，内存上限为 512 页（32 MiB）。JS 入口由内置的 `quickjs-ng` 执行，堆上限 16 MiB，栈上限 1 MiB，自动注入 `/runtime/block-sdk.js`，并以只读方式挂载 `/plugin` 和 `/runtime`。两种入口通过 `stdin` 和 `stdout` 传输按行分隔的 UTF-8 JSON-RPC 2.0。宿主保留 `stderr` 末尾最多 64 KiB 用于调试。切换笔记本或语言后，宿主会在下次调用插件时按新上下文重新初始化沙盒。当前打开的表面会立即触发重渲染。
+- **环境变量白名单**包含 `BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR` 和 `BLOCKMD_DOWNLOADS_DIR`。
 - **两项强制校验规则（违规直接拒绝加载）**：
   1. **禁止 Emoji**：`manifest.json` 的 `name`、`author`、`summary`、`permission_reasons`、`contributes` 静态文案，以及 `UIPage` 的静态界面文案（`page.title`、`card.title`、控件 `label`、按钮 `label`、`placeholder`、`empty_text`、`kv.rows[].label`、`metrics[].label`、`checklist.options[].badge`、`treemap` 瓦片 `label`/`detail` 与 `summary.total_label`、`preview.badge`/`cards[].badge`）**严禁包含 Emoji**（覆盖标准与扩展 Emoji 区块、变体选择符 `U+FE00–U+FE0F`、区域指示符/标签序列、ZWJ/键帽组合及常见 Emoji 符号如 `⭐`/`⌚`/`‼` 等），图标仅通过 `manifest.icon` 双色 SVG 路径定义。用户笔记内容、路径等动态字段（如 `page.status`、`card.meta`、`options[].label`/`detail`、`kv.rows[].value`、`metrics[].value`、`preview` 标题与正文、`log_list.entries`）放行用户原有字符，但插件自写文案仍应避免 Emoji。
   2. **严格 JSON 解码**：`manifest.json`（上限 256 KiB，须为单个 JSON 对象，且禁止重复键）与 `UIPage` 启用 `DisallowUnknownFields`，**严禁出现未定义字段名**（外层 JSON-RPC 包与 `host.*` 参数使用普通解码；`UIItem` 为共享结构，已知字段仅在消费它的 `kind` 上生效）。
 
 ### 2.2 超时与体积上限
 
-- **超时与进程终止**：
+- **运行超时与终止**
   - 首载 15s 和编辑预览 8s 在取得插件 RPC 锁后起算。定时轮询 5s 包含锁等待。各自的预算由初始化和渲染共享。
-  - `plugin.command` 单次 30s（含锁等待与按需初始化）；`events:workspace`（`note.opened` / `theme.changed` / `locale.changed`）单次 5s（仅投递给已运行进程，不冷启动）。
+  - `plugin.command` 单次有 30s，含锁等待与按需初始化。`events:workspace`（`note.opened`、`theme.changed`、`locale.changed`）单次有 5s，只投递给已启动的沙盒。
   - `plugin.action` 120s 含可取消的排队等待与表单补刷（顶栏运行胶囊提供 `■` 取消按钮）。
-  - 保存事件取得插件 RPC 锁后有 45s，由初始化、事件与后续刷新共享。系统事件取得锁后有 15s 初始化预算，事件本身有 45s。`block-sync` 的唤醒、网络补同步和定时同步事件有 120s。宿主每分钟向 `block-sync` 发送一次定时同步事件，由插件按设置的间隔决定是否同步。
+  - 保存和删除事件在取得插件 RPC 锁后共享 45s。声明 `network` 或 `system:fs` 的插件分别有 15s 初始化预算和 120s 事件预算。系统事件取得锁后有 15s 初始化预算，事件本身有 45s。声明 `network`、`system:fs` 或 `system:exec` 的插件有 120s 事件预算。
   - 宿主回写 `host.*` 响应的 5s 超时在宿主方法执行完成后起算。
-  - `plugin.shutdown` 给 2s 优雅退出窗口，超时强杀后再最多等 1s。macOS/Linux 在独立进程组（`Setpgid`）运行并在超时/强杀时终止整组，其他平台终止直接子进程。
+  - `plugin.shutdown` 有 2s 正常退出时间。超时后宿主终止沙盒，再等待最多 1s 回收。
   - 本地校验器 `block-plugin-check` 为 `plugin.initialize` 单独执行与桌面一致的 15s 预算，单语言整轮总超时 20s。
 - **体积与打包上限**：
   - 插件发往宿主（`stdout`）的单行 JSON-RPC 扫描上限 **98 MiB**（覆盖 16 MiB 笔记在最坏 6× JSON 转义下的体积与 RPC 信封；宿主发往插件 `stdin` 无此扫描上限）。
-  - 同时在途 `host.*` 调用上限 **8** 个（超出将中止插件进程）。
+  - 同时在途 `host.*` 调用上限 **8** 个（超出将中止插件沙盒）。
   - 私有存储 `state.json` 序列化上限 **8 MiB**。
   - 笔记读取与 `host.notes.write` 单文件上限 **16 MiB**；`host.editor.insert` 单次插入文本上限 **4 MiB**。
   - 安装归档下载 <= **64 MiB**、单文件 <= **32 MiB**、解包或本地目录复制总计 <= **256 MiB**（tar 解压流 <= **320 MiB**）、路径/条目数 <= **8192**（含推导父目录）、单路径 <= 1024 字节且 `< 32` 级目录、禁止 `\` 与 `:`、仅允许普通文件与目录（不支持符号链接）。
@@ -114,11 +114,11 @@
 
 ### 2.4 安装路径、安全替换、深度链接与保留 ID
 
-- **独立进程与存储路径**：只安装信任的插件。子进程使用 Block 的系统权限，清单 `permissions` 仅控制宿主 RPC。
+- **存储路径**
   - 安装路径：`<BlockAppData>/apps/<plugin-id>/`
   - 私有存储：`<BlockAppData>/apps-data/<plugin-id>/state.json`（停用状态与目录缓存位于 `<BlockAppData>/apps-cache/`）
-- **生命周期与安全替换**：新安装的交互式插件默认停用，用户手动启用后才会启动；纯声明式语言扩展首次安装自动启用；同 `id` 升级保留原有启用状态。商店卡片的「更新」按钮仅在目录版本高于已装版本时出现；手动安装同 `id` 不要求版本递增。
-  - 首次安装请求敏感权限（笔记与编辑、系统凭据、剪贴板、系统文件与外部操作、网络访问）的插件，或更新时新增敏感权限，宿主会先弹出权限确认卡片，用户点击确认后才落盘；「全部更新」会先更新无新增敏感权限的插件，将新增敏感权限的更新留待用户逐项确认。宿主校验候选包与现有包清单、停止旧进程，再通过两步目录重命名配合 `.previous` 备份完成可恢复替换；非交互接口默认拒绝跨来源、旧包无来源记录或新增权限的替换。桌面卸载移除插件程序，并保留私有配置供重新安装。
+- **生命周期与安全替换**：新安装的交互式插件默认停用，用户手动启用后才会启动；纯声明式语言扩展首次安装自动启用；同 `id` 升级保留原有启用状态。使用已停用运行方式的已装插件显示「需要更新」，并暂停运行。商店目录提供更高版本时可使用原有「更新」按钮。手动安装同 `id` 不要求版本递增。
+  - 首次安装请求敏感权限（笔记与编辑、系统凭据、剪贴板、系统文件与外部操作、网络访问）的插件，或更新时新增敏感权限，宿主会先弹出权限确认卡片，用户点击确认后才落盘；「全部更新」会先更新无新增敏感权限的插件，将新增敏感权限的更新留待用户逐项确认。宿主校验候选包与现有包清单、关闭旧沙盒，再通过两步目录重命名配合 `.previous` 备份完成可恢复替换；非交互接口默认拒绝跨来源、旧包无来源记录或新增权限的替换。桌面卸载移除插件程序，并保留私有配置供重新安装。
 - **外部深度链接（`block://`、`blockmd://` 的 `store` / `install`）**：按 `repo` → `url` → `id` 顺序取**第一个非空**查询参数，仅用该单一值匹配当前目录中的 `id`、`repo` 或精确 `download_url`（未命中时不会回退尝试后续参数，直接停留在商店列表），不自动安装。
 - **保留 ID**：`block-diagnostics` 对应 Block 内置「性能与占用」窗口，宿主拒绝安装与启用该 ID、设置侧栏不挂载，远程采集器、缓存合并与离线内置索引回退均会过滤该 ID。
 
@@ -216,10 +216,9 @@ example-sync/
   - **谁说了算**：插件出现在哪个标签只由本字段决定，商店与宿主不做人工改判；要换分类，改 `category` 后发布新版本，商店索引下一轮采集即生效。
   - 已停用的 `"sync"` 与 `"publish"` 仍可通过校验，但统一归入 `"tools"`；新插件不要再使用。
   - **未填与校验**：未填 `category` 时默认归入 `"tools"`。`block-plugin-check` 对未填或使用停用值的插件输出 `[WARN]`；**官方插件（`blockmd-plugins/*` 或 `verified.json` 认证）必须显式填写当前分类**，否则检查失败且商店采集拒收。商店索引会自动同步 `category` 与 `file_extensions`。
-- `entry`：纯声明式语言扩展可省略；交互式插件须在 `js`、`wasm`、`command` 中**恰选一项**（不可同时指定多个）：
-  - `entry.js`（**推荐**）：插件目录内 `.js` / `.mjs` 相对路径，由宿主内置 `wazero` + `quickjs-ng` 零依赖沙盒执行，并自动注入 `/runtime/block-sdk.js`（禁符号链接、禁 `..` 越界）。
-  - `entry.wasm`：插件目录内 `.wasm` WASI 模块相对路径（<= 32 MiB），适合重计算模块。
-  - `entry.command`（**遗留兼容**）：非空字符串数组，工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（Python 须传 `"-u"` 并确保标准流使用 UTF-8）。若 `category: "language"` 同时声明了 `entry` 或 `surfaces`/`permissions`，则按交互式插件生命周期运行。
+- 纯声明式语言扩展可省略 `entry`。交互式插件必须指定以下一个入口，使用插件目录内的相对路径，禁止符号链接与越界。
+  - `entry.js` 指向 `.js` 或 `.mjs`，由内置 `quickjs-ng` 沙盒执行并自动注入 `/runtime/block-sdk.js`。
+  - `entry.wasm` 指向 `.wasm` WASI 模块（最多 32 MiB），适合重计算。
 - `surfaces`：可选数组；需要独立设置页时声明 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions) 的「多表面（Surfaces）渲染与状态隔离」）。语言扩展、主题/外观等无需独立设置页的插件可省略或为空数组 `[]`，安装后不占用侧栏设置页，直接在应用商店详情页管理与卸载。
 - `permissions`：可选数组（按需声明），不可重复。有效权限共 **30 项**（5 类 15 项敏感权限 + 3 项静默事件 + 12 项默认放行），按是否涉及用户数据或外部系统分为三层：
   - **5 类敏感权限（需用户安装/更新确认，共 15 项）**：仅当插件用到以下能力时才需声明；首次安装或更新新增其中任一项时，宿主会弹出确认卡片请用户点头：
@@ -232,10 +231,10 @@ example-sync/
   - **静默事件订阅（按需声明，不弹窗确认，共 3 项）**：仅作为事件订阅开关，不会触发安装/更新权限弹窗：
     - `"events:note_saved"`：订阅笔记保存事件（`plugin.event`）
     - `"events:system"`：订阅系统唤醒、网络变化、焦点事件及 `host.scheduler.*` 后台定时任务
-    - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已运行进程）
+    - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已启动的沙盒）
   - **已免声明能力（默认放行，无需写入 `permissions`，共 12 项）**：插件私有存储 `"storage"`、全部 9 项界面扩展 `"ui:*"`（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）、系统原生通知 `"system:notify"` 与 Dock 角标 `"system:badge"` 均已默认放行，新插件直接调用或通过 `contributes` 声明即可（注：`contributes.block_decorators`、`contributes.themes`、`contributes.stages` 在清单校验阶段仍要求显式写出对应权限以完成声明校验）。旧插件清单保留这些字段仍完全兼容，`block-plugin-check` 会以 `[WARN]` 提醒可删减。
 - `network_domains`：可选字符串数组（最多 64 项、不可重复），限制 `host.http.request` 目标主机与重定向目标；支持精确域名（`"api.example.com"`）、端口形式（`"127.0.0.1:8080"`）或单前缀通配（`"*.example.com"`），禁止协议前缀、路径与空白。省略时仅依赖 `"network"` 声明。
-- `exec_allowlist`：可选字符串数组（最多 8 项、不可重复），限制 `host.exec.run` 允许执行的裸可执行程序名（须匹配 `^[a-zA-Z0-9._-]+$`，如 `"git"`、`"rclone"`），禁止路径分隔符及 `sh`/`bash`/`zsh`/`cmd`/`powershell`/`pwsh`/`python`/`python3`/`node`/`perl`/`ruby`/`osascript` 等 Shell 与脚本解释器。
+- `exec_allowlist` 为可选字符串数组，最多 8 项且不可重复。`host.exec.run` 只执行列表内的程序名（如 `git` 或 `rclone`）。程序名须匹配 `^[a-zA-Z0-9._-]+$`，禁止路径分隔符、Shell 和脚本解释器。
 - `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions) 与 [语言扩展](https://docs.block.cooool.top/plugins/languages)。
 - `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。
 
@@ -278,7 +277,7 @@ example-sync/
        ]
      }
      ```
-     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
+     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧沙盒并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities`：渐进能力声明数组，旧宿主可能省略部分键；全部 34 项能力键说明见下文「兼容性与平台实现说明」。
    - 返回 `result`：`{"ready": true}`。
@@ -324,7 +323,7 @@ example-sync/
      - **按钮态标签覆盖**：可选返回 `busy_label`、`success_label`、`error_label`、`retry_label`（均禁 Emoji），动态覆盖按钮在运行、成功、失败与重试态的展示文案。
      - **表单更新顺序**：若同时返回 `page` 与 `values`，宿主先用新 `page` 的控件默认值覆盖对应键，再应用 `result.values` 并清除对应字段的未同步标记；若 `page.status` 为空且 `result.status` 非空，宿主自动将 `result.status` 填入 `page.status`。
      - **动作反馈（`ok` / `tone` / `status`）**：合法 `tone`（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`）优先级最高；未知或空 `tone` 回退按 `ok` 判定（`true` 为 `success`，`false` 为 `danger`）；两者均省略时按 `status` 关键词推断，未命中默认 `"success"`。卡片内按钮返回 `danger`/`warning` 且 `status` 非空时，在按钮上方显示提示条，`success`/`info` 在按钮旁显示单行状态；`header_actions` 在顶栏展示状态。`success` 态按钮会短暂切换为绿色勾选态（2.4s）；`action_id` 为 `test_conn`、以 `test_` 开头或以 `_test` 结尾的连接测试按钮会保持成功态，直到用户修改表单或触发下一次动作。
-     - **打开与定位输出文件（`open_path` / `reveal_path`）**：切勿在插件内自行调用 `open`/`xdg-open` 子进程。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
+     - **打开与定位输出文件（`open_path` / `reveal_path`）**：使用 `open_path`、`reveal_path` 请求宿主处理输出文件。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
 
 4. **`plugin.event`**（笔记保存/删除事件需声明 `"events:note_saved"`，系统事件见下文「系统集成」）
    - 请求 `params`：
@@ -458,7 +457,7 @@ example-sync/
 | `host.system.badge` | 无需声明（旧清单 `system:badge` 仍兼容） | `{"count":3}`，范围 0–999，0 清除本插件角标。宿主合计已启用插件的数值，上限 999。 |
 | `host.secrets.get`、`host.secrets.set`、`host.secrets.delete` | `system:secrets` | `{"key":"auth.token"}`，写入另传 `value`（1–1536 字节，无 NUL）。键以 ASCII 字母或数字开头，后续允许字母、数字、`.`、`_`、`-`，总长最多 128 字符。读取返回 `{"ok":true,"found":true,"value":"..."}` 或 `{"ok":true,"found":false}`。删除支持重复调用。宿主按应用数据目录、插件 ID 和安装来源隔离凭据。缺少宿主安装来源记录时，凭据接口返回不可用。 |
 
-其余写操作成功返回 `{"ok":true}`。打开网页、定位文件、文件选择、剪贴板和回收站操作需要由用户触发的 `plugin.action` 或 `plugin.command`，且 Block 窗口有焦点。授权随动作结束或切换笔记本而失效。笔记本路径使用 `/` 分隔，相对路径须指向可见项目，路径组件须为真实文件或目录。省略 `notebook_root` 时使用运行时笔记本。系统能力不可用时返回 `-32005`，繁忙时返回 `-32006`，操作取消或失效时返回 `-32007`。系统通知（`host.system.notify`）与右上角全局通知横幅（`host.ui.toast`）均无需声明权限，开放给所有插件直接调用。宿主生成的 Sync 失败提醒投递失败后，可在应用恢复焦点时补送，补送前复查插件身份和 Sync 通知开关。
+其余写操作成功返回 `{"ok":true}`。打开网页、定位文件、文件选择、剪贴板和回收站操作需要由用户触发的 `plugin.action` 或 `plugin.command`，且 Block 窗口有焦点。授权随动作结束或切换笔记本而失效。笔记本路径使用 `/` 分隔，相对路径须指向可见项目，路径组件须为真实文件或目录。省略 `notebook_root` 时使用运行时笔记本。系统能力不可用时返回 `-32005`，繁忙时返回 `-32006`，操作取消或失效时返回 `-32007`。系统通知（`host.system.notify`）与右上角全局通知横幅（`host.ui.toast`）均无需声明权限，开放给所有插件直接调用。
 
 `events:system` 通过 `plugin.event` 接收 `system.wake`、`network.changed`、`app.focus`。事件包含 `event` 和 UTC `timestamp`，唤醒和网络变化包含系统报告的 `online` 布尔值。需要笔记权限或保存事件权限才能收到 `notebook_root`。宿主可启动已启用的订阅插件，并按插件串行处理，排队中的同类事件只保留最新一条。`network.changed` 涵盖系统报告的状态变化和检测到的网卡地址变化。服务器可达性由插件自行判断。（macOS / Windows / Linux 平台实现及安全回收细节见下文「兼容性与平台实现说明」。）
 
@@ -469,7 +468,7 @@ example-sync/
 - **各平台系统集成细节**：
   macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 需要通知服务支持 `actions` 才能点击通知，`notify_click:false` 时仍可能显示通知。Linux 系统凭据需在系统凭据管理器中先解锁。单次运行最多保留最近 128 条插件原生通知。系统选择框已打开时，原生后端可能需要用户关闭窗口，宿主会丢弃已过期动作的选择结果。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
 - **安全回收实现机制**：
-  回收确认前，宿主先保存正在编辑的内容。确认后，宿主记录恢复位置，将文件移到同卷的暂存目录并复核文件身份。Block 数据目录与原文件分处不同卷时，暂存目录建在原文件旁。Windows 还需要文件所在卷支持硬链接。条件不满足时保留原文件。回收失败时优先恢复原路径，原路径已被占用时保留暂存文件。系统「还原」会将文件放回暂存目录。Block 会保留原路径记录，启动时提示可恢复文件及其原路径。凭据权限约束宿主 RPC，独立插件进程仍以当前系统用户运行，其直接访问由操作系统控制。
+  回收确认前，宿主先保存正在编辑的内容。确认后，宿主记录恢复位置，将文件移到同卷的暂存目录并复核文件身份。Block 数据目录与原文件分处不同卷时，暂存目录建在原文件旁。Windows 还需要文件所在卷支持硬链接。条件不满足时保留原文件。回收失败时优先恢复原路径，原路径已被占用时保留暂存文件。系统「还原」会将文件放回暂存目录。Block 会保留原路径记录，启动时提示可恢复文件及其原路径。凭据通过宿主 RPC 访问，受清单权限和安装来源约束。
 
 ---
 
@@ -774,92 +773,6 @@ serve((method, params) => {
 });
 ```
 
-### 遗留 `entry.command` Python 通信骨架（仅兼容旧插件）
-
-```python
-#!/usr/bin/env python3
-import json
-import sys
-
-if hasattr(sys.stdin, "reconfigure"):
-    sys.stdin.reconfigure(encoding="utf-8")
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-
-
-class HostRPCError(RuntimeError):
-    def __init__(self, code, message):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
-class HostBridge:
-    def __init__(self):
-        self._seq = 1000
-
-    def send(self, obj):
-        sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
-
-    def notify_host(self, method, params=None):
-        self.send({"jsonrpc": "2.0", "method": method, "params": params or {}})
-
-    def call_host(self, method, params=None):
-        self._seq += 1
-        req_id = f"p-{self._seq}"
-        self.send({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}})
-        while True:
-            line = sys.stdin.readline()
-            if not line:
-                raise RuntimeError("stdin closed while awaiting host response")
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(msg, dict):
-                continue
-            if str(msg.get("id")) == req_id:
-                if "error" in msg and msg["error"]:
-                    err = msg["error"]
-                    raise HostRPCError(err.get("code", -32000), err.get("message", "host error"))
-                return msg.get("result", {})
-
-    def serve(self, handler):
-        while True:
-            line = sys.stdin.readline()
-            if not line:
-                break
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                req = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(req, dict):
-                continue
-            method = req.get("method")
-            if not isinstance(method, str) or not method:
-                continue
-            req_id = req.get("id")
-            params = req.get("params")
-            if not isinstance(params, dict):
-                params = {}
-            try:
-                result = handler(self, method, params)
-                if req_id is not None:
-                    self.send({"jsonrpc": "2.0", "id": req_id, "result": result})
-                if method == "plugin.shutdown":
-                    break
-            except Exception as exc:
-                if req_id is not None:
-                    self.send({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(exc)}})
-```
-
 ---
 
 ## 7. UI contributions（宿主界面扩展贡献）
@@ -1087,10 +1000,10 @@ class HostBridge:
 
 语言扩展插件用于为 Block 补充代码语法高亮与编辑辅助，采用**纯声明式、零子进程、零权限**模型在宿主机内直接运行：
 
-- **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry`（`js` / `wasm` / `command`）、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何运行时或外部子进程，安装页也不展示危险权限提示。
+- **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何运行时或外部子进程，安装页也不展示危险权限提示。
 - **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
 - **内置语言与覆盖顺序**：主程序已内置 C、C++、C#、Java、Kotlin、Scala、Groovy/Gradle（含 `Jenkinsfile`）、Swift、Dart、Go（含 `go.mod` / `go.sum`）、Rust、Python（含 `requirements.txt`）、Ruby、PHP、Lua、R、Elixir、HEEx/EEx、JavaScript、TypeScript、HTML、Vue、Svelte、Astro、Handlebars/Mustache、EJS、Go/Helm 模板、CSS/SCSS/Less、JSON/JSONC/JSONL、YAML（含 Clash/Stash `.stoverride`）、TOML、INI/Properties/systemd/xcconfig、Dotenv（`.env` / `.env.*`）、Surge/代理规则（`.sgmodule` / `.lpx` / `.plugin` / `.module` / `.list` 及 Surge `.conf`）、Nginx、Apache/htaccess、HAProxy、Caddyfile、SSH Config、Crontab、Procfile、Ignore（`.gitignore` 等）、Hosts、HTTP 请求、XML（含 `.ps1xml`）、Property List（含 `.entitlements` / `.strings` / `.pbxproj`）、SQL、Prisma、GraphQL、Protobuf、Thrift、Shell、PowerShell、Windows Batch、Dockerfile、Makefile、CMake、Justfile、HCL、Nix、Zig、ERB、Jinja、Diff、Markdown 等常用语言，无需安装插件；语言扩展只需覆盖小众语言。已启用插件声明的文件名、后缀或标识与内置语言重名时，**插件优先**。
-- **生命周期**：首次安装纯声明式语言扩展时**自动启用**；纯声明式语言扩展不占用侧栏设置页，可在应用商店详情页管理与卸载（卸载或停用后编辑器与代码块高亮**实时生效**，移除对应语言注册）。若插件同时声明了 `entry` 或 `surfaces`，则作为混合型交互插件按普通插件生命周期管理。已安装的旧版 Go Modules 和 Property List 扩展仍可管理，并按安装来源显示认证状态。卸载后由主程序提供高亮。
+- **生命周期**：首次安装纯声明式语言扩展时**自动启用**；纯声明式语言扩展不占用侧栏设置页，可在应用商店详情页管理与卸载（卸载或停用后编辑器与代码块高亮**实时生效**，移除对应语言注册）。若插件声明了运行时入口、权限或界面表面，则遵循 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」与交互式插件生命周期。已安装的旧版 Go Modules 和 Property List 扩展仍可管理，并按安装来源显示认证状态。卸载后由主程序提供高亮。
 - **大代码块**：Markdown 代码块含超长单行时会使用基础高亮。整个代码块超过大小上限时会按纯文本显示，以保持编辑响应。
 - **系统「打开方式」自动关联**：已启用插件声明的文件后缀会自动同步到 Windows、macOS、Linux 的系统「打开方式」菜单（仅靠 `filenames` 匹配的规则不注册；宿主打包期与运行期关联机制见下文「宿主打包期文件关联集成（主仓维护参考）」）。
 
@@ -1288,5 +1201,5 @@ Block 应用商店采用无审批自动采集机制。**硬门槛与采集上限
    - **商店排序规则**：索引 `downloads` 为该仓库各 Release 附件下载次数之和，采集时更新。应用商店列表默认按 `downloads` 从高到低排列并标注名次，下载量相同时按名称、再按 `id` 排列；有搜索词时先按匹配度排列，再按下载量；筛选菜单选「按名称」时不按下载量排列、不标名次。本机安装只计入展示数字，不改变名次，直到下次索引更新。
    - **桌面端不同安装来源的校验力度与权限确认**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会先暂存并校验清单与打包上限，但不做商店 `sha256`/索引比对。无论商店还是手动来源，首次安装请求 5 类敏感权限任一项或更新新增敏感权限时，桌面端均会先弹出权限确认卡片，用户确认后才落盘；「全部更新」会先自动更新无新增敏感权限的插件，将新增敏感权限的插件留待用户逐项确认（若此时已离开商店页，则通过右上角通知横幅引导返回确认）。
 
-- 带系统权限的发行包通过索引的 `system_apps` 提供，支持该字段的 Block 会优先选用。旧客户端从 `apps` 读取已验证的兼容包。同步插件为旧客户端保留 v1.3.44。随包索引与采集器使用相同分流规则，采集器校验兼容包的固定 SHA-256 后才写入索引。
+- 索引通过 `system_apps` 提供带系统权限的发行包，通过 `apps` 提供其余发行包。支持 `system_apps` 的 Block 会合并两组条目。
 - **离线兜底索引与 `builtin://` 机制**：主程序在编译期仅通过内嵌 `default_index.json` 作为离线兜底索引（`DefaultSeedIndex()` 会过滤保留 ID `block-diagnostics` 及已由宿主内置接管的语言包 ID）；主仓当前不含 `plugins/` 目录或内置插件，`RegisterBuiltinCatalogApp` 暂无调用方。`LoadCachedOrSeedCatalog` 仅在无本地缓存、缓存无效或兜底索引更新时间戳更新时返回兜底索引，否则以本地缓存优先；`RefreshCatalog` 拉取远端 `store-index.json` 后以远端目录优先（若存在已注册的 `builtin://` 种子，则按 `mergeStoreIndexes(parsed/idx, DefaultSeedIndex())` 以缓存/远端条目优先合并）。外部插件一律通过独立公开仓库与 `blockmd-plugin` Topic 参与自动采集，禁止提交到主仓 `plugins/`。
