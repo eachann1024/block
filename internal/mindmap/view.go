@@ -3709,13 +3709,13 @@ func (st *BlockState) renderLinkHoverTooltip(c *ui.Context, id string, n *Node, 
 func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Node, cb Callbacks) {
 	pal := theme.Ocean()
 	bar := ui.Row(c.Key("mm-sel-bar-"+id)).Absolute().Left(theme.Space10).Bottom(theme.Space10).
-		Height(theme.HeightChrome).PaddingX(theme.Space4).AlignItems(ui.Center).Gap(theme.Space2).
+		Height(theme.HeightChrome).PaddingX(theme.Space2).AlignItems(ui.Center).Gap(theme.Space2).
 		Radius(theme.RadiusPill).Background(pal.Menu).Border(1, pal.MenuBorder)
 	bui.Elevate(bar, theme.ElevationPopover)
 	bar.Children(func() {
 		renderPillBtn := func(key string, icon icons.Icon, label string, active, warn bool, onClick func()) {
 			btn := ui.ButtonBase(c.Key(key)).
-				Height(theme.HeightMicro + theme.Space4).PaddingX(theme.Space6).Radius(theme.RadiusPill).
+				Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusPill).
 				AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Shrink(0).Label(label)
 			hov := btn.Hovered() || btn.Pressed()
 			bg := ui.Transparent
@@ -3775,8 +3775,7 @@ func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Nod
 		} else if hasLink {
 			linkIcon = icons.LinkEdit
 		}
-		// Edit Link is an action, not a toggle: keep it in the neutral style.
-		renderPillBtn("mm-qb-link-"+id, linkIcon, linkLbl, false, linkWarn, func() {
+		renderPillBtn("mm-qb-link-"+id, linkIcon, linkLbl, hasLink && !linkWarn, linkWarn, func() {
 			if linkWarn {
 				st.beginLinkEditBroken(sel)
 			} else {
