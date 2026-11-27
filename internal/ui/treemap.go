@@ -177,7 +177,8 @@ func RenderStorageTreemap(
 			}
 
 			// Left column (1.42fr): #1 largest category hero tile.
-			ui.Column(c).Grow(142).Basis(0).MinWidth(0).FillHeight().Children(func() {
+			// 1.25fr keeps the right column wide enough that 3 compact tiles still fit "1023 KiB".
+			ui.Column(c).Grow(125).Basis(0).MinWidth(0).FillHeight().Children(func() {
 				renderBentoTile(c, ranked[0], totalBytes, selectedID, tilePrefix, bentoTierHero, selectID)
 			})
 
@@ -208,17 +209,19 @@ func RenderStorageTreemap(
 					})
 				}
 
-				if len(bot) > 0 {
-					ui.Row(c).FillWidth().MinWidth(0).Height(68).Shrink(0).Gap(theme.Space10).AlignItems(ui.Stretch).Children(func() {
-						for bi, it := range bot {
+				// Compact tiles wrap into rows of at most 3 equal-width tiles so they never get squeezed.
+				for start := 0; start < len(bot); start += bentoCompactPerRow {
+					row := bot[start:min(start+bentoCompactPerRow, len(bot))]
+					ui.Row(c).FillWidth().MinWidth(0).Height(bentoCompactH).Shrink(0).Gap(theme.Space10).AlignItems(ui.Stretch).Children(func() {
+						for _, it := range row {
 							item := it
-							growW := float32(100)
-							if bi == 0 && len(bot) == 3 {
-								growW = 125
-							}
-							ui.Column(c).Grow(growW).Basis(0).MinWidth(0).FillHeight().Children(func() {
+							ui.Column(c).Grow(1).Basis(0).MinWidth(0).FillHeight().Children(func() {
 								renderBentoTile(c, item, totalBytes, selectedID, tilePrefix, bentoTierCompact, selectID)
 							})
+						}
+						// Pad short rows so tile widths stay identical across rows.
+						for i := len(row); i < bentoCompactPerRow; i++ {
+							ui.Box(c).Grow(1).Basis(0).MinWidth(0)
 						}
 					})
 				}
@@ -261,7 +264,7 @@ func RenderStorageTreemap(
 			}
 
 			if len(active.Entries) == 0 {
-				ui.Column(c.Key(detailKey+"-entries")).FillWidth().MinWidth(0).Height(listH).Shrink(0).Children(func() {
+				ui.Column(c.Key(detailKey + "-entries")).FillWidth().MinWidth(0).Height(listH).Shrink(0).Children(func() {
 					ui.Text(c, theme.Tr("暂无文件占用", "No files in this category")).
 						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
 				})
@@ -277,7 +280,7 @@ func RenderStorageTreemap(
 
 			var shownBytes uint64
 			var shownCount int
-			ui.Column(c.Key(detailKey+"-entries")).FillWidth().MinWidth(0).Height(listH).Shrink(0).Gap(theme.Space6).Children(func() {
+			ui.Column(c.Key(detailKey + "-entries")).FillWidth().MinWidth(0).Height(listH).Shrink(0).Gap(theme.Space6).Children(func() {
 				for i, ent := range active.Entries {
 					e := ent
 					shownBytes += e.Bytes
@@ -346,7 +349,7 @@ func RenderStorageTreemap(
 					if remFiles > 0 {
 						remLabel = fmt.Sprintf(theme.Tr("其余 %d 个文件", "%d other files"), remFiles)
 					}
-					ui.Row(c.Key(detailKey + "-ent-rest")).FillWidth().MinWidth(0).
+					ui.Row(c.Key(detailKey+"-ent-rest")).FillWidth().MinWidth(0).
 						Padding(theme.Space4, theme.Space10, 0, theme.Space10).Gap(theme.Space12).
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 						ui.Text(c, remLabel).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
@@ -420,6 +423,11 @@ func treemapDetailListHeight(it TreemapItem) float32 {
 type bentoTier int
 
 // bentoMediumMinH is the smallest height a medium tile needs: padding + title + bytes + meta.
+const (
+	bentoCompactH      float32 = 68
+	bentoCompactPerRow         = 3
+)
+
 const bentoMediumMinH = 2*theme.Space12 + theme.LineBody + theme.LineBody + theme.Space2 + theme.LineMeta
 
 // bentoMinHeight returns the minimum Bento height so no tier overflows its tile.
@@ -429,7 +437,8 @@ func bentoMinHeight(n int) float32 {
 	}
 	h := float32(108) + theme.Space10 + bentoMediumMinH
 	if n > 4 {
-		h += theme.Space10 + 68
+		rows := (n - 4 + bentoCompactPerRow - 1) / bentoCompactPerRow
+		h += float32(rows) * (theme.Space10 + bentoCompactH)
 	}
 	return h
 }
@@ -464,7 +473,7 @@ func renderBentoTile(
 	case bentoTierMedium:
 		padY, padX = theme.Space12, theme.Space12
 	case bentoTierCompact:
-		padY, padX = theme.Space10, theme.Space12
+		padY, padX = theme.Space10, theme.Space10
 	}
 
 	btn := ui.ButtonBase(c.Key(tileID)).FillWidth().FillHeight().MinWidth(0).
@@ -545,7 +554,7 @@ func renderBentoTile(
 			case bentoTierCompact:
 				ui.Text(c, item.Label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 					FontWeight(theme.WeightControl).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
-				ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
+				ui.Text(c, formatBytesCompact(item.Bytes)).Font("monospace").
 					FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 					TextColor(tc.SubText).SingleLine().Ellipsis("…")
 			}
@@ -568,6 +577,22 @@ func FormatBytesIEC(b uint64) string {
 	}
 	if idx == 0 {
 		return fmt.Sprintf("%d B", b)
+	}
+	return fmt.Sprintf("%.1f %s", val, units[idx])
+}
+
+// formatBytesCompact is FormatBytesIEC with at most 3 significant digits ("308 KiB", "17.3 MiB"),
+// so narrow tiles never truncate the size.
+func formatBytesCompact(b uint64) string {
+	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
+	val := float64(b)
+	idx := 0
+	for val >= 1024.0 && idx < len(units)-1 {
+		val /= 1024.0
+		idx++
+	}
+	if idx == 0 || val >= 100 {
+		return fmt.Sprintf("%.0f %s", val, units[idx])
 	}
 	return fmt.Sprintf("%.1f %s", val, units[idx])
 }
