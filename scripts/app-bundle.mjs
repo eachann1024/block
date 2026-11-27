@@ -272,14 +272,13 @@ export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fas
   const ldflags = [
     `-X block/internal/updater.BuildVersion=${buildVersion(root)}`,
     ...feedbackLdflags(root),
+    "-s",
+    "-w",
   ];
-  if (profile === "release" || goos !== "darwin") {
-    ldflags.push("-s", "-w");
-  }
   if (goos === "windows") {
     ldflags.push("-H=windowsgui");
   }
-  const args = ["build"];
+  const args = ["build", "-trimpath"];
   if (ldflags.length) {
     args.push(`-ldflags=${ldflags.join(" ")}`);
   }
