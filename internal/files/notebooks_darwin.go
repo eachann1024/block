@@ -26,7 +26,7 @@ func readNotebookXattr(dirPath string) (string, error) {
 	n, err := unix.Fgetxattr(fd, notebookIDXattr, buf[:])
 	runtime.KeepAlive(fd)
 	if err != nil {
-		if errors.Is(err, unix.ENOATTR) || errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, unix.ENOATTR) {
 			return "", nil
 		}
 		return "", err
@@ -36,7 +36,7 @@ func readNotebookXattr(dirPath string) (string, error) {
 	}
 	val := strings.TrimSpace(string(buf[:n]))
 	if !IsSafeNotebookID(val) {
-		return "", errors.New("invalid notebook xattr")
+		return "", errInvalidNotebookXattr
 	}
 	return val, nil
 }
@@ -125,7 +125,7 @@ func findSiblingByNotebookXattr(parent, expectedID string) (string, bool, bool) 
 		if xErr == nil && xid == expectedID {
 			return cand, true, false
 		}
-		if isUnreadableDirErr(xErr) {
+		if isUnreadableDirErr(xErr) || (xErr != nil && !isStrictNotExistErr(xErr) && !errors.Is(xErr, errInvalidNotebookXattr)) {
 			inconclusive = true
 		}
 	}

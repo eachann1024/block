@@ -334,6 +334,7 @@ func (rt *Runtime) ensureDataRoot() (*os.Root, string, string, *rpcError) {
 	rt.cfgMu.RLock()
 	cfgDataDir := strings.TrimSpace(rt.cfg.DataDir)
 	root := rt.dataRoot
+	info := rt.dataRootInfo
 	dataAbs := rt.dataRootAbs
 	dataCanon := rt.dataRootCanon
 	rt.cfgMu.RUnlock()
@@ -341,7 +342,7 @@ func (rt *Runtime) ensureDataRoot() (*os.Root, string, string, *rpcError) {
 	if cfgDataDir == "" {
 		return nil, "", "", rpcErr(-32004, "plugin data directory unavailable")
 	}
-	if root != nil && dataAbs != "" && dataCanon != "" {
+	if root != nil && info != nil && dataAbs != "" && dataCanon != "" {
 		return root, dataAbs, dataCanon, nil
 	}
 
@@ -353,6 +354,11 @@ func (rt *Runtime) ensureDataRoot() (*os.Root, string, string, *rpcError) {
 			return nil, "", "", rpcErr(-32004, err.Error())
 		}
 		rt.dataRoot = opened
+	}
+	if rt.dataRootInfo == nil {
+		if st, err := rt.dataRoot.Stat("."); err == nil {
+			rt.dataRootInfo = st
+		}
 	}
 	if rt.dataRootAbs == "" {
 		if abs, err := filepath.Abs(cfgDataDir); err == nil {
@@ -367,6 +373,35 @@ func (rt *Runtime) ensureDataRoot() (*os.Root, string, string, *rpcError) {
 		}
 	}
 	return rt.dataRoot, rt.dataRootAbs, rt.dataRootCanon, nil
+}
+
+func (rt *Runtime) verifyDataRootStartupIdentity(dataRoot *os.Root) *rpcError {
+	rt.cfgMu.RLock()
+	cfgDataDir := strings.TrimSpace(rt.cfg.DataDir)
+	startupInfo := rt.dataRootInfo
+	rt.cfgMu.RUnlock()
+	if cfgDataDir == "" || dataRoot == nil || startupInfo == nil {
+		return rpcErr(-32004, "plugin data directory unavailable")
+	}
+	dirAbs, err := filepath.Abs(cfgDataDir)
+	if err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	curInfo, err := os.Lstat(filepath.Clean(dirAbs))
+	if err != nil {
+		return rpcErr(-32004, "plugin data directory unavailable: "+err.Error())
+	}
+	if files.IsSymlinkOrReparseInfo(curInfo) || !curInfo.IsDir() {
+		return rpcErr(-32004, "plugin data directory changed or replaced by symlink")
+	}
+	handleInfo, err := dataRoot.Stat(".")
+	if err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	if !os.SameFile(curInfo, startupInfo) || !os.SameFile(handleInfo, startupInfo) || !os.SameFile(curInfo, handleInfo) {
+		return rpcErr(-32004, "plugin data directory moved or changed since startup")
+	}
+	return nil
 }
 
 func collectProtectedDataFiles(dataRoot *os.Root) []protectedDataFile {
@@ -404,6 +439,144 @@ func verifyFSRootIdentity(root *os.Root, target *resolvedFSTarget, expectedRootI
 		return rpcErr(errCodeNotebookRootMismatch, ErrNotebookRootMismatch.Error())
 	}
 	return verifyRootExpectedIdentity(root, expectedRootID)
+}
+
+func (rt *Runtime) findDeepestNotebookRoot(canonPath string) (string, string, bool) {
+	bestRoot := ""
+	bestRel := ""
+	for _, nb := range rt.knownNotebooks() {
+		canonNb, err := resolveCanonicalLeafPath(nb)
+		if err != nil || canonNb == "" {
+			continue
+		}
+		rel, ok := pathWithinDir(canonPath, canonNb)
+		if !ok {
+			continue
+		}
+		if len(canonNb) > len(bestRoot) {
+			bestRoot = canonNb
+			bestRel = rel
+		}
+	}
+	return bestRoot, bestRel, bestRoot != ""
+}
+
+func openVerifiedDirRoot(dirPath, expectedRootID string) (*os.Root, *rpcError) {
+	linfo, lerr := os.Lstat(dirPath)
+	if lerr != nil || files.IsSymlinkOrReparseInfo(linfo) || !linfo.IsDir() {
+		return nil, rpcErr(errCodeNotebookRootMismatch, ErrNotebookRootMismatch.Error())
+	}
+	root, err := os.OpenRoot(dirPath)
+	if err != nil {
+		return nil, rpcErr(errCodeNotebookRootMismatch, ErrNotebookRootMismatch.Error())
+	}
+	hinfo, herr := root.Stat(".")
+	if herr != nil || files.IsSymlinkOrReparseInfo(hinfo) || !hinfo.IsDir() || !os.SameFile(linfo, hinfo) {
+		_ = root.Close()
+		return nil, rpcErr(errCodeNotebookRootMismatch, ErrNotebookRootMismatch.Error())
+	}
+	if rerr := verifyRootExpectedIdentity(root, expectedRootID); rerr != nil {
+		_ = root.Close()
+		return nil, rerr
+	}
+	return root, nil
+}
+
+// openVerifiedFSOperationRoot opens the single os.Root handle under which a host.fs mutation
+// executes and verifies expected_root_identity against it. When expected_root is provided,
+// expected_root_identity is mandatory and targets must reside inside expected_root (-32602).
+// When only expected_root_identity is set (legacy callers), registered notebook roots take
+// precedence over overlapping directory grants such as Downloads.
+func (rt *Runtime) openVerifiedFSOperationRoot(expectedRootRaw, expectedRootIDRaw string, primary *resolvedFSTarget, extra ...*resolvedFSTarget) (*os.Root, func(), *rpcError) {
+	if expectedRootRaw != "" && strings.TrimSpace(expectedRootRaw) == "" {
+		return nil, nil, rpcErr(-32602, "invalid expected_root")
+	}
+	hasExpRoot := expectedRootRaw != ""
+	if hasExpRoot && expectedRootIDRaw == "" {
+		return nil, nil, rpcErr(-32602, "expected_root requires expected_root_identity")
+	}
+	expectedRootID, rerr := parseExpectedRootIdentityParam(expectedRootIDRaw)
+	if rerr != nil {
+		return nil, nil, rerr
+	}
+
+	targets := make([]*resolvedFSTarget, 0, 1+len(extra))
+	if primary != nil {
+		targets = append(targets, primary)
+	}
+	for _, tgt := range extra {
+		if tgt != nil {
+			targets = append(targets, tgt)
+		}
+	}
+
+	if hasExpRoot {
+		expTarget, rerr := rt.resolveFSScopeOpts(expectedRootRaw, true, false)
+		if rerr != nil {
+			return nil, nil, rerr
+		}
+		if !expTarget.isDirRoot {
+			return nil, nil, rpcErr(-32602, "expected_root must be inside an authorized directory grant")
+		}
+		expRoot, rerr := openVerifiedDirRoot(expTarget.canonPath, expectedRootID)
+		if rerr != nil {
+			return nil, nil, rerr
+		}
+		cleanup := func() { _ = expRoot.Close() }
+		for _, tgt := range targets {
+			rel, ok := pathWithinDir(tgt.canonPath, expTarget.canonPath)
+			if !ok {
+				cleanup()
+				return nil, nil, rpcErr(-32602, "target path is outside expected_root")
+			}
+			if rel == "." {
+				cleanup()
+				return nil, nil, rpcErr(-32602, "target path cannot be expected_root itself")
+			}
+			tgt.rootDir = expTarget.canonPath
+			tgt.rel = rel
+			tgt.isDirRoot = true
+		}
+		return expRoot, cleanup, nil
+	}
+
+	if expectedRootID != "" && primary != nil {
+		if nbRootPath, rel, ok := rt.findDeepestNotebookRoot(primary.canonPath); ok {
+			if rel == "." {
+				return nil, nil, rpcErr(-32602, "cannot modify notebook root directory itself")
+			}
+			nbRoot, rerr := openVerifiedDirRoot(nbRootPath, expectedRootID)
+			if rerr != nil {
+				return nil, nil, rerr
+			}
+			cleanup := func() { _ = nbRoot.Close() }
+			for _, tgt := range extra {
+				if subRel, subOK := pathWithinDir(tgt.canonPath, nbRootPath); subOK && subRel != "." {
+					tgt.rootDir = nbRootPath
+					tgt.rel = subRel
+					tgt.isDirRoot = true
+				} else if tgt != nil {
+					cleanup()
+					return nil, nil, rpcErr(-32602, "target path is outside verified notebook root")
+				}
+			}
+			primary.rootDir = nbRootPath
+			primary.rel = rel
+			primary.isDirRoot = true
+			return nbRoot, cleanup, nil
+		}
+	}
+
+	root, err := os.OpenRoot(primary.rootDir)
+	if err != nil {
+		return nil, nil, rpcErr(-32004, err.Error())
+	}
+	cleanup := func() { _ = root.Close() }
+	if rerr := verifyFSRootIdentity(root, primary, expectedRootID); rerr != nil {
+		cleanup()
+		return nil, nil, rerr
+	}
+	return root, cleanup, nil
 }
 
 func matchProtectedDataFile(rel string) (string, bool) {
@@ -645,7 +818,22 @@ func (rt *Runtime) fsStat(params json.RawMessage) (any, *rpcError) {
 	if target.rel == "." {
 		name = filepath.Base(target.canonPath)
 	}
-	return fsInfoEntry(target.canonPath, name, info), nil
+	entry := fsInfoEntry(target.canonPath, name, info)
+	if isDir, _ := entry["is_dir"].(bool); isDir {
+		if target.rel == "." {
+			if rid, ok := files.RootIdentityOfRoot(root); ok {
+				entry["root_identity"] = rid
+			}
+		} else if subRoot, subErr := root.OpenRoot(target.rel); subErr == nil {
+			if subInfo, stErr := subRoot.Stat("."); stErr == nil && os.SameFile(info, subInfo) {
+				if rid, ok := files.RootIdentityOfRoot(subRoot); ok {
+					entry["root_identity"] = rid
+				}
+			}
+			_ = subRoot.Close()
+		}
+	}
+	return entry, nil
 }
 
 func (rt *Runtime) fsList(params json.RawMessage) (any, *rpcError) {
@@ -803,14 +991,11 @@ func (rt *Runtime) fsWrite(params json.RawMessage) (any, *rpcError) {
 		ContentBase64        *string `json:"content_base64"`
 		Atomic               bool    `json:"atomic"`
 		MkdirParents         bool    `json:"mkdir_parents"`
+		ExpectedRoot         string  `json:"expected_root"`
 		ExpectedRootIdentity string  `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.Path) == "" {
 		return nil, rpcErr(-32602, "host.fs.write requires non-empty path")
-	}
-	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
-	if rerr != nil {
-		return nil, rerr
 	}
 	if (p.Content == nil) == (p.ContentBase64 == nil) {
 		return nil, rpcErr(-32602, "host.fs.write requires exactly one of content or content_base64")
@@ -836,14 +1021,11 @@ func (rt *Runtime) fsWrite(params json.RawMessage) (any, *rpcError) {
 	if target.rel == "." {
 		return nil, rpcErr(-32602, "cannot overwrite directory root")
 	}
-	root, err := os.OpenRoot(target.rootDir)
-	if err != nil {
-		return nil, rpcErr(-32004, err.Error())
-	}
-	defer root.Close()
-	if rerr := verifyFSRootIdentity(root, target, expectedRootID); rerr != nil {
+	root, cleanup, rerr := rt.openVerifiedFSOperationRoot(p.ExpectedRoot, p.ExpectedRootIdentity, target)
+	if rerr != nil {
 		return nil, rerr
 	}
+	defer cleanup()
 
 	if p.MkdirParents && target.isDirRoot {
 		parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(target.rel)))
@@ -975,14 +1157,11 @@ func (rt *Runtime) fsDelete(params json.RawMessage) (any, *rpcError) {
 	var p struct {
 		Path                 string `json:"path"`
 		Recursive            bool   `json:"recursive"`
+		ExpectedRoot         string `json:"expected_root"`
 		ExpectedRootIdentity string `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.Path) == "" {
 		return nil, rpcErr(-32602, "host.fs.delete requires non-empty path")
-	}
-	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
-	if rerr != nil {
-		return nil, rerr
 	}
 	target, rerr := rt.resolveFSScope(p.Path, true)
 	if rerr != nil {
@@ -991,15 +1170,13 @@ func (rt *Runtime) fsDelete(params json.RawMessage) (any, *rpcError) {
 	if target.isDirRoot && target.rel == "." {
 		return nil, rpcErr(-32001, "cannot delete authorized root directory itself")
 	}
-	root, err := os.OpenRoot(target.rootDir)
-	if err != nil {
-		return nil, rpcErr(-32004, err.Error())
-	}
-	defer root.Close()
-	if rerr := verifyFSRootIdentity(root, target, expectedRootID); rerr != nil {
+	root, cleanup, rerr := rt.openVerifiedFSOperationRoot(p.ExpectedRoot, p.ExpectedRootIdentity, target)
+	if rerr != nil {
 		return nil, rerr
 	}
+	defer cleanup()
 
+	var err error
 	if p.Recursive {
 		err = root.RemoveAll(target.rel)
 	} else {
@@ -1194,6 +1371,9 @@ func (rt *Runtime) fsDeleteData(params json.RawMessage) (any, *rpcError) {
 	if rerr != nil {
 		return nil, rerr
 	}
+	if rerr := rt.verifyDataRootStartupIdentity(dataRoot); rerr != nil {
+		return nil, rerr
+	}
 	protected := collectProtectedDataFiles(dataRoot)
 
 	segs := strings.Split(filepath.ToSlash(relSlash), "/")
@@ -1268,14 +1448,11 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 		To                   string `json:"to"`
 		Overwrite            bool   `json:"overwrite"`
 		MkdirParents         bool   `json:"mkdir_parents"`
+		ExpectedRoot         string `json:"expected_root"`
 		ExpectedRootIdentity string `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.From) == "" || strings.TrimSpace(p.To) == "" {
 		return nil, rpcErr(-32602, "host.fs.rename requires non-empty from and to")
-	}
-	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
-	if rerr != nil {
-		return nil, rerr
 	}
 	fromTarget, rerr := rt.resolveFSScope(p.From, true)
 	if rerr != nil {
@@ -1292,13 +1469,15 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32602, "host.fs.rename requires paths inside directory grants")
 	}
 
-	toRoot, err := os.OpenRoot(toTarget.rootDir)
-	if err != nil {
-		return nil, rpcErr(-32004, err.Error())
-	}
-	defer toRoot.Close()
-	if rerr := verifyFSRootIdentity(toRoot, toTarget, expectedRootID); rerr != nil {
+	toRoot, cleanup, rerr := rt.openVerifiedFSOperationRoot(p.ExpectedRoot, p.ExpectedRootIdentity, toTarget)
+	if rerr != nil {
 		return nil, rerr
+	}
+	defer cleanup()
+	if fromRel, ok := pathWithinDir(fromTarget.canonPath, toTarget.rootDir); ok && fromRel != "." {
+		fromTarget.rootDir = toTarget.rootDir
+		fromTarget.rel = fromRel
+		fromTarget.isDirRoot = true
 	}
 
 	if fromTarget.rootDir == toTarget.rootDir {
@@ -1336,14 +1515,11 @@ func (rt *Runtime) fsCopy(params json.RawMessage) (any, *rpcError) {
 		To                   string `json:"to"`
 		Overwrite            bool   `json:"overwrite"`
 		MkdirParents         bool   `json:"mkdir_parents"`
+		ExpectedRoot         string `json:"expected_root"`
 		ExpectedRootIdentity string `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.From) == "" || strings.TrimSpace(p.To) == "" {
 		return nil, rpcErr(-32602, "host.fs.copy requires non-empty from and to")
-	}
-	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
-	if rerr != nil {
-		return nil, rerr
 	}
 	fromTarget, rerr := rt.resolveFSScope(p.From, false)
 	if rerr != nil {
@@ -1363,14 +1539,11 @@ func (rt *Runtime) fsCopy(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32602, "source and destination cannot be the same path")
 	}
 
-	toRoot, err := os.OpenRoot(toTarget.rootDir)
-	if err != nil {
-		return nil, rpcErr(-32004, err.Error())
-	}
-	defer toRoot.Close()
-	if rerr := verifyFSRootIdentity(toRoot, toTarget, expectedRootID); rerr != nil {
+	toRoot, cleanup, rerr := rt.openVerifiedFSOperationRoot(p.ExpectedRoot, p.ExpectedRootIdentity, toTarget)
+	if rerr != nil {
 		return nil, rerr
 	}
+	defer cleanup()
 
 	written, rerr := copyFileBetweenRoots(fromTarget, toTarget, toRoot, p.Overwrite, p.MkdirParents)
 	if rerr != nil {
@@ -1477,14 +1650,11 @@ func (rt *Runtime) fsAtomicSwap(params json.RawMessage) (any, *rpcError) {
 	var p struct {
 		PathA                string `json:"path_a"`
 		PathB                string `json:"path_b"`
+		ExpectedRoot         string `json:"expected_root"`
 		ExpectedRootIdentity string `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.PathA) == "" || strings.TrimSpace(p.PathB) == "" {
 		return nil, rpcErr(-32602, "host.fs.atomic_swap requires non-empty path_a and path_b")
-	}
-	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
-	if rerr != nil {
-		return nil, rerr
 	}
 	targetA, rerr := rt.resolveFSScope(p.PathA, true)
 	if rerr != nil {
@@ -1504,14 +1674,11 @@ func (rt *Runtime) fsAtomicSwap(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32602, "path_a and path_b must differ")
 	}
 
-	root, err := os.OpenRoot(targetA.rootDir)
-	if err != nil {
-		return nil, rpcErr(-32004, err.Error())
-	}
-	defer root.Close()
-	if rerr := verifyFSRootIdentity(root, targetA, expectedRootID); rerr != nil {
+	root, cleanup, rerr := rt.openVerifiedFSOperationRoot(p.ExpectedRoot, p.ExpectedRootIdentity, targetA, targetB)
+	if rerr != nil {
 		return nil, rerr
 	}
+	defer cleanup()
 
 	parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(targetA.rel)))
 	parentRoot := root

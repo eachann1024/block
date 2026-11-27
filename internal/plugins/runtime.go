@@ -225,6 +225,7 @@ type Runtime struct {
 	manifest      Manifest
 	cfg           HostConfig
 	dataRoot      *os.Root
+	dataRootInfo  os.FileInfo
 	dataRootAbs   string
 	dataRootCanon string
 
@@ -334,6 +335,10 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 			dataRoot.Close()
 		}
 	}()
+	dataRootInfo, statErr := dataRoot.Stat(".")
+	if statErr != nil {
+		return nil, fmt.Errorf("stat plugin data directory: %w", statErr)
+	}
 	downloadsDir := strings.TrimSpace(cfg.DownloadsDir)
 	if downloadsDir == "" {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
@@ -392,6 +397,7 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		manifest:      m,
 		cfg:           cfg,
 		dataRoot:      dataRoot,
+		dataRootInfo:  dataRootInfo,
 		dataRootAbs:   filepath.Clean(dataAbs),
 		dataRootCanon: dataCanonPath,
 		session:       sess,

@@ -42,13 +42,35 @@ func isUnreadableDirErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	return errors.Is(err, os.ErrPermission) ||
+	if errors.Is(err, os.ErrPermission) ||
 		errors.Is(err, syscall.EACCES) ||
 		errors.Is(err, syscall.EPERM) ||
 		errors.Is(err, syscall.EIO) ||
 		errors.Is(err, syscall.ENXIO) ||
 		errors.Is(err, syscall.ENODEV) ||
-		errors.Is(err, syscall.ETIMEDOUT)
+		errors.Is(err, syscall.ETIMEDOUT) ||
+		errors.Is(err, syscall.ESTALE) ||
+		errors.Is(err, syscall.EBUSY) ||
+		errors.Is(err, syscall.EAGAIN) ||
+		errors.Is(err, syscall.EINTR) ||
+		errors.Is(err, syscall.ENOTCONN) ||
+		errors.Is(err, syscall.EHOSTDOWN) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETDOWN) ||
+		errors.Is(err, syscall.ENETUNREACH) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNABORTED) ||
+		errors.Is(err, syscall.ESHUTDOWN) {
+		return true
+	}
+	// Any OS errno other than explicit ENOENT indicates an unreadable or transient state,
+	// not confirmed absence.
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno != syscall.ENOENT
+	}
+	return false
 }
 
 func isCrossDeviceErr(err error) bool {
@@ -56,16 +78,7 @@ func isCrossDeviceErr(err error) bool {
 }
 
 func isStrictNotExistErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, os.ErrPermission) ||
-		errors.Is(err, syscall.EACCES) ||
-		errors.Is(err, syscall.EPERM) ||
-		errors.Is(err, syscall.EIO) ||
-		errors.Is(err, syscall.ENXIO) ||
-		errors.Is(err, syscall.ENODEV) ||
-		errors.Is(err, syscall.ETIMEDOUT) {
+	if err == nil || isUnreadableDirErr(err) {
 		return false
 	}
 	return errors.Is(err, syscall.ENOENT)

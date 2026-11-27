@@ -529,7 +529,10 @@ type dirProbeResult struct {
 	xattrErr  error
 }
 
-var errNotebookProbeTimeout = errors.New("notebook directory probe timed out")
+var (
+	errNotebookProbeTimeout  = errors.New("notebook directory probe timed out")
+	errInvalidNotebookXattr  = errors.New("invalid notebook xattr")
+)
 
 func runProbeWithTimeout[T any](ctx context.Context, timeout time.Duration, fn func() T) (T, bool) {
 	if ctx != nil && ctx.Err() != nil {
@@ -651,7 +654,7 @@ func matchesRecordAtDir(r NotebookRecord, cand string, excludeInfo os.FileInfo) 
 	if sameDevIno {
 		return true, false
 	}
-	if isUnreadableDirErr(xErr) {
+	if isUnreadableDirErr(xErr) || (!isStrictNotExistErr(xErr) && !errors.Is(xErr, errInvalidNotebookXattr)) {
 		return false, true
 	}
 	return false, false
@@ -1840,7 +1843,11 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 			out.needsXattr = supportsNotebookXattr() && (p.xattrID != r.ID || r.XattrMissing)
 			return out
 		}
-		// Directory at r.Path has a different identity than r (replaced externally).
+		// Directory at r.Path has a different identity than r (replaced externally),
+		// or xattr could not be read due to a transient/access error.
+		if isUnreadableDirErr(p.xattrErr) {
+			return out
+		}
 		// Check complete locator, sibling xattr, and previous_paths before counting missing.
 		type elsewhereResult struct {
 			live bool

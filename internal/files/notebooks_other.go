@@ -13,8 +13,13 @@ func supportsNotebookXattr() bool                              { return false }
 func statDirDevIno(string, os.FileInfo) (uint64, uint64, bool) { return 0, 0, false }
 func statRootHandleDevIno(*os.Root) (uint64, uint64, bool)     { return 0, 0, false }
 func isCrossDeviceErr(err error) bool                          { return errors.Is(err, syscall.EXDEV) }
-func isStrictNotExistErr(err error) bool                       { return errors.Is(err, os.ErrNotExist) }
-func isUnreadableDirErr(err error) bool                        { return errors.Is(err, os.ErrPermission) }
+func isStrictNotExistErr(err error) bool {
+	return err != nil && !isUnreadableDirErr(err) && errors.Is(err, os.ErrNotExist)
+}
+
+func isUnreadableDirErr(err error) bool {
+	return err != nil && !errors.Is(err, os.ErrNotExist)
+}
 func isSymlinkOrReparseInfo(info os.FileInfo) bool {
 	return info != nil && info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0
 }

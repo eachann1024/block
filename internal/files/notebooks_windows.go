@@ -63,15 +63,37 @@ func isUnreadableDirErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	return errors.Is(err, os.ErrPermission) ||
+	if errors.Is(err, os.ErrPermission) ||
 		errors.Is(err, windows.ERROR_ACCESS_DENIED) ||
+		errors.Is(err, windows.ERROR_SHARING_VIOLATION) ||
+		errors.Is(err, windows.ERROR_LOCK_VIOLATION) ||
 		errors.Is(err, windows.ERROR_NOT_READY) ||
+		errors.Is(err, windows.ERROR_BAD_UNIT) ||
+		errors.Is(err, windows.ERROR_CRC) ||
 		errors.Is(err, windows.ERROR_BAD_NETPATH) ||
 		errors.Is(err, windows.ERROR_DEV_NOT_EXIST) ||
 		errors.Is(err, windows.ERROR_INVALID_DRIVE) ||
+		errors.Is(err, windows.ERROR_BAD_NET_NAME) ||
+		errors.Is(err, windows.ERROR_NETWORK_BUSY) ||
 		errors.Is(err, windows.ERROR_NETWORK_UNREACHABLE) ||
 		errors.Is(err, windows.ERROR_NETNAME_DELETED) ||
-		errors.Is(err, windows.ERROR_UNEXP_NET_ERR)
+		errors.Is(err, windows.ERROR_UNEXP_NET_ERR) ||
+		errors.Is(err, windows.ERROR_SEM_TIMEOUT) ||
+		errors.Is(err, windows.ERROR_IO_DEVICE) ||
+		errors.Is(err, windows.ERROR_BUSY) ||
+		errors.Is(err, windows.ERROR_OPERATION_ABORTED) {
+		return true
+	}
+	var werr windows.Errno
+	if errors.As(err, &werr) {
+		return werr != windows.ERROR_FILE_NOT_FOUND && werr != windows.ERROR_PATH_NOT_FOUND
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		we := windows.Errno(errno)
+		return we != windows.ERROR_FILE_NOT_FOUND && we != windows.ERROR_PATH_NOT_FOUND
+	}
+	return false
 }
 
 func isCrossDeviceErr(err error) bool {
@@ -79,18 +101,7 @@ func isCrossDeviceErr(err error) bool {
 }
 
 func isStrictNotExistErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, os.ErrPermission) ||
-		errors.Is(err, windows.ERROR_ACCESS_DENIED) ||
-		errors.Is(err, windows.ERROR_NOT_READY) ||
-		errors.Is(err, windows.ERROR_BAD_NETPATH) ||
-		errors.Is(err, windows.ERROR_DEV_NOT_EXIST) ||
-		errors.Is(err, windows.ERROR_INVALID_DRIVE) ||
-		errors.Is(err, windows.ERROR_NETWORK_UNREACHABLE) ||
-		errors.Is(err, windows.ERROR_NETNAME_DELETED) ||
-		errors.Is(err, windows.ERROR_UNEXP_NET_ERR) {
+	if err == nil || isUnreadableDirErr(err) {
 		return false
 	}
 	return errors.Is(err, windows.ERROR_FILE_NOT_FOUND) || errors.Is(err, windows.ERROR_PATH_NOT_FOUND)
