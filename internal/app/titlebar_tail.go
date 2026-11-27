@@ -384,6 +384,11 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps, group string, availW flo
 	blockui.AnimateSurfaceColors(pill, bg, border, true)
 	pill.Children(func() {
 		moreDef, _ := plugins.BuiltinTitlebarSlotDef(plugins.TitlebarSlotMore)
+		// Leaving a send-capable group (e.g. Markdown -> source): keep the send
+		// segment on its default left side until the collapse animation ends.
+		if sendIdx < 0 && reveal > 0.001 {
+			renderSendGroup(c, p, reveal, false)
+		}
 		for _, sub := range pillSubs {
 			switch sub {
 			case plugins.TitlebarSlotSendAll:
