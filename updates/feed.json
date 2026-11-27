@@ -1,10 +1,80 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T06:31:32.033Z",
-  "latest_version": "1.0.948",
-  "latest_tag": "v1.0.948",
+  "updated_at": "2026-11-27T07:09:48.393Z",
+  "latest_version": "1.0.949",
+  "latest_tag": "v1.0.949",
   "releases": [
+    {
+      "version": "1.0.949",
+      "tag": "v1.0.949",
+      "published_at": "2026-11-27T07:09:47Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.949",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "主题：应用现已支持通用主题皮肤，并移除了内置的塔罗模块。",
+          "插件接口：插件现可使用离线 WebView 阶段并访问 AI 宿主接口。"
+        ],
+        "improvements": [
+          "滚动条：应用内的滚动专用滚动条现采用统一样式，并统一悬停和边缘唤醒行为。",
+          "源码编辑器：源码和 Markdown 源码编辑器现使用滚动专用滚动条。",
+          "大纲：切换刻度后会重新打开大纲，全局视图开关也会保存。"
+        ],
+        "fixes": [],
+        "other": [
+          "速记：为皮肤徽标颜色添加了设计检查标注。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Theme: The app now supports generic theme skins, and the built-in tarot module has been removed.",
+          "Plugin API: Plugins can use an offline WebView stage and access the AI host."
+        ],
+        "improvements": [
+          "Scrollbars: Scroll-only scrollbars now share consistent styling and hover and edge-wake behavior across the app.",
+          "Source Editors: Source and Markdown source editors now use scroll-only scrollbars.",
+          "Outline: Switching ticks reopens the outline, and the global view toggle is saved."
+        ],
+        "fixes": [],
+        "other": [
+          "Quick Notes: The skin badge colours are now annotated for design lint."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-macos-arm64.dmg",
+          "size": 18739812,
+          "sha256": "98e4addbc2f05a99571555c8ff560efb9c24fa73ae34140bb58be790195e87ea"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-macos-x64.dmg",
+          "size": 20668652,
+          "sha256": "d72b75e6e9b7cdba24a2c11256ca168a82c5f384a405fca78ef50556339642b3"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-windows-x64-setup.exe",
+          "size": 16201296,
+          "sha256": "3529fe44c31bdbdb510f2889b4f93f736fb10e808ddc5acac9668d58b938acf3"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-linux-x64.deb",
+          "size": 13161374,
+          "sha256": "334daf93e1074e95fa067fe9023c178df83ee7ce4bf2524d175fd9d26ac2ad9a"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.949/block-linux-x64.AppImage",
+          "size": 26421752,
+          "sha256": "bf2b766904b64c5cca4f266938e3bd1e04017afb63e35d8c6d948f69d3ffd003"
+        }
+      ]
+    },
     {
       "version": "1.0.948",
       "tag": "v1.0.948",
@@ -28,38 +98,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-macos-arm64.dmg",
-          "size": 17565840,
-          "sha256": "a783ba25bff67cdc7004a52f19b4f574d68b71455d7baa3f40c55d0d240050b4"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-macos-x64.dmg",
-          "size": 19334055,
-          "sha256": "0ae611022ca6e955504b8dafdb76d6036e878469a806cacdc29734a8a6dfa49c"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-windows-x64-setup.exe",
-          "size": 14958739,
-          "sha256": "ca4f446d20f2654ad25b62051a1d3aae78ab40fa4a87ffb41772bf24905ffa13"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-linux-x64.deb",
-          "size": 12239332,
-          "sha256": "278e86d2c02a568ae008ce1bb36c9d0eb7efe3b2dd324e7071b1c34479f7c20f"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-linux-x64.AppImage",
-          "size": 25385464,
-          "sha256": "c0d387374cffd2745e189d044c17bff31401a43736496bbda87446c5ea3dffff"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.947",
@@ -1656,31 +1695,6 @@
         "highlights": "",
         "new": [
           "AI answers in margin cards now render as read-only Markdown."
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.897",
-      "tag": "v1.0.897",
-      "published_at": "2026-11-21T09:25:03Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.897",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "批注页边卡片现已支持直接针对 AI 回复进行追问。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Margin annotation cards now allow you to follow up directly on AI replies."
         ],
         "improvements": [],
         "fixes": [],
