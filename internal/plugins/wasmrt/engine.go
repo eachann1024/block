@@ -30,9 +30,8 @@ type StartOptions struct {
 }
 
 type Engine struct {
-	cacheDir  string
-	cache     wazero.CompilationCache
-	wasmBytes []byte
+	cacheDir string
+	cache    wazero.CompilationCache
 
 	warmupMu   sync.Mutex
 	warmedUp   bool
@@ -54,10 +53,6 @@ type Session struct {
 }
 
 func NewEngine(cacheDir string) (*Engine, error) {
-	wasmBytes, err := LoadQJSWasm()
-	if err != nil {
-		return nil, err
-	}
 	var cache wazero.CompilationCache
 	if dir := strings.TrimSpace(cacheDir); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err == nil {
@@ -70,9 +65,8 @@ func NewEngine(cacheDir string) (*Engine, error) {
 		cache = wazero.NewCompilationCache()
 	}
 	return &Engine{
-		cacheDir:  cacheDir,
-		cache:     cache,
-		wasmBytes: wasmBytes,
+		cacheDir: cacheDir,
+		cache:    cache,
 	}, nil
 }
 
@@ -89,11 +83,16 @@ func (e *Engine) Warmup(ctx context.Context) error {
 	if e.warmedUp {
 		return e.warmupErr
 	}
+	wasmBytes, err := LoadQJSWasm()
+	if err != nil {
+		e.warmupErr = err
+		return err
+	}
 	r := wazero.NewRuntimeWithConfig(ctx, e.runtimeConfig())
 	defer func() {
 		_ = r.Close(context.Background())
 	}()
-	compiled, err := r.CompileModule(ctx, e.wasmBytes)
+	compiled, err := r.CompileModule(ctx, wasmBytes)
 	if err == nil {
 		_ = compiled.Close(ctx)
 		e.warmedUp = true
@@ -120,6 +119,11 @@ func (e *Engine) StartJS(ctx context.Context, pluginDir, entryRel string, opts S
 	if err != nil {
 		return nil, err
 	}
+	wasmBytes, err := LoadQJSWasm()
+	if err != nil {
+		_ = pluginRoot.Close()
+		return nil, err
+	}
 	guestEntry := "/plugin/" + cleanRel
 	bootstrap := fmt.Sprintf("import '/runtime/block-sdk.js'; import %s;", strconv.Quote(guestEntry))
 	args := []string{
@@ -130,7 +134,7 @@ func (e *Engine) StartJS(ctx context.Context, pluginDir, entryRel string, opts S
 		"-m",
 		"-e", bootstrap,
 	}
-	return e.startWasmSession(ctx, pluginRoot, e.wasmBytes, args, opts)
+	return e.startWasmSession(ctx, pluginRoot, wasmBytes, args, opts)
 }
 
 func (e *Engine) StartWasm(ctx context.Context, pluginDir, entryRel string, opts StartOptions) (*Session, error) {

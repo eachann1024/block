@@ -575,6 +575,16 @@ func (s *Supervisor) setSystemBadge(rt *Runtime, count int, allowed func() bool)
 	return nil
 }
 
+func (s *Supervisor) hasActiveSystemBadge(id string) bool {
+	if s == nil {
+		return false
+	}
+	s.system.badgeMu.Lock()
+	defer s.system.badgeMu.Unlock()
+	entry, ok := s.system.badges[id]
+	return ok && entry.count > 0
+}
+
 func (s *Supervisor) clearInactiveSystemBadge(id string) {
 	if s.cfg.System == nil {
 		return

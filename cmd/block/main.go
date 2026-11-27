@@ -115,13 +115,15 @@ func main() {
 		return
 	}
 
-	app.ConfigureRuntimeMemory()
-
 	isIsolatedRun := smokeFlag || smokeOnceFlag || dataDirFlag != "" || os.Getenv("MYGO_AUTOMATION") != ""
 
 	if smokeOnceFlag {
 		code := runSmokeOnceCLI(dataDirFlag)
 		os.Exit(code)
+	}
+
+	if !isIsolatedRun {
+		app.ConfigureRuntimeMemory()
 	}
 
 	if !isIsolatedRun {

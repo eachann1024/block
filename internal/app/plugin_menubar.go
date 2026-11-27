@@ -21,14 +21,16 @@ import (
 )
 
 // pluginMenubar keeps one system tray icon per contributes.menubar_items
-// entry of enabled plugins. A poll compares the resolved items, so enabling,
-// disabling, updating, switching language and host.menubar.set all land
-// without hooks in the workspace. Tray state is touched on the main thread.
+// entry of enabled plugins. Updates are driven by Supervisor.MenubarChanged()
+// rather than polling, so enabling, disabling, updating, switching language,
+// switching notebooks, and host.menubar.set apply without idle wakeups.
+// Tray state is touched on the main thread.
 type pluginMenubar struct {
 	h       *pluginHostUI
 	trays   map[string]*menubarTray
 	names   map[string]string // plugin id -> localized name, for notifications
 	lastSig string
+	wakeCh  chan struct{}
 }
 
 type menubarTray struct {
@@ -40,45 +42,121 @@ type menubarTray struct {
 	// click or drop always shows a reaction on the icon itself, even when
 	// system notifications are off.
 	busyUntil  time.Time
+	busyTimer  *time.Timer
 	flash      string
 	flashTip   string
 	flashUntil time.Time
+	flashTimer *time.Timer
 }
 
 const (
-	menubarPollInterval = 400 * time.Millisecond
-	menubarBusyTimeout  = 35 * time.Second // command timeout plus a margin
-	menubarFlashFor     = 4 * time.Second
-	menubarFlashRunes   = 14
+	menubarBusyTimeout = 35 * time.Second // command timeout plus a margin
+	menubarFlashFor    = 4 * time.Second
+	menubarFlashRunes  = 14
 )
 
 func (h *pluginHostUI) startMenubar() {
-	h.menubar = &pluginMenubar{h: h, trays: map[string]*menubarTray{}, names: map[string]string{}}
+	h.menubar = &pluginMenubar{
+		h:      h,
+		trays:  map[string]*menubarTray{},
+		names:  map[string]string{},
+		wakeCh: make(chan struct{}, 1),
+	}
 	mygo.App.WhenReady(func() { go h.menubar.loop() })
 }
 
+func (m *pluginMenubar) poke() {
+	if m == nil || m.wakeCh == nil {
+		return
+	}
+	select {
+	case m.wakeCh <- struct{}{}:
+	default:
+	}
+}
+
+func (m *pluginMenubar) waitSupervisor() *plugins.Supervisor {
+	if m.h == nil || m.h.w == nil {
+		return nil
+	}
+	if sup := m.h.w.Plugins(); sup != nil {
+		return sup
+	}
+	// w.pluginsUI is normally set right after newPluginHostUI, before
+	// App.WhenReady fires; if loop starts early, retry briefly with backoff
+	// then sleep until AttachPluginSystem pokes wakeCh or closing fires.
+	delay := 20 * time.Millisecond
+	const maxWait = 2 * time.Second
+	waited := time.Duration(0)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for waited < maxWait {
+		select {
+		case <-m.h.closing:
+			return nil
+		case <-m.wakeCh:
+			if sup := m.h.w.Plugins(); sup != nil {
+				return sup
+			}
+		case <-timer.C:
+			if sup := m.h.w.Plugins(); sup != nil {
+				return sup
+			}
+			waited += delay
+			delay = min(delay*2, 500*time.Millisecond)
+			timer.Reset(delay)
+		}
+	}
+	for {
+		select {
+		case <-m.h.closing:
+			return nil
+		case <-m.wakeCh:
+			if sup := m.h.w.Plugins(); sup != nil {
+				return sup
+			}
+		}
+	}
+}
+
 func (m *pluginMenubar) loop() {
-	ticker := time.NewTicker(menubarPollInterval)
-	defer ticker.Stop()
+	sup := m.waitSupervisor()
+	if sup == nil {
+		return
+	}
+	changed := sup.MenubarChanged()
 	for {
 		select {
 		case <-m.h.closing:
 			return
-		case <-ticker.C:
+		default:
 		}
-		sup := m.h.w.Plugins()
-		if sup == nil {
-			continue
+		m.sync(sup)
+		select {
+		case <-m.h.closing:
+			return
+		case <-changed:
+		case <-m.wakeCh:
 		}
-		items := sup.MenubarItems()
-		if len(items) == 0 && m.lastSig == "" {
-			continue
-		}
-		raw, _ := json.Marshal(items)
-		if sig := string(raw); sig != m.lastSig {
-			m.lastSig = sig
-			mygo.RunOnMain(func() { m.apply(items) })
-		}
+	}
+}
+
+func (m *pluginMenubar) sync(sup *plugins.Supervisor) {
+	items := sup.MenubarItems()
+	if len(items) == 0 && m.lastSig == "" {
+		return
+	}
+	raw, _ := json.Marshal(items)
+	if sig := string(raw); sig != m.lastSig {
+		m.lastSig = sig
+		mygo.RunOnMain(func() {
+			select {
+			case <-m.h.closing:
+				return
+			default:
+			}
+			m.apply(items)
+		})
 	}
 }
 
@@ -180,10 +258,14 @@ func (m *pluginMenubar) setBusy(pluginID string, busy bool) {
 		if mt.item.PluginID != pluginID {
 			continue
 		}
+		if mt.busyTimer != nil {
+			mt.busyTimer.Stop()
+			mt.busyTimer = nil
+		}
 		mt.busyUntil = time.Time{}
 		if busy {
 			mt.busyUntil = time.Now().Add(menubarBusyTimeout)
-			m.repaintAfter(mt, menubarBusyTimeout)
+			mt.busyTimer = m.repaintAfter(mt, menubarBusyTimeout)
 		}
 		m.paint(mt)
 	}
@@ -200,16 +282,30 @@ func (m *pluginMenubar) showResult(pluginID, message string) {
 		if mt.item.PluginID != pluginID {
 			continue
 		}
+		if mt.flashTimer != nil {
+			mt.flashTimer.Stop()
+			mt.flashTimer = nil
+		}
 		mt.flash, mt.flashTip = string(short), message
 		mt.flashUntil = time.Now().Add(menubarFlashFor)
-		m.repaintAfter(mt, menubarFlashFor)
+		mt.flashTimer = m.repaintAfter(mt, menubarFlashFor)
 		m.paint(mt)
 	}
 }
 
-func (m *pluginMenubar) repaintAfter(mt *menubarTray, d time.Duration) {
-	time.AfterFunc(d+50*time.Millisecond, func() {
+func (m *pluginMenubar) repaintAfter(mt *menubarTray, d time.Duration) *time.Timer {
+	return time.AfterFunc(d+50*time.Millisecond, func() {
+		select {
+		case <-m.h.closing:
+			return
+		default:
+		}
 		mygo.RunOnMain(func() {
+			select {
+			case <-m.h.closing:
+				return
+			default:
+			}
 			if m.trays[mt.item.PluginID+"/"+mt.item.ID] == mt {
 				m.paint(mt)
 			}
@@ -228,6 +324,14 @@ func (m *pluginMenubar) run(pluginID string, start func(sup *plugins.Supervisor)
 }
 
 func (m *pluginMenubar) destroy(mt *menubarTray) {
+	if mt.busyTimer != nil {
+		mt.busyTimer.Stop()
+		mt.busyTimer = nil
+	}
+	if mt.flashTimer != nil {
+		mt.flashTimer.Stop()
+		mt.flashTimer = nil
+	}
 	if mt.detach != nil {
 		mt.detach()
 	}

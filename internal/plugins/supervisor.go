@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -152,10 +153,14 @@ type Supervisor struct {
 	cfg        SupervisorConfig
 	contrib    *contribRegistry
 	system     systemState
-	wasmEngine *wasmrt.Engine
-	wasmCtx    context.Context
-	wasmCancel context.CancelFunc
-	warmupDone chan struct{}
+	wasmEngine               *wasmrt.Engine
+	wasmCtx                  context.Context
+	wasmCancel               context.CancelFunc
+	warmupDone               chan struct{}
+	menubarChangedCh         chan struct{}
+	systemEventSubscribersCh chan struct{}
+	idleTimeout              time.Duration
+	idleSweepInterval        time.Duration
 
 	mu                 sync.RWMutex
 	viewEpoch          atomic.Uint64
@@ -166,6 +171,14 @@ type Supervisor struct {
 	runtimeIgnoredDirs map[string][]string
 	installEpoch       map[string]uint64
 	runtimes           map[string]*Runtime
+	idleTimer          *time.Timer
+	idleSweepArmed     bool
+	evictWG            sync.WaitGroup
+	freeMemTimer       *time.Timer
+	freeMemSeq         uint64
+	lastFreeOSMem      time.Time
+	onMemoryRelease    func(time.Duration)
+	activeSettingsTab  string
 	stageMu            sync.RWMutex
 	activeStage        *ActiveStage
 	views              map[viewKey]*PluginViewState
@@ -173,6 +186,7 @@ type Supervisor struct {
 	formVersions       map[surfaceKey]uint64
 	liveTimers         map[surfaceKey]*time.Timer
 	liveViewedAt       map[surfaceKey]time.Time
+	liveIntervals      map[surfaceKey]time.Duration
 	feedbackTimers     map[viewKey]*time.Timer
 	activeActionKey    map[string]viewKey
 	activeActionRT     map[string]*Runtime
@@ -188,9 +202,16 @@ type Supervisor struct {
 	storeNotice        string
 }
 
-func hasWasmOrJSPlugin(apps []InstalledApp) bool {
+const (
+	defaultRuntimeIdleTimeout       = 50 * time.Second
+	defaultRuntimeIdleSweepInterval = 10 * time.Second
+	idleFreeOSMemoryDebounce        = 2 * time.Second
+	idleFreeOSMemoryCooldown        = 15 * time.Second
+)
+
+func hasJSPlugin(apps []InstalledApp) bool {
 	for _, app := range apps {
-		if app.Manifest.Entry.JS != "" || app.Manifest.Entry.Wasm != "" {
+		if app.Enabled && !app.Manifest.IsDeclarativeOnly() && app.Manifest.Entry.JS != "" {
 			return true
 		}
 	}
@@ -208,34 +229,40 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	}
 	warmupDone := make(chan struct{})
 	s := &Supervisor{
-		store:              sm,
-		cfg:                cfg,
-		contrib:            newContribRegistry(cfg.AppDataDir),
-		catalog:            sm.LoadCachedOrSeedCatalog(),
-		installed:          installed,
-		wasmEngine:         wasmEng,
-		wasmCtx:            wasmCtx,
-		wasmCancel:         wasmCancel,
-		warmupDone:         warmupDone,
-		installEpoch:       make(map[string]uint64),
-		runtimes:           make(map[string]*Runtime),
-		views:              make(map[viewKey]*PluginViewState),
-		lastViewRoot:       make(map[surfaceKey]string),
-		formVersions:       make(map[surfaceKey]uint64),
-		liveTimers:         make(map[surfaceKey]*time.Timer),
-		liveViewedAt:       make(map[surfaceKey]time.Time),
-		feedbackTimers:     make(map[viewKey]*time.Timer),
-		activeActionKey:    make(map[string]viewKey),
-		activeActionRT:     make(map[string]*Runtime),
-		lastProgressRedraw: make(map[string]time.Time),
-		uninstallErrors:    make(map[string]string),
-		bgErrors:           make(map[string]map[string]BackgroundError),
+		store:                    sm,
+		cfg:                      cfg,
+		contrib:                  newContribRegistry(cfg.AppDataDir),
+		catalog:                  sm.LoadCachedOrSeedCatalog(),
+		installed:                installed,
+		wasmEngine:               wasmEng,
+		wasmCtx:                  wasmCtx,
+		wasmCancel:               wasmCancel,
+		warmupDone:               warmupDone,
+		menubarChangedCh:         make(chan struct{}, 1),
+		systemEventSubscribersCh: make(chan struct{}, 1),
+		idleTimeout:              defaultRuntimeIdleTimeout,
+		idleSweepInterval:        defaultRuntimeIdleSweepInterval,
+		installEpoch:             make(map[string]uint64),
+		runtimes:                 make(map[string]*Runtime),
+		views:                    make(map[viewKey]*PluginViewState),
+		lastViewRoot:             make(map[surfaceKey]string),
+		formVersions:             make(map[surfaceKey]uint64),
+		liveTimers:               make(map[surfaceKey]*time.Timer),
+		liveViewedAt:             make(map[surfaceKey]time.Time),
+		liveIntervals:            make(map[surfaceKey]time.Duration),
+		feedbackTimers:           make(map[viewKey]*time.Timer),
+		activeActionKey:          make(map[string]viewKey),
+		activeActionRT:           make(map[string]*Runtime),
+		lastProgressRedraw:       make(map[string]time.Time),
+		uninstallErrors:          make(map[string]string),
+		bgErrors:                 make(map[string]map[string]BackgroundError),
 	}
+	s.contrib.onMenubarChanged = s.notifyMenubarChanged
 	sm.beforeReplace = s.preparePluginReplacement
 	s.refreshIgnoredDirsLocked()
 	SyncActiveLanguagesSeq(installed, NextLanguageSyncSeq())
 	s.restoreActiveThemeSkin()
-	if s.wasmEngine != nil && (!testing.Testing() || hasWasmOrJSPlugin(installed)) {
+	if s.wasmEngine != nil && hasJSPlugin(installed) {
 		go func() {
 			defer close(s.warmupDone)
 			if err := s.wasmEngine.Warmup(s.wasmCtx); err != nil && s.wasmCtx.Err() == nil {
@@ -544,6 +571,66 @@ func (s *Supervisor) NotifyRedraw() {
 	s.notifyRedraw()
 }
 
+// MenubarChanged returns a coalescing notification channel signaled whenever
+// enabled menu bar items or dynamic menu bar overlays may have changed.
+func (s *Supervisor) MenubarChanged() <-chan struct{} {
+	if s == nil {
+		return nil
+	}
+	return s.menubarChangedCh
+}
+
+// SystemEventSubscribersChanged returns a coalescing notification channel
+// signaled whenever the set of installed or enabled plugins changes.
+func (s *Supervisor) SystemEventSubscribersChanged() <-chan struct{} {
+	if s == nil {
+		return nil
+	}
+	return s.systemEventSubscribersCh
+}
+
+// HasSystemEventSubscribers reports whether any enabled runtime plugin subscribes to events:system.
+func (s *Supervisor) HasSystemEventSubscribers() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.stopping {
+		return false
+	}
+	for i := range s.installed {
+		app := &s.installed[i]
+		if !app.Enabled || app.Manifest.IsDeclarativeOnly() {
+			continue
+		}
+		if app.Manifest.HasPermission(PermEventsSystem) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Supervisor) notifyMenubarChanged() {
+	if s == nil || s.menubarChangedCh == nil {
+		return
+	}
+	select {
+	case s.menubarChangedCh <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Supervisor) notifySystemEventSubscribersChanged() {
+	if s == nil || s.systemEventSubscribersCh == nil {
+		return
+	}
+	select {
+	case s.systemEventSubscribersCh <- struct{}{}:
+	default:
+	}
+}
+
 // ScheduleLiveRefresh marks pluginID's settings page as actively displayed and schedules a one-shot
 // background render tick after intervalMs. When the user navigates away, the timer
 // expires without rescheduling.
@@ -563,6 +650,10 @@ func (s *Supervisor) ScheduleSurfaceLiveRefresh(pluginID string, surface Surface
 
 	s.mu.Lock()
 	s.liveViewedAt[sKey] = now
+	s.liveIntervals[sKey] = interval
+	if rt := s.runtimes[pluginID]; rt != nil {
+		rt.touchActivity()
+	}
 	if _, scheduled := s.liveTimers[sKey]; scheduled {
 		s.mu.Unlock()
 		return
@@ -581,6 +672,7 @@ func (s *Supervisor) stopLiveTimerLocked(sKey surfaceKey) {
 		delete(s.liveTimers, sKey)
 	}
 	delete(s.liveViewedAt, sKey)
+	delete(s.liveIntervals, sKey)
 }
 
 func (s *Supervisor) stopLiveTimersForPluginLocked(pluginID string) {
@@ -592,6 +684,7 @@ func (s *Supervisor) stopLiveTimersForPluginLocked(pluginID string) {
 	for k := range s.liveViewedAt {
 		if k.pluginID == pluginID {
 			delete(s.liveViewedAt, k)
+			delete(s.liveIntervals, k)
 		}
 	}
 }
@@ -607,14 +700,16 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 		}
 		s.mu.Unlock()
 	}()
-	s.mu.RLock()
-	lastViewed := s.liveViewedAt[sKey]
-	s.mu.RUnlock()
-
 	maxIdle := max(interval*2, 2500*time.Millisecond)
+	s.mu.Lock()
+	lastViewed := s.liveViewedAt[sKey]
 	if lastViewed.IsZero() || time.Since(lastViewed) > maxIdle {
+		delete(s.liveViewedAt, sKey)
+		delete(s.liveIntervals, sKey)
+		s.mu.Unlock()
 		return
 	}
+	s.mu.Unlock()
 	if !s.IsPluginEnabled(pluginID) {
 		return
 	}
@@ -816,6 +911,7 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			_ = rt.Shutdown(ctx)
+			s.triggerMemoryRelease()
 		}()
 	}
 	if enabled {
@@ -831,6 +927,10 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	if changed || rt != nil {
 		SyncActiveLanguagesSeq(langSnap, langSeq)
 		s.notifyChanged()
+	}
+	if changed {
+		s.notifyMenubarChanged()
+		s.notifySystemEventSubscribersChanged()
 	}
 }
 
@@ -877,6 +977,8 @@ func (s *Supervisor) OnNotebookSwitched() {
 		s.contrib.clearTransientOverrides()
 	}
 	s.notifyChanged()
+	s.notifyMenubarChanged()
+	s.notifySystemEventSubscribersChanged()
 	s.WarmupAppearancePluginsAsync()
 }
 
@@ -1167,6 +1269,8 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 			s.warmupPluginAsync(inst.Manifest.ID)
 			updated++
 			s.notifyChanged()
+			s.notifyMenubarChanged()
+			s.notifySystemEventSubscribersChanged()
 		}
 
 		s.mu.Lock()
@@ -1412,6 +1516,8 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 		onInstalled(inst.Manifest.ID)
 	}
 	s.warmupPluginAsync(inst.Manifest.ID)
+	s.notifyMenubarChanged()
+	s.notifySystemEventSubscribersChanged()
 	name := inst.Manifest.Name.Resolve(locale)
 	if name == "" {
 		name = inst.Manifest.ID
@@ -1546,6 +1652,11 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.closeStageForPlugin(pluginID)
 		s.clearPluginScheduler(pluginID)
 		s.clearInactiveSystemBadge(pluginID)
+		if rt != nil {
+			s.triggerMemoryRelease()
+		}
+		s.notifyMenubarChanged()
+		s.notifySystemEventSubscribersChanged()
 
 		if onDone != nil {
 			onDone()
@@ -1679,6 +1790,12 @@ func (s *Supervisor) ResetDialogView(pluginID, dialogID, dialogToken string) {
 	}
 	if changed || dialogToken != "" {
 		s.viewEpoch.Add(1)
+	}
+	if dialogToken == "" {
+		if rt := s.runtimes[pluginID]; rt != nil {
+			rt.touchActivity()
+			s.ensureIdleSweepLocked()
+		}
 	}
 	s.mu.Unlock()
 	if changed {
@@ -2148,6 +2265,17 @@ func (s *Supervisor) lockPluginRPCContext(ctx context.Context, pluginID string) 
 	}
 }
 
+func (s *Supervisor) tryLockPluginRPC(pluginID string) (func(), bool) {
+	value, _ := s.rpcLocks.LoadOrStore(pluginID, make(chan struct{}, 1))
+	gate := value.(chan struct{})
+	select {
+	case gate <- struct{}{}:
+		return func() { <-gate }, true
+	default:
+		return nil, false
+	}
+}
+
 func (s *Supervisor) activeNoteFor(root string) string {
 	if root == s.NotebookRoot() {
 		return s.ActiveNoteRel()
@@ -2219,6 +2347,7 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 			select {
 			case <-existing.exited:
 			default:
+				existing.touchActivity()
 				return existing, existing.locale(), nil
 			}
 		}
@@ -2302,8 +2431,10 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	}
 	prev := s.runtimes[pluginID]
 	rt.syncedEpoch.Store(curEpoch)
+	rt.touchActivity()
 	rtPtr.Store(rt)
 	s.runtimes[pluginID] = rt
+	s.ensureIdleSweepLocked()
 	s.mu.Unlock()
 	if prev != nil && prev != existing {
 		prev.abort()
@@ -3292,10 +3423,19 @@ func (s *Supervisor) ShutdownAll() {
 	}
 	s.mu.Lock()
 	s.stopping = true
+	if s.idleTimer != nil {
+		s.idleTimer.Stop()
+		s.idleSweepArmed = false
+	}
+	if s.freeMemTimer != nil {
+		s.freeMemTimer.Stop()
+		s.freeMemTimer = nil
+	}
 	for k := range s.liveTimers {
 		s.stopLiveTimerLocked(k)
 	}
 	clear(s.liveViewedAt)
+	clear(s.liveIntervals)
 	for k := range s.feedbackTimers {
 		s.stopFeedbackTimerLocked(k)
 	}
@@ -3322,6 +3462,9 @@ func (s *Supervisor) ShutdownAll() {
 	}
 	s.mu.Unlock()
 
+	s.notifyMenubarChanged()
+	s.notifySystemEventSubscribersChanged()
+
 	for _, fn := range cancels {
 		fn()
 	}
@@ -3340,6 +3483,19 @@ func (s *Supervisor) ShutdownAll() {
 		}(rt)
 	}
 	wg.Wait()
+	evictDone := make(chan struct{})
+	go func() {
+		s.evictWG.Wait()
+		close(evictDone)
+	}()
+	evictFinished := true
+	evictTimer := time.NewTimer(250 * time.Millisecond)
+	select {
+	case <-evictDone:
+		evictTimer.Stop()
+	case <-evictTimer.C:
+		evictFinished = false
+	}
 	warmupFinished := true
 	if s.warmupDone != nil {
 		warmupTimer := time.NewTimer(50 * time.Millisecond)
@@ -3350,7 +3506,7 @@ func (s *Supervisor) ShutdownAll() {
 			warmupFinished = false
 		}
 	}
-	if warmupFinished && s.wasmEngine != nil {
+	if warmupFinished && evictFinished && s.wasmEngine != nil {
 		_ = s.wasmEngine.Close(context.Background())
 	}
 }
@@ -3580,4 +3736,374 @@ func (s *Supervisor) clearNotebookSaveErrorsLocked(pluginID string, roots []stri
 			clear(view.savePausedConfirm)
 		}
 	}
+}
+
+// SetActiveSettingsTab updates which Settings tab is currently open so plugins
+// whose Settings page or embedded settings section is visible are kept warm.
+func (s *Supervisor) SetActiveSettingsTab(tab string) {
+	if s == nil {
+		return
+	}
+	tab = strings.TrimSpace(tab)
+	s.mu.Lock()
+	prev := s.activeSettingsTab
+	if prev == tab {
+		s.mu.Unlock()
+		return
+	}
+	s.activeSettingsTab = tab
+	var touch []*Runtime
+	if pid, ok := strings.CutPrefix(prev, "plugin:"); ok && pid != "" {
+		if rt := s.runtimes[pid]; rt != nil {
+			touch = append(touch, rt)
+		}
+	} else if prev != "" {
+		for i := range s.installed {
+			app := &s.installed[i]
+			if !app.Enabled || app.Manifest.Contributes == nil {
+				continue
+			}
+			for _, sec := range app.Manifest.Contributes.SettingsSections {
+				if sec.Tab == prev {
+					if rt := s.runtimes[app.Manifest.ID]; rt != nil {
+						touch = append(touch, rt)
+					}
+					break
+				}
+			}
+		}
+	}
+	for _, rt := range touch {
+		rt.touchActivity()
+	}
+	if len(touch) > 0 && !s.stopping {
+		s.ensureIdleSweepLocked()
+	}
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) touchPluginRuntimeActivity(pluginID string) {
+	if s == nil || strings.TrimSpace(pluginID) == "" {
+		return
+	}
+	s.mu.Lock()
+	if rt := s.runtimes[pluginID]; rt != nil {
+		rt.touchActivity()
+		s.ensureIdleSweepLocked()
+	}
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) isPluginSettingsOpenLocked(pluginID string) bool {
+	tab := s.activeSettingsTab
+	if tab == "" {
+		return false
+	}
+	if pid, ok := strings.CutPrefix(tab, "plugin:"); ok {
+		return pid == pluginID
+	}
+	for i := range s.installed {
+		app := &s.installed[i]
+		if app.Manifest.ID != pluginID || !app.Enabled || app.Manifest.Contributes == nil {
+			continue
+		}
+		for _, sec := range app.Manifest.Contributes.SettingsSections {
+			if sec.Tab == tab {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (s *Supervisor) isPluginStageActive(pluginID string) bool {
+	s.stageMu.RLock()
+	defer s.stageMu.RUnlock()
+	return s.activeStage != nil && s.activeStage.PluginID == pluginID
+}
+
+func (s *Supervisor) hasActiveDialog(pluginID string) bool {
+	var dialogIDs []string
+	hasViewToken := false
+	s.mu.RLock()
+	for i := range s.installed {
+		if s.installed[i].Manifest.ID == pluginID && s.installed[i].Manifest.Contributes != nil {
+			for _, d := range s.installed[i].Manifest.Contributes.Dialogs {
+				dialogIDs = append(dialogIDs, d.ID)
+			}
+			break
+		}
+	}
+	for k, vs := range s.views {
+		if k.pluginID != pluginID || vs == nil {
+			continue
+		}
+		if did, ok := strings.CutPrefix(string(k.surface), SurfacePrefixDialog); ok {
+			if !slices.Contains(dialogIDs, did) {
+				dialogIDs = append(dialogIDs, did)
+			}
+			if vs.dialogToken != "" {
+				hasViewToken = true
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	if s.cfg.UI != nil {
+		for _, did := range dialogIDs {
+			if s.cfg.UI.ActiveDialogToken(pluginID, did) != "" {
+				return true
+			}
+		}
+		return false
+	}
+	return hasViewToken
+}
+
+func (s *Supervisor) hasActiveLiveViewLocked(pluginID string, now time.Time) bool {
+	for k, t := range s.liveTimers {
+		if k.pluginID == pluginID && t != nil {
+			return true
+		}
+	}
+	for k, viewedAt := range s.liveViewedAt {
+		if k.pluginID != pluginID || viewedAt.IsZero() {
+			continue
+		}
+		maxIdle := max(s.liveIntervals[k]*2, 2500*time.Millisecond)
+		if now.Sub(viewedAt) <= maxIdle {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Supervisor) hasPendingAutosaveLocked(pluginID string) bool {
+	for k, vs := range s.views {
+		if k.pluginID != pluginID || vs == nil {
+			continue
+		}
+		if vs.autosave.running || len(vs.autosave.edits) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Supervisor) hasPendingSystemEvents(pluginID string) bool {
+	s.system.mu.Lock()
+	defer s.system.mu.Unlock()
+	q := s.system.events[pluginID]
+	return q != nil && len(q.pending) > 0
+}
+
+func (s *Supervisor) ensureIdleSweepLocked() {
+	if s.stopping || len(s.runtimes) == 0 || s.idleSweepArmed {
+		return
+	}
+	delay, hasEligible := s.nextIdleSweepDelayLocked(time.Now())
+	if !hasEligible {
+		return
+	}
+	s.idleSweepArmed = true
+	if s.idleTimer == nil {
+		s.idleTimer = time.AfterFunc(delay, s.sweepIdleRuntimes)
+	} else {
+		s.idleTimer.Reset(delay)
+	}
+}
+
+func (s *Supervisor) nextIdleSweepDelayLocked(now time.Time) (time.Duration, bool) {
+	timeout := s.idleTimeout
+	if timeout <= 0 {
+		timeout = defaultRuntimeIdleTimeout
+	}
+	sweep := s.idleSweepInterval
+	if sweep <= 0 {
+		sweep = defaultRuntimeIdleSweepInterval
+	}
+	minDelay := min(sweep, timeout)
+	var best time.Duration
+	found := false
+	for _, rt := range s.runtimes {
+		if rt == nil || rt.closed.Load() || rt.shuttingDown.Load() || rt.manifest.HasPermission(PermEventsUI) {
+			continue
+		}
+		last := rt.lastActiveAt()
+		if last.IsZero() {
+			continue
+		}
+		rem := timeout - now.Sub(last)
+		if rem <= 0 {
+			rem = sweep
+		}
+		if !found || rem < best {
+			best = rem
+			found = true
+		}
+	}
+	if !found {
+		return 0, false
+	}
+	if best < minDelay {
+		return minDelay, true
+	}
+	return best, true
+}
+
+func (s *Supervisor) sweepIdleRuntimes() {
+	type candidate struct {
+		pluginID string
+		rt       *Runtime
+	}
+
+	now := time.Now()
+	s.mu.Lock()
+	if s.stopping {
+		s.idleSweepArmed = false
+		s.mu.Unlock()
+		return
+	}
+	timeout := s.idleTimeout
+	if timeout <= 0 {
+		timeout = defaultRuntimeIdleTimeout
+	}
+	var candidates []candidate
+	for pluginID, rt := range s.runtimes {
+		if rt == nil || rt.closed.Load() || rt.shuttingDown.Load() {
+			continue
+		}
+		if rt.manifest.HasPermission(PermEventsUI) {
+			continue
+		}
+		last := rt.lastActiveAt()
+		if last.IsZero() || now.Sub(last) < timeout {
+			continue
+		}
+		candidates = append(candidates, candidate{pluginID: pluginID, rt: rt})
+	}
+	s.mu.Unlock()
+
+	evictedCount := 0
+	for _, c := range candidates {
+		unlockRPC, ok := s.tryLockPluginRPC(c.pluginID)
+		if !ok {
+			continue
+		}
+		if s.isPluginStageActive(c.pluginID) || s.hasActiveDialog(c.pluginID) || s.hasPendingSystemEvents(c.pluginID) || s.hasActiveSystemBadge(c.pluginID) {
+			unlockRPC()
+			continue
+		}
+		if s.contrib != nil {
+			if _, running := s.contrib.runningCommandNote(c.pluginID); running {
+				unlockRPC()
+				continue
+			}
+		}
+
+		s.mu.Lock()
+		now = time.Now()
+		last := c.rt.lastActiveAt()
+		_, hasActionKey := s.activeActionKey[c.pluginID]
+		busy := s.stopping ||
+			s.replacingID == c.pluginID ||
+			s.runtimes[c.pluginID] != c.rt ||
+			c.rt.closed.Load() ||
+			c.rt.shuttingDown.Load() ||
+			c.rt.manifest.HasPermission(PermEventsUI) ||
+			c.rt.isIdleBusy() ||
+			last.IsZero() ||
+			now.Sub(last) < timeout ||
+			s.isPluginBusyLocked(c.pluginID) ||
+			s.hasPendingAutosaveLocked(c.pluginID) ||
+			s.activeActionRT[c.pluginID] != nil ||
+			hasActionKey ||
+			s.isPluginSettingsOpenLocked(c.pluginID) ||
+			s.hasActiveLiveViewLocked(c.pluginID, now)
+		if busy {
+			s.mu.Unlock()
+			unlockRPC()
+			continue
+		}
+		delete(s.runtimes, c.pluginID)
+		s.evictWG.Add(1)
+		s.mu.Unlock()
+
+		files.LogInfof("plugin runtime idle-evicted: id=%s idle=%s", c.pluginID, now.Sub(last).Round(time.Millisecond))
+		shutCtx, cancel := context.WithTimeout(s.wasmCtx, 2*time.Second)
+		_ = c.rt.Shutdown(shutCtx)
+		cancel()
+		s.evictWG.Done()
+		unlockRPC()
+		evictedCount++
+	}
+
+	s.mu.Lock()
+	s.idleSweepArmed = false
+	shouldRelease := evictedCount > 0 && !s.stopping
+	if !s.stopping {
+		s.ensureIdleSweepLocked()
+	}
+	s.mu.Unlock()
+	if shouldRelease {
+		s.triggerMemoryRelease()
+	}
+}
+
+func (s *Supervisor) triggerMemoryRelease() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.stopping {
+		s.mu.Unlock()
+		return
+	}
+	releaseFn := s.onMemoryRelease
+	if releaseFn == nil {
+		s.scheduleFreeOSMemoryLocked()
+	}
+	s.mu.Unlock()
+	if releaseFn != nil {
+		releaseFn(idleFreeOSMemoryDebounce)
+	}
+}
+
+// SetMemoryReleaseFunc installs a shared host memory-release scheduler so
+// idle plugin eviction shares debounce and cooldown with the host app.
+func (s *Supervisor) SetMemoryReleaseFunc(fn func(time.Duration)) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.onMemoryRelease = fn
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) scheduleFreeOSMemoryLocked() {
+	if s.stopping {
+		return
+	}
+	delay := idleFreeOSMemoryDebounce
+	if !s.lastFreeOSMem.IsZero() {
+		if rem := idleFreeOSMemoryCooldown - time.Since(s.lastFreeOSMem); rem > delay {
+			delay = rem
+		}
+	}
+	s.freeMemSeq++
+	seq := s.freeMemSeq
+	if s.freeMemTimer != nil {
+		s.freeMemTimer.Stop()
+	}
+	s.freeMemTimer = time.AfterFunc(delay, func() {
+		s.mu.Lock()
+		if s.stopping || s.freeMemSeq != seq {
+			s.mu.Unlock()
+			return
+		}
+		s.freeMemTimer = nil
+		s.lastFreeOSMem = time.Now()
+		s.mu.Unlock()
+		debug.FreeOSMemory()
+	})
 }

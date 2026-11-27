@@ -1686,7 +1686,8 @@ type contribRegistry struct {
 	menubar         map[string]menubarOverlay                                  // "<plugin>/<item>" -> title/tooltip/dynamic menu
 	refreshed       map[string]time.Time                                       // surface refresh requests "<plugin>|<surface>"
 	// commandNote maps a plugin to the note its in-flight command targets.
-	commandNote map[string]string
+	commandNote      map[string]string
+	onMenubarChanged func()
 }
 
 type statusOverlay struct {
@@ -2063,7 +2064,6 @@ func (r *contribRegistry) markWarmedUp(pluginID, version string) {
 func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool) {
 	slotPrefix := "plugin:" + pluginID + "/"
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	changed := false
 	for id := range r.hidden {
 		if strings.HasPrefix(id, slotPrefix) {
@@ -2143,6 +2143,11 @@ func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool
 	delete(r.commandNote, pluginID)
 	if changed {
 		r.saveLocked()
+	}
+	onMenubar := r.onMenubarChanged
+	r.mu.Unlock()
+	if onMenubar != nil {
+		onMenubar()
 	}
 }
 
@@ -3203,6 +3208,12 @@ func (s *Supervisor) TriggerToastActionAsync(pluginID, actionID string, payload 
 // EmitWorkspaceEvent delivers note.opened / theme.changed / locale.changed to
 // already-running plugins that hold events:workspace. It never starts a plugin.
 func (s *Supervisor) EmitWorkspaceEvent(event string, data map[string]any) {
+	if s == nil {
+		return
+	}
+	if event == "locale.changed" {
+		s.notifyMenubarChanged()
+	}
 	s.mu.RLock()
 	targets := make([]*Runtime, 0, len(s.runtimes))
 	for _, rt := range s.runtimes {

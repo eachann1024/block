@@ -8,7 +8,10 @@ import (
 	"time"
 )
 
-const defaultPipeCapacity = 256 * 1024
+const (
+	initialPipeCapacity = 4 * 1024
+	defaultPipeCapacity = 256 * 1024
+)
 
 type memPipe struct {
 	mu            sync.Mutex
@@ -16,7 +19,7 @@ type memPipe struct {
 	buf           []byte
 	head          int
 	size          int
-	cap           int
+	maxCap        int
 	readClosed    bool
 	readErr       error
 	writeClosed   bool
@@ -39,11 +42,41 @@ func newMemPipe(capacity int) (*memPipeReader, *memPipeWriter) {
 		capacity = defaultPipeCapacity
 	}
 	p := &memPipe{
-		buf: make([]byte, capacity),
-		cap: capacity,
+		maxCap: capacity,
 	}
 	p.cond = sync.NewCond(&p.mu)
 	return &memPipeReader{pipe: p}, &memPipeWriter{pipe: p}
+}
+
+func (p *memPipe) growLocked(need int) {
+	curCap := len(p.buf)
+	if curCap >= p.maxCap {
+		return
+	}
+	nextCap := max(curCap, min(p.maxCap, initialPipeCapacity))
+	for nextCap < need && nextCap < p.maxCap {
+		if nextCap > p.maxCap/2 {
+			nextCap = p.maxCap
+			break
+		}
+		nextCap *= 2
+	}
+	if nextCap > p.maxCap {
+		nextCap = p.maxCap
+	}
+	if nextCap <= curCap {
+		return
+	}
+	nextBuf := make([]byte, nextCap)
+	if p.size > 0 {
+		first := min(p.size, curCap-p.head)
+		copy(nextBuf, p.buf[p.head:p.head+first])
+		if first < p.size {
+			copy(nextBuf[first:p.size], p.buf[:p.size-first])
+		}
+	}
+	p.buf = nextBuf
+	p.head = 0
 }
 
 func (r *memPipeReader) Read(dst []byte) (int, error) {
@@ -70,14 +103,19 @@ func (r *memPipeReader) Read(dst []byte) (int, error) {
 		p.cond.Wait()
 	}
 
+	curCap := len(p.buf)
 	n := min(len(dst), p.size)
-	first := min(n, p.cap-p.head)
+	first := min(n, curCap-p.head)
 	copy(dst[:first], p.buf[p.head:p.head+first])
 	if first < n {
 		copy(dst[first:n], p.buf[:n-first])
 	}
-	p.head = (p.head + n) % p.cap
+	p.head = (p.head + n) % curCap
 	p.size -= n
+	if p.size == 0 && (p.writeClosed || p.readClosed) {
+		p.buf = nil
+		p.head = 0
+	}
 	p.cond.Broadcast()
 	return n, nil
 }
@@ -95,6 +133,9 @@ func (r *memPipeReader) CloseWithError(err error) error {
 	if !p.readClosed {
 		p.readClosed = true
 		p.readErr = err
+		p.buf = nil
+		p.size = 0
+		p.head = 0
 		p.cond.Broadcast()
 	}
 	p.mu.Unlock()
@@ -134,11 +175,16 @@ func (w *memPipeWriter) Write(src []byte) (int, error) {
 			return written, os.ErrDeadlineExceeded
 		}
 
-		avail := p.cap - p.size
+		remaining := len(src) - written
+		if p.size+remaining > len(p.buf) && len(p.buf) < p.maxCap {
+			p.growLocked(p.size + remaining)
+		}
+		curCap := len(p.buf)
+		avail := curCap - p.size
 		if avail > 0 {
-			n := min(avail, len(src)-written)
-			tail := (p.head + p.size) % p.cap
-			first := min(n, p.cap-tail)
+			n := min(avail, remaining)
+			tail := (p.head + p.size) % curCap
+			first := min(n, curCap-tail)
 			copy(p.buf[tail:tail+first], src[written:written+first])
 			if first < n {
 				copy(p.buf[:n-first], src[written+first:written+n])
@@ -182,6 +228,10 @@ func (w *memPipeWriter) CloseWithError(err error) error {
 	if !p.writeClosed {
 		p.writeClosed = true
 		p.writeErr = err
+		if p.size == 0 || p.readClosed {
+			p.buf = nil
+			p.head = 0
+		}
 		p.cond.Broadcast()
 	}
 	p.mu.Unlock()

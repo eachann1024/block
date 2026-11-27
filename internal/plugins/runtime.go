@@ -224,14 +224,41 @@ type Runtime struct {
 	nextID       atomic.Int64
 	systemAction atomic.Pointer[systemAction]
 
-	noteMu       sync.Mutex
-	cfgMu        sync.RWMutex
-	closed       atomic.Bool
-	shuttingDown atomic.Bool
+	noteMu         sync.Mutex
+	cfgMu          sync.RWMutex
+	closed         atomic.Bool
+	shuttingDown   atomic.Bool
 	// initialized is set once plugin.initialize succeeds; events wait for it.
-	initialized atomic.Bool
-	syncedEpoch atomic.Uint64
-	abortOnce   sync.Once
+	initialized    atomic.Bool
+	syncedEpoch    atomic.Uint64
+	lastActiveNano atomic.Int64
+	inFlightRPCs   atomic.Int32
+	abortOnce      sync.Once
+}
+
+func (rt *Runtime) touchActivity() {
+	if rt == nil {
+		return
+	}
+	rt.lastActiveNano.Store(time.Now().UnixNano())
+}
+
+func (rt *Runtime) lastActiveAt() time.Time {
+	if rt == nil {
+		return time.Time{}
+	}
+	ns := rt.lastActiveNano.Load()
+	if ns <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
+
+func (rt *Runtime) isIdleBusy() bool {
+	if rt == nil {
+		return false
+	}
+	return rt.inFlightRPCs.Load() > 0 || len(rt.hostCalls) > 0 || rt.systemAction.Load() != nil
 }
 
 func (rt *Runtime) SetNotebookRoot(root string) {
@@ -350,6 +377,7 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		callGate:  make(chan struct{}, 1),
 		hostCalls: make(chan struct{}, maxPluginHostRPCs),
 	}
+	rt.touchActivity()
 
 	files.LogInfof("plugin started: id=%s version=%s", m.ID, m.Version)
 	started = true
@@ -378,6 +406,7 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 			_ = rt.stdout.Close()
 			<-readDone
 		}
+		_ = rt.stdin.Close()
 		_ = rt.stdout.Close()
 		_ = dataRoot.Close()
 		close(rt.reaped)
@@ -830,6 +859,12 @@ func (rt *Runtime) exitedError(prefix string) error {
 }
 
 func (rt *Runtime) call(ctx context.Context, method string, params any, out any) error {
+	if method != "plugin.shutdown" {
+		rt.inFlightRPCs.Add(1)
+		defer rt.inFlightRPCs.Add(-1)
+		rt.touchActivity()
+		defer rt.touchActivity()
+	}
 	select {
 	case rt.callGate <- struct{}{}:
 		defer func() { <-rt.callGate }()
@@ -946,6 +981,7 @@ func (rt *Runtime) readLoop(r io.Reader) {
 			continue
 		}
 		if env.Method != "" {
+			rt.touchActivity()
 			if env.Method == "host.action.progress" {
 				// Process all progress updates inline in readLoop to guarantee strict ordering
 				// across notifications and calls, and prevent semaphore saturation on tight loops.

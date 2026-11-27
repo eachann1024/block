@@ -92,6 +92,7 @@ type pluginHostUI struct {
 
 	closing     chan struct{}
 	closingOnce sync.Once
+	closed      bool
 
 	menubar *pluginMenubar // system tray icons of plugins
 }
@@ -117,6 +118,7 @@ func newPluginHostUI(w *Workspace) *pluginHostUI {
 func (h *pluginHostUI) HostClosing() {
 	h.closingOnce.Do(func() { close(h.closing) })
 	h.mu.Lock()
+	h.closed = true
 	for i := range h.visibleToastsQ {
 		if h.visibleToastsQ[i].timer != nil {
 			h.visibleToastsQ[i].timer.Stop()
@@ -303,6 +305,10 @@ func (h *pluginHostUI) toastReq(req plugins.ToastRequest) plugins.ToastResult {
 	actKey := buildToastActionKey(actCopy, bindingCopy, req.OnAction != nil)
 
 	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		return plugins.ToastResult{}
+	}
 	for i := range h.visibleToastsQ {
 		t := &h.visibleToastsQ[i]
 		if t.PluginID == req.PluginID && t.Message == msg && t.Body == body && t.Tone == normTone && t.actionKey == actKey {
@@ -565,7 +571,7 @@ func (h *pluginHostUI) evictQueuedToastLocked(match func(pluginToast) bool) bool
 }
 
 func (h *pluginHostUI) startVisibleToastTimerLocked(idx int) {
-	if idx < 0 || idx >= len(h.visibleToastsQ) {
+	if h.closed || idx < 0 || idx >= len(h.visibleToastsQ) {
 		return
 	}
 	t := &h.visibleToastsQ[idx]
@@ -592,6 +598,10 @@ func (h *pluginHostUI) expireToast(id uint64, tm *time.Timer) {
 	default:
 	}
 	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		return
+	}
 	idx := -1
 	for i := range h.visibleToastsQ {
 		if h.visibleToastsQ[i].ID == id {
@@ -611,6 +621,9 @@ func (h *pluginHostUI) expireToast(id uint64, tm *time.Timer) {
 func (h *pluginHostUI) setToastHovered(id uint64, hovered bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.closed {
+		return
+	}
 	idx := -1
 	for i := range h.visibleToastsQ {
 		if h.visibleToastsQ[i].ID == id {
@@ -648,6 +661,10 @@ func (h *pluginHostUI) finishToast(id uint64) {
 
 func (h *pluginHostUI) takeToast(id uint64) (pluginToast, bool) {
 	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		return pluginToast{}, false
+	}
 	for i := range h.visibleToastsQ {
 		if h.visibleToastsQ[i].ID == id {
 			taken := h.visibleToastsQ[i]

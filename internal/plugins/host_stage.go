@@ -192,9 +192,11 @@ func (s *Supervisor) CloseActiveStage() {
 		s.stageMu.Unlock()
 		return
 	}
+	closedPluginID := s.activeStage.PluginID
 	s.activeStage = nil
 	onChange := s.cfg.OnStageChange
 	s.stageMu.Unlock()
+	s.touchPluginRuntimeActivity(closedPluginID)
 	if onChange != nil {
 		onChange(nil)
 	}
@@ -215,6 +217,7 @@ func (s *Supervisor) CloseStage(pluginID, stageID string) {
 	s.activeStage = nil
 	onChange := s.cfg.OnStageChange
 	s.stageMu.Unlock()
+	s.touchPluginRuntimeActivity(pluginID)
 	if onChange != nil {
 		onChange(nil)
 	}
@@ -343,8 +346,11 @@ func (s *Supervisor) dispatchStageHostMethod(rt *Runtime, method string, params 
 			onChange = s.cfg.OnStageChange
 		}
 		s.stageMu.Unlock()
-		if closed && onChange != nil {
-			onChange(nil)
+		if closed {
+			s.touchPluginRuntimeActivity(m.ID)
+			if onChange != nil {
+				onChange(nil)
+			}
 		}
 		return map[string]any{"ok": true, "closed": closed}, nil, true
 

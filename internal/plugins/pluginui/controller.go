@@ -112,6 +112,7 @@ func (c *Controller) SettingsTabChanged(previous, current string) {
 	if c.sup == nil {
 		return
 	}
+	c.sup.SetActiveSettingsTab(current)
 	c.CloseTitlebarOverlays()
 	if modals.IsStoreTab(previous) {
 		c.closeStoreReadme()

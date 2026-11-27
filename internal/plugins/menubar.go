@@ -353,6 +353,7 @@ func (s *Supervisor) setMenubar(rt *Runtime, params json.RawMessage) (any, *rpcE
 	s.contrib.menubar[key] = ov
 	s.contrib.mu.Unlock()
 	s.notifyRedraw()
+	s.notifyMenubarChanged()
 	return map[string]any{"ok": true}, nil
 }
 

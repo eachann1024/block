@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	defaultGoMemLimitBytes int64 = 112 << 20 // 112 MiB soft Go heap ceiling
-	defaultGoGCPercent           = 50
+	defaultGoMemLimitBytes int64 = 256 << 20 // 256 MiB soft Go heap ceiling (headroom for large PNG exports)
+	defaultGoGCPercent           = 75
 	minMemoryReleaseInterval     = 15 * time.Second
 )
 

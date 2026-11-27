@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -11,7 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,9 +43,22 @@ type pluginNotificationTarget struct {
 	Relative    string
 }
 
+const (
+	pluginSchedulerTickInterval = time.Minute
+	pluginNetworkPollInterval   = 5 * time.Second
+)
+
+type ifaceAddrEntry struct {
+	name string
+	addr string
+}
+
 func (w *Workspace) AttachPluginSystem(reveal func()) {
 	sup := w.Plugins()
-	w.pluginUI.systemReveal = reveal
+	if w.pluginUI != nil {
+		w.pluginUI.systemReveal = reveal
+		w.pluginUI.menubar.poke()
+	}
 	go systemintegration.PendingTrashRecovery(files.AppDataDir(), func(original, recovery string) {
 		files.LogWarnf("system trash recovery: original=%s recovery=%s", original, recovery)
 		w.notifyBanner(plugins.ToastRequest{
@@ -52,68 +67,174 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 			Tone:    "warning",
 		})
 	})
+	if sup == nil {
+		return
+	}
+	sup.SetMemoryReleaseFunc(ScheduleMemoryRelease)
 	mygo.Network.OnChanged(func(status mygo.NetworkStatus) {
 		sup.EmitSystemEvent("network.changed", status.Online)
 	})
-	go watchPluginNetworkInterfaces(w.pluginUI.closing, sup)
-	go tickPluginSyncInterval(w.pluginUI.closing, sup)
+	if w.pluginUI != nil {
+		netWake := make(chan struct{}, 1)
+		tickWake := make(chan struct{}, 1)
+		go fanoutSignal(w.pluginUI.closing, sup.SystemEventSubscribersChanged(), netWake, tickWake)
+		go watchPluginNetworkInterfaces(w.pluginUI.closing, sup, netWake)
+		go tickPluginSyncInterval(w.pluginUI.closing, sup, tickWake)
+	}
 }
 
-func tickPluginSyncInterval(closing <-chan struct{}, sup *plugins.Supervisor) {
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
+func fanoutSignal(closing <-chan struct{}, src <-chan struct{}, dsts ...chan struct{}) {
+	if src == nil {
+		return
+	}
 	for {
 		select {
 		case <-closing:
 			return
-		case <-ticker.C:
-			sup.TickScheduledJobs(time.Now())
+		case _, ok := <-src:
+			if !ok {
+				return
+			}
+			for _, dst := range dsts {
+				select {
+				case dst <- struct{}{}:
+				default:
+				}
+			}
 		}
 	}
 }
 
-func watchPluginNetworkInterfaces(closing <-chan struct{}, sup *plugins.Supervisor) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	previous, err := networkInterfaceSnapshot()
-	known := err == nil
+func tickPluginSyncInterval(closing <-chan struct{}, sup *plugins.Supervisor, subChanged <-chan struct{}) {
+	if sup == nil {
+		return
+	}
 	for {
-		select {
-		case <-closing:
-			return
-		case <-ticker.C:
-			current, err := networkInterfaceSnapshot()
-			if err != nil {
-				continue
+		for !sup.HasSystemEventSubscribers() {
+			select {
+			case <-closing:
+				return
+			case <-subChanged:
 			}
-			if known && current != previous {
-				sup.EmitSystemEvent("network.changed", mygo.Network.Status().Online)
-			}
-			previous, known = current, true
 		}
+
+		ticker := time.NewTicker(pluginSchedulerTickInterval)
+		for sup.HasSystemEventSubscribers() {
+			select {
+			case <-closing:
+				ticker.Stop()
+				return
+			case <-subChanged:
+			case <-ticker.C:
+				select {
+				case <-closing:
+					ticker.Stop()
+					return
+				default:
+				}
+				if !sup.HasSystemEventSubscribers() {
+					break
+				}
+				sup.TickScheduledJobs(time.Now())
+			}
+		}
+		ticker.Stop()
 	}
 }
 
-func networkInterfaceSnapshot() (string, error) {
+func watchPluginNetworkInterfaces(closing <-chan struct{}, sup *plugins.Supervisor, subChanged <-chan struct{}) {
+	if sup == nil {
+		return
+	}
+	var entries []ifaceAddrEntry
+	var prevBuf, curBuf []byte
+
+	for {
+		for !sup.HasSystemEventSubscribers() {
+			select {
+			case <-closing:
+				return
+			case <-subChanged:
+			}
+		}
+
+		var err error
+		prevBuf, entries, err = appendNetworkInterfaceSnapshot(prevBuf[:0], entries)
+		known := err == nil
+
+		ticker := time.NewTicker(pluginNetworkPollInterval)
+		for sup.HasSystemEventSubscribers() {
+			select {
+			case <-closing:
+				ticker.Stop()
+				return
+			case <-subChanged:
+			case <-ticker.C:
+				select {
+				case <-closing:
+					ticker.Stop()
+					return
+				default:
+				}
+				if !sup.HasSystemEventSubscribers() {
+					break
+				}
+				curBuf, entries, err = appendNetworkInterfaceSnapshot(curBuf[:0], entries)
+				if err != nil {
+					continue
+				}
+				if known && !bytes.Equal(curBuf, prevBuf) {
+					sup.EmitSystemEvent("network.changed", mygo.Network.Status().Online)
+				}
+				prevBuf, curBuf = curBuf, prevBuf
+				known = true
+			}
+		}
+		ticker.Stop()
+		clear(entries)
+		entries = entries[:0]
+		prevBuf = nil
+		curBuf = nil
+	}
+}
+
+func appendNetworkInterfaceSnapshot(dst []byte, entries []ifaceAddrEntry) ([]byte, []ifaceAddrEntry, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return "", err
+		clear(entries)
+		return dst, entries[:0], err
 	}
-	var addresses []string
+	entries = entries[:0]
 	for _, iface := range interfaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
 		assigned, err := iface.Addrs()
 		if err != nil {
-			return "", err
+			clear(entries)
+			return dst, entries[:0], err
 		}
 		for _, addr := range assigned {
-			addresses = append(addresses, iface.Name+"\x00"+addr.String())
+			entries = append(entries, ifaceAddrEntry{
+				name: iface.Name,
+				addr: addr.String(),
+			})
 		}
 	}
-	sort.Strings(addresses)
-	return strings.Join(addresses, "\n"), nil
+	slices.SortFunc(entries, func(a, b ifaceAddrEntry) int {
+		if c := cmp.Compare(a.name, b.name); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.addr, b.addr)
+	})
+	for _, entry := range entries {
+		dst = append(dst, entry.name...)
+		dst = append(dst, 0)
+		dst = append(dst, entry.addr...)
+		dst = append(dst, '\n')
+	}
+	clear(entries)
+	return dst, entries[:0], nil
 }
 
 func (h *pluginHostUI) Capabilities() map[string]bool {
@@ -426,9 +547,22 @@ func (h *pluginHostUI) Reveal(path string, allowed func() bool) error {
 }
 
 func (h *pluginHostUI) Pick(ctx context.Context, save, directory, multiple bool, title, defaultPath string, extensions []string, allowed func() bool) ([]string, error) {
+	if !allowed() {
+		return nil, plugins.ErrSystemCanceled
+	}
+	select {
+	case <-h.closing:
+		return nil, plugins.ErrSystemCanceled
+	default:
+	}
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	done := make(chan struct{})
+	defer func() {
+		cancel()
+		<-done
+	}()
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 		for {
@@ -456,9 +590,6 @@ func (h *pluginHostUI) Pick(ctx context.Context, save, directory, multiple bool,
 	}
 	var paths []string
 	var err error
-	if !allowed() {
-		return nil, plugins.ErrSystemCanceled
-	}
 	if save {
 		var path string
 		path, err = files.SaveDialogGuarded(ctx, win, mygo.SaveDialogOptions{Title: title, DefaultPath: defaultPath, Filters: filters, CreateDirectories: true}, checkBeforeShow)
