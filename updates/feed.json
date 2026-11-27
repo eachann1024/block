@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T06:22:46.705Z",
-  "latest_version": "1.0.947",
-  "latest_tag": "v1.0.947",
+  "updated_at": "2026-11-27T06:31:32.033Z",
+  "latest_version": "1.0.948",
+  "latest_tag": "v1.0.948",
   "releases": [
+    {
+      "version": "1.0.948",
+      "tag": "v1.0.948",
+      "published_at": "2026-11-27T06:31:31Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.948",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "侧边栏：扫描文件时始终忽略旧版同步恢复目录。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Sidebar: The app now always ignores legacy sync recovery directories during file scanning."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-macos-arm64.dmg",
+          "size": 17565840,
+          "sha256": "a783ba25bff67cdc7004a52f19b4f574d68b71455d7baa3f40c55d0d240050b4"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-macos-x64.dmg",
+          "size": 19334055,
+          "sha256": "0ae611022ca6e955504b8dafdb76d6036e878469a806cacdc29734a8a6dfa49c"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-windows-x64-setup.exe",
+          "size": 14958739,
+          "sha256": "ca4f446d20f2654ad25b62051a1d3aae78ab40fa4a87ffb41772bf24905ffa13"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-linux-x64.deb",
+          "size": 12239332,
+          "sha256": "278e86d2c02a568ae008ce1bb36c9d0eb7efe3b2dd324e7071b1c34479f7c20f"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.948/block-linux-x64.AppImage",
+          "size": 25385464,
+          "sha256": "c0d387374cffd2745e189d044c17bff31401a43736496bbda87446c5ea3dffff"
+        }
+      ]
+    },
     {
       "version": "1.0.947",
       "tag": "v1.0.947",
@@ -44,38 +100,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-macos-arm64.dmg",
-          "size": 17565708,
-          "sha256": "a0ca3822d52f833eb527fffae0e89196ab80133ef2549d51fb937a00b68fbb5d"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-macos-x64.dmg",
-          "size": 19333988,
-          "sha256": "403d66501da68a21707fb67083c8723c1b7b737acffae8a6317beac3c8a788b6"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-windows-x64-setup.exe",
-          "size": 14958376,
-          "sha256": "34da1786a54263c139f60136c3f0d9989bd81df606523067b2003c77a37f565d"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-linux-x64.deb",
-          "size": 12239506,
-          "sha256": "e29a7e0351378928c378f3d3500eee163c1cb3140d06f972682d4fd06fbe4344"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-linux-x64.AppImage",
-          "size": 25385464,
-          "sha256": "da5ed33bb8b9c9f66d2b41141a0ad3a9690458695e639ffdbb8912bc9e064134"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.946",
@@ -1658,31 +1683,6 @@
           "Margin annotation cards now allow you to follow up directly on AI replies."
         ],
         "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.896",
-      "tag": "v1.0.896",
-      "published_at": "2026-11-21T09:21:45Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.896",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "插件标题栏的操作按钮统一采用轻量的幽灵样式，并隐藏了多余的空闲状态显示，让界面更加整洁。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "Plugin title bars now feature a unified, lightweight ghost style for action buttons and hide redundant idle statuses to keep the interface clean."
-        ],
         "fixes": [],
         "other": []
       },
