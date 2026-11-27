@@ -1974,12 +1974,7 @@ func lerpRect(a, b ui.Rect, t float32) ui.Rect {
 }
 
 func lerpCameraViewport(from, to Camera, fromW, fromH, toW, toH, curW, curH, t float32) Camera {
-	if t <= 0 {
-		return from
-	}
-	if t >= 1 {
-		return to
-	}
+	t = max(0, min(t, 1))
 	fromScale := from.Scale
 	if fromScale <= 0 {
 		fromScale = 1
@@ -3304,8 +3299,13 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			}
 			if !st.fsAnimActive {
 				st.fsCamAnimActive = false
-				if !st.fsAnimEntering && st.fsCamToValid {
-					st.Camera = st.fsCamTo
+				if st.fsCamToValid {
+					if math.Abs(float64(r.W-st.fsCamToW)) > 2 || math.Abs(float64(r.H-st.fsCamToH)) > 2 {
+						// Target was fitted for an estimated viewport; refit to the real one so it stays centered.
+						st.Camera = FitCamera(worldBounds, r.W, r.H, 28, 22)
+					} else if !st.fsAnimEntering {
+						st.Camera = st.fsCamTo
+					}
 					st.CameraInit = true
 					st.AutoFitPending = false
 				}
