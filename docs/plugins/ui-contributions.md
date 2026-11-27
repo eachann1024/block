@@ -8,7 +8,7 @@
 
 ## 7. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](manifest.md) 的「字段约束」：所有 `ui:*` 界面扩展均已默认放行（注：`block_decorators`、`themes`、`stages` 在清单校验阶段仍要求显式列出对应权限），编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）按需声明。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](manifest.md) 的「字段约束」：所有 `ui:*` 界面扩展在运行时均已默认放行（注：`titlebar_manager`、`block_decorators`、`themes`、`stages` 在清单校验阶段仍要求显式列出对应权限），编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）按需声明。
 
 ### 7.1 多表面（Surfaces）渲染与状态隔离
 
@@ -30,7 +30,7 @@
 1. **`titlebar_buttons`**（最多 **3** 个）：在顶栏右侧挂载图标按钮。顶栏有空位时所有插件按钮都直接显示，仅在空间不足时把放不下的按钮收起；用户可在「更多插件」菜单（点星标或在选中/悬停行按 `P`）或右键/聚焦顶栏插件图标（按 `P` / `Shift+F10`）固定常用按钮（最多固定 3 个，优先展示；槽位满时优先回收已停用/卸载项，有效项满 3 个时替换最早固定项并提示），其余按声明顺序收进顶栏的「更多插件」菜单（带计数角标、插件图标与活跃/角标提示）。菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
    - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（必填 `LocalizedText`）。
    - `command`（可选）与 `panel`（可选）：**必须且只能二选一**，分别引用同清单 `commands[].id` 或 `panels[].id`（点击时执行命令或切换面板）。
-   - **`titlebar_manager`**（可选布尔值）：设为 `true` 时允许该插件调用 `host.titlebar.set_hidden` 隐藏/恢复顶栏槽位。
+1.1. **`titlebar_manager`**（`contributes` 顶层可选布尔值，须在 `manifest.permissions` 中声明 `"ui:titlebar"`）：设为 `true` 时允许该插件调用 `host.titlebar.set_hidden` 隐藏或恢复顶栏槽位。
 2. **`settings_sections`**：在内置设置标签页末尾追加一张声明式设置分区卡片（单卡片标题与分区标题一致时宿主自动去重）。
    - **允许但不建议**：插件设置应放在插件自己的设置页（`manifest.surfaces: ["settings_page"]`），用户在插件页里就能找到全部选项；只有确实属于宿主某个内置页的单项（极少数）才考虑用本扩展点，且不要把同一组设置在两处重复展示。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
@@ -178,16 +178,16 @@
    - 返回：`{"ok": true}`（无宿主 UI 时返回 `-32005`）。
 6. **`host.ui.open_dialog` / `host.ui.close_dialog`**（无需声明权限）
    - 参数：`{"id": "<dialog_id>"}`（`id` 须为本插件声明的 `dialogs[].id`）。
-   - 返回：`open_dialog` 在宿主成功打开后返回 `{"ok": true, "dialog_token": "dlg-..."}`（无宿主 UI 时返回 `-32005`），且用户在对应 `dialog:*` 表面触发 `plugin.action` 时宿主会随参数附带当前活动弹窗的 `"dialog_token"`，插件可严格核对来源表面与一次性令牌；`close_dialog` 返回 `{"ok": true}`。
+   - 返回：`open_dialog` 在宿主成功打开后返回 `{"ok": true, "dialog_token": "dlg-..."}`（无宿主 UI 时返回 `-32005`），且用户在对应 `dialog:*` 表面触发 `plugin.action` 时宿主会随参数附带当前活动弹窗实例的 `"dialog_token"`（同一打开实例内的多次动作复用同一个令牌），插件可核对来源表面与当前弹窗实例；`close_dialog` 返回 `{"ok": true}`。
 7. **`host.ui.open_panel` / `host.ui.close_panel` / `host.ui.toggle_panel`**（无需声明权限）
    - 参数：`{"id": "<panel_id>"}`（`id` 须为本插件声明的 `panels[].id`）。
    - 返回：`open_panel` / `close_panel` 返回 `{"ok": true}`；`toggle_panel` 返回 `{"ok": true, "open": true|false}`（由宿主原子切换并回传当前开关态，避免插件自维护状态与宿主关闭按钮失步）。
 8. **`host.ui.refresh`**（无需声明权限，仅要求目标表面属于 `"settings_page"` 或本插件 `contributes` 声明的表面）
    - 参数：`{"surface": "panel:outline"}`（异步触发对应表面的后台 `plugin.render` 重绘；用户在当前笔记本中尚未打开过的表面不会渲染，首次打开时自然加载最新内容）。
-   - 返回：`{"ok": true}`。
+   - 返回：`{"ok": true}`；若调用时的笔记本上下文与当前打开笔记本不匹配，可能返回 `{"ok": true, "skipped": true}`。
 9. **`host.sidebar.set_badges` / `host.sidebar.get_badges`**（无需声明权限）
-   - `host.sidebar.set_badges` 参数：`{"badge_id": "poop-mark", "notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {"welcome.md": {"text": "2", "tooltip": "含 2 处标记", "tone": "accent"}}}`（`notebook_root` 可选，省略时取当前笔记本；`entries` 最多 512 项，相对路径不可包含 `..` 或 `:`，`text` 禁 Emoji 且 <= 4 字符，`tooltip` 禁 Emoji 且 <= 120 字符，`tone` 支持 `"accent"` | `"success"` | `"warning"` | `"danger"`；`patch: true` 时传 `null` 可删除单项，`clear: true` 一键清空；按插件与笔记本持久化于 `contrib-state.json`）。
-   - `host.sidebar.get_badges` 参数：`{"badge_id": "poop-mark", "notebook_root": "..."}` -> 返回 `{"entries": {...}}`。
+   - `host.sidebar.set_badges` 参数：`{"badge_id": "review-mark", "notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {"welcome.md": {"text": "2", "tooltip": "含 2 处标记", "tone": "accent"}}}`（`notebook_root` 可选，省略时取当前笔记本；`entries` 最多 512 项，相对路径不可包含 `..` 或 `:`，`text` 禁 Emoji 且 <= 4 字符，`tooltip` 禁 Emoji 且 <= 120 字符，`tone` 支持 `"accent"` | `"success"` | `"warning"` | `"danger"`；`patch: true` 时传 `null` 可删除单项，`clear: true` 一键清空；按插件与笔记本持久化于 `contrib-state.json`）。
+   - `host.sidebar.get_badges` 参数：`{"badge_id": "review-mark", "notebook_root": "..."}` -> 返回 `{"entries": {...}}`。
 9.1. **`host.sidebar.set_file_icons` / `host.sidebar.get_file_icons`**（无需声明权限，需声明 `contributes.file_icons`）
    - `host.sidebar.set_file_icons` 参数：`{"notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {".": {"icon": "book", "tint": "blue"}, "welcome.md": {"icon": "wave", "tint": "blue"}}, "prefs": {"picker": true, "sync_tabs": true}}`（`notebook_root` 省略时取当前笔记本；`"."` 表示笔记本自身图标，其余为笔记本内相对路径；`entries` 最多 2048 项，`icon` 须存在于图标包，`tint` 支持 `"none"` | `"blue"` | `"teal"` | `"green"` | `"amber"` | `"red"` | `"purple"`；`patch: true` 时传 `null` 删除单项，`clear: true` 清空当前笔记本映射；`prefs` 覆盖选择器与标签页同步开关；文件重命名/移入回收站时宿主自动同步路径）。
    - `host.sidebar.get_file_icons` 参数：`{"notebook_root": "..."}` -> 返回 `{"notebook_root": "...", "entries": {...}, "recent": [...], "prefs": {"picker": true, "sync_tabs": true}}`。
@@ -209,21 +209,17 @@
     - `host.ui.theme_skin_state`（`{}`）：返回 `{"id", "enabled", "skin_id"}`。
     - `host.ui.set_theme_skin`（`{"id", "enabled": true|false}`）：应用或关闭声明的主题皮肤并持久化于 `contrib-state.json`，同时停用其他插件皮肤。
 15. **`host.stage.*`**（需声明 `contributes.stages` 与对应界面权限）
-    - `host.stage.open`：`{"id", "route", "state"}`（`route` 兼容别名 `room`；`state` 为 JSON 对象，<= 2 MiB）-> `{"ok": true, "open": true, "stage": {...}}`。
+    - `host.stage.open`：`{"id", "route", "state"}`（`route` 兼容别名 `room`；`state` 接受任意合法 JSON，<= 2 MiB）-> `{"ok": true, "open": true, "stage": {...}}`。
     - `host.stage.close`：`{"id"}` -> `{"ok": true, "closed": true|false}`。
     - `host.stage.state`（`{}`）：返回 `{"open": true|false, "stage_id", "route", "state"}`。
-    - `host.stage.emit`：`{"id", "event", "payload"}` -> `{"ok": true}`（向打开中的舞台 WebView 推送事件）。
+    - `host.stage.emit`：`{"id", "event", "payload"}`（`payload` 上限 2 MiB）-> `{"ok": true}`（向打开中的舞台 WebView 推送事件）。
 
-### 7.5 特定场景与通用视觉宿主方法
+### 7.5 编辑区背景能力（`host.ui.backdrop` / `host.ui.set_backdrop`）
 
-以下接口服务于编辑区背景装饰与原生塔罗模式等特定视觉能力（无需声明权限，按实际场景按需调用）：
+以下接口用于控制声明在 `contributes.backdrops` 中的编辑区矢量或纸纹背景（无需额外声明权限，按需调用）：
 
-1. **`host.ui.backdrop` / `host.ui.set_backdrop`**（编辑区矢量/纸纹背景，适用于壁纸装饰与点阵/方格纸纹插件如 `block-poop-everywhere`、`block-canvas-dots`）
-   - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
-   - `host.ui.set_backdrop`（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
-2. **`host.ui.tarot_state` / `host.ui.set_tarot`**（宿主原生塔罗模式，适用于 `block-tarot` 官方扩展）
-   - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
-   - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
+- **`host.ui.backdrop`**（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
+- **`host.ui.set_backdrop`**（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
 
 <!-- ai-guide:skip-start -->
 ---

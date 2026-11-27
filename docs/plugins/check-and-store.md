@@ -9,17 +9,17 @@
 ## 9. 本地协议检查命令
 
 ```bash
-CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/到你的插件目录
+CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check [-bilingual] /绝对路径/到你的插件目录
 ```
 
-终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。若清单仍声明了已默认放行的权限（如 `storage`、`ui:*`、`system:notify`、`system:badge`），校验器会输出 `[WARN]` 提示删减（不阻断通过）。
+`-bilingual` 须放在目录路径之前，单次只接收一个插件目录。终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。若清单声明了已默认放行的权限（如 `storage`、`ui:*`、`system:notify`、`system:badge`），校验器会输出 `[WARN]` 提示删减（不阻断通过；注意 `titlebar_manager`、`block_decorators`、`themes`、`stages` 在清单校验阶段仍需要对应 `ui:*` 权限，勿据此误删）。
 
-- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `network_domains`、`exec_allowlist`、`permission_reasons` 键匹配、字数与禁 Emoji 规则）、`languages` / `file_icons` / `themes` / `stages`（含 `web/` 离线四层外网隔离与体积校验）、目录安装、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无需运行时入口，仅校验清单、双语文档与语法编译；`entry.js` / `entry.wasm` 在内置 `wazero` + `quickjs-ng` 沙盒中实跑验证）。
-- **双语门禁**：当 `manifest.repo` 属于官方仓库（`blockmd-plugins/*`）时，校验器会**自动启用双语检查**（官方仓库 CI 建议显式追加 `-bilingual` 参数，避免清单漏写 `repo` 时跳过双语门禁；社区插件也可追加 `-bilingual` 主动开启）：
+- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `network_domains`、`exec_allowlist`、`permission_reasons` 键匹配、字数与禁 Emoji 规则）、`languages` / `file_icons` / `themes` / `stages`（含 `web/` 静态外网字面量与体积校验）、目录安装（含纯声明式语言包）、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无运行时入口，只校验清单、目录安装、双语文档与语法编译；`entry.js` / `entry.wasm` 在内置 `wazero` + `quickjs-ng` 沙盒中实跑验证）。
+- **双语门禁**：当 `manifest.repo` 属于官方组织（`blockmd-plugins/*`）时，校验器会自动启用双语检查（`verified.json` 1:1 绑定由商店采集器执行；官方仓库 CI 建议显式追加 `-bilingual`，避免清单漏写 `repo` 时跳过检查；社区插件也可追加 `-bilingual` 主动开启）：
   1. 校验清单中 `name.en`、`summary.en`、`contributes.*.en` 及已声明的 `permission_reasons[*].en` 均为非空纯英文且不含中文字符或中文标点；
   2. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；若 README 引用了本地图片或 SVG，本地资产须存在，位图与含中文资源须为中英文版本分别提供独立路径，纯英文 UTF-8 `.svg`（零中文字符及全角标点）可由 `README.md` 与 `README.en.md` 共用同一路径（英文版引用的 `.svg` 不得包含中文字符或全角标点）；
-  3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下全部界面文案与动作反馈零中文残留，且中英文初始渲染输出不同（注意：CLI 不自动调用 `plugin.command`，命令返回文案需在桌面端英文模式下复测）。
-- **CLI 边界说明**：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `GetPerfSnapshot`（调用 `host.perf.snapshot` 会收到 `-32005`）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端使用临时笔记本进一步验证。
+  3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下选定的界面字段及动作返回的 `status`/`page` 零中文残留，并在存在渲染表面时校验中英文初始渲染输出不同（注意：CLI 不扫描按钮动态状态标签或部分时间轴扩展字段，无表面的纯命令插件也没有渲染差异可比，且不自动调用 `plugin.command`，命令返回文案需在桌面端英文模式下复测）。
+- **CLI 边界说明**：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `ContribHost`、系统集成、AI 或 `GetPerfSnapshot` 后端（`host.perf.snapshot` 返回 `-32005`；`store_changelog` 虽出现在 `ui_capabilities` 中，但在 CLI 下调用会返回 `-32601`；`stages` 仅做静态校验）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端进一步验证。
 
 ---
 
@@ -31,9 +31,9 @@ Block 应用商店采用无审批自动采集机制。**硬门槛与采集上限
 
 1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过「本地协议检查命令」检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，其上架认证以 `verified.json` 为准）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），README 引用的位图及含中文资源须提供独立的中英文版本（纯英文 `.svg` 可共用），交互式插件还须支持 `locale="en"` 英文界面**；已审核作者（`eachann1024/*`）与社区插件同样建议提供双语文档、双语配图与 `permission_reasons`。
 2. 在 GitHub 仓库主页右侧 **About -> Topics** 添加标签：**`blockmd-plugin`**。
-3. 发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致）：
-   - **官方推荐自动版本号与发布门禁**：复用 `blockmd-plugins/block-sync` 的 `.github/workflows/release.yml`（`Daily Release`）。仓库 `manifest.json` 仅保留主次版本基线（如 `"1.2.0"`），日常改动直接推送 `main`；工作流每天 `00:00 UTC`（或手动 `workflow_dispatch`）检测代码或双语 README 变更，**打包前强制执行 `README.md` / `README.en.md` 与 `locale="en"` 英文界面门禁（未通过即中止发布）**，通过后以 `<major>.<minor>.<提交总数>` 生成候选版本（若不高于已有最高版本则递增）动态写入产物包并发布 Release，不向 `main` 回写提交。
-   - **手动发版**：也可推送 `vX.Y.Z` Tag 触发同工作流打包对应版本。
+3. 推荐发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致；若暂未发布合适 Release，采集器会回退到固定提交 SHA 的默认分支源码包）：
+   - **自动化发布实践**：可在仓库配置定时或手动触发的 GitHub Actions 发布工作流，在打包前执行清单/双语门禁与冒烟检查，通过后按 SemVer 生成新版本号（如基于主次版本基线递增补丁号）写入归档产物并发布 Release，不向 `main` 回写提交。
+   - **手动发版**：也可直接推送 `vX.Y.Z` Tag 触发打包并发布对应版本的 Release。
 
 4. **线上采集与校验规则**（由 `blockmd-plugins/store-index` 仓库的采集任务及 `cmd/block-store-crawler` 执行）：
    - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包，且会先解析默认分支当前提交 SHA 并固定到不可变归档地址（`codeload.github.com/{repo}/tar.gz/{commit_sha}`），防止后续推送导致索引 `sha256` 失效。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。

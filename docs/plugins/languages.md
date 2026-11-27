@@ -10,7 +10,7 @@
 
 语言扩展插件用于为 Block 补充代码语法高亮与编辑辅助，采用**纯声明式、零子进程、零权限**模型在宿主机内直接运行：
 
-- **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何运行时或外部子进程，安装页也不展示危险权限提示。
+- **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry`、`permissions`（必须为空数组，即使只填 `"storage"` 也会失去免入口资格）、`surfaces` 以及 `contributes` 中除 `languages` 外的任何运行时贡献（包括 `titlebar_buttons`、`titlebar_manager`、`settings_sections`、`commands`、`*_menu`、`panels`、`sidebar_sections`、`file_badges`、`file_icons`、`backdrops`、`block_decorators`、`themes`、`stages`、`status_items`、`dialogs`、`menubar_items`）时，插件以纯声明式模式加载，不启动任何运行时或子进程，安装页也不展示危险权限提示。
 - **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
 - **内置语言与覆盖顺序**：主程序已内置 C、C++、C#、Java、Kotlin、Scala、Groovy/Gradle（含 `Jenkinsfile`）、Swift、Dart、Go（含 `go.mod` / `go.sum`）、Rust、Python（含 `requirements.txt`）、Ruby、PHP、Lua、R、Elixir、HEEx/EEx、JavaScript、TypeScript、HTML、Vue、Svelte、Astro、Handlebars/Mustache、EJS、Go/Helm 模板、CSS/SCSS/Less、JSON/JSONC/JSONL、YAML（含 Clash/Stash `.stoverride`）、TOML、INI/Properties/systemd/xcconfig、Dotenv（`.env` / `.env.*`）、Surge/代理规则（`.sgmodule` / `.lpx` / `.plugin` / `.module` / `.list` 及 Surge `.conf`）、Nginx、Apache/htaccess、HAProxy、Caddyfile、SSH Config、Crontab、Procfile、Ignore（`.gitignore` 等）、Hosts、HTTP 请求、XML（含 `.ps1xml`）、Property List（含 `.entitlements` / `.strings` / `.pbxproj`）、SQL、Prisma、GraphQL、Protobuf、Thrift、Shell、PowerShell、Windows Batch、Dockerfile、Makefile、CMake、Justfile、HCL、Nix、Zig、ERB、Jinja、Diff、Markdown 等常用语言，无需安装插件；语言扩展只需覆盖小众语言。已启用插件声明的文件名、后缀或标识与内置语言重名时，**插件优先**。
 - **生命周期**：首次安装纯声明式语言扩展时**自动启用**；纯声明式语言扩展不占用侧栏设置页，可在应用商店详情页管理与卸载（卸载或停用后编辑器与代码块高亮**实时生效**，移除对应语言注册）。若插件声明了运行时入口、权限或界面表面，则遵循 [清单与权限](manifest.md) 的「字段约束」与交互式插件生命周期。已安装的旧版 Go Modules 和 Property List 扩展仍可管理，并按安装来源显示认证状态。卸载后由主程序提供高亮。
@@ -68,7 +68,7 @@ Grammar JSON 采用严格解码：**禁止重复键、禁止未知字段**。
 扫描器行为说明：
 - 每一步仅在当前剩余切片 `line[pos:]` 上匹配 `\A(?:match)`，因此 `^` 等价于当前扫描位置而非整行行首，`\b` 也会把 `line[pos:]` 开头视为词边界；为避免关键字规则误标标识符后缀（如 `untrue` 中的 `true`），请在关键字规则之后放置整词标识符规则（如 `[A-Za-z_][A-Za-z0-9_]*`）。
 - 若当前位置无任何规则命中，扫描器消耗 **1 个 UTF-8 字符**并输出 `text`，然后继续前进。
-- 当 `pos == len(line)` 到达行尾时循环直接结束，因此零宽 `$` 退栈规则不会在行尾触发；单行上下文请用消费到行尾的规则（如 `[^\n]*` 或换行外字符匹配）或状态切换处理。
+- 当 `pos == len(line)` 到达行尾时循环直接结束，且空行会直接返回而不运行规则；因此行尾不会触发零宽 `$` 退栈，也不要假设单行临时状态能在空行自动弹出。单行结构应在同一条规则内消费完行内内容（不压入跨行状态），仅对真正跨行的块结构（如多行注释、多行字符串）使用 `push`/`pop`。
 
 #### 全部合法 `token` 名称（共 25 个）
 

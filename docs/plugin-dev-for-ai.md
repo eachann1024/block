@@ -1,6 +1,6 @@
 # Block 应用商店插件开发指南（AI 自包含规范 v1 · `blockmd`）
 
-> 本文由 `bun run docs:sync` 自动从 [`docs/plugins/`](https://github.com/eachann1024/block/tree/main/docs/plugins) 各章节拼装生成，与 GitHub 仓库文档及在线文档站 [docs.block.cooool.top/plugins](https://docs.block.cooool.top/plugins/) 保持同源同步。
+> 本文由 `bun run docs:sync` 自动从 [`docs/plugins/`](https://github.com/eachann1024/block/tree/main/docs/plugins) 各章节拼装生成，与 GitHub 仓库文档及在线文档站 [docs.block.cooool.top/plugins](https://docs.block.cooool.top/plugins/) 保持同源同步。英文版见 [en/plugin-dev-for-ai.md](https://docs.block.cooool.top/en/plugin-dev-for-ai.md)。
 
 本文是开发、校验与发布 **Block** 应用商店插件的**唯一权威规范**。AI 或开发者无需阅读 Block 宿主源码，仅凭本文即可从零构建可安装、渲染原生 Ocean Paper 设置页、并通过本地协议检查的插件。
 
@@ -8,13 +8,13 @@
 
 ## 1. 开发前必读（AI 执行指南）
 
-外部插件**无需向主仓提 PR 或人工审批**，放在独立公开、非 Fork、未归档 GitHub 仓库，添加 `blockmd-plugin` Topic 并发布正式 Release（非 Draft / Prerelease）即可参与商店自动采集（仅抓取 stars 降序前 100 仓库；详见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「发布到应用商店（`blockmd-plugin` 自动采集）」）；任意阶段均可在桌面端通过本地目录、`owner/repo` 或 HTTPS 压缩包直接安装。
+外部插件**无需向主仓提 PR 或人工审批**，放在独立公开、非 Fork、未归档 GitHub 仓库并添加 `blockmd-plugin` Topic 即可参与商店自动采集（仅抓取 stars 降序前 100 仓库；推荐发布非 Draft / Prerelease 正式 Release，无可用 Release 时采集器会回退到固定提交 SHA 的默认分支源码包，详见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「发布到应用商店（`blockmd-plugin` 自动采集）」）；任意阶段均可在桌面端通过本地目录、`owner/repo` 或 HTTPS 压缩包直接安装。
 
 ### 1.1 先定路径（三类开发路径决策表）
 
 | 开发路径 | 适用场景 | 交付结构 | 关键说明 |
 | --- | --- | --- | --- |
-| 功能 / 社区插件 | 同步、图床、导出、AI 面板、宿主 UI 扩展等交互功能 | 独立仓库 + `manifest.json` + `entry.js`（内置 `wazero` + `quickjs-ng` 沙盒；重计算可用 `entry.wasm`） | 零外部运行时依赖；加 `blockmd-plugin` Topic 发正式 Release 参与自动采集 |
+| 功能 / 社区插件 | 同步、图床、导出、AI 面板、宿主 UI 扩展等交互功能 | 独立仓库 + `manifest.json` + `entry.js`（内置 `wazero` + `quickjs-ng` 沙盒；重计算可用 `entry.wasm`） | 插件入口无需用户预装外部运行时（仅在显式调用 `host.exec.run` 时依赖宿主机器上的白名单程序）；加 `blockmd-plugin` Topic 参与自动采集 |
 | 纯语法高亮语言扩展 | 为小众语言提供代码块与源码编辑器高亮 | 独立仓库 + `manifest.json`（`category: "language"`）+ `grammars/*.json` | 零子进程、零权限，安装自动启用，详见 [语言扩展](https://docs.block.cooool.top/plugins/languages) |
 | `blockmd-plugins/*` 官方认证 | 官方维护且在 `store/verified.json` 1:1 绑定的插件 | 独立仓库 + `manifest.json` + 入口或语法 | 强制要求中英双语 `README` 与 `locale="en"` 英文界面门禁 |
 
@@ -24,10 +24,10 @@
 2. **禁自绘启停开关、卸载按钮或越界直写宿主 UI**：设置页与常规扩展优先声明 `UIPage` JSON，启停开关、顶栏控制与卸载菜单由宿主托管（见下文「原生设置挂载、商店展示与 README 渲染」）；确需自定义交互画布时，仅可使用 `contributes.stages` 声明的离线 `block-plugin://` WebView 舞台（禁止加载外网资源，详见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions)）。
 3. **严禁静态文案出现任何 Emoji**：违规直接拒载；图标仅用 `manifest.icon` 双色 SVG，`view_box` 为 `"0 0 24 24"`，`stroke_paths` 至少 1 条（见下文「进程通信、环境变量与强制校验细则」与 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」）。
 4. **严禁编造未定义字段或非法键值**：`manifest.json`（`<= 256 KiB` 禁重复键）与 `UIPage` 启用 `DisallowUnknownFields`；`id` 须匹配 `^[a-z0-9][a-z0-9-]{1,47}$` 且不得为 `block-diagnostics`；`surfaces` 仅允许 `["settings_page"]` 或空数组；`category` 选 5 个展示分类之一，纯语言扩展必填 `"language"`，禁用已停用的 `sync` / `publish`（见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」）。
-5. **交互式插件必须使用内置沙盒**。入口字段见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」。`stdout` 仅输出按行分隔的 JSON-RPC 2.0，日志写入 `stderr` 并即时刷新。
-6. **读写数据使用宿主提供的路径**。使用 `plugin.initialize` 传入的 `data_dir`、`downloads_dir` 或 `host.fs.*`。可用环境变量见下文「进程通信、环境变量与强制校验细则」。
-7. **禁过度申请权限、禁忽略关闭信号**：仅按需声明 5 类 15 项敏感权限，移除默认放行的冗余权限 `storage` / `ui:*` / `system:notify` / `system:badge`，敏感权限建议填 `permission_reasons`；收到 `plugin.shutdown` 须在 2s 内退出且不再调 `host.*`（见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」与下文「超时与体积上限」）。
-8. **禁让初始页按钮在空/默认配置下崩溃或执行破坏性操作**：`block-plugin-check` 会以无参与默认值渲染、逐项切换选项并调用初始页全部 `header_actions` 与顶层 `actions`，且忽略 `visible_when`；配置未齐时应安全返回 `{ok: false, message: "..."}`（见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「本地协议检查命令」）。
+5. **交互式插件必须使用内置沙盒**。入口字段见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」。`stdout` 仅输出按行分隔的 JSON-RPC 2.0，日志写入 `stderr` 并即时刷新；`entry.js` 按 ES module 加载且 `serve` / `callHost` 为同步接口（不得传入返回 Promise 的 `async` 回调）。
+6. **读写数据通过宿主 RPC 访问授权路径**：沙盒自身仅挂载只读 `/plugin` 与 `/runtime`，无法直接打开宿主机绝对路径；状态持久化使用 `host.storage.*`，读写 `data_dir`、`downloads_dir`、笔记本或授权目录使用 `host.fs.*` 与 `host.notes.*`。可用环境变量见下文「进程通信、环境变量与强制校验细则」。
+7. **禁过度申请权限、禁忽略关闭信号**：仅按需声明 5 类 15 项敏感权限，移除非必需的默认放行权限（`titlebar_manager`、`block_decorators`、`themes`、`stages` 仍需显式声明对应 `ui:*` 权限，删权限时同步删对应 `permission_reasons`），敏感权限建议填 `permission_reasons`；收到 `plugin.shutdown` 须在 2s 内退出且不再调 `host.*`（见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」与下文「超时与体积上限」）。
+8. **禁让初始页按钮在空/默认配置下崩溃或执行破坏性操作**：`block-plugin-check` 会以无参与默认值渲染、逐项切换选项并调用初始页全部 `header_actions` 与顶层 `actions`，且忽略 `visible_when`；配置未齐时应安全返回 `{"ok": false, "status": "..."}`（见 [检查与上架](https://docs.block.cooool.top/plugins/check-and-store) 的「本地协议检查命令」）。
 
 ### 1.3 标准开发步骤（标「不可跳过」的严禁省略）
 
@@ -78,8 +78,11 @@
 
 ### 2.1 进程通信、环境变量与强制校验细则
 
-- **内置沙盒**使用 `wazero` 运行 WASI 模块，内存上限为 512 页（32 MiB）。JS 入口由内置的 `quickjs-ng` 执行，堆上限 16 MiB，栈上限 1 MiB，自动注入 `/runtime/block-sdk.js`，并以只读方式挂载 `/plugin` 和 `/runtime`。两种入口通过 `stdin` 和 `stdout` 传输按行分隔的 UTF-8 JSON-RPC 2.0。宿主保留 `stderr` 末尾最多 64 KiB 用于调试。切换笔记本或语言后，宿主会在下次调用插件时按新上下文重新初始化沙盒。当前打开的表面会立即触发重渲染。
-- **环境变量白名单**包含 `BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR` 和 `BLOCKMD_DOWNLOADS_DIR`。
+- **内置沙盒**：宿主使用 `wazero` 运行 WASI Preview 1 模块（线性内存上限 512 页 / 32 MiB），仅以只读方式向沙盒挂载 `/plugin`（插件目录）与 `/runtime`（内置 SDK），不直接挂载宿主机目录。
+  - **`entry.js`**：由内置 `quickjs-ng` 以 ES module 加载（默认堆上限 16 MiB、栈上限 1 MiB），自动注入 `/runtime/block-sdk.js`；SDK 的 `serve` 与 `callHost` 均为同步接口（请勿传入返回 Promise 的 `async` 处理函数，否则 Promise 对象会直接进入 JSON 序列化）。
+  - **`entry.wasm`**：直接获得 WASI Preview 1 环境，需自行通过 `stdin` / `stdout` 读写按行分隔的 UTF-8 JSON-RPC 2.0。
+  - 宿主保留 `stderr` 末尾最多 64 KiB 用于调试。切换笔记本或语言时，宿主会按需在下次调用按新上下文重新初始化沙盒（当前打开的表面以及部分外观/界面类插件会立即重渲染或预热）。
+- **环境变量白名单**包含 `BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR` 和 `BLOCKMD_DOWNLOADS_DIR`。注意：这些值均为宿主机绝对路径，沙盒内无法直接用本地文件 API 打开，应作为参数传给 `host.fs.*` 或用于日志与路径拼接。
 - **两项强制校验规则（违规直接拒绝加载）**：
   1. **禁止 Emoji**：`manifest.json` 的 `name`、`author`、`summary`、`permission_reasons`、`contributes` 静态文案，以及 `UIPage` 的静态界面文案（`page.title`、`card.title`、控件 `label`、按钮 `label`、`placeholder`、`empty_text`、`kv.rows[].label`、`metrics[].label`、`checklist.options[].badge`、`treemap` 瓦片 `label`/`detail` 与 `summary.total_label`、`preview.badge`/`cards[].badge`）**严禁包含 Emoji**（覆盖标准与扩展 Emoji 区块、变体选择符 `U+FE00–U+FE0F`、区域指示符/标签序列、ZWJ/键帽组合及常见 Emoji 符号如 `⭐`/`⌚`/`‼` 等），图标仅通过 `manifest.icon` 双色 SVG 路径定义。用户笔记内容、路径等动态字段（如 `page.status`、`card.meta`、`options[].label`/`detail`、`kv.rows[].value`、`metrics[].value`、`preview` 标题与正文、`log_list.entries`）放行用户原有字符，但插件自写文案仍应避免 Emoji。
   2. **严格 JSON 解码**：`manifest.json`（上限 256 KiB，须为单个 JSON 对象，且禁止重复键）与 `UIPage` 启用 `DisallowUnknownFields`，**严禁出现未定义字段名**（外层 JSON-RPC 包与 `host.*` 参数使用普通解码；`UIItem` 为共享结构，已知字段仅在消费它的 `kind` 上生效）。
@@ -89,16 +92,17 @@
 - **运行超时与终止**
   - 首载 15s 和编辑预览 8s 在取得插件 RPC 锁后起算。定时轮询 5s 包含锁等待。各自的预算由初始化和渲染共享。
   - `plugin.command` 单次有 30s，含锁等待与按需初始化。`events:workspace`（`note.opened`、`theme.changed`、`locale.changed`）单次有 5s，只投递给已启动的沙盒。
-  - `plugin.action` 120s 含可取消的排队等待与表单补刷（顶栏运行胶囊提供 `■` 取消按钮）。
+  - 页面按钮触发的 `plugin.action` 排队阶段可取消，获得插件 RPC 锁后起算 120s 预算（包含按需初始化与动作前表单补刷，顶栏运行胶囊提供 `■` 取消按钮）；由通知横幅触发的 `surface: "toast"` 动作另走 30s 预算（含锁等待）。
   - 保存和删除事件在取得插件 RPC 锁后共享 45s。声明 `network` 或 `system:fs` 的插件分别有 15s 初始化预算和 120s 事件预算。系统事件取得锁后有 15s 初始化预算，事件本身有 45s。声明 `network`、`system:fs` 或 `system:exec` 的插件有 120s 事件预算。
   - 宿主回写 `host.*` 响应的 5s 超时在宿主方法执行完成后起算。
   - `plugin.shutdown` 有 2s 正常退出时间。超时后宿主终止沙盒，再等待最多 1s 回收。
   - 本地校验器 `block-plugin-check` 为 `plugin.initialize` 单独执行与桌面一致的 15s 预算，单语言整轮总超时 20s。
-- **体积与打包上限**：
+- **体积与打包上限（区分宿主上限与沙盒内存）**：
   - 插件发往宿主（`stdout`）的单行 JSON-RPC 扫描上限 **98 MiB**（覆盖 16 MiB 笔记在最坏 6× JSON 转义下的体积与 RPC 信封；宿主发往插件 `stdin` 无此扫描上限）。
-  - 同时在途 `host.*` 调用上限 **8** 个（超出将中止插件沙盒）。
+  - 同时在途 `host.*` 请求上限 **8** 个（超出将中止插件沙盒；不含无 `id` 的 `host.action.progress` 通知，但带 `id` 的进度请求仍计入槽位）。
   - 私有存储 `state.json` 序列化上限 **8 MiB**。
   - 笔记读取与 `host.notes.write` 单文件上限 **16 MiB**；`host.editor.insert` 单次插入文本上限 **4 MiB**。
+  - `host.fs.read`/`write` 与 `host.http.request` 的 64 MiB 上限是宿主侧限额；默认 `entry.js` 的 QuickJS 堆上限为 **16 MiB**（且需同时容纳 JSON 与 Base64 编码副本），大文件传输应优先使用宿主侧流式接口（`host.fs.copy`、`host.http.request` 的 `body_file_path` / `save_to_path`）而非一次性读入 JS 内存。
   - 安装归档下载 <= **64 MiB**、单文件 <= **32 MiB**、解包或本地目录复制总计 <= **256 MiB**（tar 解压流 <= **320 MiB**）、路径/条目数 <= **8192**（含推导父目录）、单路径 <= 1024 字节且 `< 32` 级目录、禁止 `\` 与 `:`、仅允许普通文件与目录（不支持符号链接）。
 
 ### 2.3 原生设置挂载、商店展示与 README 渲染
@@ -117,10 +121,25 @@
 - **存储路径**
   - 安装路径：`<BlockAppData>/apps/<plugin-id>/`
   - 私有存储：`<BlockAppData>/apps-data/<plugin-id>/state.json`（停用状态与目录缓存位于 `<BlockAppData>/apps-cache/`）
-- **生命周期与安全替换**：新安装的交互式插件默认停用，用户手动启用后才会启动；纯声明式语言扩展首次安装自动启用；同 `id` 升级保留原有启用状态。使用已停用运行方式的已装插件显示「需要更新」，并暂停运行。商店目录提供更高版本时可使用原有「更新」按钮。手动安装同 `id` 不要求版本递增。
+- **生命周期与安全替换**：新安装的交互式插件默认停用，用户手动启用后才会启动；纯声明式语言扩展首次安装自动启用；同 `id` 升级保留原有启用状态。手动安装同 `id` 不要求版本递增。
   - 首次安装请求敏感权限（笔记与编辑、系统凭据、剪贴板、系统文件与外部操作、网络访问）的插件，或更新时新增敏感权限，宿主会先弹出权限确认卡片，用户点击确认后才落盘；「全部更新」会先更新无新增敏感权限的插件，将新增敏感权限的更新留待用户逐项确认。宿主校验候选包与现有包清单、关闭旧沙盒，再通过两步目录重命名配合 `.previous` 备份完成可恢复替换；非交互接口默认拒绝跨来源、旧包无来源记录或新增权限的替换。桌面卸载移除插件程序，并保留私有配置供重新安装。
 - **外部深度链接（`block://`、`blockmd://` 的 `store` / `install`）**：按 `repo` → `url` → `id` 顺序取**第一个非空**查询参数，仅用该单一值匹配当前目录中的 `id`、`repo` 或精确 `download_url`（未命中时不会回退尝试后续参数，直接停留在商店列表），不自动安装。
 - **保留 ID**：`block-diagnostics` 对应 Block 内置「性能与占用」窗口，宿主拒绝安装与启用该 ID、设置侧栏不挂载，远程采集器、缓存合并与离线内置索引回退均会过滤该 ID。
+
+### 2.5 运行时变更与旧版插件迁移说明
+
+Block 在 `v1.0.947` 引入内置沙盒入口（`entry.js` / `entry.wasm`），并在 `v1.0.954` 停止支持外部进程入口（`entry.command`）。这一调整将交互式插件的运行环境统一收敛到内置 `wazero` / `quickjs-ng` 沙盒与受控宿主 RPC 上，减少用户环境对 Python 等外部解释器的依赖，并使文件、网络和外部命令权限边界在宿主层统一执行。
+
+- **新安装与校验行为**：新安装、重新导入与 `block-plugin-check` 均会拒绝任何包含 `entry.command` 字段的清单（包括 `"command": null` 或同时声明 `entry.js` 与 `entry.command` 的包）。
+- **已安装旧插件的用户侧表现**：升级到新版 Block 后，本机已存在且仅声明 `entry.command`（不含 `js`/`wasm` 且其余清单字段通过兼容校验；已停用包跳过收紧后的 `exec_allowlist` 规则以保证可识别）的旧安装会保留在列表与侧栏中，状态标记为「需要更新 / Update required」：
+  - 宿主强制暂停其运行，禁止手动启用并隐藏设置页标题栏开关；
+  - `<BlockAppData>/apps-data/<plugin-id>/` 下的私有配置与启停偏好保持不变；
+  - 当商店目录提供有效下载地址且版本严格更高（按 SemVer 比较）时，用户可直接点击原有「更新」按钮原地升级到新版沙盒包；也可通过本地目录或仓库手动覆盖安装同 `id` 的新版包。
+- **开发者迁移清单**：
+  1. 保持 `manifest.id` 不变并发布严格更高的 `manifest.version`，确保用户可从商店原地更新并沿用既有配置。
+  2. 将 `entry.command` 改为 `entry.js`（由内置 `quickjs-ng` 按 ES module 加载，使用 `/runtime/block-sdk.js` 的同步 `serve` / `callHost`）或 `entry.wasm`（WASI Preview 1，自行处理 stdio JSON-RPC）。
+  3. 将原脚本直接访问宿主机文件、发起网络请求或启动子进程的逻辑，逐项迁移至 `host.fs.*`（`system:fs`）、`host.http.request`（`network` + `network_domains`）与 `host.exec.run`（`system:exec` + `exec_allowlist`）。
+  4. 核对新增敏感权限及 `permission_reasons`；若插件使用 `host.secrets.*`，需注意宿主按安装来源隔离凭据，正式发布应保持同一商店来源。
 
 ---
 
@@ -216,9 +235,9 @@ example-sync/
   - **谁说了算**：插件出现在哪个标签只由本字段决定，商店与宿主不做人工改判；要换分类，改 `category` 后发布新版本，商店索引下一轮采集即生效。
   - 已停用的 `"sync"` 与 `"publish"` 仍可通过校验，但统一归入 `"tools"`；新插件不要再使用。
   - **未填与校验**：未填 `category` 时默认归入 `"tools"`。`block-plugin-check` 对未填或使用停用值的插件输出 `[WARN]`；**官方插件（`blockmd-plugins/*` 或 `verified.json` 认证）必须显式填写当前分类**，否则检查失败且商店采集拒收。商店索引会自动同步 `category` 与 `file_extensions`。
-- 纯声明式语言扩展可省略 `entry`。交互式插件必须指定以下一个入口，使用插件目录内的相对路径，禁止符号链接与越界。
-  - `entry.js` 指向 `.js` 或 `.mjs`，由内置 `quickjs-ng` 沙盒执行并自动注入 `/runtime/block-sdk.js`。
-  - `entry.wasm` 指向 `.wasm` WASI 模块（最多 32 MiB），适合重计算。
+- 纯声明式语言扩展可省略 `entry`（此时须同时保持 `permissions` 为空数组且不声明任何非 `languages` 的 `contributes`）。交互式插件必须且只能指定以下一个入口（不再接受 `entry.command`，包括 `"command": null`）；入口须为插件目录内的相对路径，禁止首尾空白、禁止路径中出现**任意 `..` 子串**（例如 `build..prod.js` 也会被拒）、禁止 `\`、`:` 与符号链接。清单阶段校验路径格式，安装阶段校验普通文件与体积上限，运行阶段执行 Wasm 编译或 JS 加载：
+  - `entry.js`：指向 `.js` 或 `.mjs`，由内置 `quickjs-ng` 沙盒按 ES module 执行并自动注入 `/runtime/block-sdk.js`。
+  - `entry.wasm`：指向 `.wasm` WASI Preview 1 模块（线性内存上限 32 MiB），适合重计算。
 - `surfaces`：可选数组；需要独立设置页时声明 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions) 的「多表面（Surfaces）渲染与状态隔离」）。语言扩展、主题/外观等无需独立设置页的插件可省略或为空数组 `[]`，安装后不占用侧栏设置页，直接在应用商店详情页管理与卸载。
 - `permissions`：可选数组（按需声明），不可重复。有效权限共 **30 项**（5 类 15 项敏感权限 + 3 项静默事件 + 12 项默认放行），按是否涉及用户数据或外部系统分为三层：
   - **5 类敏感权限（需用户安装/更新确认，共 15 项）**：仅当插件用到以下能力时才需声明；首次安装或更新新增其中任一项时，宿主会弹出确认卡片请用户点头：
@@ -226,15 +245,15 @@ example-sync/
     2. **系统凭据**：`"system:secrets"`（读写系统钥匙串/凭据管理器中该插件隔离的凭据）
     3. **剪贴板**：`"system:clipboard_read"`（读取系统剪贴板）、`"system:clipboard_write"`（写入系统剪贴板）
     4. **系统文件与外部操作**：`"system:trash"`（经原生确认框移入回收站）、`"system:open"`（打开网页链接或在文件管理器定位文件）、`"system:dialogs"`（打开系统文件/目录选择框）、`"system:fs"`（在 `data_dir`、`downloads_dir`、已知笔记本及用户明确授权路径内调用 `host.fs.*`）、`"system:exec"`（通过 `host.exec.run` 无 Shell 运行 `exec_allowlist` 白名单程序）、`"ai:complete"`（通过 `host.ai.*` 调用已配置 AI 模型或打开 AI 面板）
-    5. **网络访问（插件自述）**：`"network"`（声明插件会通过 `host.http.request` 或外部请求联网；配合 `network_domains` 限制目标域名）
+    5. **网络访问**：`"network"`（调用 `host.http.request` 的强制权限；可配合 `network_domains` 进一步限定允许访问的目标主机）
     - 系统集成与 `host.fs.*` / `host.http.request` / `host.exec.run` / `host.ai.*` 细则见 [协议、UI 与骨架](https://docs.block.cooool.top/plugins/protocol-and-ui)。
   - **静默事件订阅（按需声明，不弹窗确认，共 3 项）**：仅作为事件订阅开关，不会触发安装/更新权限弹窗：
     - `"events:note_saved"`：订阅笔记保存事件（`plugin.event`）
     - `"events:system"`：订阅系统唤醒、网络变化、焦点事件及 `host.scheduler.*` 后台定时任务
     - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已启动的沙盒）
-  - **已免声明能力（默认放行，无需写入 `permissions`，共 12 项）**：插件私有存储 `"storage"`、全部 9 项界面扩展 `"ui:*"`（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）、系统原生通知 `"system:notify"` 与 Dock 角标 `"system:badge"` 均已默认放行，新插件直接调用或通过 `contributes` 声明即可（注：`contributes.block_decorators`、`contributes.themes`、`contributes.stages` 在清单校验阶段仍要求显式写出对应权限以完成声明校验）。旧插件清单保留这些字段仍完全兼容，`block-plugin-check` 会以 `[WARN]` 提醒可删减。
-- `network_domains`：可选字符串数组（最多 64 项、不可重复），限制 `host.http.request` 目标主机与重定向目标；支持精确域名（`"api.example.com"`）、端口形式（`"127.0.0.1:8080"`）或单前缀通配（`"*.example.com"`），禁止协议前缀、路径与空白。省略时仅依赖 `"network"` 声明。
-- `exec_allowlist` 为可选字符串数组，最多 8 项且不可重复。`host.exec.run` 只执行列表内的程序名（如 `git` 或 `rclone`）。程序名须匹配 `^[a-zA-Z0-9._-]+$`，禁止路径分隔符、Shell 和脚本解释器。
+  - **已免声明能力（默认放行，共 12 项）**：插件私有存储 `"storage"`、全部 9 项界面扩展 `"ui:*"`（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）、系统原生通知 `"system:notify"` 与 Dock 角标 `"system:badge"` 在运行时均默认放行。**四项清单校验例外**：若声明了 `contributes.titlebar_manager: true`（需 `"ui:titlebar"`）、`contributes.block_decorators`（需 `"ui:appearance"` 或 `"editor:write"`）、`contributes.themes`（需 `"ui:appearance"`）或 `contributes.stages`（需 `"ui:appearance"` / `"ui:commands"` / `"ui:panels"`），清单仍必须显式保留对应权限（注意：`block-plugin-check` 当前也会对这几项输出 `[WARN]`，勿据此误删）。删除其他确属冗余的权限时，须同步删除其在 `permission_reasons` 中的对应键；纯声明式语言扩展必须保持 `permissions` 为空数组，即使只填 `"storage"` 也会失去免入口资格。
+- `network_domains`：可选字符串数组（最多 64 项、不区分大小写去重），限制 `host.http.request` 目标主机与重定向目标：支持精确主机（`"api.example.com"`，允许任意端口）、显式端口形式（`"127.0.0.1:8080"`，匹配 URL 中显式填写的端口）或单前缀通配（`"*.example.com"`，仅匹配子域而不含裸域），禁止协议前缀、路径与空白。无论是否配置本字段，运行时都会拦截未指定地址、链路本地与 `0.0.0.0/8`；配置本字段后，普通域名若解析到私网或回环 IP 同样会被拒绝（显式 IP 字面量与 `localhost` / `*.localhost` 除外）。
+- `exec_allowlist`：可选字符串数组（最多 8 项、区分大小写去重与运行时匹配）。`host.exec.run` 仅允许从宿主 `PATH` 启动列表内的裸程序名（如 `"git"` 或 `"rclone"`）。程序名须匹配 `^[a-zA-Z0-9._-]+$`，禁止 `.`、`..`、路径分隔符以及以下禁用名单（剥离 `.exe` / `.cmd` / `.bat` / `.com` 后按小写比对）：`sh`、`bash`、`zsh`、`dash`、`fish`、`cmd`、`powershell`、`pwsh`、`python`、`pythonw`、`py`、`pyw`、`node`、`perl`、`ruby`、`osascript`，以及匹配 `^(pythonw?|pyw?)[0-9]+(\.[0-9]+)*$` 的版本化 Python 解释器名称。
 - `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions) 与 [语言扩展](https://docs.block.cooool.top/plugins/languages)。
 - `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。
 
@@ -269,22 +288,21 @@ example-sync/
        "notebooks": ["/abs/path/to/notebook", "/abs/path/to/other-notebook"],
        "locale": "zh",
        "theme": "system",
-       "tarot": false,
-       "host_version": "1.0.854",
+       "host_version": "1.0.958",
        "ui_capabilities": [
          "kv_tooltip", "treemap", "checklist_add_folder", "action_feedback",
          "action_progress", "note_revision", "sidebar_sections", "open_settings"
        ]
      }
      ```
-     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧沙盒并按新 `notebook_root` 重新初始化。
+     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本时，宿主通常在下次调用该插件且目标根目录不同（含后台 `note.saved` 事件）时关闭旧沙盒并按新 `notebook_root` 重新初始化；部分外观或界面扩展类插件会在切本时立即预热。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
-     - `ui_capabilities`：渐进能力声明数组，旧宿主可能省略部分键；全部 34 项能力键说明见下文「兼容性与平台实现说明」。
+     - `ui_capabilities`：渐进能力声明数组，最多包含 37 项能力键（含按配置与平台追加的键，旧宿主可能省略部分键）；完整清单见下文「兼容性与平台实现说明」。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
    - 请求 `params`：例如 `{"surface": "settings_page", "values": {"protocol": "webdav"}}`。
-     - 首次打开、切换笔记本/当前笔记/笔记本列表、动作前表单补刷、定时轮询及 `note.saved` 成功后刷新时省略 `values`。
+     - 首次打开、切换笔记本/当前笔记/笔记本列表、定时轮询及 `note.saved` 成功后刷新时省略 `values`；动作前表单补刷在存在未同步编辑时可能携带这些 `values`。
      - 用户在界面编辑控件时（离散控件约 25ms 防抖，文本输入约 220ms 防抖），`values` 仅包含用户尚未同步的改动字段。将这些字段合并到持久配置后生成预览；需要显式提交的表单由 `plugin.action` 保存。
    - 返回 `result`：包含必填 `page`（严格解码）与可选 `values`。
      - **值合并规则**：
@@ -320,7 +338,7 @@ example-sync/
        "reveal_path": "/Users/name/Downloads/欢迎使用 Block.html"
      }
      ```
-     - **按钮态标签覆盖**：可选返回 `busy_label`、`success_label`、`error_label`、`retry_label`（均禁 Emoji），动态覆盖按钮在运行、成功、失败与重试态的展示文案。
+     - **按钮态标签覆盖与扩展字段**：可选返回 `busy_label`、`success_label`、`error_label`、`retry_label`（均禁 Emoji）动态覆盖按钮在运行、成功、失败与重试态的展示文案；另可选返回 `icon`（自定义状态图标）与 `synced_notebooks`（字符串数组，用于同步完成后通知宿主刷新指定笔记本状态）。错误或提示文案应写入 `status`（宿主不读取 `message` 字段）。
      - **表单更新顺序**：若同时返回 `page` 与 `values`，宿主先用新 `page` 的控件默认值覆盖对应键，再应用 `result.values` 并清除对应字段的未同步标记；若 `page.status` 为空且 `result.status` 非空，宿主自动将 `result.status` 填入 `page.status`。
      - **动作反馈（`ok` / `tone` / `status`）**：合法 `tone`（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`）优先级最高；未知或空 `tone` 回退按 `ok` 判定（`true` 为 `success`，`false` 为 `danger`）；两者均省略时按 `status` 关键词推断，未命中默认 `"success"`。卡片内按钮返回 `danger`/`warning` 且 `status` 非空时，在按钮上方显示提示条，`success`/`info` 在按钮旁显示单行状态；`header_actions` 在顶栏展示状态。`success` 态按钮会短暂切换为绿色勾选态（2.4s）；`action_id` 为 `test_conn`、以 `test_` 开头或以 `_test` 结尾的连接测试按钮会保持成功态，直到用户修改表单或触发下一次动作。
      - **打开与定位输出文件（`open_path` / `reveal_path`）**：使用 `open_path`、`reveal_path` 请求宿主处理输出文件。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
@@ -360,7 +378,7 @@ example-sync/
 4. **`host.notebooks.list`**（需 `"notes:read"`，忽略参数）
    - `{}` -> `{"notebooks": [{"path": "/abs/path/to/notebook", "name": "notebook", "active": true}]}`（`active` 反映当前运行时上下文根，建议配合 `checklist` 控件勾选范围）。
 5. **`host.notes.list`**（需 `"notes:read"`）
-   - `{"notebook_root": "/abs/path/to/notebook"}`（可选；解码失败按省略处理；省略且运行时根为空时返回 `[]`；传未注册笔记本报 `-32003`）-> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
+   - `{"notebook_root": "/abs/path/to/notebook"}`（可选；解码失败按省略处理；省略且运行时根为空时返回 `{"notes": []}`；传未注册笔记本报 `-32003`）-> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
 6. **`host.notes.read`**（需 `"notes:read"`）
    - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选，省略且运行时根为空报 `-32602`；`path` 必填）-> `{"path": "welcome.md", "content": "# 欢迎...", "revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`
 7. **`host.notes.write`**（需 `"notes:write"`）
@@ -408,39 +426,40 @@ example-sync/
      ```
 
 12. **`host.store.changelog`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"store_changelog"`）
-    - 查询指定插件（省略 `id` 时默认查当前插件自身）的商店更新日志：`{"id": "block-sync", "locale": "zh-CN", "limit": 10}`（`id`、`locale`、`limit` 均可选，`limit` 默认 `10`、上限 `20`）。
-    - 宿主按「商店静态 JSON API（`changelogs/<id>.json` + jsDelivr 镜像）→ GitHub Releases API → 商店索引内联 `changelog` → 本地 `CHANGELOG.md`」顺序解析，返回结构化 `PluginChangelog`（含 `id`、`repo`、`latest_version`、`changelog_url`、`source`、`releases[]` 及双语 `zh`/`en` 分组条目）；暂无更新日志返回 `-32004`，拉取失败返回 `-32005`。
+    - 查询指定插件（省略 `id` 时默认查当前插件自身）的商店更新日志：`{"id": "example-sync", "locale": "zh-CN", "limit": 10}`（`id`、`locale`、`limit` 均可选，`limit` 默认 `10`、上限 `20`）。
+    - 宿主按「商店静态 JSON API（`changelogs/<id>.json` + jsDelivr 镜像）→ GitHub Releases API → 商店索引内联 `changelog` → 本地 `CHANGELOG.md`」顺序解析，返回结构化 `PluginChangelog`（含 `id`、`repo`、`latest_version`、`changelog_url`、`source`、`releases[]` 及双语 `zh`/`en` 分组条目；回退到本地 `CHANGELOG.md` 时正文在 `markdown` 字段，`releases` 可能为 `null`）；暂无更新日志返回 `-32004`，拉取失败返回 `-32005`。
 
 13. **`host.log`**（无需额外权限；旧宿主返回 `-32601`，插件应静默停用）
     - `{"entries": [{"level": "info", "event": "delete_remote", "notebook_root": "/abs/path/to/notebook", "path": "notes/old.md", "protocol": "webdav", "detail": "成功"}]}` -> `{"ok": true}`，把插件自己的操作记录写进宿主诊断日志 `logs/block.log`，便于用户反馈时一并导出。
     - `level` 取 `info`（默认）/`warn`/`error`；每次最多 200 条，超出部分丢弃；各字段折叠为单行并截断至 400 字节。合法的笔记本相对 `path` 会被换成绝对路径再脱敏，与宿主自身日志的路径代号一致。**不得传入笔记正文或密钥。**
 
-14. **`host.fs.*`**（需 `"system:fs"`，仅限 `data_dir`、`downloads_dir`、已授权笔记本及 `granted-paths.json` 授权路径，经 `os.Root` 拒绝符号链接与路径逃逸）
+14. **`host.fs.*`**（需 `"system:fs"`，仅接受宿主机绝对路径；解析符号链接后再经 `os.Root` 校验授权范围并拒绝越界。授权范围含 `data_dir`、`downloads_dir`、`granted-paths.json` 登记路径，以及已注册笔记本——读取笔记本还须持 `"notes:read"`，写入笔记本还须持 `"notes:write"`。`data_dir` 下的宿主受保护文件 `granted-paths.json`、`scheduler.json`、`state.json` 禁止直接改写；`host.system.open_dialog`/`save_dialog` 仅返回路径，表单目录选择器与菜单栏拖放等入口才登记文件授权）
     - `host.fs.list_grants`（`{}`）：返回 `{"grants": [...], "data_dir", "downloads_dir", "notebooks": [{"path", "writable"}]}`。
-    - `host.fs.stat`（`{"path"}`） / `host.fs.list`（`{"path", "recursive"}`，最多 10000 条；返回 `{"path", "entries", "truncated": bool}`，达到 10000 条上限截断时 `"truncated"` 为 `true`）。
-    - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、上限 64 MiB） / `host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`，上限 64 MiB）。
-    - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive"}`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents"}`） / `host.fs.copy`（`{"from", "to", "overwrite", "mkdir_parents"}`，宿主流式原子复制普通文件，不经过 Wasm 内存） / `host.fs.atomic_swap`（`{"path_a", "path_b"}`，同目录两文件交换）。
+    - `host.fs.stat`（`{"path"}`）：返回 `{"exists", "path", "name", "is_dir", "is_regular", "size", "mod_time", "mod_time_ms", "is_icloud_placeholder"}`。
+    - `host.fs.list`（`{"path", "recursive"}`，最多 10000 条）：返回 `{"path", "entries": [...], "truncated": bool}`（每项含 `stat` 同名元数据，递归模式另含 `rel_path`；达到上限截断时 `"truncated"` 为 `true`）。
+    - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、宿主上限 64 MiB）-> `{"path", "encoding", "size", "content"|"content_base64"}`；`host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`，宿主上限 64 MiB）。
+    - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive"}`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents"}`，跨不同授权根时回退为先复制再删除） / `host.fs.copy`（`{"from", "to", "overwrite", "mkdir_parents"}`，宿主流式原子复制普通非符号链接文件，不经过 Wasm 内存；不可同路径，且 `from`/`to` 不可为授权根目录本身；返回 `{"ok": true, "from", "to", "size"}`） / `host.fs.atomic_swap`（`{"path_a", "path_b"}`，同目录两文件交换，平台不支持原子交换时可能成功但返回 `atomic: false`）。
 
 15. **`host.crypto.*`**（内存计算无需额外权限；`host.crypto.hash` 传入 `file_path` 时需 `"system:fs"`）
     - `host.crypto.hash`：`{"algorithm": "sha1"|"sha256"|"sha512"|"md5", "text"|"base64"|"file_path"}`（三选一）-> `{"algorithm", "hex", "base64", "size"}`。
     - `host.crypto.hmac`：`{"algorithm": "sha1"|"sha256"|"sha512", "key_text"|"key_base64", "data_text"|"data_base64"}` -> `{"algorithm", "hex", "base64"}`。
 
-16. **`host.http.request`**（需 `"network"`，受 `manifest.network_domains` 白名单限制）
+16. **`host.http.request`**（需 `"network"`，受 `manifest.network_domains` 白名单与 SSRF 地址限制约束）
     - 参数：`{"url", "method", "headers", "body"|"body_base64"|"body_file_path", "save_to_path", "mkdir_parents", "response_encoding": "utf8"|"base64"|"none", "timeout_ms", "max_response_bytes"}`。
-    - 支持 `GET`/`POST`/`PUT`/`DELETE`/`HEAD`/`PATCH`/`OPTIONS`/`PROPFIND`/`MKCOL`/`MOVE`/`COPY`；超时默认 30s（上限 120s），响应默认 16 MiB（上限 64 MiB），最多 10 次重定向（跨域自动剥离 `Authorization` 与 `Cookie`），`body_file_path` / `save_to_path` 额外要求 `"system:fs"`；返回 `{"status", "headers", "bytes", "final_url", "body"|"body_base64", "saved_path"}`。
+    - 支持 `GET`/`POST`/`PUT`/`DELETE`/`HEAD`/`PATCH`/`OPTIONS`/`PROPFIND`/`MKCOL`/`MOVE`/`COPY`；超时默认 30s（上限 120s），响应默认 16 MiB（上限 64 MiB），最多 9 次重定向（第 10 个候选跳转即拒绝，跨 origin 自动剥离 `Authorization`、`Cookie` 与 `Proxy-Authorization`）；`body_file_path` / `save_to_path` 额外要求 `"system:fs"`，传 `save_to_path` 时 `response_encoding` 默认为 `"none"`；非 2xx 状态码仍作为正常响应返回且在指定 `save_to_path` 时同样落盘；返回 `{"status", "headers", "bytes", "final_url", "body"|"body_base64", "saved_path"}`。
 
-17. **`host.exec.run`**（需 `"system:exec"`，无 Shell 执行 `manifest.exec_allowlist` 白名单程序）
-    - 参数：`{"program", "args", "cwd", "env", "stdin", "timeout_ms", "max_output_bytes"}`（`cwd` 须为授权目录，默认 `data_dir`；`env` 仅放行安全变量与最多 16 项安全 `GIT_CONFIG_*`，强制 `GIT_TERMINAL_PROMPT=0`；超时默认 30s/上限 120s，输出默认 1 MiB/上限 8 MiB）。
+17. **`host.exec.run`**（需 `"system:exec"`，从宿主 `PATH` 无 Shell 执行 `manifest.exec_allowlist` 白名单程序，匹配区分大小写）
+    - 参数：`{"program", "args", "cwd", "env", "stdin", "timeout_ms", "max_output_bytes"}`（`args` 最多 256 项；`cwd` 须为授权目录，默认 `data_dir`；`env` 仅放行安全变量与最多 16 项安全 `GIT_CONFIG_*`，强制 `GIT_TERMINAL_PROMPT=0`；超时默认 30s/上限 120s，`max_output_bytes` 分别作用于 `stdout` 与 `stderr`，默认各 1 MiB/上限各 8 MiB）。
     - 返回：`{"exit_code", "stdout", "stderr", "stdout_truncated", "stderr_truncated", "timed_out"}`。
 
 18. **`host.scheduler.*`**（需 `"events:system"`，持久化于 `scheduler.json`，每插件最多 32 个任务）
-    - `host.scheduler.register`：`{"id", "interval_sec", "event", "require_network", "run_on_wake", "run_on_network_restore", "run_on_focus"}`（`interval_sec` 钳制 `60`–`86400`，`event` 默认 `"scheduler.tick"`）-> `{"ok": true, "id"}`。
+    - `host.scheduler.register`：`{"id", "interval_sec", "event", "require_network", "run_on_wake", "run_on_network_restore", "run_on_focus"}`（`interval_sec` 钳制 `60`–`86400`，`event` 默认 `"scheduler.tick"`）-> `{"ok": true, "id"}`。触发时通过 `plugin.event` 下发 `{"event", "job_id", "trigger", "online", "timestamp"}`（持笔记权限时附带 `notebook_root`）。
     - `host.scheduler.unregister`（`{"id"}` -> `{"ok": true}`）与 `host.scheduler.list`（`{}` -> `{"jobs": [...]}`）。
 
 19. **`host.ai.*`**（需 `"ai:complete"`）
     - `host.ai.status`（`{}`）：返回 `{"enabled", "ready", "streaming"}`。
-    - `host.ai.complete`：`{"system_prompt", "user_prompt", "max_tokens"}`（提示词合计 <= 128 KiB、`max_tokens` <= 16384、120s 超时）-> `{"text", "model"}`。
-    - `host.ai.open_with_prompt`：`{"prompt", "note_path"}` -> `{"ok": true}`（预填提示词并打开 AI 面板）。
+    - `host.ai.complete`：`{"system_prompt", "user_prompt", "max_tokens"}`（`user_prompt` 必填非空、提示词合计 <= 128 KiB、`max_tokens` <= 16384、120s 超时）-> `{"text", "model"}`（`model` 可省略）。
+    - `host.ai.open_with_prompt`：`{"prompt", "note_path"}`（`prompt` 上限 128 KiB）-> `{"ok": true}`（预填提示词并打开 AI 面板）。
 
 ### 4.3 系统集成
 
@@ -463,8 +482,8 @@ example-sync/
 
 ### 4.4 兼容性与平台实现说明
 
-- **全部 `ui_capabilities` 能力键**（旧宿主可能省略，用于渐进启用特性）：
-  `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`toast_banner`（右上角全局通知横幅支持 `body`/`action`、`shown` 返回值与默认插件图标）、`open_settings`（`host.ui.open_settings` 打开插件设置页）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）、`menubar`（系统菜单栏图标 `contributes.menubar_items` 与 `host.menubar.set`）、`menubar_drop`（菜单栏图标接收拖放，目前仅 macOS）。
+- **全部 `ui_capabilities` 能力键**（最多 37 项，旧宿主或特定平台/配置可能省略部分键，用于渐进启用特性）：
+  `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`toast_banner`（右上角全局通知横幅支持 `body`/`action`、`shown` 返回值与默认插件图标）、`open_settings`（`host.ui.open_settings` 打开插件设置页）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）、`system_integration`（`host.system.*` / `host.clipboard.*` / `host.secrets.*` 系统集成能力）、`menubar`（系统菜单栏图标 `contributes.menubar_items` 与 `host.menubar.set`）、`menubar_drop`（菜单栏图标接收拖放，目前仅 macOS）。
 - **各平台系统集成细节**：
   macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 需要通知服务支持 `actions` 才能点击通知，`notify_click:false` 时仍可能显示通知。Linux 系统凭据需在系统凭据管理器中先解锁。单次运行最多保留最近 128 条插件原生通知。系统选择框已打开时，原生后端可能需要用户关闭窗口，宿主会丢弃已过期动作的选择结果。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
 - **安全回收实现机制**：
@@ -749,22 +768,41 @@ example-sync/
 
 ## 6. `entry.js` + `/runtime/block-sdk.js` 通信骨架
 
-宿主内置 `wazero` + `quickjs-ng` 沙盒会自动注入 `/runtime/block-sdk.js`（同时挂到 `globalThis` 的 `BlockSDK`、`serve`、`callHost`、`notifyHost`、`send`、`log`、`HostRPCError`）：
+宿主内置 `wazero` + `quickjs-ng` 沙盒以 ES module 加载 `entry.js`，并自动注入 `/runtime/block-sdk.js`（同时挂到 `globalThis` 的 `BlockSDK`、`serve`、`callHost`、`notifyHost`、`send`、`log`、`HostRPCError`）。注意：`serve` 与 `callHost` 均为同步调用，请勿传入 `async` 处理函数（Promise 会直接被序列化为空对象）；下例自带 `locale` 切换，可直接通过 `-bilingual` 双语检查：
 
 ```javascript
+let locale = 'zh';
+const tr = (zh, en) => (locale.toLowerCase().startsWith('en') ? en : zh);
+
 serve((method, params) => {
   switch (method) {
     case 'plugin.initialize':
+      locale = String(params?.locale || 'zh');
       return { ready: true };
     case 'plugin.render':
       return {
         page: {
-          title: 'Example',
-          cards: [{ id: 'main', items: [{ kind: 'kv', rows: [{ label: '状态', value: '正常' }] }] }],
+          title: tr('示例插件', 'Example Plugin'),
+          cards: [
+            {
+              id: 'main',
+              items: [
+                {
+                  kind: 'kv',
+                  rows: [{ label: tr('状态', 'Status'), value: tr('正常', 'OK') }],
+                },
+              ],
+            },
+          ],
         },
       };
     case 'plugin.action':
-      return { ok: true, tone: 'success', status: '已完成' };
+      return { ok: true, tone: 'success', status: tr('已完成', 'Done') };
+    case 'plugin.event':
+      if (params?.event === 'locale.changed' && params?.locale) {
+        locale = String(params.locale);
+      }
+      return { handled: true };
     case 'plugin.shutdown':
       return { ok: true };
     default:
@@ -777,7 +815,7 @@ serve((method, params) => {
 
 ## 7. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」：所有 `ui:*` 界面扩展均已默认放行（注：`block_decorators`、`themes`、`stages` 在清单校验阶段仍要求显式列出对应权限），编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）按需声明。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」：所有 `ui:*` 界面扩展在运行时均已默认放行（注：`titlebar_manager`、`block_decorators`、`themes`、`stages` 在清单校验阶段仍要求显式列出对应权限），编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）按需声明。
 
 ### 7.1 多表面（Surfaces）渲染与状态隔离
 
@@ -799,7 +837,7 @@ serve((method, params) => {
 1. **`titlebar_buttons`**（最多 **3** 个）：在顶栏右侧挂载图标按钮。顶栏有空位时所有插件按钮都直接显示，仅在空间不足时把放不下的按钮收起；用户可在「更多插件」菜单（点星标或在选中/悬停行按 `P`）或右键/聚焦顶栏插件图标（按 `P` / `Shift+F10`）固定常用按钮（最多固定 3 个，优先展示；槽位满时优先回收已停用/卸载项，有效项满 3 个时替换最早固定项并提示），其余按声明顺序收进顶栏的「更多插件」菜单（带计数角标、插件图标与活跃/角标提示）。菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
    - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（必填 `LocalizedText`）。
    - `command`（可选）与 `panel`（可选）：**必须且只能二选一**，分别引用同清单 `commands[].id` 或 `panels[].id`（点击时执行命令或切换面板）。
-   - **`titlebar_manager`**（可选布尔值）：设为 `true` 时允许该插件调用 `host.titlebar.set_hidden` 隐藏/恢复顶栏槽位。
+1.1. **`titlebar_manager`**（`contributes` 顶层可选布尔值，须在 `manifest.permissions` 中声明 `"ui:titlebar"`）：设为 `true` 时允许该插件调用 `host.titlebar.set_hidden` 隐藏或恢复顶栏槽位。
 2. **`settings_sections`**：在内置设置标签页末尾追加一张声明式设置分区卡片（单卡片标题与分区标题一致时宿主自动去重）。
    - **允许但不建议**：插件设置应放在插件自己的设置页（`manifest.surfaces: ["settings_page"]`），用户在插件页里就能找到全部选项；只有确实属于宿主某个内置页的单项（极少数）才考虑用本扩展点，且不要把同一组设置在两处重复展示。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
@@ -947,16 +985,16 @@ serve((method, params) => {
    - 返回：`{"ok": true}`（无宿主 UI 时返回 `-32005`）。
 6. **`host.ui.open_dialog` / `host.ui.close_dialog`**（无需声明权限）
    - 参数：`{"id": "<dialog_id>"}`（`id` 须为本插件声明的 `dialogs[].id`）。
-   - 返回：`open_dialog` 在宿主成功打开后返回 `{"ok": true, "dialog_token": "dlg-..."}`（无宿主 UI 时返回 `-32005`），且用户在对应 `dialog:*` 表面触发 `plugin.action` 时宿主会随参数附带当前活动弹窗的 `"dialog_token"`，插件可严格核对来源表面与一次性令牌；`close_dialog` 返回 `{"ok": true}`。
+   - 返回：`open_dialog` 在宿主成功打开后返回 `{"ok": true, "dialog_token": "dlg-..."}`（无宿主 UI 时返回 `-32005`），且用户在对应 `dialog:*` 表面触发 `plugin.action` 时宿主会随参数附带当前活动弹窗实例的 `"dialog_token"`（同一打开实例内的多次动作复用同一个令牌），插件可核对来源表面与当前弹窗实例；`close_dialog` 返回 `{"ok": true}`。
 7. **`host.ui.open_panel` / `host.ui.close_panel` / `host.ui.toggle_panel`**（无需声明权限）
    - 参数：`{"id": "<panel_id>"}`（`id` 须为本插件声明的 `panels[].id`）。
    - 返回：`open_panel` / `close_panel` 返回 `{"ok": true}`；`toggle_panel` 返回 `{"ok": true, "open": true|false}`（由宿主原子切换并回传当前开关态，避免插件自维护状态与宿主关闭按钮失步）。
 8. **`host.ui.refresh`**（无需声明权限，仅要求目标表面属于 `"settings_page"` 或本插件 `contributes` 声明的表面）
    - 参数：`{"surface": "panel:outline"}`（异步触发对应表面的后台 `plugin.render` 重绘；用户在当前笔记本中尚未打开过的表面不会渲染，首次打开时自然加载最新内容）。
-   - 返回：`{"ok": true}`。
+   - 返回：`{"ok": true}`；若调用时的笔记本上下文与当前打开笔记本不匹配，可能返回 `{"ok": true, "skipped": true}`。
 9. **`host.sidebar.set_badges` / `host.sidebar.get_badges`**（无需声明权限）
-   - `host.sidebar.set_badges` 参数：`{"badge_id": "poop-mark", "notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {"welcome.md": {"text": "2", "tooltip": "含 2 处标记", "tone": "accent"}}}`（`notebook_root` 可选，省略时取当前笔记本；`entries` 最多 512 项，相对路径不可包含 `..` 或 `:`，`text` 禁 Emoji 且 <= 4 字符，`tooltip` 禁 Emoji 且 <= 120 字符，`tone` 支持 `"accent"` | `"success"` | `"warning"` | `"danger"`；`patch: true` 时传 `null` 可删除单项，`clear: true` 一键清空；按插件与笔记本持久化于 `contrib-state.json`）。
-   - `host.sidebar.get_badges` 参数：`{"badge_id": "poop-mark", "notebook_root": "..."}` -> 返回 `{"entries": {...}}`。
+   - `host.sidebar.set_badges` 参数：`{"badge_id": "review-mark", "notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {"welcome.md": {"text": "2", "tooltip": "含 2 处标记", "tone": "accent"}}}`（`notebook_root` 可选，省略时取当前笔记本；`entries` 最多 512 项，相对路径不可包含 `..` 或 `:`，`text` 禁 Emoji 且 <= 4 字符，`tooltip` 禁 Emoji 且 <= 120 字符，`tone` 支持 `"accent"` | `"success"` | `"warning"` | `"danger"`；`patch: true` 时传 `null` 可删除单项，`clear: true` 一键清空；按插件与笔记本持久化于 `contrib-state.json`）。
+   - `host.sidebar.get_badges` 参数：`{"badge_id": "review-mark", "notebook_root": "..."}` -> 返回 `{"entries": {...}}`。
 9.1. **`host.sidebar.set_file_icons` / `host.sidebar.get_file_icons`**（无需声明权限，需声明 `contributes.file_icons`）
    - `host.sidebar.set_file_icons` 参数：`{"notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {".": {"icon": "book", "tint": "blue"}, "welcome.md": {"icon": "wave", "tint": "blue"}}, "prefs": {"picker": true, "sync_tabs": true}}`（`notebook_root` 省略时取当前笔记本；`"."` 表示笔记本自身图标，其余为笔记本内相对路径；`entries` 最多 2048 项，`icon` 须存在于图标包，`tint` 支持 `"none"` | `"blue"` | `"teal"` | `"green"` | `"amber"` | `"red"` | `"purple"`；`patch: true` 时传 `null` 删除单项，`clear: true` 清空当前笔记本映射；`prefs` 覆盖选择器与标签页同步开关；文件重命名/移入回收站时宿主自动同步路径）。
    - `host.sidebar.get_file_icons` 参数：`{"notebook_root": "..."}` -> 返回 `{"notebook_root": "...", "entries": {...}, "recent": [...], "prefs": {"picker": true, "sync_tabs": true}}`。
@@ -978,21 +1016,17 @@ serve((method, params) => {
     - `host.ui.theme_skin_state`（`{}`）：返回 `{"id", "enabled", "skin_id"}`。
     - `host.ui.set_theme_skin`（`{"id", "enabled": true|false}`）：应用或关闭声明的主题皮肤并持久化于 `contrib-state.json`，同时停用其他插件皮肤。
 15. **`host.stage.*`**（需声明 `contributes.stages` 与对应界面权限）
-    - `host.stage.open`：`{"id", "route", "state"}`（`route` 兼容别名 `room`；`state` 为 JSON 对象，<= 2 MiB）-> `{"ok": true, "open": true, "stage": {...}}`。
+    - `host.stage.open`：`{"id", "route", "state"}`（`route` 兼容别名 `room`；`state` 接受任意合法 JSON，<= 2 MiB）-> `{"ok": true, "open": true, "stage": {...}}`。
     - `host.stage.close`：`{"id"}` -> `{"ok": true, "closed": true|false}`。
     - `host.stage.state`（`{}`）：返回 `{"open": true|false, "stage_id", "route", "state"}`。
-    - `host.stage.emit`：`{"id", "event", "payload"}` -> `{"ok": true}`（向打开中的舞台 WebView 推送事件）。
+    - `host.stage.emit`：`{"id", "event", "payload"}`（`payload` 上限 2 MiB）-> `{"ok": true}`（向打开中的舞台 WebView 推送事件）。
 
-### 7.5 特定场景与通用视觉宿主方法
+### 7.5 编辑区背景能力（`host.ui.backdrop` / `host.ui.set_backdrop`）
 
-以下接口服务于编辑区背景装饰与原生塔罗模式等特定视觉能力（无需声明权限，按实际场景按需调用）：
+以下接口用于控制声明在 `contributes.backdrops` 中的编辑区矢量或纸纹背景（无需额外声明权限，按需调用）：
 
-1. **`host.ui.backdrop` / `host.ui.set_backdrop`**（编辑区矢量/纸纹背景，适用于壁纸装饰与点阵/方格纸纹插件如 `block-poop-everywhere`、`block-canvas-dots`）
-   - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
-   - `host.ui.set_backdrop`（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
-2. **`host.ui.tarot_state` / `host.ui.set_tarot`**（宿主原生塔罗模式，适用于 `block-tarot` 官方扩展）
-   - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
-   - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
+- **`host.ui.backdrop`**（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
+- **`host.ui.set_backdrop`**（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
 
 ---
 
@@ -1000,7 +1034,7 @@ serve((method, params) => {
 
 语言扩展插件用于为 Block 补充代码语法高亮与编辑辅助，采用**纯声明式、零子进程、零权限**模型在宿主机内直接运行：
 
-- **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何运行时或外部子进程，安装页也不展示危险权限提示。
+- **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry`、`permissions`（必须为空数组，即使只填 `"storage"` 也会失去免入口资格）、`surfaces` 以及 `contributes` 中除 `languages` 外的任何运行时贡献（包括 `titlebar_buttons`、`titlebar_manager`、`settings_sections`、`commands`、`*_menu`、`panels`、`sidebar_sections`、`file_badges`、`file_icons`、`backdrops`、`block_decorators`、`themes`、`stages`、`status_items`、`dialogs`、`menubar_items`）时，插件以纯声明式模式加载，不启动任何运行时或子进程，安装页也不展示危险权限提示。
 - **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
 - **内置语言与覆盖顺序**：主程序已内置 C、C++、C#、Java、Kotlin、Scala、Groovy/Gradle（含 `Jenkinsfile`）、Swift、Dart、Go（含 `go.mod` / `go.sum`）、Rust、Python（含 `requirements.txt`）、Ruby、PHP、Lua、R、Elixir、HEEx/EEx、JavaScript、TypeScript、HTML、Vue、Svelte、Astro、Handlebars/Mustache、EJS、Go/Helm 模板、CSS/SCSS/Less、JSON/JSONC/JSONL、YAML（含 Clash/Stash `.stoverride`）、TOML、INI/Properties/systemd/xcconfig、Dotenv（`.env` / `.env.*`）、Surge/代理规则（`.sgmodule` / `.lpx` / `.plugin` / `.module` / `.list` 及 Surge `.conf`）、Nginx、Apache/htaccess、HAProxy、Caddyfile、SSH Config、Crontab、Procfile、Ignore（`.gitignore` 等）、Hosts、HTTP 请求、XML（含 `.ps1xml`）、Property List（含 `.entitlements` / `.strings` / `.pbxproj`）、SQL、Prisma、GraphQL、Protobuf、Thrift、Shell、PowerShell、Windows Batch、Dockerfile、Makefile、CMake、Justfile、HCL、Nix、Zig、ERB、Jinja、Diff、Markdown 等常用语言，无需安装插件；语言扩展只需覆盖小众语言。已启用插件声明的文件名、后缀或标识与内置语言重名时，**插件优先**。
 - **生命周期**：首次安装纯声明式语言扩展时**自动启用**；纯声明式语言扩展不占用侧栏设置页，可在应用商店详情页管理与卸载（卸载或停用后编辑器与代码块高亮**实时生效**，移除对应语言注册）。若插件声明了运行时入口、权限或界面表面，则遵循 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」与交互式插件生命周期。已安装的旧版 Go Modules 和 Property List 扩展仍可管理，并按安装来源显示认证状态。卸载后由主程序提供高亮。
@@ -1058,7 +1092,7 @@ Grammar JSON 采用严格解码：**禁止重复键、禁止未知字段**。
 扫描器行为说明：
 - 每一步仅在当前剩余切片 `line[pos:]` 上匹配 `\A(?:match)`，因此 `^` 等价于当前扫描位置而非整行行首，`\b` 也会把 `line[pos:]` 开头视为词边界；为避免关键字规则误标标识符后缀（如 `untrue` 中的 `true`），请在关键字规则之后放置整词标识符规则（如 `[A-Za-z_][A-Za-z0-9_]*`）。
 - 若当前位置无任何规则命中，扫描器消耗 **1 个 UTF-8 字符**并输出 `text`，然后继续前进。
-- 当 `pos == len(line)` 到达行尾时循环直接结束，因此零宽 `$` 退栈规则不会在行尾触发；单行上下文请用消费到行尾的规则（如 `[^\n]*` 或换行外字符匹配）或状态切换处理。
+- 当 `pos == len(line)` 到达行尾时循环直接结束，且空行会直接返回而不运行规则；因此行尾不会触发零宽 `$` 退栈，也不要假设单行临时状态能在空行自动弹出。单行结构应在同一条规则内消费完行内内容（不压入跨行状态），仅对真正跨行的块结构（如多行注释、多行字符串）使用 `push`/`pop`。
 
 #### 全部合法 `token` 名称（共 25 个）
 
@@ -1168,17 +1202,17 @@ example-lang/
 ## 9. 本地协议检查命令
 
 ```bash
-CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/到你的插件目录
+CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check [-bilingual] /绝对路径/到你的插件目录
 ```
 
-终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。若清单仍声明了已默认放行的权限（如 `storage`、`ui:*`、`system:notify`、`system:badge`），校验器会输出 `[WARN]` 提示删减（不阻断通过）。
+`-bilingual` 须放在目录路径之前，单次只接收一个插件目录。终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。若清单声明了已默认放行的权限（如 `storage`、`ui:*`、`system:notify`、`system:badge`），校验器会输出 `[WARN]` 提示删减（不阻断通过；注意 `titlebar_manager`、`block_decorators`、`themes`、`stages` 在清单校验阶段仍需要对应 `ui:*` 权限，勿据此误删）。
 
-- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `network_domains`、`exec_allowlist`、`permission_reasons` 键匹配、字数与禁 Emoji 规则）、`languages` / `file_icons` / `themes` / `stages`（含 `web/` 离线四层外网隔离与体积校验）、目录安装、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无需运行时入口，仅校验清单、双语文档与语法编译；`entry.js` / `entry.wasm` 在内置 `wazero` + `quickjs-ng` 沙盒中实跑验证）。
-- **双语门禁**：当 `manifest.repo` 属于官方仓库（`blockmd-plugins/*`）时，校验器会**自动启用双语检查**（官方仓库 CI 建议显式追加 `-bilingual` 参数，避免清单漏写 `repo` 时跳过双语门禁；社区插件也可追加 `-bilingual` 主动开启）：
+- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `network_domains`、`exec_allowlist`、`permission_reasons` 键匹配、字数与禁 Emoji 规则）、`languages` / `file_icons` / `themes` / `stages`（含 `web/` 静态外网字面量与体积校验）、目录安装（含纯声明式语言包）、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无运行时入口，只校验清单、目录安装、双语文档与语法编译；`entry.js` / `entry.wasm` 在内置 `wazero` + `quickjs-ng` 沙盒中实跑验证）。
+- **双语门禁**：当 `manifest.repo` 属于官方组织（`blockmd-plugins/*`）时，校验器会自动启用双语检查（`verified.json` 1:1 绑定由商店采集器执行；官方仓库 CI 建议显式追加 `-bilingual`，避免清单漏写 `repo` 时跳过检查；社区插件也可追加 `-bilingual` 主动开启）：
   1. 校验清单中 `name.en`、`summary.en`、`contributes.*.en` 及已声明的 `permission_reasons[*].en` 均为非空纯英文且不含中文字符或中文标点；
   2. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；若 README 引用了本地图片或 SVG，本地资产须存在，位图与含中文资源须为中英文版本分别提供独立路径，纯英文 UTF-8 `.svg`（零中文字符及全角标点）可由 `README.md` 与 `README.en.md` 共用同一路径（英文版引用的 `.svg` 不得包含中文字符或全角标点）；
-  3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下全部界面文案与动作反馈零中文残留，且中英文初始渲染输出不同（注意：CLI 不自动调用 `plugin.command`，命令返回文案需在桌面端英文模式下复测）。
-- **CLI 边界说明**：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `GetPerfSnapshot`（调用 `host.perf.snapshot` 会收到 `-32005`）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端使用临时笔记本进一步验证。
+  3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下选定的界面字段及动作返回的 `status`/`page` 零中文残留，并在存在渲染表面时校验中英文初始渲染输出不同（注意：CLI 不扫描按钮动态状态标签或部分时间轴扩展字段，无表面的纯命令插件也没有渲染差异可比，且不自动调用 `plugin.command`，命令返回文案需在桌面端英文模式下复测）。
+- **CLI 边界说明**：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `ContribHost`、系统集成、AI 或 `GetPerfSnapshot` 后端（`host.perf.snapshot` 返回 `-32005`；`store_changelog` 虽出现在 `ui_capabilities` 中，但在 CLI 下调用会返回 `-32601`；`stages` 仅做静态校验）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端进一步验证。
 
 ---
 
@@ -1190,9 +1224,9 @@ Block 应用商店采用无审批自动采集机制。**硬门槛与采集上限
 
 1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过「本地协议检查命令」检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，其上架认证以 `verified.json` 为准）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），README 引用的位图及含中文资源须提供独立的中英文版本（纯英文 `.svg` 可共用），交互式插件还须支持 `locale="en"` 英文界面**；已审核作者（`eachann1024/*`）与社区插件同样建议提供双语文档、双语配图与 `permission_reasons`。
 2. 在 GitHub 仓库主页右侧 **About -> Topics** 添加标签：**`blockmd-plugin`**。
-3. 发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致）：
-   - **官方推荐自动版本号与发布门禁**：复用 `blockmd-plugins/block-sync` 的 `.github/workflows/release.yml`（`Daily Release`）。仓库 `manifest.json` 仅保留主次版本基线（如 `"1.2.0"`），日常改动直接推送 `main`；工作流每天 `00:00 UTC`（或手动 `workflow_dispatch`）检测代码或双语 README 变更，**打包前强制执行 `README.md` / `README.en.md` 与 `locale="en"` 英文界面门禁（未通过即中止发布）**，通过后以 `<major>.<minor>.<提交总数>` 生成候选版本（若不高于已有最高版本则递增）动态写入产物包并发布 Release，不向 `main` 回写提交。
-   - **手动发版**：也可推送 `vX.Y.Z` Tag 触发同工作流打包对应版本。
+3. 推荐发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致；若暂未发布合适 Release，采集器会回退到固定提交 SHA 的默认分支源码包）：
+   - **自动化发布实践**：可在仓库配置定时或手动触发的 GitHub Actions 发布工作流，在打包前执行清单/双语门禁与冒烟检查，通过后按 SemVer 生成新版本号（如基于主次版本基线递增补丁号）写入归档产物并发布 Release，不向 `main` 回写提交。
+   - **手动发版**：也可直接推送 `vX.Y.Z` Tag 触发打包并发布对应版本的 Release。
 
 4. **线上采集与校验规则**（由 `blockmd-plugins/store-index` 仓库的采集任务及 `cmd/block-store-crawler` 执行）：
    - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包，且会先解析默认分支当前提交 SHA 并固定到不可变归档地址（`codeload.github.com/{repo}/tar.gz/{commit_sha}`），防止后续推送导致索引 `sha256` 失效。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。

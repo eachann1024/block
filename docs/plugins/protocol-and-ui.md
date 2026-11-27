@@ -23,22 +23,21 @@
        "notebooks": ["/abs/path/to/notebook", "/abs/path/to/other-notebook"],
        "locale": "zh",
        "theme": "system",
-       "tarot": false,
-       "host_version": "1.0.854",
+       "host_version": "1.0.958",
        "ui_capabilities": [
          "kv_tooltip", "treemap", "checklist_add_folder", "action_feedback",
          "action_progress", "note_revision", "sidebar_sections", "open_settings"
        ]
      }
      ```
-     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧沙盒并按新 `notebook_root` 重新初始化。
+     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本时，宿主通常在下次调用该插件且目标根目录不同（含后台 `note.saved` 事件）时关闭旧沙盒并按新 `notebook_root` 重新初始化；部分外观或界面扩展类插件会在切本时立即预热。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
-     - `ui_capabilities`：渐进能力声明数组，旧宿主可能省略部分键；全部 34 项能力键说明见下文「兼容性与平台实现说明」。
+     - `ui_capabilities`：渐进能力声明数组，最多包含 37 项能力键（含按配置与平台追加的键，旧宿主可能省略部分键）；完整清单见下文「兼容性与平台实现说明」。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
    - 请求 `params`：例如 `{"surface": "settings_page", "values": {"protocol": "webdav"}}`。
-     - 首次打开、切换笔记本/当前笔记/笔记本列表、动作前表单补刷、定时轮询及 `note.saved` 成功后刷新时省略 `values`。
+     - 首次打开、切换笔记本/当前笔记/笔记本列表、定时轮询及 `note.saved` 成功后刷新时省略 `values`；动作前表单补刷在存在未同步编辑时可能携带这些 `values`。
      - 用户在界面编辑控件时（离散控件约 25ms 防抖，文本输入约 220ms 防抖），`values` 仅包含用户尚未同步的改动字段。将这些字段合并到持久配置后生成预览；需要显式提交的表单由 `plugin.action` 保存。
    - 返回 `result`：包含必填 `page`（严格解码）与可选 `values`。
      - **值合并规则**：
@@ -74,7 +73,7 @@
        "reveal_path": "/Users/name/Downloads/欢迎使用 Block.html"
      }
      ```
-     - **按钮态标签覆盖**：可选返回 `busy_label`、`success_label`、`error_label`、`retry_label`（均禁 Emoji），动态覆盖按钮在运行、成功、失败与重试态的展示文案。
+     - **按钮态标签覆盖与扩展字段**：可选返回 `busy_label`、`success_label`、`error_label`、`retry_label`（均禁 Emoji）动态覆盖按钮在运行、成功、失败与重试态的展示文案；另可选返回 `icon`（自定义状态图标）与 `synced_notebooks`（字符串数组，用于同步完成后通知宿主刷新指定笔记本状态）。错误或提示文案应写入 `status`（宿主不读取 `message` 字段）。
      - **表单更新顺序**：若同时返回 `page` 与 `values`，宿主先用新 `page` 的控件默认值覆盖对应键，再应用 `result.values` 并清除对应字段的未同步标记；若 `page.status` 为空且 `result.status` 非空，宿主自动将 `result.status` 填入 `page.status`。
      - **动作反馈（`ok` / `tone` / `status`）**：合法 `tone`（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`）优先级最高；未知或空 `tone` 回退按 `ok` 判定（`true` 为 `success`，`false` 为 `danger`）；两者均省略时按 `status` 关键词推断，未命中默认 `"success"`。卡片内按钮返回 `danger`/`warning` 且 `status` 非空时，在按钮上方显示提示条，`success`/`info` 在按钮旁显示单行状态；`header_actions` 在顶栏展示状态。`success` 态按钮会短暂切换为绿色勾选态（2.4s）；`action_id` 为 `test_conn`、以 `test_` 开头或以 `_test` 结尾的连接测试按钮会保持成功态，直到用户修改表单或触发下一次动作。
      - **打开与定位输出文件（`open_path` / `reveal_path`）**：使用 `open_path`、`reveal_path` 请求宿主处理输出文件。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
@@ -114,7 +113,7 @@
 4. **`host.notebooks.list`**（需 `"notes:read"`，忽略参数）
    - `{}` -> `{"notebooks": [{"path": "/abs/path/to/notebook", "name": "notebook", "active": true}]}`（`active` 反映当前运行时上下文根，建议配合 `checklist` 控件勾选范围）。
 5. **`host.notes.list`**（需 `"notes:read"`）
-   - `{"notebook_root": "/abs/path/to/notebook"}`（可选；解码失败按省略处理；省略且运行时根为空时返回 `[]`；传未注册笔记本报 `-32003`）-> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
+   - `{"notebook_root": "/abs/path/to/notebook"}`（可选；解码失败按省略处理；省略且运行时根为空时返回 `{"notes": []}`；传未注册笔记本报 `-32003`）-> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
 6. **`host.notes.read`**（需 `"notes:read"`）
    - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选，省略且运行时根为空报 `-32602`；`path` 必填）-> `{"path": "welcome.md", "content": "# 欢迎...", "revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`
 7. **`host.notes.write`**（需 `"notes:write"`）
@@ -162,39 +161,40 @@
      ```
 
 12. **`host.store.changelog`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"store_changelog"`）
-    - 查询指定插件（省略 `id` 时默认查当前插件自身）的商店更新日志：`{"id": "block-sync", "locale": "zh-CN", "limit": 10}`（`id`、`locale`、`limit` 均可选，`limit` 默认 `10`、上限 `20`）。
-    - 宿主按「商店静态 JSON API（`changelogs/<id>.json` + jsDelivr 镜像）→ GitHub Releases API → 商店索引内联 `changelog` → 本地 `CHANGELOG.md`」顺序解析，返回结构化 `PluginChangelog`（含 `id`、`repo`、`latest_version`、`changelog_url`、`source`、`releases[]` 及双语 `zh`/`en` 分组条目）；暂无更新日志返回 `-32004`，拉取失败返回 `-32005`。
+    - 查询指定插件（省略 `id` 时默认查当前插件自身）的商店更新日志：`{"id": "example-sync", "locale": "zh-CN", "limit": 10}`（`id`、`locale`、`limit` 均可选，`limit` 默认 `10`、上限 `20`）。
+    - 宿主按「商店静态 JSON API（`changelogs/<id>.json` + jsDelivr 镜像）→ GitHub Releases API → 商店索引内联 `changelog` → 本地 `CHANGELOG.md`」顺序解析，返回结构化 `PluginChangelog`（含 `id`、`repo`、`latest_version`、`changelog_url`、`source`、`releases[]` 及双语 `zh`/`en` 分组条目；回退到本地 `CHANGELOG.md` 时正文在 `markdown` 字段，`releases` 可能为 `null`）；暂无更新日志返回 `-32004`，拉取失败返回 `-32005`。
 
 13. **`host.log`**（无需额外权限；旧宿主返回 `-32601`，插件应静默停用）
     - `{"entries": [{"level": "info", "event": "delete_remote", "notebook_root": "/abs/path/to/notebook", "path": "notes/old.md", "protocol": "webdav", "detail": "成功"}]}` -> `{"ok": true}`，把插件自己的操作记录写进宿主诊断日志 `logs/block.log`，便于用户反馈时一并导出。
     - `level` 取 `info`（默认）/`warn`/`error`；每次最多 200 条，超出部分丢弃；各字段折叠为单行并截断至 400 字节。合法的笔记本相对 `path` 会被换成绝对路径再脱敏，与宿主自身日志的路径代号一致。**不得传入笔记正文或密钥。**
 
-14. **`host.fs.*`**（需 `"system:fs"`，仅限 `data_dir`、`downloads_dir`、已授权笔记本及 `granted-paths.json` 授权路径，经 `os.Root` 拒绝符号链接与路径逃逸）
+14. **`host.fs.*`**（需 `"system:fs"`，仅接受宿主机绝对路径；解析符号链接后再经 `os.Root` 校验授权范围并拒绝越界。授权范围含 `data_dir`、`downloads_dir`、`granted-paths.json` 登记路径，以及已注册笔记本——读取笔记本还须持 `"notes:read"`，写入笔记本还须持 `"notes:write"`。`data_dir` 下的宿主受保护文件 `granted-paths.json`、`scheduler.json`、`state.json` 禁止直接改写；`host.system.open_dialog`/`save_dialog` 仅返回路径，表单目录选择器与菜单栏拖放等入口才登记文件授权）
     - `host.fs.list_grants`（`{}`）：返回 `{"grants": [...], "data_dir", "downloads_dir", "notebooks": [{"path", "writable"}]}`。
-    - `host.fs.stat`（`{"path"}`） / `host.fs.list`（`{"path", "recursive"}`，最多 10000 条；返回 `{"path", "entries", "truncated": bool}`，达到 10000 条上限截断时 `"truncated"` 为 `true`）。
-    - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、上限 64 MiB） / `host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`，上限 64 MiB）。
-    - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive"}`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents"}`） / `host.fs.copy`（`{"from", "to", "overwrite", "mkdir_parents"}`，宿主流式原子复制普通文件，不经过 Wasm 内存） / `host.fs.atomic_swap`（`{"path_a", "path_b"}`，同目录两文件交换）。
+    - `host.fs.stat`（`{"path"}`）：返回 `{"exists", "path", "name", "is_dir", "is_regular", "size", "mod_time", "mod_time_ms", "is_icloud_placeholder"}`。
+    - `host.fs.list`（`{"path", "recursive"}`，最多 10000 条）：返回 `{"path", "entries": [...], "truncated": bool}`（每项含 `stat` 同名元数据，递归模式另含 `rel_path`；达到上限截断时 `"truncated"` 为 `true`）。
+    - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、宿主上限 64 MiB）-> `{"path", "encoding", "size", "content"|"content_base64"}`；`host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`，宿主上限 64 MiB）。
+    - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive"}`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents"}`，跨不同授权根时回退为先复制再删除） / `host.fs.copy`（`{"from", "to", "overwrite", "mkdir_parents"}`，宿主流式原子复制普通非符号链接文件，不经过 Wasm 内存；不可同路径，且 `from`/`to` 不可为授权根目录本身；返回 `{"ok": true, "from", "to", "size"}`） / `host.fs.atomic_swap`（`{"path_a", "path_b"}`，同目录两文件交换，平台不支持原子交换时可能成功但返回 `atomic: false`）。
 
 15. **`host.crypto.*`**（内存计算无需额外权限；`host.crypto.hash` 传入 `file_path` 时需 `"system:fs"`）
     - `host.crypto.hash`：`{"algorithm": "sha1"|"sha256"|"sha512"|"md5", "text"|"base64"|"file_path"}`（三选一）-> `{"algorithm", "hex", "base64", "size"}`。
     - `host.crypto.hmac`：`{"algorithm": "sha1"|"sha256"|"sha512", "key_text"|"key_base64", "data_text"|"data_base64"}` -> `{"algorithm", "hex", "base64"}`。
 
-16. **`host.http.request`**（需 `"network"`，受 `manifest.network_domains` 白名单限制）
+16. **`host.http.request`**（需 `"network"`，受 `manifest.network_domains` 白名单与 SSRF 地址限制约束）
     - 参数：`{"url", "method", "headers", "body"|"body_base64"|"body_file_path", "save_to_path", "mkdir_parents", "response_encoding": "utf8"|"base64"|"none", "timeout_ms", "max_response_bytes"}`。
-    - 支持 `GET`/`POST`/`PUT`/`DELETE`/`HEAD`/`PATCH`/`OPTIONS`/`PROPFIND`/`MKCOL`/`MOVE`/`COPY`；超时默认 30s（上限 120s），响应默认 16 MiB（上限 64 MiB），最多 10 次重定向（跨域自动剥离 `Authorization` 与 `Cookie`），`body_file_path` / `save_to_path` 额外要求 `"system:fs"`；返回 `{"status", "headers", "bytes", "final_url", "body"|"body_base64", "saved_path"}`。
+    - 支持 `GET`/`POST`/`PUT`/`DELETE`/`HEAD`/`PATCH`/`OPTIONS`/`PROPFIND`/`MKCOL`/`MOVE`/`COPY`；超时默认 30s（上限 120s），响应默认 16 MiB（上限 64 MiB），最多 9 次重定向（第 10 个候选跳转即拒绝，跨 origin 自动剥离 `Authorization`、`Cookie` 与 `Proxy-Authorization`）；`body_file_path` / `save_to_path` 额外要求 `"system:fs"`，传 `save_to_path` 时 `response_encoding` 默认为 `"none"`；非 2xx 状态码仍作为正常响应返回且在指定 `save_to_path` 时同样落盘；返回 `{"status", "headers", "bytes", "final_url", "body"|"body_base64", "saved_path"}`。
 
-17. **`host.exec.run`**（需 `"system:exec"`，无 Shell 执行 `manifest.exec_allowlist` 白名单程序）
-    - 参数：`{"program", "args", "cwd", "env", "stdin", "timeout_ms", "max_output_bytes"}`（`cwd` 须为授权目录，默认 `data_dir`；`env` 仅放行安全变量与最多 16 项安全 `GIT_CONFIG_*`，强制 `GIT_TERMINAL_PROMPT=0`；超时默认 30s/上限 120s，输出默认 1 MiB/上限 8 MiB）。
+17. **`host.exec.run`**（需 `"system:exec"`，从宿主 `PATH` 无 Shell 执行 `manifest.exec_allowlist` 白名单程序，匹配区分大小写）
+    - 参数：`{"program", "args", "cwd", "env", "stdin", "timeout_ms", "max_output_bytes"}`（`args` 最多 256 项；`cwd` 须为授权目录，默认 `data_dir`；`env` 仅放行安全变量与最多 16 项安全 `GIT_CONFIG_*`，强制 `GIT_TERMINAL_PROMPT=0`；超时默认 30s/上限 120s，`max_output_bytes` 分别作用于 `stdout` 与 `stderr`，默认各 1 MiB/上限各 8 MiB）。
     - 返回：`{"exit_code", "stdout", "stderr", "stdout_truncated", "stderr_truncated", "timed_out"}`。
 
 18. **`host.scheduler.*`**（需 `"events:system"`，持久化于 `scheduler.json`，每插件最多 32 个任务）
-    - `host.scheduler.register`：`{"id", "interval_sec", "event", "require_network", "run_on_wake", "run_on_network_restore", "run_on_focus"}`（`interval_sec` 钳制 `60`–`86400`，`event` 默认 `"scheduler.tick"`）-> `{"ok": true, "id"}`。
+    - `host.scheduler.register`：`{"id", "interval_sec", "event", "require_network", "run_on_wake", "run_on_network_restore", "run_on_focus"}`（`interval_sec` 钳制 `60`–`86400`，`event` 默认 `"scheduler.tick"`）-> `{"ok": true, "id"}`。触发时通过 `plugin.event` 下发 `{"event", "job_id", "trigger", "online", "timestamp"}`（持笔记权限时附带 `notebook_root`）。
     - `host.scheduler.unregister`（`{"id"}` -> `{"ok": true}`）与 `host.scheduler.list`（`{}` -> `{"jobs": [...]}`）。
 
 19. **`host.ai.*`**（需 `"ai:complete"`）
     - `host.ai.status`（`{}`）：返回 `{"enabled", "ready", "streaming"}`。
-    - `host.ai.complete`：`{"system_prompt", "user_prompt", "max_tokens"}`（提示词合计 <= 128 KiB、`max_tokens` <= 16384、120s 超时）-> `{"text", "model"}`。
-    - `host.ai.open_with_prompt`：`{"prompt", "note_path"}` -> `{"ok": true}`（预填提示词并打开 AI 面板）。
+    - `host.ai.complete`：`{"system_prompt", "user_prompt", "max_tokens"}`（`user_prompt` 必填非空、提示词合计 <= 128 KiB、`max_tokens` <= 16384、120s 超时）-> `{"text", "model"}`（`model` 可省略）。
+    - `host.ai.open_with_prompt`：`{"prompt", "note_path"}`（`prompt` 上限 128 KiB）-> `{"ok": true}`（预填提示词并打开 AI 面板）。
 
 ### 4.3 系统集成
 
@@ -217,8 +217,8 @@
 
 ### 4.4 兼容性与平台实现说明
 
-- **全部 `ui_capabilities` 能力键**（旧宿主可能省略，用于渐进启用特性）：
-  `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`toast_banner`（右上角全局通知横幅支持 `body`/`action`、`shown` 返回值与默认插件图标）、`open_settings`（`host.ui.open_settings` 打开插件设置页）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）、`menubar`（系统菜单栏图标 `contributes.menubar_items` 与 `host.menubar.set`）、`menubar_drop`（菜单栏图标接收拖放，目前仅 macOS）。
+- **全部 `ui_capabilities` 能力键**（最多 37 项，旧宿主或特定平台/配置可能省略部分键，用于渐进启用特性）：
+  `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`toast_banner`（右上角全局通知横幅支持 `body`/`action`、`shown` 返回值与默认插件图标）、`open_settings`（`host.ui.open_settings` 打开插件设置页）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）、`system_integration`（`host.system.*` / `host.clipboard.*` / `host.secrets.*` 系统集成能力）、`menubar`（系统菜单栏图标 `contributes.menubar_items` 与 `host.menubar.set`）、`menubar_drop`（菜单栏图标接收拖放，目前仅 macOS）。
 - **各平台系统集成细节**：
   macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 需要通知服务支持 `actions` 才能点击通知，`notify_click:false` 时仍可能显示通知。Linux 系统凭据需在系统凭据管理器中先解锁。单次运行最多保留最近 128 条插件原生通知。系统选择框已打开时，原生后端可能需要用户关闭窗口，宿主会丢弃已过期动作的选择结果。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
 - **安全回收实现机制**：
@@ -503,22 +503,41 @@
 
 ## 6. `entry.js` + `/runtime/block-sdk.js` 通信骨架
 
-宿主内置 `wazero` + `quickjs-ng` 沙盒会自动注入 `/runtime/block-sdk.js`（同时挂到 `globalThis` 的 `BlockSDK`、`serve`、`callHost`、`notifyHost`、`send`、`log`、`HostRPCError`）：
+宿主内置 `wazero` + `quickjs-ng` 沙盒以 ES module 加载 `entry.js`，并自动注入 `/runtime/block-sdk.js`（同时挂到 `globalThis` 的 `BlockSDK`、`serve`、`callHost`、`notifyHost`、`send`、`log`、`HostRPCError`）。注意：`serve` 与 `callHost` 均为同步调用，请勿传入 `async` 处理函数（Promise 会直接被序列化为空对象）；下例自带 `locale` 切换，可直接通过 `-bilingual` 双语检查：
 
 ```javascript
+let locale = 'zh';
+const tr = (zh, en) => (locale.toLowerCase().startsWith('en') ? en : zh);
+
 serve((method, params) => {
   switch (method) {
     case 'plugin.initialize':
+      locale = String(params?.locale || 'zh');
       return { ready: true };
     case 'plugin.render':
       return {
         page: {
-          title: 'Example',
-          cards: [{ id: 'main', items: [{ kind: 'kv', rows: [{ label: '状态', value: '正常' }] }] }],
+          title: tr('示例插件', 'Example Plugin'),
+          cards: [
+            {
+              id: 'main',
+              items: [
+                {
+                  kind: 'kv',
+                  rows: [{ label: tr('状态', 'Status'), value: tr('正常', 'OK') }],
+                },
+              ],
+            },
+          ],
         },
       };
     case 'plugin.action':
-      return { ok: true, tone: 'success', status: '已完成' };
+      return { ok: true, tone: 'success', status: tr('已完成', 'Done') };
+    case 'plugin.event':
+      if (params?.event === 'locale.changed' && params?.locale) {
+        locale = String(params.locale);
+      }
+      return { handled: true };
     case 'plugin.shutdown':
       return { ok: true };
     default:

@@ -98,9 +98,9 @@ example-sync/
   - **谁说了算**：插件出现在哪个标签只由本字段决定，商店与宿主不做人工改判；要换分类，改 `category` 后发布新版本，商店索引下一轮采集即生效。
   - 已停用的 `"sync"` 与 `"publish"` 仍可通过校验，但统一归入 `"tools"`；新插件不要再使用。
   - **未填与校验**：未填 `category` 时默认归入 `"tools"`。`block-plugin-check` 对未填或使用停用值的插件输出 `[WARN]`；**官方插件（`blockmd-plugins/*` 或 `verified.json` 认证）必须显式填写当前分类**，否则检查失败且商店采集拒收。商店索引会自动同步 `category` 与 `file_extensions`。
-- 纯声明式语言扩展可省略 `entry`。交互式插件必须指定以下一个入口，使用插件目录内的相对路径，禁止符号链接与越界。
-  - `entry.js` 指向 `.js` 或 `.mjs`，由内置 `quickjs-ng` 沙盒执行并自动注入 `/runtime/block-sdk.js`。
-  - `entry.wasm` 指向 `.wasm` WASI 模块（最多 32 MiB），适合重计算。
+- 纯声明式语言扩展可省略 `entry`（此时须同时保持 `permissions` 为空数组且不声明任何非 `languages` 的 `contributes`）。交互式插件必须且只能指定以下一个入口（不再接受 `entry.command`，包括 `"command": null`）；入口须为插件目录内的相对路径，禁止首尾空白、禁止路径中出现**任意 `..` 子串**（例如 `build..prod.js` 也会被拒）、禁止 `\`、`:` 与符号链接。清单阶段校验路径格式，安装阶段校验普通文件与体积上限，运行阶段执行 Wasm 编译或 JS 加载：
+  - `entry.js`：指向 `.js` 或 `.mjs`，由内置 `quickjs-ng` 沙盒按 ES module 执行并自动注入 `/runtime/block-sdk.js`。
+  - `entry.wasm`：指向 `.wasm` WASI Preview 1 模块（线性内存上限 32 MiB），适合重计算。
 - `surfaces`：可选数组；需要独立设置页时声明 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见 [宿主界面扩展](ui-contributions.md) 的「多表面（Surfaces）渲染与状态隔离」）。语言扩展、主题/外观等无需独立设置页的插件可省略或为空数组 `[]`，安装后不占用侧栏设置页，直接在应用商店详情页管理与卸载。
 - `permissions`：可选数组（按需声明），不可重复。有效权限共 **30 项**（5 类 15 项敏感权限 + 3 项静默事件 + 12 项默认放行），按是否涉及用户数据或外部系统分为三层：
   - **5 类敏感权限（需用户安装/更新确认，共 15 项）**：仅当插件用到以下能力时才需声明；首次安装或更新新增其中任一项时，宿主会弹出确认卡片请用户点头：
@@ -108,15 +108,15 @@ example-sync/
     2. **系统凭据**：`"system:secrets"`（读写系统钥匙串/凭据管理器中该插件隔离的凭据）
     3. **剪贴板**：`"system:clipboard_read"`（读取系统剪贴板）、`"system:clipboard_write"`（写入系统剪贴板）
     4. **系统文件与外部操作**：`"system:trash"`（经原生确认框移入回收站）、`"system:open"`（打开网页链接或在文件管理器定位文件）、`"system:dialogs"`（打开系统文件/目录选择框）、`"system:fs"`（在 `data_dir`、`downloads_dir`、已知笔记本及用户明确授权路径内调用 `host.fs.*`）、`"system:exec"`（通过 `host.exec.run` 无 Shell 运行 `exec_allowlist` 白名单程序）、`"ai:complete"`（通过 `host.ai.*` 调用已配置 AI 模型或打开 AI 面板）
-    5. **网络访问（插件自述）**：`"network"`（声明插件会通过 `host.http.request` 或外部请求联网；配合 `network_domains` 限制目标域名）
+    5. **网络访问**：`"network"`（调用 `host.http.request` 的强制权限；可配合 `network_domains` 进一步限定允许访问的目标主机）
     - 系统集成与 `host.fs.*` / `host.http.request` / `host.exec.run` / `host.ai.*` 细则见 [协议、UI 与骨架](protocol-and-ui.md)。
   - **静默事件订阅（按需声明，不弹窗确认，共 3 项）**：仅作为事件订阅开关，不会触发安装/更新权限弹窗：
     - `"events:note_saved"`：订阅笔记保存事件（`plugin.event`）
     - `"events:system"`：订阅系统唤醒、网络变化、焦点事件及 `host.scheduler.*` 后台定时任务
     - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已启动的沙盒）
-  - **已免声明能力（默认放行，无需写入 `permissions`，共 12 项）**：插件私有存储 `"storage"`、全部 9 项界面扩展 `"ui:*"`（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）、系统原生通知 `"system:notify"` 与 Dock 角标 `"system:badge"` 均已默认放行，新插件直接调用或通过 `contributes` 声明即可（注：`contributes.block_decorators`、`contributes.themes`、`contributes.stages` 在清单校验阶段仍要求显式写出对应权限以完成声明校验）。旧插件清单保留这些字段仍完全兼容，`block-plugin-check` 会以 `[WARN]` 提醒可删减。
-- `network_domains`：可选字符串数组（最多 64 项、不可重复），限制 `host.http.request` 目标主机与重定向目标；支持精确域名（`"api.example.com"`）、端口形式（`"127.0.0.1:8080"`）或单前缀通配（`"*.example.com"`），禁止协议前缀、路径与空白。省略时仅依赖 `"network"` 声明。
-- `exec_allowlist` 为可选字符串数组，最多 8 项且不可重复。`host.exec.run` 只执行列表内的程序名（如 `git` 或 `rclone`）。程序名须匹配 `^[a-zA-Z0-9._-]+$`，禁止路径分隔符、Shell 和脚本解释器。
+  - **已免声明能力（默认放行，共 12 项）**：插件私有存储 `"storage"`、全部 9 项界面扩展 `"ui:*"`（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）、系统原生通知 `"system:notify"` 与 Dock 角标 `"system:badge"` 在运行时均默认放行。**四项清单校验例外**：若声明了 `contributes.titlebar_manager: true`（需 `"ui:titlebar"`）、`contributes.block_decorators`（需 `"ui:appearance"` 或 `"editor:write"`）、`contributes.themes`（需 `"ui:appearance"`）或 `contributes.stages`（需 `"ui:appearance"` / `"ui:commands"` / `"ui:panels"`），清单仍必须显式保留对应权限（注意：`block-plugin-check` 当前也会对这几项输出 `[WARN]`，勿据此误删）。删除其他确属冗余的权限时，须同步删除其在 `permission_reasons` 中的对应键；纯声明式语言扩展必须保持 `permissions` 为空数组，即使只填 `"storage"` 也会失去免入口资格。
+- `network_domains`：可选字符串数组（最多 64 项、不区分大小写去重），限制 `host.http.request` 目标主机与重定向目标：支持精确主机（`"api.example.com"`，允许任意端口）、显式端口形式（`"127.0.0.1:8080"`，匹配 URL 中显式填写的端口）或单前缀通配（`"*.example.com"`，仅匹配子域而不含裸域），禁止协议前缀、路径与空白。无论是否配置本字段，运行时都会拦截未指定地址、链路本地与 `0.0.0.0/8`；配置本字段后，普通域名若解析到私网或回环 IP 同样会被拒绝（显式 IP 字面量与 `localhost` / `*.localhost` 除外）。
+- `exec_allowlist`：可选字符串数组（最多 8 项、区分大小写去重与运行时匹配）。`host.exec.run` 仅允许从宿主 `PATH` 启动列表内的裸程序名（如 `"git"` 或 `"rclone"`）。程序名须匹配 `^[a-zA-Z0-9._-]+$`，禁止 `.`、`..`、路径分隔符以及以下禁用名单（剥离 `.exe` / `.cmd` / `.bat` / `.com` 后按小写比对）：`sh`、`bash`、`zsh`、`dash`、`fish`、`cmd`、`powershell`、`pwsh`、`python`、`pythonw`、`py`、`pyw`、`node`、`perl`、`ruby`、`osascript`，以及匹配 `^(pythonw?|pyw?)[0-9]+(\.[0-9]+)*$` 的版本化 Python 解释器名称。
 - `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见 [宿主界面扩展](ui-contributions.md) 与 [语言扩展](languages.md)。
 - `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。
 

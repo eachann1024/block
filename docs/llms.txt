@@ -1,23 +1,26 @@
 # Block 文档中心
 
-> Block（https://block.cooool.top）是一款面向 macOS、Windows 与 Linux 的免费开源（Apache 2.0）本地优先 Markdown 块笔记软件。外部插件独立建仓（添加 `blockmd-plugin` Topic 并发布正式 Release）、无需向主仓提 PR 即可参与商店自动采集（抓取 stars 降序前 100 仓库，桌面端也可直接通过本地目录或仓库名安装）；本站点提供 Block 的插件开发规范、清单与权限模型、JSON-RPC 2.0 协议、宿主界面扩展、声明式语言扩展及 AI 全量单文件指南。
+> Block（https://block.cooool.top）是一款面向 macOS、Windows 与 Linux 的免费开源（Apache 2.0）本地优先 Markdown 块笔记软件。外部插件独立建仓（添加 `blockmd-plugin` Topic，推荐发布正式 Release；无可用 Release 时采集器会回退固定提交 SHA 的源码包）、无需向主仓提 PR 即可参与商店自动采集（抓取 stars 降序前 100 仓库，桌面端也可直接通过本地目录或仓库名安装）；本站点提供中英文双语插件开发规范、清单与权限模型、JSON-RPC 2.0 协议、宿主界面扩展、声明式语言扩展及 AI 全量单文件指南。
 
 ## 文档中心
 
-- [文档中心首页](https://docs.block.cooool.top/): Block 文档总入口、核心规范与插件开发章节导航
+- [文档中心首页（中文）](https://docs.block.cooool.top/): Block 文档总入口、核心规范与插件开发章节导航
+- [Documentation Center (English)](https://docs.block.cooool.top/en/): English documentation home and plugin developer guide
+- [English llms.txt](https://docs.block.cooool.top/en/llms.txt): English index for LLMs and coding agents
 
-## 插件开发章节
+## 插件开发章节（中文）
 
-- [1. 开发前必读与 AI 指南](https://docs.block.cooool.top/plugins/): 无需提 PR 上架边界、三类开发路径、8 条必避红线、不可跳过开发步骤、4 步验收清单与宿主硬边界
+- [1. 开发前必读与 AI 指南](https://docs.block.cooool.top/plugins/): 无需提 PR 上架边界、三类开发路径、8 条必避红线、开发与验收步骤、沙盒硬边界与旧版运行时迁移
 - [2. 清单与权限](https://docs.block.cooool.top/plugins/manifest): 目录结构、`manifest.json` 必填与白名单字段、30 项有效权限（5 类 15 项敏感权限 + 3 项静默事件 + 12 项默认放行）与 `permission_reasons`
-- [3. 协议、UI 与骨架](https://docs.block.cooool.top/plugins/protocol-and-ui): 双向 JSON-RPC 2.0、`host.*` 方法、16 种 `UIItem` 控件、`block-sdk.js` 与遗留 Python 骨架、兼容性/平台实现说明
-- [4. 宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions): 多表面模型、`manifest.contributes` 字段、`plugin.command`/工作区事件、通用及特定场景宿主方法
+- [3. 协议、UI 与骨架](https://docs.block.cooool.top/plugins/protocol-and-ui): 双向 JSON-RPC 2.0、`host.*` 方法、16 种 `UIItem` 控件、`block-sdk.js` 双语沙盒骨架与兼容性/平台实现说明
+- [4. 宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions): 多表面模型、`manifest.contributes` 字段、`plugin.command`/工作区事件与通用宿主界面方法
 - [5. 语言扩展](https://docs.block.cooool.top/plugins/languages): 零子进程、零权限声明式语法高亮扩展（`contributes.languages` + `grammars/*.json`）与宿主文件关联参考
-- [6. 检查与上架](https://docs.block.cooool.top/plugins/check-and-store): `block-plugin-check` 命令与通过标准、双语门禁、`blockmd-plugin` 采集规则（前 100 上限）与离线兜底索引 / `builtin://` 机制
+- [6. 检查与上架](https://docs.block.cooool.top/plugins/check-and-store): `block-plugin-check` 命令与覆盖边界、双语门禁、`blockmd-plugin` 采集规则（前 100 上限）与离线兜底索引机制
 
 ## AI 全量单文件规范
 
-- [plugin-dev-for-ai.md](https://docs.block.cooool.top/plugin-dev-for-ai.md): 由 `docs/plugins/*.md` 自动拼装生成的自包含完整插件开发规范，适合直接交给 AI 工具从零构建 Block 原生插件
+- [plugin-dev-for-ai.md（中文）](https://docs.block.cooool.top/plugin-dev-for-ai.md): 由 `docs/plugins/*.md` 自动拼装生成的中文自包含完整插件开发规范
+- [en/plugin-dev-for-ai.md (English)](https://docs.block.cooool.top/en/plugin-dev-for-ai.md): Self-contained English plugin developer specification composed from `docs/en/plugins/*.md`
 
 ## 官网与 Agent 入口
 
