@@ -468,10 +468,10 @@ func TestOutlineSamplingAndListMode(t *testing.T) {
 		t.Fatalf("did not expect outline-hovercard in listMode")
 	}
 
-	// Focus filter input -> auto-promotes to outlineModePinned; Escape clears filter then closes
+	// Focus filter input -> keeps panel open; Escape clears filter then closes
 	clickProbe(t, tt, "outline-filter-input")
-	if s.outlineMode != outlineModePinned {
-		t.Fatalf("expected focusing filter input to promote to outlineModePinned, got %v", s.outlineMode)
+	if s.outlineMode != outlineModePanel {
+		t.Fatalf("expected focusing filter input to keep outlineModePanel, got %v", s.outlineMode)
 	}
 	tt.Type("Section 25")
 	tt.Frame()
@@ -483,13 +483,13 @@ func TestOutlineSamplingAndListMode(t *testing.T) {
 	}
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
-	if s.outlineFilter != "" || s.outlineMode != outlineModePinned {
-		t.Fatalf("first Escape should clear filter while keeping pinned; filter=%q mode=%v", s.outlineFilter, s.outlineMode)
+	if s.outlineFilter != "" || s.outlineMode != outlineModePanel {
+		t.Fatalf("first Escape should clear filter while keeping panel open; filter=%q mode=%v", s.outlineFilter, s.outlineMode)
 	}
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
 	if s.outlineMode != outlineModeClosed {
-		t.Fatalf("second Escape on empty filter should unpin & close, got %v", s.outlineMode)
+		t.Fatalf("second Escape on empty filter should close, got %v", s.outlineMode)
 	}
 
 	// Bottom-lock check (<=4px from bottom locks last heading)
@@ -572,29 +572,46 @@ func TestOutlineReviewRegressions(t *testing.T) {
 		t.Fatalf("expected outline-popover after expand")
 	}
 
-	// 4. Unpinning blurs filter input and closing clears outlineFilter & scroll offset.
+	// 4. Focused filter input resists pointer leave, outside click closes & clears, and toggle button switches to card view.
 	clickProbe(t, tt, "outline-filter-input")
 	tt.Type("Beta")
 	tt.Frame()
-	if s.outlineMode != outlineModePinned || s.outlineFilter != "Beta" {
-		t.Fatalf("expected pinned mode with filter 'Beta', got mode=%v filter=%q", s.outlineMode, s.outlineFilter)
-	}
-	s.outlineListScroll.Y = 12
-	clickProbe(t, tt, "outline-pin-btn")
-	tt.Frame()
-	if s.outlineMode != outlineModePanel {
-		t.Fatalf("expected outlineModePanel after unpin, got %v", s.outlineMode)
+	if s.outlineMode != outlineModePanel || s.outlineFilter != "Beta" {
+		t.Fatalf("expected panel mode with filter 'Beta', got mode=%v filter=%q", s.outlineMode, s.outlineFilter)
 	}
 	tt.Move(10, 10)
 	tt.Frame()
+	if s.outlineMode != outlineModePanel {
+		t.Fatalf("expected panel to stay open while filter input focused on leave, got %v", s.outlineMode)
+	}
+	tt.ClickAt(10, 120)
 	if s.outlineMode != outlineModeClosed {
-		t.Fatalf("expected outlineModeClosed after unpin + leave (filter input blurred), got %v", s.outlineMode)
+		t.Fatalf("expected outside click to close outline panel, got %v", s.outlineMode)
 	}
 	if s.outlineFilter != "" || s.outlineListScroll.Y != 0 {
 		t.Fatalf("expected filter and scroll cleared on close, got filter=%q scrollY=%v", s.outlineFilter, s.outlineListScroll.Y)
 	}
 
+	// Switching from panel to card view via outline-view-toggle-btn clears filter & scroll.
+	tt.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
+	if _, ok := appUi.TargetBounds("outline-popover"); !ok {
+		t.Fatalf("expected outline-popover after expand persisted")
+	}
+	clickProbe(t, tt, "outline-filter-input")
+	tt.Type("Beta")
+	tt.Frame()
+	s.outlineListScroll.Y = 12
+	clickProbe(t, tt, "outline-view-toggle-btn")
+	if s.outlineViewMode != model.OutlineViewCard {
+		t.Fatalf("expected OutlineViewCard after clicking toggle button, got %q", s.outlineViewMode)
+	}
+	if s.outlineFilter != "" || s.outlineListScroll.Y != 0 {
+		t.Fatalf("expected filter and scroll cleared on view toggle, got filter=%q scrollY=%v", s.outlineFilter, s.outlineListScroll.Y)
+	}
+
 	// Verify clicking outline item jumps properly even with annotation rail active.
+	tt.Move(10, 10)
+	tt.Frame()
 	tt.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
 	clickProbe(t, tt, "outline-expand-btn")
 	clickProbe(t, tt, "outline-item-2")
@@ -658,6 +675,7 @@ func TestOutlineReviewRegressions(t *testing.T) {
 	}
 
 	// 7. outline-popup-stage stays stationary across HoverCard -> Panel -> Closed and aligns left of rail.
+	s.SetOutlineViewMode(model.OutlineViewAuto)
 	assertRectClose := func(label string, a, b ui.Rect) {
 		t.Helper()
 		if math.Abs(float64(a.X-b.X)) > 0.5 || math.Abs(float64(a.Y-b.Y)) > 0.5 ||
@@ -711,6 +729,194 @@ func TestOutlineReviewRegressions(t *testing.T) {
 		t.Fatalf("expected outline-popup-stage bounds in Closed mode")
 	}
 	assertRectClose("outline-popup-stage closed", stageCard, stageClosed)
+}
+
+func TestOutlineTickMoveReopenAndViewModeToggle(t *testing.T) {
+	// (a) Clicking a tick closes the overlay suppressing only that block, and moving along the rail to another tick reopens immediately.
+	appUi.ResetSmoke()
+	docSmall := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockHeading1, Spans: []model.Span{{Text: "First"}}},
+			{ID: 2, Kind: model.BlockHeading2, Spans: []model.Span{{Text: "Second"}}},
+			{ID: 3, Kind: model.BlockHeading2, Spans: []model.Span{{Text: "Third"}}},
+		},
+	}
+	s := NewSession("", docSmall, nil, nil)
+	s.FocusBlock(0)
+	var changes []model.OutlineViewMode
+	s.OnOutlineViewModeChange = func(mode model.OutlineViewMode) {
+		changes = append(changes, mode)
+	}
+
+	// Invalid view modes normalize to Auto and never open a closed overlay.
+	s.SetOutlineViewMode(model.OutlineViewMode("bogus"))
+	if s.OutlineViewMode() != model.OutlineViewAuto || s.outlineMode != outlineModeClosed {
+		t.Fatalf("expected bogus mode normalized to Auto while closed, got mode=%q overlay=%v", s.OutlineViewMode(), s.outlineMode)
+	}
+
+	tt := ui.NewTester(makeSessionView(s, false), 1100, 700)
+	bar0, ok := appUi.TargetBounds("outline-bar-0")
+	if !ok {
+		t.Fatalf("expected outline-bar-0 bounds")
+	}
+	bar1, ok := appUi.TargetBounds("outline-bar-1")
+	if !ok {
+		t.Fatalf("expected outline-bar-1 bounds")
+	}
+
+	// Hover tick 0 -> opens card; click tick 0 -> closes suppressing block 1; staying on tick 0 stays closed.
+	tt.Move(bar0.X+bar0.W*0.5, bar0.Y+bar0.H*0.5)
+	if s.outlineMode != outlineModeHoverCard || s.outlineCardBlockID != 1 {
+		t.Fatalf("expected HoverCard on tick 0, got mode=%v card=%d", s.outlineMode, s.outlineCardBlockID)
+	}
+	tt.ClickAt(bar0.X+bar0.W*0.5, bar0.Y+bar0.H*0.5)
+	if s.outlineMode != outlineModeClosed || s.outlineSuppressBlockID != 1 {
+		t.Fatalf("expected closed suppressing block 1 after clicking tick 0, got mode=%v suppress=%d", s.outlineMode, s.outlineSuppressBlockID)
+	}
+	tt.Move(bar0.X+bar0.W*0.5, bar0.Y+bar0.H*0.5)
+	if s.outlineMode != outlineModeClosed {
+		t.Fatalf("expected staying on clicked tick 0 to keep overlay closed, got %v", s.outlineMode)
+	}
+
+	// Move directly along the rail to tick 1 without leaving hotzone -> immediately reopens HoverCard for block 2.
+	tt.Move(bar1.X+bar1.W*0.5, bar1.Y+bar1.H*0.5)
+	if s.outlineMode != outlineModeHoverCard || s.outlineCardBlockID != 2 {
+		t.Fatalf("expected immediate HoverCard reopen for block 2 when moving to tick 1, got mode=%v card=%d", s.outlineMode, s.outlineCardBlockID)
+	}
+	if s.outlineSuppressBlockID != 0 {
+		t.Fatalf("expected outlineSuppressBlockID cleared on moving to another tick, got %d", s.outlineSuppressBlockID)
+	}
+
+	// (b) Clicking outline-expand-btn switches to OutlineViewList, fires callback, and persists across reopen even with <=20 headings.
+	clickProbe(t, tt, "outline-expand-btn")
+	if s.outlineMode != outlineModePanel || s.OutlineViewMode() != model.OutlineViewList {
+		t.Fatalf("expected outlineModePanel and OutlineViewList after clicking expand, got mode=%v view=%q", s.outlineMode, s.OutlineViewMode())
+	}
+	if _, ok := appUi.TargetBounds("outline-popover"); !ok {
+		t.Fatalf("expected outline-popover visible after switching to list view")
+	}
+	if len(changes) != 1 || changes[0] != model.OutlineViewList {
+		t.Fatalf("expected OnOutlineViewModeChange([list]), got %v", changes)
+	}
+
+	// In list view too: clicking tick 0 closes, then moving along rail to tick 1 immediately reopens list panel.
+	tt.ClickAt(bar0.X+bar0.W*0.5, bar0.Y+bar0.H*0.5)
+	if s.outlineMode != outlineModeClosed || s.outlineSuppressBlockID != 1 {
+		t.Fatalf("expected closed suppressing block 1 in list view, got mode=%v suppress=%d", s.outlineMode, s.outlineSuppressBlockID)
+	}
+	tt.Move(bar1.X+bar1.W*0.5, bar1.Y+bar1.H*0.5)
+	if s.outlineMode != outlineModePanel {
+		t.Fatalf("expected immediate outlineModePanel reopen when moving to tick 1, got %v", s.outlineMode)
+	}
+
+	// Leave and re-hover <=20 headings: directly opens outlineModePanel.
+	tt.Move(10, 10)
+	tt.Frame()
+	if s.outlineMode != outlineModeClosed {
+		t.Fatalf("expected closed after leaving rail, got %v", s.outlineMode)
+	}
+	tt.Move(bar0.X+bar0.W*0.5, bar0.Y+bar0.H*0.5)
+	if s.outlineMode != outlineModePanel {
+		t.Fatalf("expected persisted list view to open outlineModePanel directly on re-hover, got %v", s.outlineMode)
+	}
+
+	// (c) In >20 headings doc, clicking outline-view-toggle-btn switches to OutlineViewCard, clears filter & scroll, and persists across reopen.
+	appUi.ResetSmoke()
+	blocks25 := make([]model.Block, 25)
+	for i := range blocks25 {
+		blocks25[i] = model.Block{
+			ID:    model.BlockID(i + 1),
+			Kind:  model.BlockHeading2,
+			Spans: []model.Span{{Text: fmt.Sprintf("Section %02d", i+1)}},
+		}
+	}
+	s25 := NewSession("", &model.Doc{Blocks: blocks25}, nil, nil)
+	s25.FocusBlock(0)
+	var changes25 []model.OutlineViewMode
+	s25.OnOutlineViewModeChange = func(mode model.OutlineViewMode) {
+		changes25 = append(changes25, mode)
+	}
+	var filterFocused bool
+	var rootFocused bool
+	t25 := ui.NewTester(func(c *ui.Context) {
+		w, _ := c.Size()
+		s25.Render(c, w, false)
+		filterFocused = s25.outlineInputHandle.Focused(c)
+		rootFocused = s25.rootHandle.FocusWithin(c)
+	}, 1100, 700)
+
+	rail25, ok := appUi.TargetBounds("outline-rail")
+	if !ok {
+		t.Fatalf("expected outline-rail for 25 headings")
+	}
+	t25.Move(rail25.X+rail25.W*0.5, rail25.Y+rail25.H*0.5)
+	if s25.outlineMode != outlineModePanel {
+		t.Fatalf("expected >20 headings in Auto mode to open outlineModePanel, got %v", s25.outlineMode)
+	}
+
+	clickProbe(t, t25, "outline-filter-input")
+	t25.Type("Section 02")
+	t25.Frame()
+	s25.outlineListScroll.Y = 24
+
+	// (d) Moving pointer out while filter input focused keeps panel open; outside click closes & clears filter and focus.
+	t25.Move(10, 10)
+	t25.Frame()
+	if s25.outlineMode != outlineModePanel || s25.outlineFilter != "Section 02" {
+		t.Fatalf("expected panel & filter preserved when pointer leaves focused filter, got mode=%v filter=%q", s25.outlineMode, s25.outlineFilter)
+	}
+	t25.ClickAt(10, 200)
+	t25.Frame()
+	if s25.outlineMode != outlineModeClosed || s25.outlineFilter != "" || filterFocused {
+		t.Fatalf("expected outside click to close panel, clear filter, and blur input; mode=%v filter=%q focused=%v", s25.outlineMode, s25.outlineFilter, filterFocused)
+	}
+
+	// Re-open, type filter + scroll, then toggle to card view.
+	t25.Move(rail25.X+rail25.W*0.5, rail25.Y+rail25.H*0.5)
+	clickProbe(t, t25, "outline-filter-input")
+	t25.Type("Section 02")
+	t25.Frame()
+	s25.outlineListScroll.Y = 24
+	clickProbe(t, t25, "outline-view-toggle-btn")
+	if s25.OutlineViewMode() != model.OutlineViewCard || s25.outlineMode != outlineModeHoverCard {
+		t.Fatalf("expected OutlineViewCard & outlineModeHoverCard after toggle button, got view=%q mode=%v", s25.OutlineViewMode(), s25.outlineMode)
+	}
+	if s25.outlineFilter != "" || s25.outlineListScroll.Y != 0 {
+		t.Fatalf("expected filter & scroll cleared on toggle to card view, got filter=%q scrollY=%v", s25.outlineFilter, s25.outlineListScroll.Y)
+	}
+	if len(changes25) != 1 || changes25[0] != model.OutlineViewCard {
+		t.Fatalf("expected OnOutlineViewModeChange([card]), got %v", changes25)
+	}
+
+	// Close and re-hover >20 headings: directly opens card preview.
+	t25.Move(10, 10)
+	t25.Frame()
+	if s25.outlineMode != outlineModeClosed {
+		t.Fatalf("expected closed after leave, got %v", s25.outlineMode)
+	}
+	t25.Move(rail25.X+rail25.W*0.5, rail25.Y+rail25.H*0.5)
+	if s25.outlineMode != outlineModeHoverCard {
+		t.Fatalf("expected >20 headings with OutlineViewCard to open HoverCard on re-hover, got %v", s25.outlineMode)
+	}
+	if _, ok := appUi.TargetBounds("outline-hovercard"); !ok {
+		t.Fatalf("expected outline-hovercard visible on re-hover in card view")
+	}
+
+	// Switch back to list view and verify first Esc clears filter, second Esc closes & restores editor focus.
+	clickProbe(t, t25, "outline-expand-btn")
+	clickProbe(t, t25, "outline-filter-input")
+	t25.Type("Section 10")
+	t25.Frame()
+	t25.Key(0, ui.KeyEscape)
+	t25.Frame()
+	if s25.outlineFilter != "" || s25.outlineMode != outlineModePanel {
+		t.Fatalf("expected first Esc to clear filter while keeping panel open, got filter=%q mode=%v", s25.outlineFilter, s25.outlineMode)
+	}
+	t25.Key(0, ui.KeyEscape)
+	t25.Frame()
+	if s25.outlineMode != outlineModeClosed || !rootFocused {
+		t.Fatalf("expected second Esc to close panel & restore editor focus, got mode=%v rootFocused=%v", s25.outlineMode, rootFocused)
+	}
 }
 
 func TestMultiBlockAnnotationsReactionsAndRewrite(t *testing.T) {
