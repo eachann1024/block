@@ -656,6 +656,61 @@ func TestOutlineReviewRegressions(t *testing.T) {
 	if !sawMultiSelPending || !detachedFocused || sd.focusPending {
 		t.Fatalf("expected multiSelFocusPending triggered and detached focus restored without focusPending leak: sawPending=%v detachedFocused=%v focusPending=%v", sawMultiSelPending, detachedFocused, sd.focusPending)
 	}
+
+	// 7. outline-popup-stage stays stationary across HoverCard -> Panel -> Closed and aligns left of rail.
+	assertRectClose := func(label string, a, b ui.Rect) {
+		t.Helper()
+		if math.Abs(float64(a.X-b.X)) > 0.5 || math.Abs(float64(a.Y-b.Y)) > 0.5 ||
+			math.Abs(float64(a.W-b.W)) > 0.5 || math.Abs(float64(a.H-b.H)) > 0.5 {
+			t.Fatalf("%s bounds shifted: want=%+v got=%+v", label, a, b)
+		}
+	}
+	tt.Frame()
+	rail, ok = appUi.TargetBounds("outline-rail")
+	if !ok {
+		t.Fatalf("expected outline-rail bounds for popup-stage check")
+	}
+	tt.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
+	if s.outlineMode != outlineModeHoverCard {
+		t.Fatalf("expected outlineModeHoverCard, got %v", s.outlineMode)
+	}
+	stageCard, ok := appUi.TargetBounds("outline-popup-stage")
+	if !ok {
+		t.Fatalf("expected outline-popup-stage bounds in HoverCard mode")
+	}
+	cardBounds, ok := appUi.TargetBounds("outline-hovercard")
+	if !ok {
+		t.Fatalf("expected outline-hovercard bounds")
+	}
+	if diff := math.Abs(float64((cardBounds.X + cardBounds.W) - (rail.X - theme.OutlineBridgeWidth))); diff > 0.5 {
+		t.Fatalf("expected hovercard right edge adjacent to rail left minus bridge: card=%+v rail=%+v bridge=%v", cardBounds, rail, theme.OutlineBridgeWidth)
+	}
+	clickProbe(t, tt, "outline-expand-btn")
+	if s.outlineMode != outlineModePanel {
+		t.Fatalf("expected outlineModePanel after expand, got %v", s.outlineMode)
+	}
+	stagePanel, ok := appUi.TargetBounds("outline-popup-stage")
+	if !ok {
+		t.Fatalf("expected outline-popup-stage bounds in Panel mode")
+	}
+	assertRectClose("outline-popup-stage panel", stageCard, stagePanel)
+	panelBounds, ok := appUi.TargetBounds("outline-popover")
+	if !ok {
+		t.Fatalf("expected outline-popover bounds")
+	}
+	if diff := math.Abs(float64((panelBounds.X + panelBounds.W) - (rail.X - theme.OutlineBridgeWidth))); diff > 0.5 {
+		t.Fatalf("expected panel right edge adjacent to rail left minus bridge: panel=%+v rail=%+v bridge=%v", panelBounds, rail, theme.OutlineBridgeWidth)
+	}
+	tt.Move(10, 10)
+	tt.Frame()
+	if s.outlineMode != outlineModeClosed {
+		t.Fatalf("expected outlineModeClosed after leave, got %v", s.outlineMode)
+	}
+	stageClosed, ok := appUi.TargetBounds("outline-popup-stage")
+	if !ok {
+		t.Fatalf("expected outline-popup-stage bounds in Closed mode")
+	}
+	assertRectClose("outline-popup-stage closed", stageCard, stageClosed)
 }
 
 func TestMultiBlockAnnotationsReactionsAndRewrite(t *testing.T) {

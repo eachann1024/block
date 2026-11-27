@@ -328,7 +328,7 @@ func OutlinePopoverTransition() ui.ElementTransition {
 		Colors:       true,
 		Shadows:      true,
 		Enter:        &ui.Motion{X: 4, Opacity: 0.15},
-		Exit:         &ui.Motion{X: 2, Opacity: 0},
+		Exit:         &ui.Motion{Opacity: 0},
 	}
 }
 

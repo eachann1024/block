@@ -355,7 +355,8 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 	railH := float32(len(ticks)) * theme.OutlineTickHitHeight
 
 	var (
-		hotZone            ui.Element
+		popupEl            ui.Element
+		rail               ui.Element
 		popupHovered       bool
 		popupPendingLayout bool
 		bridgeHovered      bool
@@ -366,38 +367,70 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		expandRequested    bool
 	)
 
+	rightEdge := max(winW-(vp.X+vp.W), 0) + theme.OutlineRailRightOffset
+	bottomEdge := max(winH-(vp.Y+vp.H), 0)
+	popupRight := rightEdge + theme.OutlineRailWidth + theme.OutlineBridgeWidth
+	popupStageW := max(theme.OutlineHoverCardWidth, theme.OutlinePanelWidth)
+
 	ui.Overlay(c, func() {
+		popupStage := ui.Column(c.Key("outline-popup-stage")).
+			Absolute().
+			Top(vp.Y).
+			Bottom(bottomEdge).
+			Right(popupRight).
+			Width(popupStageW).
+			Justify(ui.Center).
+			AlignItems(ui.End).
+			PassThrough()
+		appUi.Probe(popupStage, "outline-popup-stage")
+		popupStage.Children(func() {
+			switch s.outlineMode {
+			case outlineModeHoverCard:
+				card := s.renderOutlineHoverCard(c, pal, items, activeIdx, &expandRequested)
+				popupEl = card
+				popupPendingLayout = card.Bounds().W <= 0
+				popupHovered = card.Hovered() || s.pointerInElement(card)
+			case outlineModePanel, outlineModePinned:
+				var panel ui.Element
+				panel, listHoveredID, inputFocused = s.renderOutlinePanel(c, pal, items, activeIdx, panelMaxH)
+				popupEl = panel
+				popupPendingLayout = panel.Bounds().W <= 0
+				popupHovered = panel.Hovered() || s.pointerInElement(panel)
+			}
+		})
+
+		if s.outlineMode != outlineModeClosed {
+			bridgeH := max(railH, 96)
+			if s.outlineMode == outlineModePanel || s.outlineMode == outlineModePinned {
+				estPanelH := min(panelMaxH, float32(len(items))*theme.HeightCompact+60)
+				bridgeH = max(railH, estPanelH*0.5)
+			}
+			bridgeStage := ui.Column(c.Key("outline-bridge-stage")).
+				Absolute().
+				Top(vp.Y).
+				Bottom(bottomEdge).
+				Right(rightEdge + theme.OutlineRailWidth).
+				Width(theme.OutlineBridgeWidth).
+				Justify(ui.Center).
+				AlignItems(ui.Center).
+				PassThrough()
+			bridgeStage.Children(func() {
+				bridge := ui.Box(c.Key("outline-bridge")).Width(theme.OutlineBridgeWidth).Height(bridgeH).PassThrough()
+				bridgeHovered = s.pointerInElement(bridge)
+			})
+		}
+
 		outer := ui.Column(c.Key("outline-overlay-root")).
 			Absolute().
 			Top(vp.Y).
-			Bottom(max(winH-(vp.Y+vp.H), 0)).
-			Right(max(winW-(vp.X+vp.W), 0)+theme.OutlineRailRightOffset).
-			Justify(ui.Center).AlignItems(ui.End).PassThrough()
-
+			Bottom(bottomEdge).
+			Right(rightEdge).
+			Justify(ui.Center).
+			AlignItems(ui.End).
+			PassThrough()
 		outer.Children(func() {
-			hotZone = ui.Row(c.Key("outline-hotzone")).AlignItems(ui.Center).Gap(0).PassThrough()
-			hotZone.Children(func() {
-				switch s.outlineMode {
-				case outlineModeHoverCard:
-					card := s.renderOutlineHoverCard(c, pal, items, activeIdx, &expandRequested)
-					popupPendingLayout = card.Bounds().W <= 0
-					popupHovered = card.Hovered() || s.pointerInElement(card)
-					bridge := ui.Box(c.Key("outline-bridge")).Width(theme.OutlineBridgeWidth).Height(max(railH, 96)).PassThrough()
-					bridgeHovered = s.pointerInElement(bridge)
-				case outlineModePanel, outlineModePinned:
-					var panel ui.Element
-					panel, listHoveredID, inputFocused = s.renderOutlinePanel(c, pal, items, activeIdx, panelMaxH)
-					popupPendingLayout = panel.Bounds().W <= 0
-					popupHovered = panel.Hovered() || s.pointerInElement(panel)
-					estPanelH := min(panelMaxH, float32(len(items))*theme.HeightCompact+60)
-					bridge := ui.Box(c.Key("outline-bridge")).Width(theme.OutlineBridgeWidth).Height(max(railH, estPanelH*0.5)).PassThrough()
-					bridgeHovered = s.pointerInElement(bridge)
-				}
-
-				var rail ui.Element
-				rail, railHovered, hoveredTickID = s.renderOutlineTicks(c, pal, items, ticks, activeIdx, hoverIdx)
-				rail.Opacity(s.outlineOpacity(c, rail, now))
-			})
+			rail, railHovered, hoveredTickID = s.renderOutlineTicks(c, pal, items, ticks, activeIdx, hoverIdx)
+			rail.Opacity(s.outlineOpacity(c, rail, now))
 		})
 	})
 
@@ -408,7 +441,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		return
 	}
 
-	if (s.outlineMode == outlineModeHoverCard || s.outlineMode == outlineModePanel) && hotZone.Valid() && hotZone.PressedOutside() {
+	if (s.outlineMode == outlineModeHoverCard || s.outlineMode == outlineModePanel) && popupEl.Valid() && popupEl.PressedOutside() && (!rail.Valid() || rail.PressedOutside()) {
 		s.clearOutlineOverlay(false)
 		c.Invalidate()
 		return
