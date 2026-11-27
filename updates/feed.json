@@ -1,10 +1,78 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T20:15:26.279Z",
-  "latest_version": "1.0.972",
-  "latest_tag": "v1.0.972",
+  "updated_at": "2026-11-27T20:35:11.649Z",
+  "latest_version": "1.0.973",
+  "latest_tag": "v1.0.973",
   "releases": [
+    {
+      "version": "1.0.973",
+      "tag": "v1.0.973",
+      "published_at": "2026-11-27T20:35:11Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.973",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "导入导出：纸张主题导出时可以按需加载适用于中日韩文字和拉丁文字的网页字体。",
+          "AI 对话：新增隐藏的深度 AI 模式，支持组合式原生回复组件。"
+        ],
+        "improvements": [
+          "侧边栏：侧边栏和标题栏现在会显示窗口材质，并以渐隐的品牌色带和列表边缘淡出效果呈现。",
+          "设置：新用户默认关闭侧边栏装饰，并开启窗口半透明效果。"
+        ],
+        "fixes": [
+          "思维导图：窗口进入或退出全屏后，思维导图现在会保持垂直居中。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Import & Export: Paper theme exports can now load unified CJK and Latin webfonts on demand.",
+          "AI Chat: A hidden deep AI mode now supports composable native reply components."
+        ],
+        "improvements": [
+          "Sidebar: The sidebar and titlebar now show the window material, with a softly fading brand band and edge-fading lists.",
+          "Settings: New users now start with sidebar decoration off and window translucency on."
+        ],
+        "fixes": [
+          "Mind Map: The map now stays vertically centered after the window enters or exits fullscreen."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-macos-arm64.dmg",
+          "size": 19181890,
+          "sha256": "00596a465358cf777911e190aa99db57db7842c66f1505ad2ec7dbeea9c185db"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-macos-x64.dmg",
+          "size": 21191797,
+          "sha256": "7b9bee92f9ea16a44643746c0777bdbbc69de5775bd4cd061ec5ae3c791dd92d"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-windows-x64-setup.exe",
+          "size": 16638097,
+          "sha256": "93abcb8e50a363b4845d6b16127da2e82957d0d5d278fdf279cbdb847e70944c"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-linux-x64.deb",
+          "size": 13505896,
+          "sha256": "db63246390dd5e518a99b7d86fbb26f207d4a7311f193aa540fc857f32063222"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.973/block-linux-x64.AppImage",
+          "size": 26819064,
+          "sha256": "6bb52534c0003cbcd38ee5322d84a89ae77324b07152dadf1cef253971229186"
+        }
+      ]
+    },
     {
       "version": "1.0.972",
       "tag": "v1.0.972",
@@ -30,38 +98,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.972/block-macos-arm64.dmg",
-          "size": 19113004,
-          "sha256": "7b29b37c37fb89e6977063b0bbea147197c14a209fd1a07229b544b3300cab8f"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.972/block-macos-x64.dmg",
-          "size": 21109626,
-          "sha256": "1431ca873831260fbbc578259121c5adb86fab5f8df47b44a4bb5e26c8bf4d5d"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.972/block-windows-x64-setup.exe",
-          "size": 16558619,
-          "sha256": "52243d6c20a2da194beec7fde84cfee91bebe36c10208aa76d4cea7c27f06f9e"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.972/block-linux-x64.deb",
-          "size": 13450292,
-          "sha256": "77cad2d8874fd106b829d079a329e78c53aeffb5a1bd43019ec64f19c3ccd4a0"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.972/block-linux-x64.AppImage",
-          "size": 26761720,
-          "sha256": "d77f87c9cf21f2d32ebee1be4fe55468144a925e9fb0ae73853332fe872305e5"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.971",
@@ -1704,31 +1741,6 @@
         "improvements": [],
         "fixes": [
           "Sidebar: The icon picker now opens level with the clicked row."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.920",
-      "tag": "v1.0.920",
-      "published_at": "2026-11-24T04:43:26Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.920",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "侧边栏：图标选择器现固定在图标右侧弹出，视觉排版与设计规范保持一致。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Sidebar: The icon picker now anchors to the right of the icon to align with design specifications."
         ],
         "other": []
       },
