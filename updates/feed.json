@@ -1,10 +1,84 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T14:13:22.121Z",
-  "latest_version": "1.0.962",
-  "latest_tag": "v1.0.962",
+  "updated_at": "2026-11-27T15:22:48.049Z",
+  "latest_version": "1.0.963",
+  "latest_tag": "v1.0.963",
   "releases": [
+    {
+      "version": "1.0.963",
+      "tag": "v1.0.963",
+      "published_at": "2026-11-27T15:22:47Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.963",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件：启用的插件可以排除工作区目录，避免扫描其中的文件。",
+          "工作区：Block 会跟踪移出应用的文件夹，并在应用重新获得焦点或唤醒时同步。",
+          "插件商店：开发者条目会链接到文档首页，AI 功能也会在悬停时显示提示。"
+        ],
+        "improvements": [
+          "插件商店：商店插画改用仓库素材和共享目录数据。",
+          "应用：退出过程更加顺畅，状态更新对界面响应的影响也更小。",
+          "插件商店：现在会优先从 jsDelivr 加载插画。"
+        ],
+        "fixes": [
+          "表格：跨单元格拖动选择时不再闪烁。",
+          "插件商店：现在可以正确显示打包内置的图标，精选列表也更加简洁。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugins: Enabled plugins can exclude workspace directories from file scanning.",
+          "Workspace: Block tracks folders moved outside the app and syncs them when the app regains focus or wakes.",
+          "Plugin Store: Developer entries link to the documentation home, and AI features show a hint on hover."
+        ],
+        "improvements": [
+          "Plugin Store: Store artwork now comes from repository assets and shared catalog data.",
+          "App: Quitting is more responsive, and state updates cause less delay in the interface.",
+          "Plugin Store: Artwork now loads from jsDelivr first."
+        ],
+        "fixes": [
+          "Tables: Drag selections no longer flicker when crossing cells.",
+          "Plugin Store: Packaged icons now display correctly, and the featured list is simpler."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-macos-arm64.dmg",
+          "size": 18808099,
+          "sha256": "ee535ae44836b24a8e2b97c9fc4a20978643f2babc1189222ba1005b1cc87404"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-macos-x64.dmg",
+          "size": 20756692,
+          "sha256": "ecc3f03d880467f90b9af55f4499097dd6c2e1b8402c787eab1e61d5017adca8"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-windows-x64-setup.exe",
+          "size": 16285693,
+          "sha256": "71b2f05347e01e7e6e93e6ff4cfb75d2899f791d2f0d292ed40ae8c486434422"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-linux-x64.deb",
+          "size": 13234286,
+          "sha256": "93310cb7f295c08362a8ca61e27fde42d6ff5c4804bf5655546046c1773730bc"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.963/block-linux-x64.AppImage",
+          "size": 26499576,
+          "sha256": "799386837c45d75656d380436d47371c8c8a761e630b55852f4303117f746417"
+        }
+      ]
+    },
     {
       "version": "1.0.962",
       "tag": "v1.0.962",
@@ -28,38 +102,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-macos-arm64.dmg",
-          "size": 18786649,
-          "sha256": "a775ed7f560939550bf6f20f06f79351807af22aabb402f43590475d2fc305a2"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-macos-x64.dmg",
-          "size": 20723334,
-          "sha256": "2ed16e168454beeb4c406e60ed5c5fd30fd957f2f623c414c471faebf8655eb7"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-windows-x64-setup.exe",
-          "size": 16255352,
-          "sha256": "ea9c653a4d5f03107ff3d3256a0fb97d70e240a0449ba570994a83558ac04478"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-linux-x64.deb",
-          "size": 13204302,
-          "sha256": "207e6038002e3d203b2627727bb3538ccaabc413be7da3d9660e07d34a864da4"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.962/block-linux-x64.AppImage",
-          "size": 26470904,
-          "sha256": "197971900a1c0a7ea78c3fcdd28438bcff7295111bcaf7c0068fb6fe2f0af06c"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.961",
@@ -1681,35 +1724,6 @@
           "Dragging now requires more pointer movement, preventing clicks from accidentally triggering a drag while scrolling.",
           "Opening a video no longer automatically enters native fullscreen, and fullscreen toggles are now throttled."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.910",
-      "tag": "v1.0.910",
-      "published_at": "2026-11-22T11:41:23Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.910",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "代码块现在支持 TOML 和常见配置格式的语法高亮。",
-          "编辑器现在能区分配置文件路径与配置内容，并识别更多代码块语言别名。",
-          "Block 现在能识别常见配置文件扩展名，并在侧边栏显示对应图标。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Code blocks now include built-in syntax highlighting for TOML and popular configuration formats.",
-          "The editor now distinguishes configuration file paths from configuration content and recognizes additional aliases for code blocks.",
-          "Block now recognizes popular configuration file extensions and displays matching icons in the sidebar."
-        ],
-        "improvements": [],
-        "fixes": [],
         "other": []
       },
       "assets": []
