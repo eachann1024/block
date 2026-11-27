@@ -375,6 +375,9 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 		}
 
 		ta.OnTextKey(func(k ui.TextKey) bool {
+			if st.captureBlockTextKey(k) {
+				return true
+			}
 			if isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyZ {
 				if !cb.ReadOnly {
 					st.outlinePending = &outlineAction{kind: outlineActUndo}
@@ -587,6 +590,9 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 
 				nodeID := node.ID
 				ta.OnTextKey(func(k ui.TextKey) bool {
+					if st.captureBlockTextKey(k) {
+						return true
+					}
 					live := k.Text()
 					s0, s1 := st.estimateOutlineSelection(nodeID, live)
 					switch {

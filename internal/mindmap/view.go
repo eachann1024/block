@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"block/internal/icons"
 	"block/internal/theme"
@@ -133,6 +134,12 @@ type BlockState struct {
 	outlinePending            *outlineAction
 
 	SourceCopiedUntil time.Time
+
+	// Block-scoped chords (⌘1/2/3 views, ⌘⇧↵ fullscreen) captured inside text
+	// fields are queued here and applied by handleBlockShortcuts next frame.
+	pendingView      ViewMode
+	pendingFSToggle  bool
+	viewFocusPending bool
 
 	CanvasHandle  ui.Handle
 	OutlineHandle ui.Handle
@@ -1265,6 +1272,127 @@ func (st *BlockState) stepFind(delta int) {
 }
 
 // ToggleLayout switches between right-side and balanced layouts.
+// viewOrder is the ⌘1 / ⌘2 / ⌘3 order of the header view tabs.
+var viewOrder = [...]ViewMode{ViewMap, ViewOutline, ViewSource}
+
+func viewForDigitKey(key ui.Key) (ViewMode, bool) {
+	if key >= ui.Key1 && int(key-ui.Key1) < len(viewOrder) {
+		return viewOrder[key-ui.Key1], true
+	}
+	return "", false
+}
+
+func viewShortcutLabel(mode ViewMode) string {
+	for i, m := range viewOrder {
+		if m == mode {
+			if theme.IsMacOS() {
+				return fmt.Sprintf("⌘%d", i+1)
+			}
+			return fmt.Sprintf("Ctrl+%d", i+1)
+		}
+	}
+	return ""
+}
+
+// SwitchView changes the active view tab. focus moves keyboard focus into the
+// new view so chained shortcuts keep working without a mouse click.
+func (st *BlockState) SwitchView(mode ViewMode, focus bool, cb Callbacks) {
+	if st == nil {
+		return
+	}
+	st.finishEdit(true, cb)
+	st.LinkNodeID = 0
+	st.ExportMenuOpen = false
+	st.ShortcutsOpen = false
+	st.OutlineUndoNodeID = 0
+	if st.View != mode {
+		st.HintScroll.X = 0
+	}
+	st.View = mode
+	st.fsCamAnimActive = false
+	if mode == ViewMap {
+		st.AutoFitPending = true
+	}
+	if !focus {
+		return
+	}
+	st.viewFocusPending = true
+	if mode == ViewOutline {
+		target := st.outlineActiveRoot()
+		if st.Root != nil {
+			if n := st.Root.FindByID(st.SelectedID); n != nil {
+				target = n
+			}
+		}
+		if target != nil {
+			st.focusOutlineNode(target.ID, utf8.RuneCountInString(target.Text))
+		}
+		st.viewFocusPending = false
+	}
+	if cb.OnRequestFocus != nil {
+		cb.OnRequestFocus()
+	}
+}
+
+// captureBlockTextKey queues block-scoped chords typed inside a text field so
+// the field never swallows them.
+func (st *BlockState) captureBlockTextKey(k ui.TextKey) bool {
+	if isOutlinePrimaryMod(k.Mods) {
+		if mode, ok := viewForDigitKey(k.Key); ok {
+			st.pendingView = mode
+			return true
+		}
+	}
+	if isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyEnter {
+		st.pendingFSToggle = true
+		return true
+	}
+	return false
+}
+
+// handleBlockShortcuts runs chords scoped to this block. They only fire while
+// the block owns focus or is fullscreen, so ⌘1-9 still switch editor tabs
+// everywhere else.
+func (st *BlockState) handleBlockShortcuts(c *ui.Context, fullscreen bool, cb Callbacks) {
+	view, fsToggle := st.pendingView, st.pendingFSToggle
+	st.pendingView, st.pendingFSToggle = "", false
+	if !fullscreen && !st.HasFocus(c) && view == "" && !fsToggle {
+		return
+	}
+	if view == "" {
+		for _, mode := range viewOrder {
+			if d := viewDigitKey(mode); c.Shortcut(ui.Cmd, d) {
+				view = mode
+				break
+			}
+		}
+	}
+	if !fsToggle && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEnter) {
+		fsToggle = true
+	}
+	if view != "" {
+		st.SwitchView(view, true, cb)
+		c.Invalidate()
+	}
+	if fsToggle {
+		if fullscreen {
+			st.ExitFullscreen(cb)
+		} else {
+			st.EnterFullscreen(cb)
+		}
+		c.Invalidate()
+	}
+}
+
+func viewDigitKey(mode ViewMode) ui.Key {
+	for i, m := range viewOrder {
+		if m == mode {
+			return ui.Key1 + ui.Key(i)
+		}
+	}
+	return 0
+}
+
 func (st *BlockState) ToggleLayout() {
 	if st == nil {
 		return
@@ -1895,6 +2023,9 @@ func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg 
 	st.lastCfgSet = true
 	st.reduceMotion = c.Preferences().ReduceMotion
 	st.lastInlineFocused = focused || st.HasFocus(c) || st.EditingID != 0
+	if !st.IsFullscreenOverlayActive() {
+		st.handleBlockShortcuts(c, false, cb)
+	}
 	pal := theme.Ocean()
 	borderCol := pal.Hairline
 	if st.lastInlineFocused {
@@ -2065,6 +2196,9 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 			return
 		}
 	}
+	if st.Fullscreen && !st.fsAnimActive {
+		st.handleBlockShortcuts(c, true, cb)
+	}
 	if st.Fullscreen && st.View == ViewOutline && st.EditingID == 0 && st.LinkNodeID == 0 && !st.OutlineHandle.FocusWithin(c) {
 		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyPeriod) {
 			st.outlineToggleFoldAll()
@@ -2143,6 +2277,10 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 		leftGroup := ui.Row(c.Key("mm-hdr-left-" + id)).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0)
 		leftGroup.Children(func() {
 			seg := ui.Row(c.Key("mm-seg-" + id)).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
+			// Holding ⌘ while the block owns focus reveals each tab's ⌘1/2/3 keycap,
+			// the same way browsers surface tab numbers.
+			scoped := fullscreen || st.HasFocus(c) || st.EditingID != 0
+			showDigits := scoped && c.Modifiers() == ui.Cmd
 			seg.Children(func() {
 				tabs := []struct {
 					mode  ViewMode
@@ -2172,24 +2310,19 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 						fg = pal.Text
 					}
 					bui.AnimateSurfaceColors(btn, bg, border, active)
+					sc := viewShortcutLabel(tab.mode)
+					if !showDigits {
+						bui.TooltipShortcut(c, btn, tab.label, sc)
+					}
 					btn.Children(func() {
 						icons.DrawAnimated(c, tab.icon, theme.IconInline, pal.DuoIconColors(fg), active || hov || prs)
 						ui.Text(c, tab.label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
+						if showDigits {
+							bui.Keycap(c, sc)
+						}
 					})
 					if btn.Clicked() {
-						st.finishEdit(true, cb)
-						st.LinkNodeID = 0
-						st.ExportMenuOpen = false
-						st.ShortcutsOpen = false
-						st.OutlineUndoNodeID = 0
-						if st.View != tab.mode {
-							st.HintScroll.X = 0
-						}
-						st.View = tab.mode
-						st.fsCamAnimActive = false
-						if tab.mode == ViewMap {
-							st.AutoFitPending = true
-						}
+						st.SwitchView(tab.mode, false, cb)
 					}
 				}
 			})
@@ -2555,6 +2688,10 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 		if cb.OnRequestFocus != nil {
 			cb.OnRequestFocus()
 		}
+	}
+	if st.viewFocusPending {
+		st.viewFocusPending = false
+		canvas.Focus(ui.FocusOptions{PreventScroll: true})
 	}
 
 	// Measure viewport size and ensure camera fits initially or after layout/resize.
@@ -3291,6 +3428,10 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				}
 			})
 			input.OnTextKey(func(k ui.TextKey) bool {
+				if st.captureBlockTextKey(k) {
+					st.EditDraft = k.Text()
+					return true
+				}
 				switch k.Key {
 				case ui.KeyEnter:
 					if k.Mods == ui.Shift {
@@ -3520,6 +3661,9 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 			return true
 		case ui.KeyEqual:
 			st.zoomAt(st.LastCanvasW*0.5, st.LastCanvasH*0.5, st.Camera.Scale*1.15)
+			return true
+		case ui.KeyL:
+			st.ToggleLayout()
 			return true
 		}
 		return false
@@ -4011,6 +4155,11 @@ func (st *BlockState) renderSourceView(c *ui.Context, id string, fullscreen bool
 				cb.OnRequestFocus()
 			}
 		}
+		if st.viewFocusPending {
+			st.viewFocusPending = false
+			ta.Focus(ui.FocusOptions{PreventScroll: true})
+		}
+		ta.OnTextKey(st.captureBlockTextKey)
 		bui.AutoHideScrollbars(c, ta, &st.SourceScroll)
 		if !cb.ReadOnly && (ta.Changed() || draft != prev) {
 			st.SyncSource(draft, Config{})
@@ -4608,6 +4757,16 @@ func (st *BlockState) renderShortcutsPopover(c *ui.Context, id string) {
 		items []scEntry
 	}
 	groups := []scGroup{
+		{
+			title: theme.Tr("视图", "Views"),
+			items: []scEntry{
+				{[]string{k("⌘1", "Ctrl+1")}, theme.Tr("导图", "Map")},
+				{[]string{k("⌘2", "Ctrl+2")}, theme.Tr("大纲", "Outline")},
+				{[]string{k("⌘3", "Ctrl+3")}, theme.Tr("源码", "Source")},
+				{[]string{k("⌘⇧↵", "Ctrl+Shift+↵")}, theme.Tr("进入 / 退出全屏", "Toggle fullscreen")},
+				{[]string{k("⌘⇧L", "Ctrl+Shift+L")}, theme.Tr("切换左右布局", "Toggle layout")},
+			},
+		},
 		{
 			title: theme.Tr("建树与编辑", "Tree & Editing"),
 			items: []scEntry{

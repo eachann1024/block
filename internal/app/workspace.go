@@ -6097,7 +6097,16 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.NavigateForward()
 		return
 	}
+	// A focused MindMap block owns ⌘1/2/3 (Map / Outline / Source); ⌘4-9 and
+	// unfocused ⌘1-3 keep switching editor tabs.
+	mindMapOwnsDigits := false
+	if sess := w.ActiveSession(); sess != nil {
+		mindMapOwnsDigits = sess.HasMindMapFocus(c)
+	}
 	for n := 1; n <= 9; n++ {
+		if n <= 3 && mindMapOwnsDigits {
+			continue
+		}
 		if c.Shortcut(ui.Cmd, ui.Key0+ui.Key(n)) {
 			w.SelectTabOneBased(n)
 			return
