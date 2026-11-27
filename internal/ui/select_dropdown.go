@@ -234,7 +234,7 @@ func selectMenu(c *ui.Context, id string, options []SelectOption, state *Dropdow
 			state.Open = false
 		} else {
 			pickedIdx = -1
-			if backdrop.Clicked() {
+			if backdrop.Clicked() || backdrop.OverlayShortcut(0, ui.KeyEscape) {
 				state.Open = false
 			}
 		}
