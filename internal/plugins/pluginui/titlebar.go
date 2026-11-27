@@ -75,8 +75,8 @@ func (c *Controller) RenderTitlebarLeading(ctx *ui.Context, tab string, _ func(n
 				ctx.Invalidate()
 			}
 
-			ui.Text(ctx, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
-			ui.Text(ctx, entry.Name.Resolve(locale)).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).
+			ui.Text(ctx, "/").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Placeholder).SingleLine().Shrink(0)
+			ui.Text(ctx, entry.Name.Resolve(locale)).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightTitle).
 				TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 			if isBeta {
 				bui.BetaBadge(ctx, true)
@@ -98,9 +98,9 @@ func (c *Controller) RenderTitlebarLeading(ctx *ui.Context, tab string, _ func(n
 	}
 	row := ui.Row(ctx.Key("plugin-tb-crumb-" + pluginID)).Fill().MinWidth(0).AlignItems(ui.Center).Gap(theme.Space6).PaddingX(theme.Space6).DragWindow()
 	row.Children(func() {
-		ui.Text(ctx, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-		ui.Text(ctx, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
-		ui.Text(ctx, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
+		ui.Text(ctx, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+		ui.Text(ctx, "/").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Placeholder).SingleLine().Shrink(0)
+		ui.Text(ctx, title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
 			Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if isBeta {
 			bui.BetaBadge(ctx, true)
