@@ -162,6 +162,10 @@ func RenderStorageTreemap(
 		if bentoH <= 0 {
 			bentoH = 292
 		}
+		// Never let the flexible middle tier shrink below its content (title + bytes + meta).
+		if minH := bentoMinHeight(len(ranked)); bentoH < minH {
+			bentoH = minH
+		}
 		bento := ui.Row(c.Key(canvasKey)).FillWidth().MinWidth(0).Height(bentoH).Gap(theme.Space10).AlignItems(ui.Stretch)
 		if opts.CanvasProbeID != "" {
 			Probe(bento, opts.CanvasProbeID)
@@ -194,7 +198,7 @@ func RenderStorageTreemap(
 				bot := rest[midEnd:]
 
 				if len(mid) > 0 {
-					ui.Row(c).FillWidth().MinWidth(0).Grow(1).Gap(theme.Space10).AlignItems(ui.Stretch).Children(func() {
+					ui.Row(c).FillWidth().MinWidth(0).Grow(1).MinHeight(bentoMediumMinH).Gap(theme.Space10).AlignItems(ui.Stretch).Children(func() {
 						for _, it := range mid {
 							item := it
 							ui.Column(c).Grow(1).Basis(0).MinWidth(0).FillHeight().Children(func() {
@@ -388,6 +392,21 @@ func renderTreemapSummaryHeader(c *ui.Context, sum *TreemapSummary) {
 
 type bentoTier int
 
+// bentoMediumMinH is the smallest height a medium tile needs: padding + title + bytes + meta.
+const bentoMediumMinH = 2*theme.Space12 + theme.LineBody + theme.LineBody + theme.Space2 + theme.LineMeta
+
+// bentoMinHeight returns the minimum Bento height so no tier overflows its tile.
+func bentoMinHeight(n int) float32 {
+	if n <= 2 {
+		return 0
+	}
+	h := float32(108) + theme.Space10 + bentoMediumMinH
+	if n > 4 {
+		h += theme.Space10 + 68
+	}
+	return h
+}
+
 const (
 	bentoTierHero bentoTier = iota
 	bentoTierSecondary
@@ -422,7 +441,7 @@ func renderBentoTile(
 	}
 
 	btn := ui.ButtonBase(c.Key(tileID)).FillWidth().FillHeight().MinWidth(0).
-		Padding(padY, padX, padY, padX).Radius(theme.RadiusLG).
+		Padding(padY, padX, padY, padX).Radius(theme.RadiusLG).Clip().
 		Cursor(ui.CursorPointer).Label(item.Label)
 
 	hovered := btn.Hovered()
