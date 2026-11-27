@@ -1187,7 +1187,7 @@ serve((method, params) => {
 以下接口用于控制声明在 `contributes.backdrops` 中的编辑区或全屏窗口矢量/纸纹背景（代码检查 `"ui:appearance"`，默认放行，无需显式声明；`set_backdrop` 需声明 `contributes.backdrops`）：
 
 - **`host.ui.backdrop`**（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "scope": "editor"|"window", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
-- **`host.ui.set_backdrop`**（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "scope": "editor", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区或主窗口工作区底层（顶栏/侧栏/空白页/满宽编辑区，自动避开顶部品牌画幅与大纲目录刻度；弹窗、菜单、悬浮面板、提示与设置主体保持不透明隔离；AI 沉浸、历史对比、导出预览、全窗插件舞台与独立 Quick Note 窗口不套用）的矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，`scope` 支持 `"editor"`（默认）或 `"window"`（兼容 `"fullscreen"` 别名），停用插件时自动失效，返回归一化后的状态对象。
+- **`host.ui.set_backdrop`**（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "scope": "editor", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，`scope` 支持 `"editor"`（默认，仅居中正文列）或 `"window"`（兼容 `"fullscreen"` 别名，铺满整块编辑区画布与空白页，不侵入侧边栏与顶栏；以画布边框作为第 0 条原点线，首个方格/圆点不压边框，自动避开大纲目录刻度且各类弹窗、菜单、悬浮面板保持隔离），停用插件时自动失效，返回归一化后的状态对象。
 
 ---
 
