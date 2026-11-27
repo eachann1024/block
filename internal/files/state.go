@@ -223,6 +223,10 @@ func loadStateLocked(path string) (model.AppState, error) {
 		return defaultState(), err
 	}
 	st := defaultState()
+	// Existing state files omit BrandDeco.Mode when it is BrandDecoByTime (""),
+	// so reset BrandDeco before decoding to preserve existing users' preferences
+	// and allow fresh users who later enable it to keep it across restarts.
+	st.BrandDeco = model.BrandDeco{}
 	if err := json.Unmarshal(data, &st); err != nil {
 		corruptPath := path + ".corrupt"
 		if renameErr := os.Rename(path, corruptPath); renameErr != nil {

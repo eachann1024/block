@@ -304,8 +304,9 @@ const (
 	BrandDecoDensityMinimal BrandDecoDensity = "minimal"
 )
 
-// BrandDeco stores the window brand decoration preferences; its zero value is the default
-// (scene follows the time of day, all elements, leisurely motion, sun/moon, cat and logo shown).
+// BrandDeco stores the window brand decoration preferences; its zero value follows
+// the time of day (used when decoding existing state files where Mode was omitted).
+// Fresh installs start with Mode = BrandDecoOff via DefaultAppState.
 type BrandDeco struct {
 	Mode     BrandDecoMode    `json:"mode,omitempty"`
 	Motion   BrandDecoMotion  `json:"motion,omitempty"`
@@ -336,6 +337,7 @@ func DefaultAppState(defaultLang LanguageMode) AppState {
 		AssetsFolder:         "assets",
 		HideAssetsFolder:     &hideAssets,
 		HideNonMarkdownFiles: &hideNonMD,
+		BrandDeco:            BrandDeco{Mode: BrandDecoOff},
 	}
 }
 
