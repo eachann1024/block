@@ -1361,16 +1361,7 @@ func (m *Manager) renderSettingsAboutTab(c *ui.Context) {
 
 			telemetryOn := !st.TelemetryOff
 			telemetryLabel := theme.Tr("匿名使用统计", "Anonymous Usage Stats")
-			internalui.SettingsRowFrame(ui.Row(c.Key("settings-about-telemetry-row"))).
-				PaddingY(theme.Space8).Justify(ui.SpaceBetween).Children(func() {
-				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space4).Children(func() {
-					ui.Text(c, telemetryLabel).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						FontWeight(theme.WeightRegular).TextColor(pal.Text)
-					ui.Text(c, theme.Tr(
-						"每天最多发送一次随机安装编号、版本、系统及语言；不含笔记内容、文件名或 IP。",
-						"Sent at most once a day: a random install ID, version, OS and language. No note content, file names, or IP.",
-					)).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
-				})
+			internalui.SettingsRow(c, telemetryLabel, func() {
 				if internalui.TogglePill(c, "settings-about-telemetry-pill", telemetryLabel, &telemetryOn, false) {
 					off := !telemetryOn
 					m.mutateState(func(s *model.AppState) {
@@ -1379,14 +1370,7 @@ func (m *Manager) renderSettingsAboutTab(c *ui.Context) {
 				}
 			})
 
-			internalui.SettingsRowFrame(ui.Row(c.Key("settings-about-privacy-row"))).
-				PaddingY(theme.Space8).Justify(ui.SpaceBetween).Children(func() {
-				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
-					ui.Text(c, theme.Tr("隐私政策", "Privacy Policy")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						FontWeight(theme.WeightRegular).TextColor(pal.Text)
-					ui.Text(c, theme.Tr("完整说明数据收集范围与关闭方式", "Details on what is collected and how to opt out")).
-						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
-				})
+			internalui.SettingsRow(c, theme.Tr("隐私政策", "Privacy Policy"), func() {
 				privacyIc := icons.ShieldCheck
 				if internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
 					ID:       "settings-about-privacy-policy",
