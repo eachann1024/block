@@ -156,6 +156,9 @@ type Supervisor struct {
 	wasmEngine               *wasmrt.Engine
 	wasmCtx                  context.Context
 	wasmCancel               context.CancelFunc
+	bgCtx                    context.Context
+	bgCancel                 context.CancelFunc
+	catalogAutoOnce          sync.Once
 	warmupDone               chan struct{}
 	menubarChangedCh         chan struct{}
 	systemEventSubscribersCh chan struct{}
@@ -194,6 +197,9 @@ type Supervisor struct {
 	uninstallErrors    map[string]string
 	bgErrors           map[string]map[string]BackgroundError
 	storeRefreshing    bool
+	catalogFetching    bool
+	catalogInteractive bool
+	catalogRefreshedAt time.Time
 	installingID       string
 	batchUpdating      bool
 	replacingID        string
@@ -207,6 +213,9 @@ const (
 	defaultRuntimeIdleSweepInterval = 10 * time.Second
 	idleFreeOSMemoryDebounce        = 2 * time.Second
 	idleFreeOSMemoryCooldown        = 15 * time.Second
+	catalogAutoRefreshDelay         = 3 * time.Second
+	catalogAutoRefreshInterval      = 4 * time.Hour
+	catalogAutoRefreshMinAge        = 2 * time.Minute
 )
 
 func hasJSPlugin(apps []InstalledApp) bool {
@@ -223,6 +232,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	_ = sm.EnsureDirs()
 	installed, _ := sm.ListInstalled()
 	wasmCtx, wasmCancel := context.WithCancel(context.Background())
+	bgCtx, bgCancel := context.WithCancel(context.Background())
 	wasmEng, err := wasmrt.NewEngine(filepath.Join(sm.CacheRoot, "wasm-cache"))
 	if err != nil {
 		files.LogErrorf("init shared wasm runtime failed: %v", err)
@@ -237,6 +247,8 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		wasmEngine:               wasmEng,
 		wasmCtx:                  wasmCtx,
 		wasmCancel:               wasmCancel,
+		bgCtx:                    bgCtx,
+		bgCancel:                 bgCancel,
 		warmupDone:               warmupDone,
 		menubarChangedCh:         make(chan struct{}, 1),
 		systemEventSubscribersCh: make(chan struct{}, 1),
@@ -1188,13 +1200,68 @@ func (s *Supervisor) ClearStoreMessage() {
 
 func (s *Supervisor) RefreshCatalogAsync() {
 	s.mu.Lock()
-	if s.stopping || s.storeRefreshing {
+	if s.stopping {
 		s.mu.Unlock()
 		return
 	}
-	s.startCatalogRefreshLocked()
+	s.storeRefreshing = true
+	s.storeErr = ""
+	s.catalogInteractive = true
+	if !s.catalogFetching {
+		s.startCatalogRefreshLocked()
+	}
 	s.mu.Unlock()
 	s.notifyChanged()
+}
+
+// RefreshCatalogIfStaleAsync silently refreshes the remote App Store catalog
+// when no fetch is in progress and the last successful fetch is older than
+// maxAge. It keeps storeRefreshing false and suppresses error banners so
+// Settings sidebars can surface update badges before the user clicks App Store.
+func (s *Supervisor) RefreshCatalogIfStaleAsync(maxAge time.Duration) {
+	if s.cfg.IsOnline != nil && !s.cfg.IsOnline() {
+		return
+	}
+	s.mu.Lock()
+	if s.stopping || s.catalogFetching {
+		s.mu.Unlock()
+		return
+	}
+	if maxAge > 0 && !s.catalogRefreshedAt.IsZero() && time.Since(s.catalogRefreshedAt) < maxAge {
+		s.mu.Unlock()
+		return
+	}
+	s.catalogInteractive = false
+	s.startCatalogRefreshLocked()
+	s.mu.Unlock()
+}
+
+// StartCatalogAutoRefresh schedules a silent startup check and periodic
+// background catalog refreshes so plugin update counts stay current without
+// waiting for the user to click the App Store tab.
+func (s *Supervisor) StartCatalogAutoRefresh() {
+	s.catalogAutoOnce.Do(func() {
+		go func() {
+			delay := time.NewTimer(catalogAutoRefreshDelay)
+			select {
+			case <-delay.C:
+				s.RefreshCatalogIfStaleAsync(catalogAutoRefreshMinAge)
+			case <-s.bgCtx.Done():
+				delay.Stop()
+				return
+			}
+			ticker := time.NewTicker(catalogAutoRefreshInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					s.RefreshCatalogIfStaleAsync(catalogAutoRefreshMinAge)
+				case <-s.bgCtx.Done():
+					return
+				}
+			}
+		}()
+	})
 }
 
 func formatStoreError(err error, locale string) string {
@@ -1243,25 +1310,36 @@ func formatStoreError(err error, locale string) string {
 }
 
 func (s *Supervisor) startCatalogRefreshLocked() {
-	s.storeRefreshing = true
-	s.storeErr = ""
+	s.catalogFetching = true
 
 	go func() {
 		totalTimeout := time.Duration(max(len(s.store.IndexURLs), 2))*6*time.Second + 2*time.Second
-		ctx, cancel := context.WithTimeout(context.Background(), totalTimeout)
+		parentCtx := s.bgCtx
+		if parentCtx == nil {
+			parentCtx = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(parentCtx, totalTimeout)
 		defer cancel()
 		idx, err := s.store.RefreshCatalog(ctx)
 		locale := s.Locale()
 		s.mu.Lock()
+		wasInteractive := s.catalogInteractive
+		s.catalogFetching = false
 		s.storeRefreshing = false
+		s.catalogInteractive = false
 		if idx != nil {
 			s.catalog = idx
 		}
-		if err != nil && (idx == nil || len(idx.Apps) == 0) {
+		if err == nil {
+			s.catalogRefreshedAt = time.Now()
+		}
+		if err != nil && wasInteractive && (idx == nil || len(idx.Apps) == 0) {
 			s.storeErr = formatStoreError(err, locale)
 		}
 		s.mu.Unlock()
-		s.notifyChanged()
+		if wasInteractive || idx != nil {
+			s.notifyChanged()
+		}
 	}()
 }
 
@@ -3521,6 +3599,9 @@ func (s *Supervisor) ShutdownAll() {
 	}
 	s.CloseActiveStage()
 	s.clearAllThemeSkins()
+	if s.bgCancel != nil {
+		s.bgCancel()
+	}
 	if s.wasmCancel != nil {
 		s.wasmCancel()
 	}

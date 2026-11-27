@@ -67,6 +67,9 @@ type Controller struct {
 
 // NewController constructs a PluginSettingsHost controller backed by sup.
 func NewController(sup *plugins.Supervisor) *Controller {
+	if sup != nil && !bui.IsSmokeActive() {
+		sup.StartCatalogAutoRefresh()
+	}
 	return &Controller{
 		sup:            sup,
 		drafts:         make(map[string]map[string]string),
@@ -128,6 +131,8 @@ func (c *Controller) SettingsTabChanged(previous, current string) {
 		c.storeHeroLastSwitch = time.Time{}
 		c.storeHeroElapsed = 0
 		c.sup.RefreshCatalogAsync()
+	} else if previous == "" && current != "" {
+		c.sup.RefreshCatalogIfStaleAsync(2 * time.Minute)
 	}
 }
 
