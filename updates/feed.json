@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T11:34:14.293Z",
-  "latest_version": "1.0.958",
-  "latest_tag": "v1.0.958",
+  "updated_at": "2026-11-27T13:17:57.502Z",
+  "latest_version": "1.0.959",
+  "latest_tag": "v1.0.959",
   "releases": [
+    {
+      "version": "1.0.959",
+      "tag": "v1.0.959",
+      "published_at": "2026-11-27T13:17:56Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.959",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "设置：新增「关于与隐私」设置标签页，并简化了「关于」弹窗。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Settings: The About and Privacy options are now available in a settings tab, and the About modal has been simplified."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-macos-arm64.dmg",
+          "size": 18768614,
+          "sha256": "49665bc789d71eaf6661b06fd41f0ec2d3ff02944b5cbc6a4e507dedcb027042"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-macos-x64.dmg",
+          "size": 20701932,
+          "sha256": "7712f97c9d2645d980c102eb9d2e66d5969a628c8067bf5b1016080b841ee7cb"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-windows-x64-setup.exe",
+          "size": 16229069,
+          "sha256": "ac3b88e5587961b5eb3a3f56f129d158ad4e4c7def88e8f1995305efe9fc20fb"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-linux-x64.deb",
+          "size": 13194212,
+          "sha256": "86652389d89f8766baac24ed36202631c525fa13cd24237b2e7c6fd9bad7266b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-linux-x64.AppImage",
+          "size": 26466808,
+          "sha256": "4fd684f78be348f87942208a3f24b7ed0b8e6f0059e3a88c577b6594b99f7dd4"
+        }
+      ]
+    },
     {
       "version": "1.0.958",
       "tag": "v1.0.958",
@@ -32,38 +88,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.958/block-macos-arm64.dmg",
-          "size": 18762745,
-          "sha256": "73e42ef9307ba3f257f4ac65bdb5979c80da1e7714ef9ad448f8e933f49ea120"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.958/block-macos-x64.dmg",
-          "size": 20693289,
-          "sha256": "12feefab83fba97aee3e508f5f655b3b2ea0000c9705fb790994d0b8ad1841ae"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.958/block-windows-x64-setup.exe",
-          "size": 16224892,
-          "sha256": "d5ae956e47c103f2f77b22e589557821b6362edd8ae60ca5e954af76ee9788b3"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.958/block-linux-x64.deb",
-          "size": 13182426,
-          "sha256": "d8cb8e8ecb0522c0b565353a6b6befbd61eb27bb158b6853299432666f2d5958"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.958/block-linux-x64.AppImage",
-          "size": 26454520,
-          "sha256": "041d860cc46d51190ae921ff1c619b99b48cea4531f7229fb3a9dc932ef1c2e1"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.956",
@@ -1681,31 +1706,6 @@
         "fixes": [
           "Videos opened in the lightbox viewer now automatically enter native fullscreen, and styling issues with dark interface chrome have been resolved."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.906",
-      "tag": "v1.0.906",
-      "published_at": "2026-11-22T09:39:44Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.906",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "媒体预览现在会在铺满视口的深色灯箱中打开，并支持系统原生全屏浏览。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Media previews now open in a full-bleed dark lightbox with support for native fullscreen mode."
-        ],
-        "improvements": [],
-        "fixes": [],
         "other": []
       },
       "assets": []
