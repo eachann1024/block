@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T07:55:54.677Z",
-  "latest_version": "1.0.951",
-  "latest_tag": "v1.0.951",
+  "updated_at": "2026-11-27T08:18:38.688Z",
+  "latest_version": "1.0.952",
+  "latest_tag": "v1.0.952",
   "releases": [
+    {
+      "version": "1.0.952",
+      "tag": "v1.0.952",
+      "published_at": "2026-11-27T08:18:38Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.952",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "编辑器：修复了滚动时可能导致应用崩溃的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Editor: Scrolling no longer causes the application to crash."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-macos-arm64.dmg",
+          "size": 18769209,
+          "sha256": "df6850c33e0bd4372eef36ccddb246b0c78674b5c13510838fd895a5657aedac"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-macos-x64.dmg",
+          "size": 20696340,
+          "sha256": "64ddfcb4636a402a4e7fa7eedc6e1e88d27a2cdf821d65f0d35f32248e3585da"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-windows-x64-setup.exe",
+          "size": 16223837,
+          "sha256": "1a839b21e334eff826134888d33305d8f08cc2263024529e867757da46114423"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-linux-x64.deb",
+          "size": 13179650,
+          "sha256": "c062da8c397db8c394d1dd8e04c31a7103a8f6abb9a5cbc9f44fac0d2679ca0b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-linux-x64.AppImage",
+          "size": 26454520,
+          "sha256": "edb07418b3de78e843858cc5f154ce8a5f04b00bf74cb283b8eeddef046a7196"
+        }
+      ]
+    },
     {
       "version": "1.0.951",
       "tag": "v1.0.951",
@@ -32,38 +88,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-macos-arm64.dmg",
-          "size": 18769491,
-          "sha256": "a8b1a9711a4c649272880369d64dbfe6073ad45ea88e3d4e03713945f301aeb6"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-macos-x64.dmg",
-          "size": 20697848,
-          "sha256": "a8d0a468d5ba478a36cd3fb9ed36e01ddfa221ad20d613ab57815d127a9402a4"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-windows-x64-setup.exe",
-          "size": 16223842,
-          "sha256": "2d3cc5382332bb86b09d3172d233452aab38435d024fac1932d982790157fc48"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-linux-x64.deb",
-          "size": 13185820,
-          "sha256": "e1416e43f3a68b7626b23e31b195d35e21275bc08d1357225a0048ffecb13332"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.951/block-linux-x64.AppImage",
-          "size": 26454520,
-          "sha256": "a171967e5a8c65f200d3758cd47b28949015d9d1ea3ca922a605e5d941667a2b"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.950",
@@ -1673,37 +1698,6 @@
         "fixes": [
           "Plugin detail pages in the store now remain open instead of automatically closing when idle."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.900",
-      "tag": "v1.0.900",
-      "published_at": "2026-11-22T06:18:24Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.900",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "应用详情页现在将「打开设置」设为主要操作，并提供共享的更新检查。",
-          "有新版本可用时，应用卡片现在显示「更新」而非「打开」。",
-          "Hero 开关现在会描出轨道轮廓，让标题栏中的切换按钮保持清晰可见。",
-          "已停用插件的提示现在显示在休眠概览卡片中。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [
-          "App details now make Open Settings the primary action and share the update check.",
-          "App cards now show Update instead of Open when a newer version is available.",
-          "Hero switches now outline their tracks so title bar toggles remain visible.",
-          "Disabled plugin notices now appear within the dormant overview card."
-        ],
-        "fixes": [],
         "other": []
       },
       "assets": []
