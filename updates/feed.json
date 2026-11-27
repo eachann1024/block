@@ -1,10 +1,118 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T18:02:15.044Z",
-  "latest_version": "1.0.968",
-  "latest_tag": "v1.0.968",
+  "updated_at": "2026-11-27T19:31:38.286Z",
+  "latest_version": "1.0.969",
+  "latest_tag": "v1.0.969",
   "releases": [
+    {
+      "version": "1.0.969",
+      "tag": "v1.0.969",
+      "published_at": "2026-11-27T19:31:37Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.969",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "设置：应用商店导航项现在会显示待更新插件的数量。",
+          "全局搜索：可以通过文件夹选择器排除搜索范围内的子文件夹。",
+          "思维导图：聚焦或全屏显示导图时，可以用快捷键切换视图、进入全屏和更改布局。",
+          "外观：可以开启窗口半透明效果，让系统材质显示在侧边栏和标题栏后方。"
+        ],
+        "improvements": [
+          "自动更新：更新弹窗加宽，窗口最小尺寸也有所增大。",
+          "思维导图：优化了链接悬停提示的外观。",
+          "思维导图：快捷栏中的“编辑链接”操作现在采用中性样式。",
+          "思维导图：悬停节点时才会显示折叠和添加按钮。",
+          "思维导图：优化了快捷栏胶囊按钮的内边距，并恢复了链接节点的高亮效果。",
+          "思维导图：快捷栏移除了多余的“子节点”按钮。",
+          "主题：优化了深色模式对比度、皮肤界面、工具提示和品牌场景。",
+          "思维导图：折叠标记改为胶囊形状，折叠和添加操作也调整为常见的导图交互方式。",
+          "大纲：大纲栏现已移至左侧，弹出提示也会显示在大纲栏上方。"
+        ],
+        "fixes": [
+          "编辑器：修复了 macOS 上中日韩标点影响行内代码间距的问题，并收紧了标签块内边距。",
+          "主题：插件皮肤现在可以重绘应用背景、侧边栏和标题栏。",
+          "插件接口：加强了笔记本身份校验和文件安全保护，并新增了供插件删除数据的接口。",
+          "插件：插件网络请求和商店现在支持 macOS 系统代理。",
+          "插件商店：更新结果现在只会通过右上角的提示显示。",
+          "插件权限：权限弹窗底部操作栏会保持固定；只有新增权限时才会提示更新。",
+          "插件：使用系统代理前会先执行 IP 策略检查，并遵循环境变量中的 NO_PROXY 设置。",
+          "编辑器：代码高亮和提示框现在会沿用纸张表面及当前皮肤的颜色。",
+          "主题：启用皮肤时，深色模式下的书写区域会保持深色。",
+          "插件商店：目录会自动刷新，因此打开商店前就能看到更新数量提示。",
+          "表格：单元格内容仍可容纳时，行内样式或文本变化不会再导致列宽不稳定。",
+          "窗口：系统窗口材质现在可以透过应用外壳显示。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Settings: The App Store navigation item now shows the number of pending plugin updates.",
+          "Global Search: You can exclude nested folders from search using a folder picker.",
+          "Mind Map: New shortcuts switch views, enter fullscreen, and change the layout when a mind map is focused or fullscreen.",
+          "Appearance: You can enable window translucency to show system material behind the sidebar and titlebar."
+        ],
+        "improvements": [
+          "Updater: The updater modal is wider, and the minimum window size is larger.",
+          "Mind Map: Link hover tooltips have a refined appearance.",
+          "Mind Map: The Edit Link quick bar action now uses a neutral style.",
+          "Mind Map: Fold and add buttons appear only when you hover over a node.",
+          "Mind Map: The quick bar has improved pill spacing and restores the linked node highlight.",
+          "Mind Map: The quick bar no longer includes a redundant Child button.",
+          "Theme: Dark mode contrast, skin chrome, tooltips, and the brand scene have been refined.",
+          "Mind Map: Fold badges use a capsule shape, and fold and add actions align with common mind map conventions.",
+          "Outline: The outline rail is now on the left, and popup tooltips appear above it."
+        ],
+        "fixes": [
+          "Editor: CJK punctuation no longer affects inline code spacing on macOS, and chip padding is tighter.",
+          "Themes: Plugin skins can repaint the shell background, sidebar, and titlebar.",
+          "Plugin API: Notebook identity checks and file safety guards have been strengthened, and plugins can delete data through the host API.",
+          "Plugins: Plugin HTTP requests and the store now support the macOS system proxy.",
+          "Plugin Store: Update results now appear only in the top right toast.",
+          "Plugin Permissions: The permission modal footer stays in place, and update prompts appear only when new permissions are added.",
+          "Plugins: IP policy checks run before system proxy use, and the environment’s NO_PROXY setting is honored.",
+          "Editor: Code highlights and callouts now follow the paper surface and active skin colors.",
+          "Themes: The writing surface stays dark in dark mode when a skin is active.",
+          "Plugin Store: The catalog refreshes automatically so the update badge appears before you open the store.",
+          "Tables: Column widths stay stable when inline styles or text change in cells that still fit.",
+          "Window: System window material now shows through the shell."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-macos-arm64.dmg",
+          "size": 19090854,
+          "sha256": "5c10fe2c8fb51f15ee856c308f87777a25bec73767301232bafb8d44d89daa4d"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-macos-x64.dmg",
+          "size": 21072966,
+          "sha256": "17790ee7a6e15b904007c3e7ee7491893849a573013aba1c2185b2a53884c71a"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-windows-x64-setup.exe",
+          "size": 16545369,
+          "sha256": "430a6953b8ec047cf1e3d2f95bad4cda0531618ee35a8bb8a822237f77805ea6"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-linux-x64.deb",
+          "size": 13431888,
+          "sha256": "9288d86d766d3f77d183a9ea82c2a64bb538509a8dd88b8dce076f4e29afef5f"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-linux-x64.AppImage",
+          "size": 26737144,
+          "sha256": "01c4e53ef21555228eb7f0e852ebed911448fcde9f75e7d375f11c0906ee357b"
+        }
+      ]
+    },
     {
       "version": "1.0.968",
       "tag": "v1.0.968",
@@ -34,38 +142,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.968/block-macos-arm64.dmg",
-          "size": 19041171,
-          "sha256": "dc074ef2291da210e85eb06ff46b884d59ea92da65dedc0dde002c190eb184c1"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.968/block-macos-x64.dmg",
-          "size": 20979794,
-          "sha256": "090ccbbf3204aa34c0366f3a78b840db98584bc4a96a0dce06139479fb650491"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.968/block-windows-x64-setup.exe",
-          "size": 16487391,
-          "sha256": "bcf0ee82abcc731644dbbe203a8fae17125de9a9a8e63b72c7443f3972c1d92b"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.968/block-linux-x64.deb",
-          "size": 13385654,
-          "sha256": "5ab278afca95849323bc026f64302886336410b06267468ef4df5df9085fec13"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.968/block-linux-x64.AppImage",
-          "size": 26696184,
-          "sha256": "fdf02b1163b185acbe9c4da70c5f035e3427dac20b82dca9ffa72f2268ceb3f7"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.967",
@@ -1675,35 +1752,6 @@
         "fixes": [
           "Empty State: The side gutter of an empty pane now sizes itself to the pane's width."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.916",
-      "tag": "v1.0.916",
-      "published_at": "2026-11-23T18:20:41Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.916",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "商店新增紧凑样式的排行榜列表，按下载量进行排序，并通过缓存列表计算提升加载与浏览速度。"
-        ],
-        "improvements": [
-          "设置中不再提供动画速度选项，并将界面动画统一锁定为舒缓节奏。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "The store now features a compact leaderboard ranked by download count, with cached list computations for faster loading and browsing."
-        ],
-        "improvements": [
-          "Settings no longer includes the animation speed option, locking interface animations to a leisurely tempo."
-        ],
-        "fixes": [],
         "other": []
       },
       "assets": []
