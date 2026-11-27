@@ -343,19 +343,17 @@ func ApplySkinPalette(base Palette, surface string) Palette {
 			out = OceanDark
 			out.Dark = true
 		}
-	case "paper":
-		if out.Dark && surfaceOverridesLightBackground(skin.Surfaces["paper"]) {
-			out = OceanLight
-			out.Dark = false
-		}
 	}
+	// A light paper surface is the skin's light-mode look. In dark mode the
+	// writing surface follows the skin's dark palette instead of staying light.
+	skipSurface := normSurface == "paper" && out.Dark && surfaceOverridesLightBackground(skin.Surfaces["paper"])
 
 	if out.Dark {
 		applyColorMap(&out, skin.Dark)
 	} else {
 		applyColorMap(&out, skin.Light)
 	}
-	if normSurface != "" {
+	if normSurface != "" && !skipSurface {
 		if surfColors, ok := skin.Surfaces[normSurface]; ok {
 			applyColorMap(&out, surfColors)
 		}

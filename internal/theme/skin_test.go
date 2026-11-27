@@ -174,8 +174,11 @@ func TestActiveSkinStateAndApplySkinPalette(t *testing.T) {
 		t.Fatalf("unexpected chrome palette: dark=%v shell=%+v accent=%+v", chromePal.Dark, chromePal.Shell, chromePal.Accent)
 	}
 
-	// Paper surface uses parchment light colors even from OceanDark base.
-	paperPal := ApplySkinPalette(OceanDark, "paper")
+	// A light paper surface is light-mode only: dark mode keeps the dark palette.
+	if darkPaper := ApplySkinPalette(OceanDark, "paper"); !darkPaper.Dark || darkPaper.Paper != ui.Hex("#0a1322") {
+		t.Fatalf("dark paper should follow the dark palette: dark=%v paper=%+v", darkPaper.Dark, darkPaper.Paper)
+	}
+	paperPal := ApplySkinPalette(OceanLight, "paper")
 	if paperPal.Dark || paperPal.Paper != ui.Hex("#f4ecd9") || paperPal.Accent != ui.Hex("#8a6526") || paperPal.SyntaxKeyword != ui.Hex("#395fb0") {
 		t.Fatalf("unexpected paper palette: dark=%v paper=%+v accent=%+v", paperPal.Dark, paperPal.Paper, paperPal.Accent)
 	}
