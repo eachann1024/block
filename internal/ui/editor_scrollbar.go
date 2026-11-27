@@ -54,6 +54,7 @@ type EditorScrollbars struct {
 	holdingBar  bool
 	dragGrab    float32
 	findOpen    bool
+	lastBounds  ui.Rect
 	lastWrapH   float64
 	lastScale   float32
 }
@@ -115,6 +116,9 @@ func (h *EditorScrollbars) Observe(c *ui.Context, wrapper, _ ui.Element, st *cod
 	}
 	now := c.Now()
 	b := wrapper.Bounds()
+	if b.W > 0 && b.H > 0 {
+		h.lastBounds = b
+	}
 	if b.H > 0 {
 		h.lastWrapH = float64(b.H)
 	}
@@ -143,7 +147,7 @@ func (h *EditorScrollbars) Observe(c *ui.Context, wrapper, _ ui.Element, st *cod
 	overV, _ := pointerOverTrackEdges(wrapper, hotTrackW, canV, false)
 
 	wrapper.HandleInput(func(ev ui.InputEvent) bool {
-		wb := wrapper.Bounds()
+		wb := h.lastBounds
 		vH, cH, scrollable := h.verticalMetrics(st, float64(wb.H))
 		switch ev.Kind {
 		case ui.InputPointerDown:
@@ -216,6 +220,10 @@ func (h *EditorScrollbars) Observe(c *ui.Context, wrapper, _ ui.Element, st *cod
 	h.hot = nextHot
 
 	wrapper.DrawOver(func(p *ui.Painter, r ui.Rect) {
+		if r.W > 0 && r.H > 0 {
+			h.lastBounds = r
+			h.lastWrapH = float64(r.H)
+		}
 		if sc := p.Scale(); sc > 0 {
 			h.lastScale = sc
 		}
