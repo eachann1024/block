@@ -171,7 +171,7 @@
 
 14. **`host.fs.*`**（需 `"system:fs"`，仅限 `data_dir`、`downloads_dir`、已授权笔记本及 `granted-paths.json` 授权路径，经 `os.Root` 拒绝符号链接与路径逃逸）
     - `host.fs.list_grants`（`{}`）：返回 `{"grants": [...], "data_dir", "downloads_dir", "notebooks": [{"path", "writable"}]}`。
-    - `host.fs.stat`（`{"path"}`） / `host.fs.list`（`{"path", "recursive"}`，最多 10000 条）。
+    - `host.fs.stat`（`{"path"}`） / `host.fs.list`（`{"path", "recursive"}`，最多 10000 条；返回 `{"path", "entries", "truncated": bool}`，达到 10000 条上限截断时 `"truncated"` 为 `true`）。
     - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、上限 64 MiB） / `host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`，上限 64 MiB）。
     - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive"}`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents"}`） / `host.fs.atomic_swap`（`{"path_a", "path_b"}`，同目录两文件交换）。
 
