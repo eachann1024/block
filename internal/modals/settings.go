@@ -1162,6 +1162,23 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					})
 				}
 			})
+
+			if theme.WindowGlassSupported() {
+				glassOn := st.WindowGlassOn()
+				glassLabel := theme.Tr("窗口透明", "Window Translucency")
+				internalui.SettingsRow(c, glassLabel, func() {
+					if theme.WindowGlassNeedsRestart(glassOn) {
+						ui.Text(c, theme.Tr("重启后生效", "Applies after restart")).
+							FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
+					}
+					if internalui.Switch(c, "settings-window-glass", glassLabel, &glassOn) {
+						on := glassOn
+						m.mutateState(func(s *model.AppState) {
+							s.WindowGlass = &on
+						})
+					}
+				})
+			}
 		})
 
 		// Card 2: Editor Typography & Fonts (app_settings_tabs.rs:67-70).

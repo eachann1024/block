@@ -221,11 +221,15 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 			alphaIn = 1
 		}
 
+		glassA := opts.GlassAlpha
+		if glassA <= 0 || glassA > 1 {
+			glassA = 1
+		}
 		p.Clip(bandRect, 0, func() {
 			effGround := ground
 			// Smoothly dissolve backdrop ground during Light <-> Dark theme switches.
 			if st.transProg < 1 && prevSc != nil && prevSc.ground != ground && alphaOut > 0.002 {
-				p.Fill(bandRect, prevSc.ground.Alpha(1-u), 0)
+				p.Fill(bandRect, prevSc.ground.Alpha((1-u)*glassA), 0)
 				effGround = prevSc.ground.Alpha(1 - u).Over(ground)
 			}
 
@@ -234,6 +238,10 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 			skyScale := float32(1)
 			if opts.SkinChrome {
 				skyScale = 0.72
+			}
+			if glassA < 1 {
+				// Keep the sky a light wash so the window material still reads through.
+				skyScale *= 0.6
 			}
 			// Only skins recolor the dark art onto their own ground; stock themes keep
 			// the original art, including during light <-> dark transitions.
@@ -264,7 +272,7 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 				}, ui.LinearGradient{
 					Angle: 90,
 					From:  effGround.Alpha(0),
-					To:    effGround.Alpha(brandSceneSkyTailFade),
+					To:    effGround.Alpha(brandSceneSkyTailFade * glassA),
 				}, 0)
 			}
 

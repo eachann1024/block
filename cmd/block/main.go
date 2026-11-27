@@ -469,7 +469,9 @@ func main() {
 			winOpts.X = resolved.Rect.X
 			winOpts.Y = resolved.Rect.Y
 		}
+		winOpts.Vibrancy = app.MainWindowVibrancy(ws.State())
 		win := mygo.NewWindow(winOpts)
+		app.InitWindowGlass(win, winOpts.Vibrancy)
 		ws.AttachWindow(win)
 		win.OnBlur(func() {
 			if !isQuitting {

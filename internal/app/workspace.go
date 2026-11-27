@@ -6486,8 +6486,12 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 	clear(w.chromePopups)
 	w.chromePopups = w.chromePopups[:0]
 	w.sidebarPopupsQueued = false
+	shellGround := chrome.Ground
+	if w.syncWindowGlass(c, stSnap) {
+		shellGround = pal.GlassGround(chrome.Ground)
+	}
 	c.Key("workspace-root")
-	root := ui.Column(c).Fill().Background(chrome.Ground).TextColor(pal.Text).Clip()
+	root := ui.Column(c).Fill().Background(shellGround).TextColor(pal.Text).Clip()
 	blockui.Probe(root, "workspace-root")
 
 	canEdgeLeft, canEdgeRight, edgeSafeL, edgeSafeR := w.edgeFloat.PrepareFrame(
@@ -6525,6 +6529,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 			Now:        now,
 			SkinChrome: theme.IsSkinActive(),
 			SkinAccent: pal.Accent,
+			GlassAlpha: float32(shellGround.A) / 255,
 		})
 	}
 

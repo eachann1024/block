@@ -251,7 +251,12 @@ type AppState struct {
 	TreeSort             TreeSortMode                   `json:"tree_sort,omitempty"`
 	OutlineView          OutlineViewMode                `json:"outline_view,omitempty"`
 	PinnedPluginButtons  []string                       `json:"pinned_plugin_buttons,omitempty"`
+	WindowGlass          *bool                          `json:"window_glass,omitempty"`
 }
+
+// WindowGlassOn reports whether the sidebar and titlebar show the system window
+// material; unset means on.
+func (s AppState) WindowGlassOn() bool { return s.WindowGlass == nil || *s.WindowGlass }
 
 // OutlineViewMode controls the preferred right-rail outline overlay view.
 type OutlineViewMode string
