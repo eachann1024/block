@@ -3769,7 +3769,14 @@ func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Nod
 		} else if hasLink {
 			linkLbl = theme.Tr("编辑链接", "Edit Link")
 		}
-		renderPillBtn("mm-qb-link-"+id, icons.TbLink, linkLbl, hasLink && !linkWarn, linkWarn, func() {
+		linkIcon := icons.TbLink
+		if linkWarn {
+			linkIcon = icons.LinkOff
+		} else if hasLink {
+			linkIcon = icons.LinkEdit
+		}
+		// Edit Link is an action, not a toggle: keep it in the neutral style.
+		renderPillBtn("mm-qb-link-"+id, linkIcon, linkLbl, false, linkWarn, func() {
 			if linkWarn {
 				st.beginLinkEditBroken(sel)
 			} else {
