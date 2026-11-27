@@ -418,8 +418,8 @@ example-sync/
 | `host.secrets.get` | `system:secrets` | 从系统凭据库读取插件隔离凭据 | [§4.3](https://docs.block.cooool.top/plugins/protocol-and-ui) |
 | `host.secrets.set` | `system:secrets` | 向系统凭据库写入或更新插件隔离凭据 | [§4.3](https://docs.block.cooool.top/plugins/protocol-and-ui) |
 | `host.secrets.delete` | `system:secrets` | 从系统凭据库删除指定凭据 | [§4.3](https://docs.block.cooool.top/plugins/protocol-and-ui) |
-| `host.titlebar.get_items` | `ui:titlebar`（默认放行，无需声明） | 获取顶栏槽位（含 `group`/`preview`）与分组顺序 `groups` | [§7.4 · 1](https://docs.block.cooool.top/plugins/ui-contributions) |
-| `host.titlebar.set_hidden` | **须显式声明 `ui:titlebar`** + `contributes.titlebar_manager: true` | 持久化设置隐藏的顶栏槽位（`"more"` 不可隐藏） | [§7.4 · 2](https://docs.block.cooool.top/plugins/ui-contributions) |
+| `host.titlebar.get_items` | `ui:titlebar`（默认放行，无需声明） | 获取可管理顶栏槽位（含 `group`/`preview`）与按模式分组的顺序 `groups` | [§7.4 · 1](https://docs.block.cooool.top/plugins/ui-contributions) |
+| `host.titlebar.set_hidden` | 运行时查 `ui:titlebar`（默认放行）+ `contributes.titlebar_manager: true`（声明时清单须显式声明 `ui:titlebar`） | 持久化设置隐藏的顶栏槽位（按插件隔离；忽略 `locked` 项与不可管理槽位） | [§7.4 · 2](https://docs.block.cooool.top/plugins/ui-contributions) |
 | `host.titlebar.set_button` | `ui:titlebar`（默认放行，无需声明）+ `contributes.titlebar_buttons` | 更新本插件顶栏按钮的角标文本与激活高亮态 | [§7.4 · 3](https://docs.block.cooool.top/plugins/ui-contributions) |
 | `host.menubar.set` | `ui:menubar`（默认放行，无需声明）+ `contributes.menubar_items` | 更新系统菜单栏图标标题、提示与动态菜单条目 | [§7.4 · 12](https://docs.block.cooool.top/plugins/ui-contributions) |
 | `host.status.set` | `ui:status`（默认放行，无需声明）+ `contributes.status_items` | 更新底部状态栏条目的文案、提示与图标 | [§7.4 · 4](https://docs.block.cooool.top/plugins/ui-contributions) |
@@ -435,12 +435,12 @@ example-sync/
 | `host.ui.clear_background_error` | 无需权限 | 清除指定或全部插件后台错误告警 | [§7.4 · 13](https://docs.block.cooool.top/plugins/ui-contributions) |
 | `host.ui.backdrop` | `ui:appearance`（默认放行，无需声明） | 读取本插件当前持久化的编辑区背景状态 | [§7.5](https://docs.block.cooool.top/plugins/ui-contributions) |
 | `host.ui.set_backdrop` | `ui:appearance`（默认放行，无需声明）+ `contributes.backdrops` | 更新并持久化编辑区矢量或纸纹背景状态 | [§7.5](https://docs.block.cooool.top/plugins/ui-contributions) |
-| `host.ui.theme_skin_state` | **须显式声明 `ui:appearance`**（配合 `contributes.themes`） | 查询当前主题皮肤启用与激活状态 | [§7.4 · 14](https://docs.block.cooool.top/plugins/ui-contributions) |
-| `host.ui.set_theme_skin` | **须显式声明 `ui:appearance`** + `contributes.themes` | 应用或关闭声明的主题皮肤 | [§7.4 · 14](https://docs.block.cooool.top/plugins/ui-contributions) |
-| `host.stage.open` | **须显式声明 `ui:appearance` / `ui:commands` / `ui:panels` 之一** + `contributes.stages` | 打开离线 `block-plugin://` WebView 舞台并传入初始状态 | [§7.4 · 15](https://docs.block.cooool.top/plugins/ui-contributions) |
-| `host.stage.close` | `ui:appearance` / `ui:commands` / `ui:panels` 之一（声明 `stages` 时须显式声明） | 关闭当前插件打开的 WebView 舞台 | [§7.4 · 15](https://docs.block.cooool.top/plugins/ui-contributions) |
-| `host.stage.state` | `ui:appearance` / `ui:commands` / `ui:panels` 之一（声明 `stages` 时须显式声明） | 查询当前插件舞台打开态、路由与状态 | [§7.4 · 15](https://docs.block.cooool.top/plugins/ui-contributions) |
-| `host.stage.emit` | **须显式声明 `ui:appearance` / `ui:commands` / `ui:panels` 之一** + `contributes.stages` | 向打开中的舞台 WebView 推送事件载荷 | [§7.4 · 15](https://docs.block.cooool.top/plugins/ui-contributions) |
+| `host.ui.theme_skin_state` | 运行时查 `ui:appearance`（默认放行；无 `contributes.themes` 也可调用，返回 `enabled: false`；声明 `themes` 时清单须显式声明 `ui:appearance`） | 查询当前主题皮肤启用与激活状态 | [§7.4 · 14](https://docs.block.cooool.top/plugins/ui-contributions) |
+| `host.ui.set_theme_skin` | 运行时查 `ui:appearance`（默认放行）+ 须声明 `contributes.themes`（声明时清单须显式声明 `ui:appearance`） | 应用或关闭声明的主题皮肤 | [§7.4 · 14](https://docs.block.cooool.top/plugins/ui-contributions) |
+| `host.stage.open` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行）+ 须声明 `contributes.stages`（声明时清单须显式声明三者之一） | 打开离线 `block-plugin://` WebView 舞台并传入初始状态 | [§7.4 · 15](https://docs.block.cooool.top/plugins/ui-contributions) |
+| `host.stage.close` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行；无 `contributes.stages` 也可调用，返回 `closed: false`；声明 `stages` 时清单须显式声明三者之一） | 关闭当前插件打开的 WebView 舞台 | [§7.4 · 15](https://docs.block.cooool.top/plugins/ui-contributions) |
+| `host.stage.state` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行；无 `contributes.stages` 也可调用，返回 `open: false`；声明 `stages` 时清单须显式声明三者之一） | 查询当前插件舞台打开态、路由与状态 | [§7.4 · 15](https://docs.block.cooool.top/plugins/ui-contributions) |
+| `host.stage.emit` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行）+ 须声明 `contributes.stages`（声明时清单须显式声明三者之一） | 向打开中的舞台 WebView 推送事件载荷 | [§7.4 · 15](https://docs.block.cooool.top/plugins/ui-contributions) |
 | `host.sidebar.get_badges` | `ui:sidebar`（默认放行，无需声明） | 读取当前插件写入的文件树行角标映射 | [§7.4 · 9](https://docs.block.cooool.top/plugins/ui-contributions) |
 | `host.sidebar.set_badges` | `ui:sidebar`（默认放行，无需声明）+ `contributes.file_badges` | 写入、局部修补或清空文件树笔记行尾角标 | [§7.4 · 9](https://docs.block.cooool.top/plugins/ui-contributions) |
 | `host.sidebar.get_file_icons` | `ui:sidebar`（默认放行，无需声明） | 读取当前笔记本自定义文件/文件夹图标映射与偏好 | [§7.4 · 9.1](https://docs.block.cooool.top/plugins/ui-contributions) |
@@ -1060,13 +1060,22 @@ serve((method, params) => {
      {
        "items": [
          {
-           "id": "feedback",
-           "label": "反馈",
+           "id": "send_all",
+           "label": "统一发送批注",
            "locked": false,
            "hidden": false,
-           "icon": {"name": "message-square"},
+           "icon": {"chip": "统一发送", "dot": true},
            "group": "markdown",
-           "preview": [{"name": "message-square"}]
+           "preview": [{"chip": "统一发送", "dot": true}]
+         },
+         {
+           "id": "wrap",
+           "label": "自动换行",
+           "locked": false,
+           "hidden": false,
+           "icon": {"name": "wrap"},
+           "group": "source",
+           "preview": [{"name": "wrap"}]
          },
          {
            "id": "zoom",
@@ -1074,33 +1083,26 @@ serve((method, params) => {
            "locked": false,
            "hidden": false,
            "icon": {"name": "tb-plus"},
-           "group": "source",
-           "preview": [{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}]
-         },
-         {
-           "id": "reveal",
-           "label": "在文件夹中显示",
-           "locked": false,
-           "hidden": false,
-           "icon": {"name": "folder-reveal"},
-           "group": "source",
-           "preview": []
+           "group": "preview",
+           "preview": [{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}, {"chip": "适应"}]
          }
        ],
        "groups": [
          {"id": "markdown", "label": "Markdown", "order": ["plugin:my-plugin/btn", "feedback", "ai", "send_all", "more"]},
-         {"id": "source", "label": "源码模式", "order": ["wrap", "zoom", "plugin:my-plugin/btn", "feedback", "ai", "more"]}
+         {"id": "source", "label": "源码模式", "order": ["wrap", "plugin:my-plugin/btn", "feedback", "ai", "more"]},
+         {"id": "preview", "label": "图片预览", "order": ["zoom", "plugin:my-plugin/btn", "feedback", "ai", "more"]}
        ]
      }
      ```
+   - `items[].plugin`：仅在插件按钮槽位上返回所属插件 ID，内置槽位省略。
    - `items[].icon` 为该槽位在设置行使用的图标：内置槽位为宿主图标名 `{"name": ...}`（`send_all` 为文字胶囊 `{"chip": "统一发送", "dot": true}`），插件按钮为其声明的内联矢量（`view_box` / `stroke_paths` 等），可直接透传到 `switch.icon`。
-   - `items[].group` 为该槽位在设置页归属的分组 ID（`"markdown"` 或 `"source"`；插件按钮归属 `"markdown"`）。
-   - `items[].preview` 为该槽位在顶栏右侧实际绘制的 `UIIcon` 数组，可直接展开透传到 `icon_strip.icons`：`zoom` 为 `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}]`；仅出现在菜单、不在顶栏绘制的槽位（如 `reveal`）返回空数组 `[]`；插件按钮返回单元素内联矢量数组。
-   - `groups` 按从左到右真实顶栏顺序描述各模式分组：`id`（`"markdown"` | `"source"`）、`label`（随语言本地化）与 `order`（从左到右真实槽位 ID，已将启用中的插件按钮按 `"plugin:<pluginID>/<buttonID>"` 展开；同一插件按钮可同时出现在 `"markdown"` 与 `"source"` 的 `order` 中）。旧宿主不返回 `group`、`preview` 与 `groups`（更早版本亦无 `icon`）。
-   - 内置槽位 ID：`"feedback"`、`"ai"`、`"send_all"`、`"wrap"`、`"zoom"`、`"reveal"`、`"more"`（`locked: true`）；插件按钮槽位 ID 为 `"plugin:<pluginID>/<buttonID>"`。
-2. **`host.titlebar.set_hidden`**（**须显式声明 `"ui:titlebar"`** 与 `contributes.titlebar_manager: true`）
-   - 参数：`{"hidden": ["feedback", "plugin:my-plugin/btn"]}`（按插件隔离持久化于 `<BlockAppData>/plugins/contrib-state.json`，停用插件时自动收回其隐藏设置）。
-   - **不可隐藏约束**：内置槽位 `"more"`（页面 `…` 操作按钮）永久锁定，**永远不可隐藏**（传入 `"more"` 或未知槽位 ID 会被宿主忽略）。
+   - `items[].group` 为该槽位在设置页归属的分组 ID（`"markdown"`、`"source"` 或 `"preview"`；插件按钮归属 `"markdown"`）。
+   - `items[].preview` 与真实顶栏绘制共用同一份控件定义，为该槽位在顶栏右侧实际绘制的 `UIIcon` 数组，可直接展开透传到 `icon_strip.icons`：例如 `zoom` 为 `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}, {"chip": "适应"}]`（英文为 `"Fit"`），`send_all` 为 `[{"chip": "统一发送", "dot": true}]`，插件按钮为单元素内联矢量数组。
+   - `groups` 与真实顶栏模式规则同源，按从左到右真实顶栏顺序描述各模式分组：`id`（`"markdown"` | `"source"` | `"preview"`）、`label`（随语言本地化：`"Markdown"` / `"源码模式"` (`"Source Mode"`) / `"图片预览"` (`"Image Preview"`)）与 `order`（从左到右真实槽位 ID，已将启用中的插件按钮按置顶优先、再按安装顺序展开为 `"plugin:<pluginID>/<buttonID>"`，同一个插件按钮可以同时出现在多个模式组的 `order` 里；`"markdown"` 组中的组合胶囊子项 `send_all`、`more` 顺序与真实绘制同源）。旧宿主不返回 `group`、`preview` 与 `groups`（更早版本亦无 `icon`）。
+   - 内置可管理槽位 ID：`"feedback"`、`"ai"`、`"send_all"`、`"wrap"`、`"zoom"`、`"more"`（`locked: true`）；插件按钮槽位 ID 为 `"plugin:<pluginID>/<buttonID>"`。`"reveal"` 仅出现在页面 `…` 菜单与标签页右键菜单中、不在顶栏展示，属于不可管理项，不会在 `items` 或 `groups[].order` 中返回。
+2. **`host.titlebar.set_hidden`**（运行时检查 `"ui:titlebar"` 默认放行；清单若声明 `contributes.titlebar_manager: true` 须同时显式声明 `"ui:titlebar"`，且仅声明了 `titlebar_manager: true` 的插件可调用）
+   - 参数：`{"hidden": ["feedback", "plugin:my-plugin/btn"]}`（隐藏状态按调用插件隔离持久化于 `<BlockAppData>/plugins/contrib-state.json`，停用管理插件时会收回它的隐藏效果）。
+   - **锁定与不可管理校验**：宿主按槽位定义中的 `locked` 标记统一拒绝隐藏锁定项（如 `"more"`），并忽略未知或不可管理槽位（如 `"reveal"`；原有页面 `…` 菜单与标签页右键菜单仍保留该项）。
    - 返回：`{"ok": true, "items": [...], "groups": [...]}`（返回更新后的完整槽位列表与分组顺序）。
 3. **`host.titlebar.set_button`**（代码检查 `"ui:titlebar"`，默认放行，无需显式声明；需在 `contributes.titlebar_buttons` 中声明 `id`）
    - 参数：`{"id": "<button_id>", "badge": "3", "active": true}`（`id` 必填且须为本插件声明的 `titlebar_buttons[].id`；`badge` 可选，会去首尾空白并截断至最多 3 个 Unicode 字符；`active` 可选布尔值）。
@@ -1163,14 +1165,18 @@ serve((method, params) => {
 13. **`host.ui.set_background_error` / `host.ui.clear_background_error`**（无需权限）
     - `host.ui.set_background_error`：在设置侧栏插件项与顶栏错误胶囊展示后台告警或错误（每插件最多 32 个 `key`，默认 `"default"`）：`{"key", "label", "detail", "retry_action", "retry_label", "retry_payload", "severity": "danger"|"warning"}`（`label` 必填且 <= 120 字，禁 Emoji）-> `{"ok": true, "key"}`。
     - `host.ui.clear_background_error`：`{"key"}`（省略 `key` 清空本插件全部后台错误）-> `{"ok": true}`。
-14. **`host.ui.theme_skin_state` / `host.ui.set_theme_skin`**（需声明 `contributes.themes` 并显式声明 `"ui:appearance"`）
-    - `host.ui.theme_skin_state`（`{}`）：返回 `{"id", "enabled", "skin_id"}`。
-    - `host.ui.set_theme_skin`（`{"id", "enabled": true|false}`）：应用或关闭声明的主题皮肤并持久化于 `contrib-state.json`，同时停用其他插件皮肤。
-15. **`host.stage.*`**（需声明 `contributes.stages` 并显式声明 `"ui:appearance"` / `"ui:commands"` / `"ui:panels"` 之一）
-    - `host.stage.open`：`{"id", "route", "state"}`（`route` 兼容别名 `room`；`state` 接受任意合法 JSON，<= 2 MiB）-> `{"ok": true, "open": true, "stage": {...}}`。
-    - `host.stage.close`：`{"id"}` -> `{"ok": true, "closed": true|false}`。
-    - `host.stage.state`（`{}`）：返回 `{"open": true|false, "stage_id", "route", "state"}`。
-    - `host.stage.emit`：`{"id", "event", "payload"}`（`payload` 上限 2 MiB）-> `{"ok": true}`（向打开中的舞台 WebView 推送事件）。
+14. **`host.ui.theme_skin_state` / `host.ui.set_theme_skin`**
+    - **运行时权限**：两个方法均检查 `"ui:appearance"`（默认放行权限，未声明时也会在运行时放行）。
+    - **清单校验**：仅当插件声明非空 `contributes.themes` 时，清单加载/校验才强制要求在 `manifest.permissions` 中显式声明 `"ui:appearance"`。
+    - **各方法对贡献项的要求**：
+      - `host.ui.theme_skin_state`（`{}`）：**不要求** `contributes.themes`，未声明 `themes` 的插件也可凭默认权限调用，返回 `{"id", "enabled", "skin_id"}`（无激活皮肤时 `enabled` 为 `false`）。
+      - `host.ui.set_theme_skin`（`{"id", "enabled": true|false}`）：**须声明 `contributes.themes`**；应用或关闭声明的主题皮肤并持久化于 `contrib-state.json`，同时停用其他插件皮肤。
+15. **`host.stage.*`**
+    - **运行时权限**：四个方法均检查 `"ui:appearance"` / `"ui:commands"` / `"ui:panels"` 之一（三者均属默认放行权限，未声明时也会在运行时放行）。
+    - **清单校验**：仅当插件声明非空 `contributes.stages` 时，清单加载/校验才强制要求在 `manifest.permissions` 中显式声明 `"ui:appearance"`、`"ui:commands"` 或 `"ui:panels"` 之一。
+    - **各方法对贡献项的要求**：
+      - `host.stage.open`（`{"id", "route", "state"}` -> `{"ok": true, "open": true, "stage": {...}}`）与 `host.stage.emit`（`{"id", "event", "payload"}` -> `{"ok": true}`）：**须声明 `contributes.stages`**（`route` 兼容别名 `room`；`state` 与 `payload` 均接受合法 JSON 且上限 2 MiB）。
+      - `host.stage.close`（`{"id"}`）与 `host.stage.state`（`{}`）：**不要求** `contributes.stages`，未声明 `stages` 的插件也可凭默认权限调用；当前插件没有打开中的舞台时，分别返回 `{"ok": true, "closed": false}` 与 `{"open": false}`（有打开舞台时 `host.stage.state` 返回 `{"open": true, "stage_id", "route", "state"}`）。
 
 ### 7.5 编辑区背景能力（`host.ui.backdrop` / `host.ui.set_backdrop`）
 

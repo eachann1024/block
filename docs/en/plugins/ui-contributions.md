@@ -60,11 +60,13 @@ Shared validation rules:
 
 > Note: Methods marked `"ui:*" (default-allowed)` are checked against that permission in code, which is auto-granted without declaring it in `manifest.permissions`. Methods marked **explicit** or sensitive permissions must be declared in `manifest.permissions`. See the [Host Method Index](protocol-and-ui.md#host-method-index) for all 78 `host.*` methods.
 
-1. **`host.titlebar.get_items`** (checks `"ui:titlebar"`, default-allowed; `{}`): returns `{"items": [...], "groups": [...]}`.
-   - Each `item` includes `id`, `label`, `locked`, `hidden`, `plugin`, `icon` (for `switch` rows), **`group`** (`"markdown"` or `"source"` settings card group; plugin buttons use `"markdown"`), and **`preview`** (array of `UIIcon`s actually rendered in the titlebar, ready to pass into `icon_strip.icons`—e.g. `zoom` is `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}]`, slots not drawn in the titlebar such as `reveal` return `[]`, and plugin buttons return a 1-element inline-vector array).
-   - `groups` lists each mode group (`"markdown"` / `"source"`), localized `label` (`"Markdown"` / `"Source Mode"`), and left-to-right titlebar `order` (with active plugin buttons expanded as `"plugin:<pluginID>/<buttonID>"`). Older hosts omit `group`, `preview`, and `groups` (and earlier hosts omit `icon`).
-   - Built-in slot IDs: `feedback`, `ai`, `send_all`, `wrap`, `zoom`, `reveal`, `more` (`locked: true`); plugin buttons use `plugin:<pluginID>/<buttonID>`.
-2. **`host.titlebar.set_hidden`** (requires `contributes.titlebar_manager: true` and **explicit** `"ui:titlebar"`): `{"hidden": [...]}` persisted in `contrib-state.json` (`"more"` is permanently locked and cannot be hidden); returns `{"ok": true, "items": [...], "groups": [...]}`.
+1. **`host.titlebar.get_items`** (runtime checks `"ui:titlebar"`, default-allowed; `{}`): returns `{"items": [...], "groups": [...]}`.
+   - Each `item` includes `id`, `label`, `locked`, `hidden`, optional `plugin` (**returned only on plugin buttons** and omitted on built-in slots), `icon` (for `switch` rows), **`group`** (`"markdown"`, `"source"`, or `"preview"`; plugin buttons use `"markdown"`), and **`preview`** (array of `UIIcon`s generated from the same definitions as real titlebar rendering, ready for `icon_strip.icons`—e.g. `zoom` is `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}, {"chip": "Fit"}]`, `send_all` is `[{"chip": "Send all", "dot": true}]`, and plugin buttons return a 1-element inline-vector array).
+   - `groups` is derived from the same mode rules as real titlebar rendering and lists each mode group (`"markdown"` / `"source"` / `"preview"`), localized `label` (`"Markdown"` / `"Source Mode"` / `"Image Preview"`), and left-to-right `order` (expanding enabled plugin buttons as `"plugin:<pluginID>/<buttonID>"` with pinned buttons first, followed by install order; **the same plugin button can appear in multiple groups' `order`** across `"markdown"`, `"source"`, and `"preview"`, and `"markdown"` composite pill sub-items `send_all` and `more` follow the live pill layout). Older hosts omit `group`, `preview`, and `groups` (and earlier hosts omit `icon`).
+   - Manageable built-in slot IDs: `feedback`, `ai`, `send_all`, `wrap`, `zoom`, `more` (`locked: true`); plugin buttons use `plugin:<pluginID>/<buttonID>`. `reveal` lives only in the page `…` menu and tab context menu, is non-manageable, and is omitted from `get_items`.
+2. **`host.titlebar.set_hidden`** (runtime checks `"ui:titlebar"`, default-allowed, plus `contributes.titlebar_manager: true`; manifest validation requires explicit `"ui:titlebar"` when `titlebar_manager: true` is declared): `{"hidden": [...]}` returns `{"ok": true, "items": [...], "groups": [...]}`.
+   - Hidden state is **isolated per calling plugin** in `contrib-state.json`, and **disabling a `titlebar_manager` plugin immediately withdraws its hiding effect**.
+   - Enforces `locked` from each slot definition (such as `"more"`) and ignores unknown or non-manageable slots (such as `"reveal"`, while preserving the existing `…` and tab context menu items).
 3. **`host.titlebar.set_button`** (checks `"ui:titlebar"`, default-allowed; requires `id` in `contributes.titlebar_buttons`): `{"id", "badge"?, "active"?}` (`badge <= 3` runes).
 4. **`host.status.set`** (checks `"ui:status"`, default-allowed; requires `id` in `contributes.status_items`): `{"id", "text"?, "tooltip"?, "icon"?, "show_plugin_icon"?, "clear_icon"?}` (`text <= 40` runes, no Emoji; `tooltip <= 200` runes).
 5. **`host.ui.toast`** (no permission check): in-app top-right notification banner (`message` required `<= 160`, optional `body <= 1000`, `tone`, `icon`, `show_plugin_icon`, `action` callback to `plugin.action` with `surface: "toast"`). Returns `{"ok": true, "shown", "queued"}`.
@@ -79,8 +81,18 @@ Shared validation rules:
 11. **`host.editor.insert`** (`"editor:write"`): `{"text", "note"?, "mode": "replace"|"insert"}` (`text` required string `<= 4 MiB`; parses Markdown into native blocks and saves immediately; rejects folder/out-of-notebook context menu targets with `-32004`).
 12. **`host.menubar.set`** (checks `"ui:menubar"`, default-allowed; requires `id` in `contributes.menubar_items`): `{"id", "title"?, "tooltip"?, "menu"?, "clear_menu"?}` (`title <= 16` no Emoji, `menu <= 20` dynamic items in memory, `payload <= 4096` bytes).
 13. **`host.ui.set_background_error` / `clear_background_error`** (no permission check): `{"key", "label", "detail", "retry_action", "retry_label", "retry_payload", "severity": "danger"|"warning"}` (max 32 keys/plugin; omitting `key` on clear clears all).
-14. **`host.ui.theme_skin_state` / `set_theme_skin`** (requires `contributes.themes` and **explicit** `"ui:appearance"`): gets or switches active plugin theme skin.
-15. **`host.stage.*`** (requires `contributes.stages` and **explicit** `"ui:appearance"`, `"ui:commands"`, or `"ui:panels"`): `host.stage.open` (`{"id", "route", "state"}`; `state` accepts any valid JSON `<= 2 MiB`), `close`, `state`, and `emit` (`{"id", "event", "payload"}`; `payload <= 2 MiB`).
+14. **`host.ui.theme_skin_state` / `host.ui.set_theme_skin`**:
+    - **Runtime permission**: both check `"ui:appearance"` (default-allowed at runtime even if omitted from `manifest.permissions`).
+    - **Manifest validation**: declaring non-empty `contributes.themes` requires explicit `"ui:appearance"` in `manifest.permissions`.
+    - **Per-method contribution requirement**:
+      - `host.ui.theme_skin_state` (`{}`): does **not** require `contributes.themes`; plugins without `themes` can call it with default permissions and receive `{"id", "enabled", "skin_id"}` with `enabled: false`.
+      - `host.ui.set_theme_skin` (`{"id", "enabled": true|false}`): **requires** `contributes.themes`; activates or deactivates a declared theme skin and persists state in `contrib-state.json`.
+15. **`host.stage.*`**:
+    - **Runtime permission**: all four methods check `"ui:appearance"`, `"ui:commands"`, or `"ui:panels"` (all three are default-allowed at runtime).
+    - **Manifest validation**: declaring non-empty `contributes.stages` requires explicitly declaring at least one of `"ui:appearance"`, `"ui:commands"`, or `"ui:panels"` in `manifest.permissions`.
+    - **Per-method contribution requirement**:
+      - `host.stage.open` (`{"id", "route", "state"}`; `state` accepts valid JSON `<= 2 MiB`) and `host.stage.emit` (`{"id", "event", "payload"}`; `payload <= 2 MiB`): **require** `contributes.stages`.
+      - `host.stage.close` (`{"id"}`) and `host.stage.state` (`{}`): do **not** require `contributes.stages`; plugins without `stages` (or without an open stage) receive `{"ok": true, "closed": false}` and `{"open": false}` respectively (when open, `state` returns `{"open": true, "stage_id", "route", "state"}`).
 
 ### 7.5 Editor Backdrop Methods (`host.ui.backdrop` / `host.ui.set_backdrop`)
 

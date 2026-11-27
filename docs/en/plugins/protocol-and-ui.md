@@ -148,8 +148,8 @@ This table lists all 78 `host.*` JSON-RPC methods currently dispatched by the ho
 | `host.secrets.get` | `system:secrets` | Read a plugin-isolated credential from the OS keychain | [§4.3](protocol-and-ui.md) |
 | `host.secrets.set` | `system:secrets` | Store or update a plugin-isolated credential | [§4.3](protocol-and-ui.md) |
 | `host.secrets.delete` | `system:secrets` | Delete a stored credential from the OS keychain | [§4.3](protocol-and-ui.md) |
-| `host.titlebar.get_items` | `ui:titlebar` (default-allowed) | Get titlebar slots (`group`/`preview`) and ordered `groups` | [§7.4 · 1](ui-contributions.md) |
-| `host.titlebar.set_hidden` | **Explicit `ui:titlebar`** + `contributes.titlebar_manager: true` | Persist hidden titlebar slot IDs (`"more"` cannot be hidden) | [§7.4 · 2](ui-contributions.md) |
+| `host.titlebar.get_items` | `ui:titlebar` (default-allowed) | Get manageable titlebar slots (`group`/`preview`) and per-mode `groups` order | [§7.4 · 1](ui-contributions.md) |
+| `host.titlebar.set_hidden` | Runtime `ui:titlebar` (default-allowed) + `contributes.titlebar_manager: true` (manifest requires explicit `ui:titlebar`) | Persist hidden titlebar slot IDs (per-plugin; ignores `locked` and non-manageable slots) | [§7.4 · 2](ui-contributions.md) |
 | `host.titlebar.set_button` | `ui:titlebar` (default-allowed) + `contributes.titlebar_buttons` | Update badge text and active highlight of a titlebar button | [§7.4 · 3](ui-contributions.md) |
 | `host.menubar.set` | `ui:menubar` (default-allowed) + `contributes.menubar_items` | Update OS menu bar icon title, tooltip, and dynamic menu | [§7.4 · 12](ui-contributions.md) |
 | `host.status.set` | `ui:status` (default-allowed) + `contributes.status_items` | Update text, tooltip, and icon of a status bar item | [§7.4 · 4](ui-contributions.md) |
@@ -165,12 +165,12 @@ This table lists all 78 `host.*` JSON-RPC methods currently dispatched by the ho
 | `host.ui.clear_background_error` | None | Clear one or all background errors for this plugin | [§7.4 · 13](ui-contributions.md) |
 | `host.ui.backdrop` | `ui:appearance` (default-allowed) | Read persisted editor backdrop state | [§7.5](ui-contributions.md) |
 | `host.ui.set_backdrop` | `ui:appearance` (default-allowed) + `contributes.backdrops` | Update and persist editor vector or paper backdrop state | [§7.5](ui-contributions.md) |
-| `host.ui.theme_skin_state` | **Explicit `ui:appearance`** (with `contributes.themes`) | Query active state of this plugin's theme skin | [§7.4 · 14](ui-contributions.md) |
-| `host.ui.set_theme_skin` | **Explicit `ui:appearance`** + `contributes.themes` | Activate or deactivate a declared theme skin | [§7.4 · 14](ui-contributions.md) |
-| `host.stage.open` | **Explicit `ui:appearance` / `ui:commands` / `ui:panels`** + `contributes.stages` | Open an offline `block-plugin://` WebView stage | [§7.4 · 15](ui-contributions.md) |
-| `host.stage.close` | `ui:appearance` / `ui:commands` / `ui:panels` (explicit with `stages`) | Close the plugin's active WebView stage | [§7.4 · 15](ui-contributions.md) |
-| `host.stage.state` | `ui:appearance` / `ui:commands` / `ui:panels` (explicit with `stages`) | Query whether the plugin's WebView stage is open | [§7.4 · 15](ui-contributions.md) |
-| `host.stage.emit` | **Explicit `ui:appearance` / `ui:commands` / `ui:panels`** + `contributes.stages` | Emit an event payload to the open stage WebView | [§7.4 · 15](ui-contributions.md) |
+| `host.ui.theme_skin_state` | Runtime `ui:appearance` (default-allowed; callable without `contributes.themes`, returning `enabled: false`; declaring `themes` requires explicit `ui:appearance` in manifest) | Query active state of this plugin's theme skin | [§7.4 · 14](ui-contributions.md) |
+| `host.ui.set_theme_skin` | Runtime `ui:appearance` (default-allowed) + requires `contributes.themes` (declaring `themes` requires explicit `ui:appearance` in manifest) | Activate or deactivate a declared theme skin | [§7.4 · 14](ui-contributions.md) |
+| `host.stage.open` | Runtime `ui:appearance` / `ui:commands` / `ui:panels` (default-allowed) + requires `contributes.stages` (declaring `stages` requires one explicitly in manifest) | Open an offline `block-plugin://` WebView stage | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.close` | Runtime `ui:appearance` / `ui:commands` / `ui:panels` (default-allowed; callable without `contributes.stages`, returning `closed: false`; declaring `stages` requires one explicitly in manifest) | Close the plugin's active WebView stage | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.state` | Runtime `ui:appearance` / `ui:commands` / `ui:panels` (default-allowed; callable without `contributes.stages`, returning `open: false`; declaring `stages` requires one explicitly in manifest) | Query whether the plugin's WebView stage is open | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.emit` | Runtime `ui:appearance` / `ui:commands` / `ui:panels` (default-allowed) + requires `contributes.stages` (declaring `stages` requires one explicitly in manifest) | Emit an event payload to the open stage WebView | [§7.4 · 15](ui-contributions.md) |
 | `host.sidebar.get_badges` | `ui:sidebar` (default-allowed) | Read file tree badge entries written by this plugin | [§7.4 · 9](ui-contributions.md) |
 | `host.sidebar.set_badges` | `ui:sidebar` (default-allowed) + `contributes.file_badges` | Set, patch, or clear file tree note badges | [§7.4 · 9](ui-contributions.md) |
 | `host.sidebar.get_file_icons` | `ui:sidebar` (default-allowed) | Read custom file/folder icons and preferences for a notebook | [§7.4 · 9.1](ui-contributions.md) |

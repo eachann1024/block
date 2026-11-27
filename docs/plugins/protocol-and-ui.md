@@ -152,8 +152,8 @@
 | `host.secrets.get` | `system:secrets` | 从系统凭据库读取插件隔离凭据 | [§4.3](protocol-and-ui.md) |
 | `host.secrets.set` | `system:secrets` | 向系统凭据库写入或更新插件隔离凭据 | [§4.3](protocol-and-ui.md) |
 | `host.secrets.delete` | `system:secrets` | 从系统凭据库删除指定凭据 | [§4.3](protocol-and-ui.md) |
-| `host.titlebar.get_items` | `ui:titlebar`（默认放行，无需声明） | 获取顶栏槽位（含 `group`/`preview`）与分组顺序 `groups` | [§7.4 · 1](ui-contributions.md) |
-| `host.titlebar.set_hidden` | **须显式声明 `ui:titlebar`** + `contributes.titlebar_manager: true` | 持久化设置隐藏的顶栏槽位（`"more"` 不可隐藏） | [§7.4 · 2](ui-contributions.md) |
+| `host.titlebar.get_items` | `ui:titlebar`（默认放行，无需声明） | 获取可管理顶栏槽位（含 `group`/`preview`）与按模式分组的顺序 `groups` | [§7.4 · 1](ui-contributions.md) |
+| `host.titlebar.set_hidden` | 运行时查 `ui:titlebar`（默认放行）+ `contributes.titlebar_manager: true`（声明时清单须显式声明 `ui:titlebar`） | 持久化设置隐藏的顶栏槽位（按插件隔离；忽略 `locked` 项与不可管理槽位） | [§7.4 · 2](ui-contributions.md) |
 | `host.titlebar.set_button` | `ui:titlebar`（默认放行，无需声明）+ `contributes.titlebar_buttons` | 更新本插件顶栏按钮的角标文本与激活高亮态 | [§7.4 · 3](ui-contributions.md) |
 | `host.menubar.set` | `ui:menubar`（默认放行，无需声明）+ `contributes.menubar_items` | 更新系统菜单栏图标标题、提示与动态菜单条目 | [§7.4 · 12](ui-contributions.md) |
 | `host.status.set` | `ui:status`（默认放行，无需声明）+ `contributes.status_items` | 更新底部状态栏条目的文案、提示与图标 | [§7.4 · 4](ui-contributions.md) |
@@ -169,12 +169,12 @@
 | `host.ui.clear_background_error` | 无需权限 | 清除指定或全部插件后台错误告警 | [§7.4 · 13](ui-contributions.md) |
 | `host.ui.backdrop` | `ui:appearance`（默认放行，无需声明） | 读取本插件当前持久化的编辑区背景状态 | [§7.5](ui-contributions.md) |
 | `host.ui.set_backdrop` | `ui:appearance`（默认放行，无需声明）+ `contributes.backdrops` | 更新并持久化编辑区矢量或纸纹背景状态 | [§7.5](ui-contributions.md) |
-| `host.ui.theme_skin_state` | **须显式声明 `ui:appearance`**（配合 `contributes.themes`） | 查询当前主题皮肤启用与激活状态 | [§7.4 · 14](ui-contributions.md) |
-| `host.ui.set_theme_skin` | **须显式声明 `ui:appearance`** + `contributes.themes` | 应用或关闭声明的主题皮肤 | [§7.4 · 14](ui-contributions.md) |
-| `host.stage.open` | **须显式声明 `ui:appearance` / `ui:commands` / `ui:panels` 之一** + `contributes.stages` | 打开离线 `block-plugin://` WebView 舞台并传入初始状态 | [§7.4 · 15](ui-contributions.md) |
-| `host.stage.close` | `ui:appearance` / `ui:commands` / `ui:panels` 之一（声明 `stages` 时须显式声明） | 关闭当前插件打开的 WebView 舞台 | [§7.4 · 15](ui-contributions.md) |
-| `host.stage.state` | `ui:appearance` / `ui:commands` / `ui:panels` 之一（声明 `stages` 时须显式声明） | 查询当前插件舞台打开态、路由与状态 | [§7.4 · 15](ui-contributions.md) |
-| `host.stage.emit` | **须显式声明 `ui:appearance` / `ui:commands` / `ui:panels` 之一** + `contributes.stages` | 向打开中的舞台 WebView 推送事件载荷 | [§7.4 · 15](ui-contributions.md) |
+| `host.ui.theme_skin_state` | 运行时查 `ui:appearance`（默认放行；无 `contributes.themes` 也可调用，返回 `enabled: false`；声明 `themes` 时清单须显式声明 `ui:appearance`） | 查询当前主题皮肤启用与激活状态 | [§7.4 · 14](ui-contributions.md) |
+| `host.ui.set_theme_skin` | 运行时查 `ui:appearance`（默认放行）+ 须声明 `contributes.themes`（声明时清单须显式声明 `ui:appearance`） | 应用或关闭声明的主题皮肤 | [§7.4 · 14](ui-contributions.md) |
+| `host.stage.open` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行）+ 须声明 `contributes.stages`（声明时清单须显式声明三者之一） | 打开离线 `block-plugin://` WebView 舞台并传入初始状态 | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.close` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行；无 `contributes.stages` 也可调用，返回 `closed: false`；声明 `stages` 时清单须显式声明三者之一） | 关闭当前插件打开的 WebView 舞台 | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.state` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行；无 `contributes.stages` 也可调用，返回 `open: false`；声明 `stages` 时清单须显式声明三者之一） | 查询当前插件舞台打开态、路由与状态 | [§7.4 · 15](ui-contributions.md) |
+| `host.stage.emit` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行）+ 须声明 `contributes.stages`（声明时清单须显式声明三者之一） | 向打开中的舞台 WebView 推送事件载荷 | [§7.4 · 15](ui-contributions.md) |
 | `host.sidebar.get_badges` | `ui:sidebar`（默认放行，无需声明） | 读取当前插件写入的文件树行角标映射 | [§7.4 · 9](ui-contributions.md) |
 | `host.sidebar.set_badges` | `ui:sidebar`（默认放行，无需声明）+ `contributes.file_badges` | 写入、局部修补或清空文件树笔记行尾角标 | [§7.4 · 9](ui-contributions.md) |
 | `host.sidebar.get_file_icons` | `ui:sidebar`（默认放行，无需声明） | 读取当前笔记本自定义文件/文件夹图标映射与偏好 | [§7.4 · 9.1](ui-contributions.md) |
