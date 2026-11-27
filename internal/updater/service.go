@@ -303,6 +303,7 @@ func (s *Service) StartAutomatic() {
 			s.mu.Unlock()
 			acknowledgeStartupAndClean(dataDir, cur, lastUpdatedFrom)
 			if rec, ok := RestoreReady(dataDir, cur); ok {
+				_ = PrepareInstall(dataDir, rec, true)
 				s.mu.Lock()
 				s.readyRecord = rec
 				s.status = StatusReady
@@ -595,6 +596,10 @@ func (s *Service) StartDownload() {
 			}
 			return commit()
 		})
+		if err == nil && inPlace && rec != nil {
+			// Build the swap stage now (status still shows preparing) so restart is instant later.
+			_ = PrepareInstall(dataDir, rec, false)
+		}
 
 		s.mu.Lock()
 		if dlGen != s.downloadGen {
