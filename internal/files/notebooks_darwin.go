@@ -98,16 +98,17 @@ func isParentVolumeAccessible(parent string, pDev uint64, hasPDev bool, recDev u
 	return true
 }
 
-func findSiblingByNotebookXattr(parent, expectedID string) (string, bool) {
+func findSiblingByNotebookXattr(parent, expectedID string) (string, bool, bool) {
 	if parent == "" || !IsSafeNotebookID(expectedID) {
-		return "", false
+		return "", false, false
 	}
 	entries, err := os.ReadDir(parent)
 	if err != nil {
-		return "", false
+		return "", false, isUnreadableDirErr(err) || !isStrictNotExistErr(err)
 	}
 	const maxSiblingProbes = 256
 	probed := 0
+	inconclusive := false
 	for _, ent := range entries {
 		if probed >= maxSiblingProbes {
 			break
@@ -120,9 +121,13 @@ func findSiblingByNotebookXattr(parent, expectedID string) (string, bool) {
 			continue
 		}
 		probed++
-		if xid, xErr := readNotebookXattr(cand); xErr == nil && xid == expectedID {
-			return cand, true
+		xid, xErr := readNotebookXattr(cand)
+		if xErr == nil && xid == expectedID {
+			return cand, true, false
+		}
+		if isUnreadableDirErr(xErr) {
+			inconclusive = true
 		}
 	}
-	return "", false
+	return "", false, inconclusive
 }

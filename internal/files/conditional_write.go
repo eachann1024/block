@@ -993,6 +993,8 @@ func stashReplacedInodeWithHandoff(dir *os.Root, rootHint, tmpPath, relOrBaseNam
 		}
 		if isCrossDeviceErr(err) {
 			// Cross-volume (EXDEV): remove tmpPath ONLY after confirming no active writer/user holds it.
+			// Users forbid creating hidden stash folders inside notebooks, so we accept removing the
+			// temporary file rather than leaving an internal stash directory inside an external volume.
 			_ = dstRoot.Close()
 			_ = replacedRoot.Close()
 			_ = appRoot.Close()

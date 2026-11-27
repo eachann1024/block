@@ -325,6 +325,87 @@ func pathWithinDir(target, dir string) (string, bool) {
 	return filepath.ToSlash(rel), true
 }
 
+type protectedDataFile struct {
+	name string
+	info os.FileInfo
+}
+
+func (rt *Runtime) ensureDataRoot() (*os.Root, string, string, *rpcError) {
+	rt.cfgMu.RLock()
+	cfgDataDir := strings.TrimSpace(rt.cfg.DataDir)
+	root := rt.dataRoot
+	dataAbs := rt.dataRootAbs
+	dataCanon := rt.dataRootCanon
+	rt.cfgMu.RUnlock()
+
+	if cfgDataDir == "" {
+		return nil, "", "", rpcErr(-32004, "plugin data directory unavailable")
+	}
+	if root != nil && dataAbs != "" && dataCanon != "" {
+		return root, dataAbs, dataCanon, nil
+	}
+
+	rt.cfgMu.Lock()
+	defer rt.cfgMu.Unlock()
+	if rt.dataRoot == nil {
+		opened, err := openPluginDataRoot(cfgDataDir)
+		if err != nil {
+			return nil, "", "", rpcErr(-32004, err.Error())
+		}
+		rt.dataRoot = opened
+	}
+	if rt.dataRootAbs == "" {
+		if abs, err := filepath.Abs(cfgDataDir); err == nil {
+			rt.dataRootAbs = filepath.Clean(abs)
+		}
+	}
+	if rt.dataRootCanon == "" {
+		if canon, err := resolveCanonicalPath(cfgDataDir); err == nil && canon != "" {
+			rt.dataRootCanon = canon
+		} else {
+			rt.dataRootCanon = rt.dataRootAbs
+		}
+	}
+	return rt.dataRoot, rt.dataRootAbs, rt.dataRootCanon, nil
+}
+
+func collectProtectedDataFiles(dataRoot *os.Root) []protectedDataFile {
+	if dataRoot == nil {
+		return nil
+	}
+	var protected []protectedDataFile
+	for _, reserved := range []string{grantedPathsFile, schedulerFile, pluginStateFile} {
+		if info, err := dataRoot.Lstat(reserved); err == nil {
+			protected = append(protected, protectedDataFile{name: reserved, info: info})
+		}
+	}
+	return protected
+}
+
+func isProtectedDataTarget(protected []protectedDataFile, rel string, info os.FileInfo) (string, bool) {
+	if reserved, blocked := matchProtectedDataFile(rel); blocked {
+		return reserved, true
+	}
+	if info != nil {
+		for _, p := range protected {
+			if p.info != nil && os.SameFile(info, p.info) {
+				return p.name, true
+			}
+		}
+	}
+	return "", false
+}
+
+func verifyFSRootIdentity(root *os.Root, target *resolvedFSTarget, expectedRootID string) *rpcError {
+	if expectedRootID == "" {
+		return nil
+	}
+	if target == nil || !target.isDirRoot {
+		return rpcErr(errCodeNotebookRootMismatch, ErrNotebookRootMismatch.Error())
+	}
+	return verifyRootExpectedIdentity(root, expectedRootID)
+}
+
 func matchProtectedDataFile(rel string) (string, bool) {
 	for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
 		trimmed := strings.TrimRight(seg, ". ")
@@ -359,11 +440,34 @@ func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSyml
 		return nil, rpcErr(-32004, err.Error())
 	}
 
+	var dataRoot *os.Root
+	var protectedData []protectedDataFile
+	checkDataProtection := func(relInData string) *rpcError {
+		if dataRoot != nil {
+			var info os.FileInfo
+			if relInData != "" && relInData != "." {
+				if st, err := dataRoot.Lstat(relInData); err == nil {
+					info = st
+				}
+			}
+			if reserved, blocked := isProtectedDataTarget(protectedData, relInData, info); blocked {
+				return rpcErr(-32001, "cannot modify "+reserved+" directly")
+			}
+			return nil
+		}
+		if reserved, blocked := matchProtectedDataFile(relInData); blocked {
+			return rpcErr(-32001, "cannot modify "+reserved+" directly")
+		}
+		return nil
+	}
+
 	if write && strings.TrimSpace(rt.cfg.DataDir) != "" {
-		if dataCanon, err := resolveCanonicalPath(rt.cfg.DataDir); err == nil {
+		if dr, _, dataCanon, dErr := rt.ensureDataRoot(); dErr == nil && dr != nil {
+			dataRoot = dr
+			protectedData = collectProtectedDataFiles(dataRoot)
 			if relInData, ok := pathWithinDir(canon, dataCanon); ok {
-				if reserved, blocked := matchProtectedDataFile(relInData); blocked {
-					return nil, rpcErr(-32001, "cannot modify "+reserved+" directly")
+				if rerr := checkDataProtection(relInData); rerr != nil {
+					return nil, rerr
 				}
 			}
 		}
@@ -393,8 +497,8 @@ func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSyml
 			continue
 		}
 		if write && sc.isDataDir {
-			if reserved, blocked := matchProtectedDataFile(rel); blocked {
-				return nil, rpcErr(-32001, "cannot modify "+reserved+" directly")
+			if rerr := checkDataProtection(rel); rerr != nil {
+				return nil, rerr
 			}
 		}
 		return &resolvedFSTarget{
@@ -694,14 +798,19 @@ func (rt *Runtime) fsRead(params json.RawMessage) (any, *rpcError) {
 
 func (rt *Runtime) fsWrite(params json.RawMessage) (any, *rpcError) {
 	var p struct {
-		Path          string  `json:"path"`
-		Content       *string `json:"content"`
-		ContentBase64 *string `json:"content_base64"`
-		Atomic        bool    `json:"atomic"`
-		MkdirParents  bool    `json:"mkdir_parents"`
+		Path                 string  `json:"path"`
+		Content              *string `json:"content"`
+		ContentBase64        *string `json:"content_base64"`
+		Atomic               bool    `json:"atomic"`
+		MkdirParents         bool    `json:"mkdir_parents"`
+		ExpectedRootIdentity string  `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.Path) == "" {
 		return nil, rpcErr(-32602, "host.fs.write requires non-empty path")
+	}
+	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
+	if rerr != nil {
+		return nil, rerr
 	}
 	if (p.Content == nil) == (p.ContentBase64 == nil) {
 		return nil, rpcErr(-32602, "host.fs.write requires exactly one of content or content_base64")
@@ -732,6 +841,9 @@ func (rt *Runtime) fsWrite(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32004, err.Error())
 	}
 	defer root.Close()
+	if rerr := verifyFSRootIdentity(root, target, expectedRootID); rerr != nil {
+		return nil, rerr
+	}
 
 	if p.MkdirParents && target.isDirRoot {
 		parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(target.rel)))
@@ -861,11 +973,16 @@ func (rt *Runtime) fsMkdir(params json.RawMessage) (any, *rpcError) {
 
 func (rt *Runtime) fsDelete(params json.RawMessage) (any, *rpcError) {
 	var p struct {
-		Path      string `json:"path"`
-		Recursive bool   `json:"recursive"`
+		Path                 string `json:"path"`
+		Recursive            bool   `json:"recursive"`
+		ExpectedRootIdentity string `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.Path) == "" {
 		return nil, rpcErr(-32602, "host.fs.delete requires non-empty path")
+	}
+	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
+	if rerr != nil {
+		return nil, rerr
 	}
 	target, rerr := rt.resolveFSScope(p.Path, true)
 	if rerr != nil {
@@ -879,6 +996,9 @@ func (rt *Runtime) fsDelete(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32004, err.Error())
 	}
 	defer root.Close()
+	if rerr := verifyFSRootIdentity(root, target, expectedRootID); rerr != nil {
+		return nil, rerr
+	}
 
 	if p.Recursive {
 		err = root.RemoveAll(target.rel)
@@ -894,60 +1014,42 @@ func (rt *Runtime) fsDelete(params json.RawMessage) (any, *rpcError) {
 	}, nil
 }
 
-func (rt *Runtime) resolveDataDirChildRel(rawPath string) (dataCanon string, targetDisplay string, relSlash string, rerr *rpcError) {
+func (rt *Runtime) resolveDataDirChildRel(rawPath string) (dataRoot *os.Root, targetDisplay string, relSlash string, rerr *rpcError) {
 	if strings.TrimSpace(rawPath) == "" || strings.ContainsRune(rawPath, 0) || !utf8.ValidString(rawPath) {
-		return "", "", "", rpcErr(-32602, "invalid path")
+		return nil, "", "", rpcErr(-32602, "invalid path")
 	}
 	if !filepath.IsAbs(rawPath) {
-		return "", "", "", rpcErr(-32602, "path must be absolute")
+		return nil, "", "", rpcErr(-32602, "path must be absolute")
 	}
 	for _, seg := range strings.FieldsFunc(rawPath, func(r rune) bool { return r == '/' || r == '\\' }) {
 		if seg == ".." {
-			return "", "", "", rpcErr(-32602, "path must not contain '..' segments")
+			return nil, "", "", rpcErr(-32602, "path must not contain '..' segments")
 		}
 	}
-	rt.cfgMu.RLock()
-	cfgDataDir := strings.TrimSpace(rt.cfg.DataDir)
-	rt.cfgMu.RUnlock()
-	if cfgDataDir == "" {
-		return "", "", "", rpcErr(-32004, "plugin data directory unavailable")
-	}
-	dataAbs, err := filepath.Abs(cfgDataDir)
-	if err != nil {
-		return "", "", "", rpcErr(-32004, err.Error())
-	}
-	dataAbs = filepath.Clean(dataAbs)
-	dataCanonPath, err := resolveCanonicalPath(cfgDataDir)
-	if err != nil {
-		return "", "", "", rpcErr(-32004, err.Error())
+	dataRoot, dataAbs, dataCanon, dErr := rt.ensureDataRoot()
+	if dErr != nil {
+		return nil, "", "", dErr
 	}
 	targetAbs, err := filepath.Abs(rawPath)
 	if err != nil {
-		return "", "", "", rpcErr(-32602, err.Error())
+		return nil, "", "", rpcErr(-32602, err.Error())
 	}
 	targetAbs = filepath.Clean(targetAbs)
 
-	rel, ok := pathWithinDir(targetAbs, dataCanonPath)
-	if !ok && dataAbs != dataCanonPath {
-		if r2, ok2 := pathWithinDir(targetAbs, dataAbs); ok2 {
-			if i1, e1 := os.Stat(dataAbs); e1 == nil {
-				if i2, e2 := os.Stat(dataCanonPath); e2 == nil && os.SameFile(i1, i2) {
-					rel = r2
-					ok = true
-				}
-			}
-		}
+	rel, ok := pathWithinDir(targetAbs, dataCanon)
+	if !ok && dataAbs != "" && dataAbs != dataCanon {
+		rel, ok = pathWithinDir(targetAbs, dataAbs)
 	}
 	if !ok {
-		return "", "", "", rpcErr(-32001, "path is outside plugin data_dir")
+		return nil, "", "", rpcErr(-32001, "path is outside plugin data_dir")
 	}
 	if rel == "." || rel == "" {
-		return "", "", "", rpcErr(-32001, "cannot delete plugin data_dir itself")
+		return nil, "", "", rpcErr(-32001, "cannot delete plugin data_dir itself")
 	}
 	if reserved, blocked := matchProtectedDataFile(rel); blocked {
-		return "", "", "", rpcErr(-32001, "cannot modify "+reserved+" directly")
+		return nil, "", "", rpcErr(-32001, "cannot modify "+reserved+" directly")
 	}
-	return dataCanonPath, filepath.Join(dataCanonPath, filepath.FromSlash(rel)), rel, nil
+	return dataRoot, filepath.Join(dataCanon, filepath.FromSlash(rel)), rel, nil
 }
 
 func readRootDirNamesNoSymlink(dir *os.Root) ([]string, error) {
@@ -971,55 +1073,46 @@ func readRootDirNamesNoSymlink(dir *os.Root) ([]string, error) {
 	return names, nil
 }
 
-func validateDeleteDataTreeNoSymlink(parent *os.Root, name, relPrefix string, depth int) *rpcError {
-	if depth > 64 {
-		return rpcErr(-32004, "directory nesting limit exceeded")
-	}
-	relPath := name
-	if relPrefix != "" {
-		relPath = relPrefix + "/" + name
-	}
-	if reserved, blocked := matchProtectedDataFile(relPath); blocked {
-		return rpcErr(-32001, "cannot modify "+reserved+" directly")
-	}
+func openVerifiedDataDirHandle(parent *os.Root, name, relPath string, protected []protectedDataFile) (*os.Root, os.FileInfo, *rpcError) {
 	info, err := parent.Lstat(name)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil
+			return nil, nil, nil
 		}
-		return rpcErr(-32004, err.Error())
+		return nil, nil, rpcErr(-32004, err.Error())
+	}
+	if reserved, blocked := isProtectedDataTarget(protected, relPath, info); blocked {
+		return nil, nil, rpcErr(-32001, "cannot modify "+reserved+" directly")
 	}
 	if files.IsSymlinkOrReparseInfo(info) {
-		return rpcErr(-32004, "refusing to delete symlink or junction in data_dir")
+		return nil, nil, rpcErr(-32004, "refusing to traverse symlink or junction in data_dir")
 	}
 	if !info.IsDir() {
-		return nil
+		return nil, info, rpcErr(-32004, "parent path is not a directory")
 	}
 	sub, err := parent.OpenRoot(name)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil
+			return nil, nil, nil
 		}
-		return rpcErr(-32004, err.Error())
+		return nil, nil, rpcErr(-32004, err.Error())
 	}
-	defer sub.Close()
-	subInfo, err := sub.Stat(".")
-	if err != nil || !os.SameFile(info, subInfo) {
-		return rpcErr(-32004, "directory identity changed while validating")
-	}
-	names, err := readRootDirNamesNoSymlink(sub)
-	if err != nil {
-		return rpcErr(-32004, err.Error())
-	}
-	for _, cn := range names {
-		if rerr := validateDeleteDataTreeNoSymlink(sub, cn, relPath, depth+1); rerr != nil {
-			return rerr
+	subInfo, sErr := sub.Stat(".")
+	if sErr != nil || files.IsSymlinkOrReparseInfo(subInfo) || !subInfo.IsDir() || !os.SameFile(info, subInfo) {
+		_ = sub.Close()
+		if sErr != nil && !errors.Is(sErr, os.ErrNotExist) {
+			return nil, nil, rpcErr(-32004, sErr.Error())
 		}
+		return nil, nil, rpcErr(-32004, "directory identity changed while opening in data_dir")
 	}
-	return nil
+	return sub, info, nil
 }
 
-func deleteDataTreeNoSymlink(parent *os.Root, name, relPrefix string, depth int) *rpcError {
+// deleteDataTreeInRoot walks and deletes a subtree in a single traversal along opened
+// *os.Root directory handles (no validation pass followed by path re-traversal).
+// Protected files are matched via os.SameFile as well as name to block Windows 8.3 short names.
+// Millisecond external local swaps between Lstat and Remove remain outside threat model (不在威胁模型内).
+func deleteDataTreeInRoot(parent *os.Root, name, relPrefix string, preInfo os.FileInfo, depth int, protected []protectedDataFile) *rpcError {
 	if depth > 64 {
 		return rpcErr(-32004, "directory nesting limit exceeded")
 	}
@@ -1027,15 +1120,19 @@ func deleteDataTreeNoSymlink(parent *os.Root, name, relPrefix string, depth int)
 	if relPrefix != "" {
 		relPath = relPrefix + "/" + name
 	}
-	if reserved, blocked := matchProtectedDataFile(relPath); blocked {
-		return rpcErr(-32001, "cannot modify "+reserved+" directly")
-	}
-	info, err := parent.Lstat(name)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
+	info := preInfo
+	if info == nil {
+		var err error
+		info, err = parent.Lstat(name)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return rpcErr(-32004, err.Error())
 		}
-		return rpcErr(-32004, err.Error())
+	}
+	if reserved, blocked := isProtectedDataTarget(protected, relPath, info); blocked {
+		return rpcErr(-32001, "cannot modify "+reserved+" directly")
 	}
 	if files.IsSymlinkOrReparseInfo(info) {
 		return rpcErr(-32004, "refusing to delete symlink or junction in data_dir")
@@ -1049,7 +1146,7 @@ func deleteDataTreeNoSymlink(parent *os.Root, name, relPrefix string, depth int)
 			return rpcErr(-32004, err.Error())
 		}
 		subInfo, sErr := sub.Stat(".")
-		if sErr != nil || !os.SameFile(info, subInfo) {
+		if sErr != nil || files.IsSymlinkOrReparseInfo(subInfo) || !subInfo.IsDir() || !os.SameFile(info, subInfo) {
 			_ = sub.Close()
 			return rpcErr(-32004, "directory identity changed during deletion")
 		}
@@ -1059,12 +1156,25 @@ func deleteDataTreeNoSymlink(parent *os.Root, name, relPrefix string, depth int)
 			return rpcErr(-32004, rErr.Error())
 		}
 		for _, cn := range names {
-			if rerr := deleteDataTreeNoSymlink(sub, cn, relPath, depth+1); rerr != nil {
+			if rerr := deleteDataTreeInRoot(sub, cn, relPath, nil, depth+1, protected); rerr != nil {
 				_ = sub.Close()
 				return rerr
 			}
 		}
 		_ = sub.Close()
+	}
+	curInfo, err := parent.Lstat(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return rpcErr(-32004, err.Error())
+	}
+	if reserved, blocked := isProtectedDataTarget(protected, relPath, curInfo); blocked {
+		return rpcErr(-32001, "cannot modify "+reserved+" directly")
+	}
+	if files.IsSymlinkOrReparseInfo(curInfo) || !os.SameFile(info, curInfo) {
+		return rpcErr(-32004, "entry identity changed before removal")
 	}
 	if err := parent.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return rpcErr(-32004, err.Error())
@@ -1080,29 +1190,11 @@ func (rt *Runtime) fsDeleteData(params json.RawMessage) (any, *rpcError) {
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.Path) == "" {
 		return nil, rpcErr(-32602, "host.fs.delete_data requires non-empty path")
 	}
-	dataCanon, targetDisplay, relSlash, rerr := rt.resolveDataDirChildRel(p.Path)
+	dataRoot, targetDisplay, relSlash, rerr := rt.resolveDataDirChildRel(p.Path)
 	if rerr != nil {
 		return nil, rerr
 	}
-	dInfo, err := os.Lstat(dataCanon)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
-		}
-		return nil, rpcErr(-32004, err.Error())
-	}
-	if files.IsSymlinkOrReparseInfo(dInfo) || !dInfo.IsDir() {
-		return nil, rpcErr(-32004, "plugin data_dir must not be a symlink or junction")
-	}
-	dataRoot, err := os.OpenRoot(dataCanon)
-	if err != nil {
-		return nil, rpcErr(-32004, err.Error())
-	}
-	defer dataRoot.Close()
-	rInfo, err := dataRoot.Stat(".")
-	if err != nil || !os.SameFile(dInfo, rInfo) {
-		return nil, rpcErr(-32004, "plugin data_dir identity mismatch")
-	}
+	protected := collectProtectedDataFiles(dataRoot)
 
 	segs := strings.Split(filepath.ToSlash(relSlash), "/")
 	opened := make([]*os.Root, 0, len(segs)-1)
@@ -1112,34 +1204,22 @@ func (rt *Runtime) fsDeleteData(params json.RawMessage) (any, *rpcError) {
 		}
 	}()
 	cur := dataRoot
+	prefix := ""
 	for _, seg := range segs[:len(segs)-1] {
 		if seg == "" || seg == "." || seg == ".." {
 			return nil, rpcErr(-32602, "invalid path segment")
 		}
-		info, lErr := cur.Lstat(seg)
-		if lErr != nil {
-			if errors.Is(lErr, os.ErrNotExist) {
-				return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
-			}
-			return nil, rpcErr(-32004, lErr.Error())
+		if prefix == "" {
+			prefix = seg
+		} else {
+			prefix += "/" + seg
 		}
-		if files.IsSymlinkOrReparseInfo(info) {
-			return nil, rpcErr(-32004, "refusing to traverse symlink or junction in data_dir")
+		next, _, openErr := openVerifiedDataDirHandle(cur, seg, prefix, protected)
+		if openErr != nil {
+			return nil, openErr
 		}
-		if !info.IsDir() {
-			return nil, rpcErr(-32004, "parent path is not a directory")
-		}
-		next, oErr := cur.OpenRoot(seg)
-		if oErr != nil {
-			if errors.Is(oErr, os.ErrNotExist) {
-				return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
-			}
-			return nil, rpcErr(-32004, oErr.Error())
-		}
-		nInfo, sErr := next.Stat(".")
-		if sErr != nil || !os.SameFile(info, nInfo) {
-			_ = next.Close()
-			return nil, rpcErr(-32004, "directory identity changed while traversing data_dir")
+		if next == nil {
+			return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
 		}
 		opened = append(opened, next)
 		cur = next
@@ -1156,6 +1236,9 @@ func (rt *Runtime) fsDeleteData(params json.RawMessage) (any, *rpcError) {
 		}
 		return nil, rpcErr(-32004, err.Error())
 	}
+	if reserved, blocked := isProtectedDataTarget(protected, relSlash, leafInfo); blocked {
+		return nil, rpcErr(-32001, "cannot modify "+reserved+" directly")
+	}
 	if files.IsSymlinkOrReparseInfo(leafInfo) {
 		return nil, rpcErr(-32004, "refusing to delete symlink or junction in data_dir")
 	}
@@ -1169,11 +1252,7 @@ func (rt *Runtime) fsDeleteData(params json.RawMessage) (any, *rpcError) {
 		return map[string]any{"ok": true, "deleted": true, "path": targetDisplay}, nil
 	}
 
-	parentPrefix := strings.Join(segs[:len(segs)-1], "/")
-	if rerr := validateDeleteDataTreeNoSymlink(cur, leaf, parentPrefix, 0); rerr != nil {
-		return nil, rerr
-	}
-	if rerr := deleteDataTreeNoSymlink(cur, leaf, parentPrefix, 0); rerr != nil {
+	if rerr := deleteDataTreeInRoot(cur, leaf, prefix, leafInfo, 0, protected); rerr != nil {
 		return nil, rerr
 	}
 	return map[string]any{
@@ -1185,13 +1264,18 @@ func (rt *Runtime) fsDeleteData(params json.RawMessage) (any, *rpcError) {
 
 func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 	var p struct {
-		From         string `json:"from"`
-		To           string `json:"to"`
-		Overwrite    bool   `json:"overwrite"`
-		MkdirParents bool   `json:"mkdir_parents"`
+		From                 string `json:"from"`
+		To                   string `json:"to"`
+		Overwrite            bool   `json:"overwrite"`
+		MkdirParents         bool   `json:"mkdir_parents"`
+		ExpectedRootIdentity string `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.From) == "" || strings.TrimSpace(p.To) == "" {
 		return nil, rpcErr(-32602, "host.fs.rename requires non-empty from and to")
+	}
+	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
+	if rerr != nil {
+		return nil, rerr
 	}
 	fromTarget, rerr := rt.resolveFSScope(p.From, true)
 	if rerr != nil {
@@ -1213,6 +1297,9 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32004, err.Error())
 	}
 	defer toRoot.Close()
+	if rerr := verifyFSRootIdentity(toRoot, toTarget, expectedRootID); rerr != nil {
+		return nil, rerr
+	}
 
 	if fromTarget.rootDir == toTarget.rootDir {
 		if p.MkdirParents {
@@ -1245,13 +1332,18 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 
 func (rt *Runtime) fsCopy(params json.RawMessage) (any, *rpcError) {
 	var p struct {
-		From         string `json:"from"`
-		To           string `json:"to"`
-		Overwrite    bool   `json:"overwrite"`
-		MkdirParents bool   `json:"mkdir_parents"`
+		From                 string `json:"from"`
+		To                   string `json:"to"`
+		Overwrite            bool   `json:"overwrite"`
+		MkdirParents         bool   `json:"mkdir_parents"`
+		ExpectedRootIdentity string `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.From) == "" || strings.TrimSpace(p.To) == "" {
 		return nil, rpcErr(-32602, "host.fs.copy requires non-empty from and to")
+	}
+	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
+	if rerr != nil {
+		return nil, rerr
 	}
 	fromTarget, rerr := rt.resolveFSScope(p.From, false)
 	if rerr != nil {
@@ -1276,6 +1368,9 @@ func (rt *Runtime) fsCopy(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32004, err.Error())
 	}
 	defer toRoot.Close()
+	if rerr := verifyFSRootIdentity(toRoot, toTarget, expectedRootID); rerr != nil {
+		return nil, rerr
+	}
 
 	written, rerr := copyFileBetweenRoots(fromTarget, toTarget, toRoot, p.Overwrite, p.MkdirParents)
 	if rerr != nil {
@@ -1380,11 +1475,16 @@ func renameCrossRoot(fromTarget, toTarget *resolvedFSTarget, toRoot *os.Root, ov
 
 func (rt *Runtime) fsAtomicSwap(params json.RawMessage) (any, *rpcError) {
 	var p struct {
-		PathA string `json:"path_a"`
-		PathB string `json:"path_b"`
+		PathA                string `json:"path_a"`
+		PathB                string `json:"path_b"`
+		ExpectedRootIdentity string `json:"expected_root_identity"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.PathA) == "" || strings.TrimSpace(p.PathB) == "" {
 		return nil, rpcErr(-32602, "host.fs.atomic_swap requires non-empty path_a and path_b")
+	}
+	expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
+	if rerr != nil {
+		return nil, rerr
 	}
 	targetA, rerr := rt.resolveFSScope(p.PathA, true)
 	if rerr != nil {
@@ -1409,6 +1509,9 @@ func (rt *Runtime) fsAtomicSwap(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32004, err.Error())
 	}
 	defer root.Close()
+	if rerr := verifyFSRootIdentity(root, targetA, expectedRootID); rerr != nil {
+		return nil, rerr
+	}
 
 	parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(targetA.rel)))
 	parentRoot := root

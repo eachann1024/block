@@ -377,8 +377,8 @@ example-sync/
 | `host.notebooks.data_dir` | `notes:read` | 获取或创建指定笔记本在插件 `data_dir` 下的专属数据目录 | [§4.2 · 4](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
 | `host.notes.list` | `notes:read` | 列举指定笔记本内的可见 Markdown 笔记 | [§4.2 · 5](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
 | `host.notes.read` | `notes:read` | 读取笔记正文与 SHA-256 `revision` | [§4.2 · 6](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
-| `host.notes.write` | `notes:write` | 写入或更新笔记（支持 `expected_revision` 校验） | [§4.2 · 7](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
-| `host.notes.trash` | `notes:write` | 按 `expected_revision` 无弹窗移入系统回收站 | [§4.2 · 8](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
+| `host.notes.write` | `notes:write` | 写入或更新笔记（支持 `expected_revision` 与可选 `expected_root_identity`） | [§4.2 · 7](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
+| `host.notes.trash` | `notes:write` | 按 `expected_revision`（可选 `expected_root_identity`）无弹窗移入系统回收站 | [§4.2 · 8](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
 | `host.notes.open` | `notes:read`（无 UI 环境报 `-32005`） | 在桌面编辑器中切换打开指定笔记 | [§4.2 · 9](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
 | `host.action.progress` | 无需权限（检查 `action_progress`；分通道需 `progress_bar`） | 上报 `plugin.action` 实时进度与通道状态 | [§4.2 · 10](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |
 | `host.perf.snapshot` | `notes:read`（检查 `host_perf`） | 获取宿主资源占用与 7 类磁盘占用快照 | [§4.2 · 11](https://docs.block.cooool.top/zh/plugins/protocol-and-ui) |

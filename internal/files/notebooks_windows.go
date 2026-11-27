@@ -40,6 +40,40 @@ func statDirDevIno(clean string, _ os.FileInfo) (uint64, uint64, bool) {
 	return uint64(bhfi.VolumeSerialNumber), ino, true
 }
 
+func statRootHandleDevIno(root *os.Root) (uint64, uint64, bool) {
+	if root == nil {
+		return 0, 0, false
+	}
+	f, err := root.Open(".")
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	var bhfi windows.ByHandleFileInformation
+	err = windows.GetFileInformationByHandle(windows.Handle(f.Fd()), &bhfi)
+	runtime.KeepAlive(f)
+	if err != nil {
+		return 0, 0, false
+	}
+	ino := (uint64(bhfi.FileIndexHigh) << 32) | uint64(bhfi.FileIndexLow)
+	return uint64(bhfi.VolumeSerialNumber), ino, true
+}
+
+func isUnreadableDirErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, os.ErrPermission) ||
+		errors.Is(err, windows.ERROR_ACCESS_DENIED) ||
+		errors.Is(err, windows.ERROR_NOT_READY) ||
+		errors.Is(err, windows.ERROR_BAD_NETPATH) ||
+		errors.Is(err, windows.ERROR_DEV_NOT_EXIST) ||
+		errors.Is(err, windows.ERROR_INVALID_DRIVE) ||
+		errors.Is(err, windows.ERROR_NETWORK_UNREACHABLE) ||
+		errors.Is(err, windows.ERROR_NETNAME_DELETED) ||
+		errors.Is(err, windows.ERROR_UNEXP_NET_ERR)
+}
+
 func isCrossDeviceErr(err error) bool {
 	return errors.Is(err, syscall.EXDEV) || errors.Is(err, syscall.Errno(17))
 }
@@ -115,7 +149,7 @@ func isParentVolumeAccessible(_ string, pDev uint64, hasPDev bool, recDev uint64
 	return true
 }
 
-func findSiblingByNotebookXattr(string, string) (string, bool) { return "", false }
+func findSiblingByNotebookXattr(string, string) (string, bool, bool) { return "", false, false }
 
 func readNotebookXattr(string) (string, error) { return "", nil }
 func writeNotebookXattr(string, string) error  { return nil }

@@ -11,8 +11,10 @@ import (
 
 func supportsNotebookXattr() bool                              { return false }
 func statDirDevIno(string, os.FileInfo) (uint64, uint64, bool) { return 0, 0, false }
+func statRootHandleDevIno(*os.Root) (uint64, uint64, bool)     { return 0, 0, false }
 func isCrossDeviceErr(err error) bool                          { return errors.Is(err, syscall.EXDEV) }
 func isStrictNotExistErr(err error) bool                       { return errors.Is(err, os.ErrNotExist) }
+func isUnreadableDirErr(err error) bool                        { return errors.Is(err, os.ErrPermission) }
 func isSymlinkOrReparseInfo(info os.FileInfo) bool {
 	return info != nil && info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0
 }
@@ -34,7 +36,7 @@ func isParentVolumeAccessible(_ string, pDev uint64, hasPDev bool, recDev uint64
 	}
 	return true
 }
-func findSiblingByNotebookXattr(string, string) (string, bool) { return "", false }
+func findSiblingByNotebookXattr(string, string) (string, bool, bool) { return "", false, false }
 func readNotebookXattr(string) (string, error)                 { return "", nil }
 func writeNotebookXattr(string, string) error                  { return nil }
 func clearNotebookXattr(string)                                {}

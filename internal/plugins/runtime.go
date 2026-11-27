@@ -97,7 +97,12 @@ type HostConfig struct {
 	wasmEngine        *wasmrt.Engine
 }
 
-var ErrNoteConflict = errors.New("note changed; read it again before writing")
+var (
+	ErrNoteConflict         = errors.New("note changed; read it again before writing")
+	ErrNotebookRootMismatch = errors.New("notebook root identity changed")
+)
+
+const errCodeNotebookRootMismatch = -32008
 
 // NotebookInfo pairs a registered notebook path with its durable registry ID,
 // historical paths, and live filesystem identity verification status.
@@ -213,13 +218,15 @@ func (r *ringBuffer) String() string {
 // Runtime hosts a single sandboxed plugin speaking
 // newline-delimited bidirectional JSON-RPC 2.0 over stdin/stdout.
 type Runtime struct {
-	exited   chan struct{}
-	reaped   chan struct{}
-	stopping chan struct{}
-	stopOnce sync.Once
-	manifest Manifest
-	cfg      HostConfig
-	dataRoot *os.Root
+	exited        chan struct{}
+	reaped        chan struct{}
+	stopping      chan struct{}
+	stopOnce      sync.Once
+	manifest      Manifest
+	cfg           HostConfig
+	dataRoot      *os.Root
+	dataRootAbs   string
+	dataRootCanon string
 
 	session *wasmrt.Session
 	stdin   io.WriteCloser
@@ -373,21 +380,28 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		return nil, fmt.Errorf("start wasm plugin %s: %w", entryLabel, err)
 	}
 
+	dataAbs, _ := filepath.Abs(cfg.DataDir)
+	dataCanonPath := filepath.Clean(dataAbs)
+	if resolved, rErr := resolveCanonicalPath(cfg.DataDir); rErr == nil && resolved != "" {
+		dataCanonPath = resolved
+	}
 	rt := &Runtime{
-		exited:    make(chan struct{}),
-		reaped:    make(chan struct{}),
-		stopping:  make(chan struct{}),
-		manifest:  m,
-		cfg:       cfg,
-		dataRoot:  dataRoot,
-		session:   sess,
-		stdin:     sess.Stdin(),
-		stdout:    sess.Stdout(),
-		stderr:    stderr,
-		pending:   make(map[string]chan rpcEnvelope),
-		writeGate: make(chan struct{}, 1),
-		callGate:  make(chan struct{}, 1),
-		hostCalls: make(chan struct{}, maxPluginHostRPCs),
+		exited:        make(chan struct{}),
+		reaped:        make(chan struct{}),
+		stopping:      make(chan struct{}),
+		manifest:      m,
+		cfg:           cfg,
+		dataRoot:      dataRoot,
+		dataRootAbs:   filepath.Clean(dataAbs),
+		dataRootCanon: dataCanonPath,
+		session:       sess,
+		stdin:         sess.Stdin(),
+		stdout:        sess.Stdout(),
+		stderr:        stderr,
+		pending:       make(map[string]chan rpcEnvelope),
+		writeGate:     make(chan struct{}, 1),
+		callGate:      make(chan struct{}, 1),
+		hostCalls:     make(chan struct{}, maxPluginHostRPCs),
 	}
 	rt.touchActivity()
 
@@ -1494,10 +1508,11 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:write"}
 		}
 		var p struct {
-			NotebookRoot     string  `json:"notebook_root"`
-			Path             string  `json:"path"`
-			Content          *string `json:"content"`
-			ExpectedRevision *string `json:"expected_revision"`
+			NotebookRoot         string  `json:"notebook_root"`
+			Path                 string  `json:"path"`
+			Content              *string `json:"content"`
+			ExpectedRevision     *string `json:"expected_revision"`
+			ExpectedRootIdentity string  `json:"expected_root_identity"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
@@ -1505,6 +1520,10 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		// A missing or null content must never be read as "clear the note".
 		if p.Content == nil {
 			return nil, &rpcError{Code: -32602, Message: "host.notes.write requires a string content; pass \"\" to clear"}
+		}
+		expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
+		if rerr != nil {
+			return nil, rerr
 		}
 		content := *p.Content
 		rootPath, cleanRel, err := rt.notebookNotePath(p.NotebookRoot, p.Path)
@@ -1516,6 +1535,9 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
 		defer root.Close()
+		if rerr := verifyRootExpectedIdentity(root, expectedRootID); rerr != nil {
+			return nil, rerr
+		}
 		if err := checkPluginParents(root, cleanRel); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
@@ -1526,8 +1548,13 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			if rt.closed.Load() {
 				return false, errors.New("plugin is stopping")
 			}
-			// Re-verify notebook registration at commit point (serialized with main-thread
-			// ApplyNoteWrite / notebook removal) so a removed notebook can never receive a write.
+			// Verify the opened root handle identity and registration at commit point
+			// without re-resolving the notebook path on disk.
+			if expectedRootID != "" {
+				if matched, _ := files.RootMatchesIdentity(root, expectedRootID); !matched {
+					return false, ErrNotebookRootMismatch
+				}
+			}
 			if _, err := rt.resolveNotebookRoot(rootPath); err != nil {
 				return false, err
 			}
@@ -1540,6 +1567,9 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			rt.noteMu.Lock()
 			changed, err = write()
 			rt.noteMu.Unlock()
+		}
+		if errors.Is(err, ErrNotebookRootMismatch) {
+			return nil, &rpcError{Code: errCodeNotebookRootMismatch, Message: err.Error()}
 		}
 		if errors.Is(err, ErrNoteConflict) {
 			return nil, &rpcError{Code: -32006, Message: err.Error()}
@@ -1560,9 +1590,10 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:write"}
 		}
 		var p struct {
-			NotebookRoot     string  `json:"notebook_root"`
-			Path             string  `json:"path"`
-			ExpectedRevision *string `json:"expected_revision"`
+			NotebookRoot         string  `json:"notebook_root"`
+			Path                 string  `json:"path"`
+			ExpectedRevision     *string `json:"expected_revision"`
+			ExpectedRootIdentity string  `json:"expected_root_identity"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
@@ -1571,6 +1602,10 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		// discard content it has not seen.
 		if p.ExpectedRevision == nil || strings.TrimSpace(*p.ExpectedRevision) == "" {
 			return nil, &rpcError{Code: -32602, Message: "host.notes.trash requires expected_revision"}
+		}
+		expectedRootID, rerr := parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
+		if rerr != nil {
+			return nil, rerr
 		}
 		expected := strings.ToLower(strings.TrimSpace(*p.ExpectedRevision))
 		rootPath, cleanRel, err := rt.notebookFilePath(p.NotebookRoot, p.Path, false)
@@ -1582,24 +1617,69 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
 		defer root.Close()
+		if rerr := verifyRootExpectedIdentity(root, expectedRootID); rerr != nil {
+			return nil, rerr
+		}
 		abs := filepath.Join(rootPath, cleanRel)
+		var (
+			verifiedDirRoot *os.Root
+			verifiedOpened  []*os.Root
+			verifiedBase    string
+			verifiedInfo    os.FileInfo
+		)
+		closeVerifiedParents := func() {
+			for i := len(verifiedOpened) - 1; i >= 0; i-- {
+				_ = verifiedOpened[i].Close()
+			}
+			verifiedOpened = nil
+			verifiedDirRoot = nil
+		}
+		defer closeVerifiedParents()
+
 		verify := func() error {
+			closeVerifiedParents()
 			if rt.closed.Load() {
 				return errors.New("plugin is stopping")
+			}
+			if expectedRootID != "" {
+				if matched, _ := files.RootMatchesIdentity(root, expectedRootID); !matched {
+					return ErrNotebookRootMismatch
+				}
 			}
 			if _, err := rt.resolveNotebookRoot(rootPath); err != nil {
 				return err
 			}
-			rev, err := pluginFileRevision(root, cleanRel)
+			dirRoot, opened, base, err := openVerifiedRelParentInRoot(root, cleanRel)
 			if err != nil {
 				return err
 			}
-			if rev != expected {
+			verifiedDirRoot = dirRoot
+			verifiedOpened = opened
+			verifiedBase = base
+			f, info, err := openPluginFile(dirRoot, base)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			if info.Size() > maxPluginNote {
+				return fmt.Errorf("file exceeds maximum size (%d bytes)", maxPluginNote)
+			}
+			b, err := io.ReadAll(io.LimitReader(f, maxPluginNote+1))
+			if err != nil {
+				return err
+			}
+			if int64(len(b)) > maxPluginNote {
+				return fmt.Errorf("file exceeds maximum size (%d bytes)", maxPluginNote)
+			}
+			if noteRevision(b) != expected {
 				return ErrNoteConflict
 			}
+			verifiedInfo = info
 			return nil
 		}
-		trash := func() error { return files.TrashItem(abs) }
+		trash := func() error {
+			return files.TrashVerifiedItemAt(verifiedDirRoot, verifiedBase, verifiedInfo)
+		}
 		if rt.cfg.ApplyNoteTrash != nil {
 			err = rt.cfg.ApplyNoteTrash(rt.manifest.ID, abs, verify, trash)
 		} else {
@@ -1608,6 +1688,9 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 				err = trash()
 			}
 			rt.noteMu.Unlock()
+		}
+		if errors.Is(err, ErrNotebookRootMismatch) {
+			return nil, &rpcError{Code: errCodeNotebookRootMismatch, Message: err.Error()}
 		}
 		if errors.Is(err, os.ErrNotExist) {
 			return map[string]any{"ok": true, "trashed": false}, nil
@@ -1995,6 +2078,99 @@ func writePluginNote(root *os.Root, rel, content string, expected *string) (bool
 	return files.WriteNoteConditionalAt(root, rel, content, expected, ErrNoteConflict)
 }
 
+func parseExpectedRootIdentityParam(raw string) (string, *rpcError) {
+	if raw == "" {
+		return "", nil
+	}
+	if _, _, ok := files.ParseRootIdentity(raw); !ok {
+		return "", &rpcError{Code: -32602, Message: "invalid expected_root_identity"}
+	}
+	return raw, nil
+}
+
+func verifyRootExpectedIdentity(root *os.Root, expected string) *rpcError {
+	if expected == "" {
+		return nil
+	}
+	matched, valid := files.RootMatchesIdentity(root, expected)
+	if !valid {
+		return &rpcError{Code: -32602, Message: "invalid expected_root_identity"}
+	}
+	if !matched {
+		return &rpcError{Code: errCodeNotebookRootMismatch, Message: ErrNotebookRootMismatch.Error()}
+	}
+	return nil
+}
+
+func checkRegisteredNotebookRootIdentity(rt *Runtime, requestedRoot, expected string) *rpcError {
+	if expected == "" {
+		return nil
+	}
+	regRoot, err := rt.resolveNotebookRoot(requestedRoot)
+	if err != nil {
+		return &rpcError{Code: -32003, Message: err.Error()}
+	}
+	nbRoot, err := os.OpenRoot(regRoot)
+	if err != nil {
+		return &rpcError{Code: -32004, Message: err.Error()}
+	}
+	defer nbRoot.Close()
+	return verifyRootExpectedIdentity(nbRoot, expected)
+}
+
+func openVerifiedRelParentInRoot(root *os.Root, cleanRel string) (*os.Root, []*os.Root, string, error) {
+	dir := filepath.Dir(cleanRel)
+	base := filepath.Base(cleanRel)
+	if base == "" || base == "." || base == ".." {
+		return nil, nil, "", os.ErrInvalid
+	}
+	if dir == "." || dir == "" {
+		return root, nil, base, nil
+	}
+	segs := strings.Split(filepath.ToSlash(dir), "/")
+	opened := make([]*os.Root, 0, len(segs))
+	cur := root
+	for _, seg := range segs {
+		if seg == "" || seg == "." || seg == ".." {
+			for i := len(opened) - 1; i >= 0; i-- {
+				_ = opened[i].Close()
+			}
+			return nil, nil, "", os.ErrInvalid
+		}
+		info, err := cur.Lstat(seg)
+		if err != nil || files.IsSymlinkOrReparseInfo(info) || !info.IsDir() {
+			for i := len(opened) - 1; i >= 0; i-- {
+				_ = opened[i].Close()
+			}
+			if err != nil {
+				return nil, nil, "", err
+			}
+			return nil, nil, "", errors.New("plugin file parent must be a directory")
+		}
+		next, err := cur.OpenRoot(seg)
+		if err != nil {
+			for i := len(opened) - 1; i >= 0; i-- {
+				_ = opened[i].Close()
+			}
+			return nil, nil, "", err
+		}
+		subInfo, sErr := next.Stat(".")
+		if sErr != nil || files.IsSymlinkOrReparseInfo(subInfo) || !subInfo.IsDir() || !os.SameFile(info, subInfo) {
+			_ = next.Close()
+			for i := len(opened) - 1; i >= 0; i-- {
+				_ = opened[i].Close()
+			}
+			if sErr != nil {
+				return nil, nil, "", sErr
+			}
+			return nil, nil, "", errors.New("plugin file parent identity changed while opening")
+		}
+		opened = append(opened, next)
+		cur = next
+	}
+	return cur, opened, base, nil
+}
+
 func checkPluginParents(root *os.Root, name string) error {
 	dir := filepath.Dir(name)
 	if dir == "." {
@@ -2007,7 +2183,7 @@ func checkPluginParents(root *os.Root, name string) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() {
+		if files.IsSymlinkOrReparseInfo(info) || !info.IsDir() {
 			return errors.New("plugin file parent must be a directory")
 		}
 	}
@@ -2022,7 +2198,7 @@ func openPluginFile(root *os.Root, name string) (*os.File, os.FileInfo, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if !info.Mode().IsRegular() {
+	if files.IsSymlinkOrReparseInfo(info) || !info.Mode().IsRegular() {
 		return nil, nil, errors.New("plugin file must be a regular file")
 	}
 	file, err := root.Open(name)

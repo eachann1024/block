@@ -356,6 +356,81 @@ func trashFallback(path string) error {
 	return nil
 }
 
+// TrashVerifiedItemAt moves name inside an already-verified parent dir handle
+// to the system Trash (or per-user fallback Trash via handle-based rename),
+// checking target identity against expectedInfo without re-traversing paths.
+func TrashVerifiedItemAt(dir *os.Root, name string, expectedInfo os.FileInfo) error {
+	if dir == nil || name == "" || name == "." || name == ".." {
+		return os.ErrInvalid
+	}
+	linfo, err := dir.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if isSymlinkOrReparseInfo(linfo) || !linfo.Mode().IsRegular() {
+		return errors.New("refusing to trash non-regular file or symlink")
+	}
+	if expectedInfo != nil && !os.SameFile(expectedInfo, linfo) {
+		return os.ErrInvalid
+	}
+	if mygo.App.IsReady() {
+		liveDir := liveRootDirPath(dir)
+		if liveDir == "" || IsTrashPath(liveDir) {
+			return errors.New("invalid live notebook directory for trash")
+		}
+		target := filepath.Join(liveDir, name)
+		cur, statErr := os.Lstat(target)
+		if statErr != nil {
+			return statErr
+		}
+		if isSymlinkOrReparseInfo(cur) || !cur.Mode().IsRegular() || !os.SameFile(linfo, cur) {
+			return errors.New("target changed before moving to trash")
+		}
+		// OS Trash API requires a filesystem path; sub-ms swap after Lstat is outside threat model (不在威胁模型内).
+		err := mygo.Shell.TrashItem(target)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errors.ErrUnsupported) {
+			return err
+		}
+	}
+	return trashFallbackAt(dir, name, linfo)
+}
+
+func trashFallbackAt(dir *os.Root, name string, expectedInfo os.FileInfo) error {
+	trashDir := filepath.Join(AppDataDir(), "Trash")
+	if err := os.MkdirAll(trashDir, 0o700); err != nil {
+		return err
+	}
+	recoveryDir, err := os.MkdirTemp(trashDir, "item-")
+	if err != nil {
+		return err
+	}
+	dstRoot, err := os.OpenRoot(recoveryDir)
+	if err != nil {
+		_ = os.Remove(recoveryDir)
+		return err
+	}
+	cur, statErr := dir.Lstat(name)
+	if statErr != nil || isSymlinkOrReparseInfo(cur) || !cur.Mode().IsRegular() ||
+		(expectedInfo != nil && !os.SameFile(expectedInfo, cur)) {
+		_ = dstRoot.Close()
+		_ = os.Remove(recoveryDir)
+		if statErr != nil {
+			return statErr
+		}
+		return os.ErrInvalid
+	}
+	renameErr := renameFileAcrossRoots(dir, name, dstRoot, name)
+	_ = dstRoot.Close()
+	if renameErr != nil {
+		_ = os.Remove(recoveryDir)
+		return renameErr
+	}
+	return nil
+}
+
 func fingerprintBytes(data []byte) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write(data)

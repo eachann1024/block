@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -603,35 +604,60 @@ func probeDirIdentity(ctx context.Context, clean string) dirProbeResult {
 	return res
 }
 
-func matchesRecordAtDir(r NotebookRecord, cand string, excludeInfo os.FileInfo) bool {
+func xattrIdentityMatchesRecord(r NotebookRecord, dev, ino uint64, hasDevIno bool, xattrID string, xattrErr error, allowZeroInode bool) bool {
+	if !supportsNotebookXattr() {
+		return true
+	}
+	sameDevIno := hasDevIno && ino != 0 && r.Inode != 0 && r.Device == dev && r.Inode == ino
+	if xattrErr == nil {
+		if xattrID != "" {
+			// A read-only copy carrying an old xattr keeps xattr_missing=true with its recorded dev:ino;
+			// reclaim the original record when live dev:ino still matches.
+			return xattrID == r.ID || (r.XattrMissing && sameDevIno)
+		}
+		return (r.XattrMissing && sameDevIno) || (allowZeroInode && r.Inode == 0)
+	}
+	return sameDevIno
+}
+
+func matchesRecordAtDir(r NotebookRecord, cand string, excludeInfo os.FileInfo) (matched bool, inconclusive bool) {
 	clean := normalizeNotebookPath(cand)
 	if clean == "" || IsTrashPath(clean) {
-		return false
+		return false, false
 	}
 	info, err := os.Lstat(clean)
-	if err != nil || isSymlinkOrReparseInfo(info) || !info.IsDir() {
-		return false
+	if err != nil {
+		if !isStrictNotExistErr(err) {
+			return false, true
+		}
+		return false, false
+	}
+	if isSymlinkOrReparseInfo(info) || !info.IsDir() {
+		return false, false
 	}
 	if excludeInfo != nil && os.SameFile(info, excludeInfo) {
-		return false
+		return false, false
 	}
 	dev, ino, hasDevIno := statDirDevIno(clean, info)
 	sameDevIno := hasDevIno && ino != 0 && r.Inode != 0 && r.Device == dev && r.Inode == ino
 	sameLocator := r.Locator != "" && CaptureDirLocator(clean) == r.Locator
 	if !supportsNotebookXattr() {
-		return sameDevIno || (r.Inode == 0 && sameLocator)
+		return sameDevIno || (r.Inode == 0 && sameLocator), false
 	}
 	xid, xErr := readNotebookXattr(clean)
 	if xErr == nil {
-		if xid != "" {
-			return xid == r.ID
-		}
-		return r.XattrMissing && sameDevIno
+		return xattrIdentityMatchesRecord(r, dev, ino, hasDevIno, xid, nil, false), false
 	}
-	return sameDevIno
+	if sameDevIno {
+		return true, false
+	}
+	if isUnreadableDirErr(xErr) {
+		return false, true
+	}
+	return false, false
 }
 
-func findLiveNotebookElsewhere(r NotebookRecord, excludeInfo os.FileInfo) string {
+func findLiveNotebookElsewhere(r NotebookRecord, excludeInfo os.FileInfo) (string, bool) {
 	basePaths := make([]string, 0, 1+len(r.PreviousPaths))
 	seenPaths := make(map[string]bool, 1+len(r.PreviousPaths))
 	addBase := func(raw string) {
@@ -647,10 +673,16 @@ func findLiveNotebookElsewhere(r NotebookRecord, excludeInfo os.FileInfo) string
 		addBase(prev)
 	}
 
+	inconclusive := false
+
 	// 1. Direct checks against previous_paths (never match excluded occupying dir).
 	for _, prev := range r.PreviousPaths {
-		if matchesRecordAtDir(r, prev, excludeInfo) {
-			return normalizeNotebookPath(prev)
+		matched, inc := matchesRecordAtDir(r, prev, excludeInfo)
+		if matched {
+			return normalizeNotebookPath(prev), false
+		}
+		if inc {
+			inconclusive = true
 		}
 	}
 
@@ -658,8 +690,12 @@ func findLiveNotebookElsewhere(r NotebookRecord, excludeInfo os.FileInfo) string
 	if r.Locator != "" {
 		for _, base := range basePaths {
 			if locPath, ok := ResolveDirLocator(base, r.Locator); ok && locPath != "" {
-				if matchesRecordAtDir(r, locPath, excludeInfo) {
-					return filepath.Clean(locPath)
+				matched, inc := matchesRecordAtDir(r, locPath, excludeInfo)
+				if matched {
+					return filepath.Clean(locPath), false
+				}
+				if inc {
+					inconclusive = true
 				}
 			}
 		}
@@ -674,19 +710,26 @@ func findLiveNotebookElsewhere(r NotebookRecord, excludeInfo os.FileInfo) string
 				continue
 			}
 			seenParents[parent] = true
-			if sibPath, ok := findSiblingByNotebookXattr(parent, r.ID); ok && sibPath != "" {
-				if matchesRecordAtDir(r, sibPath, excludeInfo) {
-					return filepath.Clean(sibPath)
+			if sibPath, ok, sibInc := findSiblingByNotebookXattr(parent, r.ID); ok && sibPath != "" {
+				matched, inc := matchesRecordAtDir(r, sibPath, excludeInfo)
+				if matched {
+					return filepath.Clean(sibPath), false
 				}
+				if inc {
+					inconclusive = true
+				}
+			} else if sibInc {
+				inconclusive = true
 			}
 		}
 	}
-	return ""
+	return "", inconclusive
 }
 
 type oldPathMissingCheck struct {
 	confirmedMissing bool
 	pathOccupied     bool
+	inconclusive     bool
 	foundLivePath    string
 }
 
@@ -704,7 +747,7 @@ func probeOldPathMissing(ctx context.Context, r NotebookRecord, excludeInfo os.F
 			if linfo.Mode()&os.ModeSymlink != 0 {
 				target, rlErr := os.Readlink(oldPath)
 				if rlErr != nil {
-					if live := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
+					if live, _ := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
 						return oldPathMissingCheck{foundLivePath: live}
 					}
 					return oldPathMissingCheck{}
@@ -718,34 +761,34 @@ func probeOldPathMissing(ctx context.Context, r NotebookRecord, excludeInfo os.F
 					if tInfo.IsDir() && !IsTrashPath(targetClean) && (excludeInfo == nil || !os.SameFile(tInfo, excludeInfo)) {
 						return oldPathMissingCheck{foundLivePath: targetClean}
 					}
-					if live := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
+					if live, _ := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
 						return oldPathMissingCheck{foundLivePath: live}
 					}
 					return oldPathMissingCheck{}
 				}
 				if !isStrictNotExistErr(tErr) {
-					if live := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
+					if live, _ := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
 						return oldPathMissingCheck{foundLivePath: live}
 					}
 					return oldPathMissingCheck{}
 				}
 				tParent := filepath.Dir(targetClean)
 				if tParent == "" || tParent == targetClean {
-					if live := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
+					if live, _ := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
 						return oldPathMissingCheck{foundLivePath: live}
 					}
 					return oldPathMissingCheck{}
 				}
 				tpInfo, tpErr := os.Stat(tParent)
 				if tpErr != nil || !tpInfo.IsDir() {
-					if live := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
+					if live, _ := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
 						return oldPathMissingCheck{foundLivePath: live}
 					}
 					return oldPathMissingCheck{}
 				}
 				tpDev, _, hasTPDev := statDirDevIno(tParent, tpInfo)
 				if !isParentVolumeAccessible(tParent, tpDev, hasTPDev, r.Device, r.Locator) {
-					if live := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
+					if live, _ := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
 						return oldPathMissingCheck{foundLivePath: live}
 					}
 					return oldPathMissingCheck{}
@@ -756,7 +799,7 @@ func probeOldPathMissing(ctx context.Context, r NotebookRecord, excludeInfo os.F
 				occupyingInfo = linfo
 			}
 		} else if !isStrictNotExistErr(lErr) {
-			if live := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
+			if live, _ := findLiveNotebookElsewhere(r, excludeInfo); live != "" {
 				return oldPathMissingCheck{foundLivePath: live}
 			}
 			return oldPathMissingCheck{}
@@ -768,8 +811,12 @@ func probeOldPathMissing(ctx context.Context, r NotebookRecord, excludeInfo os.F
 		if searchExclude == nil && occupyingInfo != nil {
 			searchExclude = occupyingInfo
 		}
-		if live := findLiveNotebookElsewhere(r, searchExclude); live != "" {
+		live, inc := findLiveNotebookElsewhere(r, searchExclude)
+		if live != "" {
 			return oldPathMissingCheck{foundLivePath: live}
+		}
+		if inc {
+			return oldPathMissingCheck{pathOccupied: pathOccupied, inconclusive: true}
 		}
 		if pathOccupied {
 			return oldPathMissingCheck{pathOccupied: true}
@@ -800,13 +847,7 @@ func recordMatchesExactIdentity(r NotebookRecord, dev, ino uint64, hasDevIno boo
 	if !hasDevIno || ino == 0 || r.Inode == 0 || r.Device != dev || r.Inode != ino {
 		return false
 	}
-	if !supportsNotebookXattr() {
-		return true
-	}
-	if xattrID != "" {
-		return xattrID == r.ID
-	}
-	return r.XattrMissing || xattrErr != nil
+	return xattrIdentityMatchesRecord(r, dev, ino, hasDevIno, xattrID, xattrErr, false)
 }
 
 func syncNotebookXattrAndPersist(appDir, id, clean string, prevMissing bool) bool {
@@ -933,30 +974,41 @@ func EnsureNotebookContext(ctx context.Context, appDataDir, rawPath string) (Not
 
 	// 2. macOS primary cross-path identity via xattr (with fallback to dev+inode
 	// when xattr writing previously failed or xattr reading failed).
-	// Only reclaim when BOTH identity + (device, inode) match, OR when xattr matches
-	// and the old path is confirmed ENOENT on an accessible volume.
+	// Prefer matching exact recorded directory identity first so read-only copies
+	// carrying a stale xattr still reclaim their own xattr_missing record.
 	var xattrCandidate *NotebookRecord
-	if supportsNotebookXattr() && probe.xattrID != "" {
-		for i := range records {
-			if records[i].ID == probe.xattrID && !IsNotebookCleaningIn(appDir, records[i].ID) {
-				cp := cloneNotebookRecord(records[i])
-				xattrCandidate = &cp
-				break
+	if supportsNotebookXattr() {
+		if probe.hasDevIno && probe.ino != 0 {
+			var fallbackSuperseded *NotebookRecord
+			for i := range records {
+				if IsNotebookCleaningIn(appDir, records[i].ID) {
+					continue
+				}
+				if records[i].Inode == 0 || records[i].Device != probe.dev || records[i].Inode != probe.ino {
+					continue
+				}
+				if records[i].ID == probe.xattrID || records[i].XattrMissing || probe.xattrErr != nil {
+					cp := cloneNotebookRecord(records[i])
+					if !cp.Superseded {
+						xattrCandidate = &cp
+						break
+					}
+					if fallbackSuperseded == nil {
+						fallbackSuperseded = &cp
+					}
+				}
+			}
+			if xattrCandidate == nil && fallbackSuperseded != nil {
+				xattrCandidate = fallbackSuperseded
 			}
 		}
-	}
-	if supportsNotebookXattr() && xattrCandidate == nil && probe.xattrID == "" && probe.hasDevIno && probe.ino != 0 {
-		for i := range records {
-			if IsNotebookCleaningIn(appDir, records[i].ID) {
-				continue
-			}
-			if !(records[i].XattrMissing || probe.xattrErr != nil) {
-				continue
-			}
-			if records[i].Inode != 0 && records[i].Device == probe.dev && records[i].Inode == probe.ino {
-				cp := cloneNotebookRecord(records[i])
-				xattrCandidate = &cp
-				break
+		if xattrCandidate == nil && probe.xattrID != "" {
+			for i := range records {
+				if records[i].ID == probe.xattrID && !IsNotebookCleaningIn(appDir, records[i].ID) {
+					cp := cloneNotebookRecord(records[i])
+					xattrCandidate = &cp
+					break
+				}
 			}
 		}
 	}
@@ -1139,13 +1191,16 @@ func RenameNotebookIn(appDataDir, oldRawPath, newRawPath string) (NotebookRecord
 	for i := range records {
 		if !records[i].Superseded && sameNotebookPath(records[i].Path, oldClean) && !IsNotebookCleaningIn(appDir, records[i].ID) {
 			if probe.statErr == nil && probe.info != nil && probe.info.IsDir() {
-				// If target directory exists, verify it wasn't swapped with an unrelated directory.
-				if supportsNotebookXattr() && probe.xattrID != "" && probe.xattrID != records[i].ID {
+				sameDevIno := records[i].Inode != 0 && probe.hasDevIno && probe.ino != 0 &&
+					records[i].Device == probe.dev && records[i].Inode == probe.ino
+				if records[i].Inode != 0 && probe.hasDevIno && probe.ino != 0 && !sameDevIno {
 					continue
 				}
-				if records[i].Inode != 0 && probe.hasDevIno && probe.ino != 0 &&
-					(records[i].Device != probe.dev || records[i].Inode != probe.ino) {
-					continue
+				// If target directory exists, verify it wasn't swapped with an unrelated directory.
+				if supportsNotebookXattr() && probe.xattrID != "" && probe.xattrID != records[i].ID {
+					if !(records[i].XattrMissing && sameDevIno) {
+						continue
+					}
 				}
 			}
 			idx = i
@@ -1153,24 +1208,23 @@ func RenameNotebookIn(appDataDir, oldRawPath, newRawPath string) (NotebookRecord
 		}
 	}
 	if idx < 0 && supportsNotebookXattr() {
-		if probe.xattrID != "" {
-			for i := range records {
-				if records[i].ID != probe.xattrID || IsNotebookCleaningIn(appDir, records[i].ID) {
-					continue
-				}
-				sameDevIno := probe.hasDevIno && probe.ino != 0 && records[i].Inode != 0 &&
-					records[i].Device == probe.dev && records[i].Inode == probe.ino
-				if sameDevIno {
-					idx = i
-					break
-				}
-			}
-		} else if probe.hasDevIno && probe.ino != 0 {
+		if probe.hasDevIno && probe.ino != 0 {
 			for i := range records {
 				if IsNotebookCleaningIn(appDir, records[i].ID) {
 					continue
 				}
-				if !(records[i].XattrMissing || probe.xattrErr != nil) {
+				if records[i].Inode == 0 || records[i].Device != probe.dev || records[i].Inode != probe.ino {
+					continue
+				}
+				if records[i].ID == probe.xattrID || records[i].XattrMissing || probe.xattrErr != nil {
+					idx = i
+					break
+				}
+			}
+		}
+		if idx < 0 && probe.xattrID != "" && probe.hasDevIno && probe.ino != 0 {
+			for i := range records {
+				if records[i].ID != probe.xattrID || IsNotebookCleaningIn(appDir, records[i].ID) {
 					continue
 				}
 				if records[i].Inode != 0 && records[i].Device == probe.dev && records[i].Inode == probe.ino {
@@ -1311,6 +1365,50 @@ func readDirEntryNames(dir *os.Root) ([]string, error) {
 	return names, nil
 }
 
+// openVerifiedDirInRoot opens child directory name inside parent via O_NOFOLLOW-backed
+// os.Root.OpenRoot and verifies with os.SameFile that the opened handle matches Lstat.
+func openVerifiedDirInRoot(parent *os.Root, name string) (*os.Root, os.FileInfo, error) {
+	if parent == nil || name == "" || name == "." || name == ".." {
+		return nil, nil, os.ErrInvalid
+	}
+	info, err := parent.Lstat(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if isSymlinkOrReparseInfo(info) || !info.IsDir() {
+		return nil, nil, os.ErrInvalid
+	}
+	sub, err := parent.OpenRoot(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	subInfo, err := sub.Stat(".")
+	if err != nil || isSymlinkOrReparseInfo(subInfo) || !subInfo.IsDir() || !os.SameFile(info, subInfo) {
+		_ = sub.Close()
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, os.ErrInvalid
+	}
+	return sub, info, nil
+}
+
+// removeVerifiedEntryInRoot confirms name inside parent still refers to expected before calling
+// handle-relative Remove (unlinkat never follows symlinks; sub-ms external swap after check is 不在威胁模型内).
+func removeVerifiedEntryInRoot(parent *os.Root, name string, expected os.FileInfo) error {
+	if parent == nil || name == "" || name == "." || name == ".." {
+		return os.ErrInvalid
+	}
+	cur, err := parent.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if isSymlinkOrReparseInfo(cur) || (expected != nil && !os.SameFile(expected, cur)) {
+		return os.ErrInvalid
+	}
+	return parent.Remove(name)
+}
+
 func removeDirRecursiveSafe(parent *os.Root, name string, depth int) {
 	if parent == nil || name == "" || name == "." || name == ".." || depth > 64 {
 		return
@@ -1324,11 +1422,11 @@ func removeDirRecursiveSafe(parent *os.Root, name string, depth int) {
 	}
 	if !info.IsDir() {
 		if info.Mode().IsRegular() {
-			_ = parent.Remove(name)
+			_ = removeVerifiedEntryInRoot(parent, name, info)
 		}
 		return
 	}
-	sub, err := parent.OpenRoot(name)
+	sub, verifiedInfo, err := openVerifiedDirInRoot(parent, name)
 	if err != nil {
 		return
 	}
@@ -1339,7 +1437,7 @@ func removeDirRecursiveSafe(parent *os.Root, name string, depth int) {
 		}
 	}
 	_ = sub.Close()
-	_ = parent.Remove(name)
+	_ = removeVerifiedEntryInRoot(parent, name, verifiedInfo)
 }
 
 func removeRelativeSubtreeInRoot(root *os.Root, segments ...string) {
@@ -1354,14 +1452,7 @@ func removeRelativeSubtreeInRoot(root *os.Root, segments ...string) {
 	}()
 	cur := root
 	for _, seg := range segments[:len(segments)-1] {
-		if seg == "" || seg == "." || seg == ".." {
-			return
-		}
-		info, err := cur.Lstat(seg)
-		if err != nil || isSymlinkOrReparseInfo(info) || !info.IsDir() {
-			return
-		}
-		next, err := cur.OpenRoot(seg)
+		next, _, err := openVerifiedDirInRoot(cur, seg)
 		if err != nil {
 			return
 		}
@@ -1373,21 +1464,24 @@ func removeRelativeSubtreeInRoot(root *os.Root, segments ...string) {
 }
 
 func cleanupNotebookDataUnlocked(appDir, id string) {
+	appInfo, err := os.Lstat(appDir)
+	if err != nil || isSymlinkOrReparseInfo(appInfo) || !appInfo.IsDir() {
+		return
+	}
 	appRoot, err := os.OpenRoot(appDir)
 	if err != nil {
 		return
 	}
 	defer appRoot.Close()
+	if rootInfo, sErr := appRoot.Stat("."); sErr != nil || isSymlinkOrReparseInfo(rootInfo) || !os.SameFile(appInfo, rootInfo) {
+		return
+	}
 
 	replacedStashMu.Lock()
 	removeRelativeSubtreeInRoot(appRoot, "replaced", id)
 	replacedStashMu.Unlock()
 
-	appsInfo, err := appRoot.Lstat("apps-data")
-	if err != nil || isSymlinkOrReparseInfo(appsInfo) || !appsInfo.IsDir() {
-		return
-	}
-	appsRoot, err := appRoot.OpenRoot("apps-data")
+	appsRoot, _, err := openVerifiedDirInRoot(appRoot, "apps-data")
 	if err != nil {
 		return
 	}
@@ -1544,6 +1638,49 @@ func NotebookIDForDescendantIn(appDataDir, dirPath string) string {
 	return bestID
 }
 
+// ParseRootIdentity parses "<dev>:<ino>" (decimal uint64 pair with ino != 0).
+func ParseRootIdentity(raw string) (uint64, uint64, bool) {
+	if raw == "" || strings.TrimSpace(raw) != raw {
+		return 0, 0, false
+	}
+	devStr, inoStr, ok := strings.Cut(raw, ":")
+	if !ok || devStr == "" || inoStr == "" || strings.ContainsRune(inoStr, ':') {
+		return 0, 0, false
+	}
+	dev, err := strconv.ParseUint(devStr, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	ino, err := strconv.ParseUint(inoStr, 10, 64)
+	if err != nil || ino == 0 {
+		return 0, 0, false
+	}
+	return dev, ino, true
+}
+
+// RootIdentityOfRoot returns "<dev>:<ino>" from an already-opened directory root handle.
+func RootIdentityOfRoot(root *os.Root) (string, bool) {
+	dev, ino, ok := statRootHandleDevIno(root)
+	if !ok || ino == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%d:%d", dev, ino), true
+}
+
+// RootMatchesIdentity checks expected "<dev>:<ino>" against the opened os.Root handle itself
+// without re-resolving paths.
+func RootMatchesIdentity(root *os.Root, expected string) (matched bool, validFormat bool) {
+	expDev, expIno, ok := ParseRootIdentity(expected)
+	if !ok {
+		return false, false
+	}
+	dev, ino, has := statRootHandleDevIno(root)
+	if !has || ino == 0 {
+		return false, true
+	}
+	return dev == expDev && ino == expIno, true
+}
+
 // DirRootIdentity returns "<dev>:<ino>" for rawPath without following leaf symlinks.
 func DirRootIdentity(ctx context.Context, rawPath string) string {
 	clean := normalizeNotebookPath(rawPath)
@@ -1606,13 +1743,10 @@ func VerifyNotebookIdentity(ctx context.Context, appDataDir string, rec Notebook
 		if supportsNotebookXattr() {
 			xid, xErr := readNotebookXattr(clean)
 			if xErr == nil {
-				if xid == rec.ID {
-					return verifyOut{verified: true, rootID: rootID}
+				return verifyOut{
+					verified: xattrIdentityMatchesRecord(rec, dev, ino, hasDevIno, xid, nil, false),
+					rootID:   rootID,
 				}
-				if xid == "" && rec.XattrMissing && rec.Inode != 0 && hasDevIno && ino != 0 && rec.Device == dev && rec.Inode == ino {
-					return verifyOut{verified: true, rootID: rootID}
-				}
-				return verifyOut{verified: false, rootID: rootID}
 			}
 			// Transient or filesystem read error on xattr: fall back strictly to dev+inode match.
 			verified := rec.Inode != 0 && hasDevIno && ino != 0 && rec.Device == dev && rec.Inode == ino
@@ -1658,13 +1792,16 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 		return out
 	}
 	if r.Superseded {
-		if matchesRecordAtDir(r, r.Path, nil) {
+		matched, inc := matchesRecordAtDir(r, r.Path, nil)
+		if matched {
 			out.recoveredElsewhere = true
 			return out
 		}
 		chk := probeOldPathMissing(ctx, r, nil)
 		if chk.foundLivePath != "" {
 			out.recoveredElsewhere = true
+		} else if chk.inconclusive || inc {
+			return out
 		} else if chk.confirmedMissing {
 			out.missingConfirmed = true
 		} else if chk.pathOccupied {
@@ -1693,9 +1830,7 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 	p := probeDirIdentity(ctx, r.Path)
 	if p.statErr == nil && p.info != nil && p.info.IsDir() && !IsTrashPath(r.Path) {
 		sameDevIno := r.Inode == 0 || (p.hasDevIno && p.ino != 0 && r.Device == p.dev && r.Inode == p.ino)
-		sameXattr := !supportsNotebookXattr() ||
-			(p.xattrID != "" && p.xattrID == r.ID) ||
-			(p.xattrID == "" && (r.Inode == 0 || ((r.XattrMissing || p.xattrErr != nil) && p.hasDevIno && p.ino != 0 && r.Device == p.dev && r.Inode == p.ino)))
+		sameXattr := xattrIdentityMatchesRecord(r, p.dev, p.ino, p.hasDevIno, p.xattrID, p.xattrErr, true)
 		if sameDevIno && sameXattr {
 			out.aliveAtPath = true
 			out.dev = p.dev
@@ -1707,10 +1842,18 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 		}
 		// Directory at r.Path has a different identity than r (replaced externally).
 		// Check complete locator, sibling xattr, and previous_paths before counting missing.
-		locAlive, _ := runProbeWithTimeout(ctx, notebookProbeTimeout, func() bool {
-			return findLiveNotebookElsewhere(r, p.info) != ""
+		type elsewhereResult struct {
+			live bool
+			inc  bool
+		}
+		locRes, okLoc := runProbeWithTimeout(ctx, notebookProbeTimeout, func() elsewhereResult {
+			live, inc := findLiveNotebookElsewhere(r, p.info)
+			return elsewhereResult{live: live != "", inc: inc}
 		})
-		if locAlive {
+		if !okLoc || locRes.inc {
+			return out
+		}
+		if locRes.live {
 			out.recoveredElsewhere = true
 			return out
 		}

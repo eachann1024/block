@@ -150,22 +150,23 @@ type systemAction struct {
 }
 
 type systemParams struct {
-	Title        string   `json:"title"`
-	Body         string   `json:"body"`
-	DedupKey     string   `json:"dedup_key"`
-	Tone         string   `json:"tone"`
-	NotebookRoot string   `json:"notebook_root"`
-	RelPath      string   `json:"rel_path"`
-	TimeoutMS    int      `json:"timeout_ms"`
-	URL          string   `json:"url"`
-	DefaultPath  string   `json:"default_path"`
-	Extensions   []string `json:"extensions"`
-	Directory    bool     `json:"directory"`
-	Multiple     bool     `json:"multiple"`
-	Text         *string  `json:"text"`
-	Count        *int     `json:"count"`
-	Key          string   `json:"key"`
-	Value        *string  `json:"value"`
+	Title                string   `json:"title"`
+	Body                 string   `json:"body"`
+	DedupKey             string   `json:"dedup_key"`
+	Tone                 string   `json:"tone"`
+	NotebookRoot         string   `json:"notebook_root"`
+	RelPath              string   `json:"rel_path"`
+	ExpectedRootIdentity string   `json:"expected_root_identity"`
+	TimeoutMS            int      `json:"timeout_ms"`
+	URL                  string   `json:"url"`
+	DefaultPath          string   `json:"default_path"`
+	Extensions           []string `json:"extensions"`
+	Directory            bool     `json:"directory"`
+	Multiple             bool     `json:"multiple"`
+	Text                 *string  `json:"text"`
+	Count                *int     `json:"count"`
+	Key                  string   `json:"key"`
+	Value                *string  `json:"value"`
 }
 
 func (s *Supervisor) dispatchExtensionHostMethod(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError, bool) {
@@ -238,14 +239,33 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 		if !rt.manifest.HasPermission(required) {
 			return nil, missingPerm(required)
 		}
+		expectedRootID := ""
+		if trash {
+			var rerr *rpcError
+			expectedRootID, rerr = parseExpectedRootIdentityParam(p.ExpectedRootIdentity)
+			if rerr != nil {
+				return nil, rerr
+			}
+		}
 		path, pathErr := systemNotebookPath(rt, p.NotebookRoot, p.RelPath, trash)
 		if pathErr != nil {
 			return nil, rpcErr(-32602, pathErr.Error())
 		}
 		if trash {
+			if expectedRootID != "" {
+				if rerr := checkRegisteredNotebookRootIdentity(rt, p.NotebookRoot, expectedRootID); rerr != nil {
+					return nil, rerr
+				}
+			}
 			err = host.Trash(path, allowed, func() bool {
 				current, err := systemNotebookPath(rt, p.NotebookRoot, p.RelPath, true)
-				return err == nil && current == path
+				if err != nil || current != path {
+					return false
+				}
+				if expectedRootID != "" {
+					return checkRegisteredNotebookRootIdentity(rt, p.NotebookRoot, expectedRootID) == nil
+				}
+				return true
 			})
 		} else {
 			err = host.Reveal(path, allowed)

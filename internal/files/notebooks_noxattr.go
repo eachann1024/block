@@ -44,4 +44,4 @@ func isParentVolumeAccessible(parent string, pDev uint64, hasPDev bool, recDev u
 	return true
 }
 
-func findSiblingByNotebookXattr(string, string) (string, bool) { return "", false }
+func findSiblingByNotebookXattr(string, string) (string, bool, bool) { return "", false, false }

@@ -22,6 +22,35 @@ func statDirDevIno(_ string, info os.FileInfo) (uint64, uint64, bool) {
 	return uint64(st.Dev), uint64(st.Ino), true
 }
 
+func statRootHandleDevIno(root *os.Root) (uint64, uint64, bool) {
+	if root == nil {
+		return 0, 0, false
+	}
+	f, err := root.Open(".")
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return 0, 0, false
+	}
+	return statDirDevIno("", info)
+}
+
+func isUnreadableDirErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, os.ErrPermission) ||
+		errors.Is(err, syscall.EACCES) ||
+		errors.Is(err, syscall.EPERM) ||
+		errors.Is(err, syscall.EIO) ||
+		errors.Is(err, syscall.ENXIO) ||
+		errors.Is(err, syscall.ENODEV) ||
+		errors.Is(err, syscall.ETIMEDOUT)
+}
+
 func isCrossDeviceErr(err error) bool {
 	return errors.Is(err, syscall.EXDEV)
 }
