@@ -4,7 +4,7 @@
 // app version, OS, OS major version, CPU architecture and UI language. Nothing
 // else — no paths, note content, account names or hardware identifiers.
 //
-// Users can turn it off in Settings; DO_NOT_TRACK=1 or BLOCK_NO_TELEMETRY=1
+// Users can turn it off in About Block; DO_NOT_TRACK=1 or BLOCK_NO_TELEMETRY=1
 // also disable it. Development builds never send.
 package telemetry
 

@@ -82,7 +82,7 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 	pal := theme.Ocean()
 	open := true
 	title := theme.Tr("关于 Block", "About Block")
-	internalui.ModalCard(c, "about-modal", title, &open, 304, 0, func() {
+	internalui.ModalCard(c, "about-modal", title, &open, 344, 0, func() {
 		ui.Column(c).FillWidth().Padding(theme.Space24, theme.Space20, theme.Space20, theme.Space20).Gap(theme.Space16).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Absolute().Top(theme.Space10).Right(theme.Space10).Children(func() {
 				if internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{ID: "about-close", Label: theme.Tr("关闭", "Close")}).Clicked() {
@@ -129,11 +129,54 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 					time.AfterFunc(1450*time.Millisecond, m.requestRedraw)
 				}
 			})
-			ui.Column(c).FillWidth().Padding(theme.Space16, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-				ghIcon := icons.Github
-				if internalui.ActionButton(c, "about-repo", "GitHub", &ghIcon, internalui.ButtonSecondary, false).Height(theme.HeightLarge).FillWidth().Clicked() {
-					c.OpenURL("https://github.com/eachann1024/block")
-				}
+			ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space16, 0, 0, 0).Gap(theme.Space12).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+				st := m.currentState()
+				telemetryOn := !st.TelemetryOff
+				telemetryLabel := theme.Tr("匿名使用统计", "Anonymous Usage Stats")
+				telemetryRow := ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).
+					AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
+					ui.Text(c, telemetryLabel).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightRegular).
+						TextColor(pal.Text).SingleLine().MinWidth(0).Shrink(1).Ellipsis("…")
+					if internalui.TogglePill(c, "about-telemetry-pill", telemetryLabel, &telemetryOn, false) {
+						off := !telemetryOn
+						m.mutateState(func(s *model.AppState) {
+							s.TelemetryOff = off
+						})
+					}
+				})
+				internalui.WrappedTooltip(c, telemetryRow, theme.Tr(
+					"每天最多发送一次：随机安装编号、版本、系统及大版本、CPU 架构、界面语言；服务器据网络来源记录国家/地区，不保存 IP。不含笔记内容或文件名。",
+					"Sent at most once a day: a random install ID, app version, OS and major version, CPU architecture and UI language. The server records the country from the network origin without storing the IP. No note content or file names.",
+				))
+
+				ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+					ghIcon := icons.Github
+					if internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "about-repo",
+						Label:    "GitHub",
+						Leading:  &ghIcon,
+						Style:    internalui.ButtonSecondary,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space10,
+						Grow:     1,
+						Truncate: true,
+					}).Basis(0).Clicked() {
+						c.OpenURL("https://github.com/eachann1024/block")
+					}
+					privacyIcon := icons.ShieldCheck
+					if internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "about-privacy",
+						Label:    theme.Tr("隐私政策", "Privacy Policy"),
+						Leading:  &privacyIcon,
+						Style:    internalui.ButtonSecondary,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space10,
+						Grow:     1,
+						Truncate: true,
+					}).Basis(0).Clicked() {
+						c.OpenURL("https://block.cooool.top/privacy/")
+					}
+				})
 			})
 		})
 	})

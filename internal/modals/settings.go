@@ -1241,21 +1241,6 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					}
 				}
 			})
-
-			telemetryOn := !st.TelemetryOff
-			telemetryLabel := theme.Tr("匿名使用统计", "Anonymous Usage Stats")
-			telemetryRow := internalui.SettingsRow(c, telemetryLabel, func() {
-				if internalui.TogglePill(c, "settings-telemetry-pill", telemetryLabel, &telemetryOn, false) {
-					off := !telemetryOn
-					m.mutateState(func(s *model.AppState) {
-						s.TelemetryOff = off
-					})
-				}
-			})
-			internalui.WrappedTooltip(c, telemetryRow, theme.Tr(
-				"每天最多发送一次：随机安装编号、版本、系统及大版本、CPU 架构、界面语言；服务器据网络来源记录国家/地区，不保存 IP。不含笔记内容或文件名。",
-				"Sent at most once a day: a random install ID, app version, OS and major version, CPU architecture and UI language. The server records the country from the network origin without storing the IP. No note content or file names.",
-			))
 		})
 
 		if m.PluginHost != nil {
