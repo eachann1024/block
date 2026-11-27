@@ -266,6 +266,9 @@ func NewWorkspace(dataDir string) *Workspace {
 		GetLocale: func() string {
 			return string(theme.Language())
 		},
+		IsOnline: func() bool {
+			return mygo.Network.Status().Online
+		},
 		GetTheme: func() (string, bool) {
 			mode := string(w.State().Theme)
 			if mode == "" {

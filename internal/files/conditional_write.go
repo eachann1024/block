@@ -106,14 +106,14 @@ func sanitizeStashBase(name string) string {
 	return b.String()
 }
 
-// stashReplacedInodeInRoot moves a swapped-out old inode into <root>/.block-sync-replaced/
+// stashReplacedInodeInRoot moves a swapped-out old inode into <root>/.block-replaced/
 // (same filesystem, exact same inode) so any external editor still holding an open fd that
 // flushes in-place writes after RENAME_SWAP remains recoverable on disk.
 func stashReplacedInodeInRoot(root *os.Root, parent, tmpPath, relName string) bool {
 	if root == nil || tmpPath == "" {
 		return false
 	}
-	const stashDirName = ".block-sync-replaced"
+	const stashDirName = ".block-replaced"
 	if err := root.MkdirAll(stashDirName, 0o755); err != nil {
 		return false
 	}
@@ -171,13 +171,13 @@ func stashReplacedInodeInRoot(root *os.Root, parent, tmpPath, relName string) bo
 }
 
 // stashReplacedInodeInDir moves a swapped-out or replaced old inode into
-// <dir>/.block-sync-replaced/ (same volume, exact same inode) so any external
+// <dir>/.block-replaced/ (same volume, exact same inode) so any external
 // editor holding an open fd keeps nlink >= 1 and late writes stay recoverable.
 func stashReplacedInodeInDir(dir *os.Root, tmpPath, baseName string) bool {
 	if dir == nil || tmpPath == "" {
 		return false
 	}
-	const stashDirName = ".block-sync-replaced"
+	const stashDirName = ".block-replaced"
 	if err := dir.MkdirAll(stashDirName, 0o755); err != nil {
 		return false
 	}
@@ -533,7 +533,7 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 			}
 			return false, errConflict
 		}
-		// Preserve the swapped-out old inode in <root>/.block-sync-replaced/ (same volume, exact inode)
+		// Preserve the swapped-out old inode in <root>/.block-replaced/ (same volume, exact inode)
 		// so late in-place writes from an editor holding an open fd remain recoverable on disk.
 		// If stashing fails, keep tmpPath on disk rather than unlinking the inode.
 		stashReplacedInodeInRoot(root, parent, tmpPath, name)
@@ -550,7 +550,7 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 	// 2. Atomically move base aside to a unique private name so we inspect the exact inode.
 	// 3. Publish tmpPath via dir.Link(tmpPath, base) (fails atomically with EEXIST if any
 	//    external writer created base in the interim — zero silent clobbering!).
-	// 4. Stash the verified old inode into .block-sync-replaced/ so open FDs keep nlink >= 1.
+	// 4. Stash the verified old inode into .block-replaced/ so open FDs keep nlink >= 1.
 	if !probeHardLinkInDir(dir, tmpPath) {
 		return false, errConflict
 	}
@@ -784,7 +784,7 @@ func WriteNoteConditionalFingerprint(path, content string, expected int64) (int6
 			return 0, conflictErr
 		}
 		// Verified: replaced inode matched expected fingerprint; stash it under
-		// .block-sync-replaced/ so any external editor holding an open fd keeps nlink >= 1.
+		// .block-replaced/ so any external editor holding an open fd keeps nlink >= 1.
 		stashReplacedInodeInDir(dir, tmpPath, base)
 		keepTmp = true
 		if file, oErr := dir.Open("."); oErr == nil {
@@ -796,7 +796,7 @@ func WriteNoteConditionalFingerprint(path, content string, expected int64) (int6
 
 	// Non-swap fallback (e.g. HFS+): move base aside to inspect the exact inode,
 	// publish tmpPath exclusively via dir.Link (so concurrent external writes never
-	// get clobbered), and stash the replaced inode under .block-sync-replaced/.
+	// get clobbered), and stash the replaced inode under .block-replaced/.
 	if !probeHardLinkInDir(dir, tmpPath) {
 		return 0, conflictErr
 	}

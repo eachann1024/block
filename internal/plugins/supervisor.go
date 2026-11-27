@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,6 +42,19 @@ type surfaceKey struct {
 	surface  Surface
 }
 
+// BackgroundError describes a generic plugin-reported background error or warning
+// surfaced in the plugin list and titlebar error pill via host.ui.set_background_error.
+type BackgroundError struct {
+	Key          string         `json:"key"`
+	Label        string         `json:"label"`
+	Detail       string         `json:"detail,omitempty"`
+	RetryAction  string         `json:"retry_action,omitempty"`
+	RetryLabel   string         `json:"retry_label,omitempty"`
+	RetryPayload map[string]any `json:"retry_payload,omitempty"`
+	Severity     string         `json:"severity,omitempty"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
 // PluginViewState holds the non-blocking UI snapshot for an installed plugin's Settings page.
 type PluginViewState struct {
 	Loading                bool
@@ -55,8 +69,14 @@ type PluginViewState struct {
 	LastActionID           string
 	LastActionTone         string
 	LastActionMessage      string
+	LastActionBusyLabel    string
+	LastActionSuccessLabel string
+	LastActionErrorLabel   string
+	LastActionRetryLabel   string
+	LastActionIcon         *UIIcon
 	LastActionButtonActive bool
 	LastActionWasHeader    bool
+	BackgroundError        *BackgroundError
 
 	RetryKind         RetryKind
 	FailedActionID    string
@@ -110,6 +130,7 @@ type SupervisorConfig struct {
 	ApplyNoteTrash  func(pluginID, absPath string, verify, trash func() error) error
 	OnChanged       func()
 	OnRedraw        func()
+	IsOnline        func() bool
 	// UI lets plugins drive host UI (toasts, dialogs, panels, editor).
 	UI     UIHost
 	System SystemHost
@@ -145,6 +166,7 @@ type Supervisor struct {
 	activeActionRT     map[string]*Runtime
 	lastProgressRedraw map[string]time.Time
 	uninstallErrors    map[string]string
+	bgErrors           map[string]map[string]BackgroundError
 	storeRefreshing    bool
 	installingID       string
 	batchUpdating      bool
@@ -195,6 +217,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		activeActionRT:     make(map[string]*Runtime),
 		lastProgressRedraw: make(map[string]time.Time),
 		uninstallErrors:    make(map[string]string),
+		bgErrors:           make(map[string]map[string]BackgroundError),
 	}
 	sm.beforeReplace = s.preparePluginReplacement
 	SyncActiveLanguagesSeq(installed, NextLanguageSyncSeq())
@@ -730,6 +753,7 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	if enabled {
 		s.warmupPluginAsync(pluginID)
 	} else if changed {
+		s.clearPluginScheduler(pluginID)
 		go s.clearInactiveSystemBadge(pluginID)
 	}
 	if changed || rt != nil {
@@ -1437,6 +1461,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.mu.Unlock()
 		SyncActiveLanguagesSeq(langSnap, langSeq)
 		s.contrib.forgetPlugin(pluginID, wasTitlebarMgr && !hasRemainingTitlebarMgr)
+		s.clearPluginScheduler(pluginID)
 		s.clearInactiveSystemBadge(pluginID)
 
 		if onDone != nil {
@@ -1465,9 +1490,7 @@ func (s *Supervisor) clearUninstallErrorLocked(pluginID string) {
 }
 
 func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
-	if pluginID == "block-sync" {
-		clear(s.system.syncErrors)
-	}
+	delete(s.bgErrors, pluginID)
 	s.stopLiveTimersForPluginLocked(pluginID)
 	delete(s.activeActionKey, pluginID)
 	delete(s.activeActionRT, pluginID)
@@ -2213,9 +2236,6 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		s.mu.Unlock()
 		return nil, attemptedLocale, err
 	}
-	if cfg.credentialScope != "" && pluginID == "block-sync" && rt.manifest.HasPermission(PermEventsSystem) {
-		s.queueSystemEvent(pluginID, blockSyncCredentialEvent, map[string]any{"event": blockSyncCredentialEvent})
-	}
 	return rt, attemptedLocale, nil
 }
 
@@ -2252,6 +2272,11 @@ func (s *Supervisor) updateSurfaceControlValue(pluginID, nbRoot string, surface 
 	vs.LastActionID = ""
 	vs.LastActionTone = ""
 	vs.LastActionMessage = ""
+	vs.LastActionBusyLabel = ""
+	vs.LastActionSuccessLabel = ""
+	vs.LastActionErrorLabel = ""
+	vs.LastActionRetryLabel = ""
+	vs.LastActionIcon = nil
 	vs.LastActionButtonActive = false
 	vs.LastActionWasHeader = false
 	if vs.Error == "" && vs.RetryKind == RetryKindAction {
@@ -2466,7 +2491,7 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 	s.TriggerSurfaceActionAsync(pluginID, SurfaceSettingsPage, actionID)
 }
 
-func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface, actionID string) {
+func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface, actionID string, extraPayload map[string]any) {
 	notebookEpoch := s.notebookEpoch.Load()
 	nbRoot := s.NotebookRoot()
 	sKey := surfaceKey{pluginID: pluginID, surface: surface}
@@ -2499,6 +2524,11 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 	vs.LastActionID = ""
 	vs.LastActionTone = ""
 	vs.LastActionMessage = ""
+	vs.LastActionBusyLabel = ""
+	vs.LastActionSuccessLabel = ""
+	vs.LastActionErrorLabel = ""
+	vs.LastActionRetryLabel = ""
+	vs.LastActionIcon = nil
 	vs.LastActionButtonActive = false
 	s.stopFeedbackTimerLocked(key)
 	vs.RetryKind = RetryKindNone
@@ -2552,6 +2582,12 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			if err == nil {
 				s.mu.Lock()
 				values := cloneAnyMap(vs.Values)
+				for pk, pv := range extraPayload {
+					if values == nil {
+						values = make(map[string]any, len(extraPayload))
+					}
+					values[pk] = pv
+				}
 				actionSeq = vs.editSeq
 				wasHeader := vs.Page.HasHeaderAction(actionID)
 				s.activeActionKey[pluginID] = key
@@ -2566,10 +2602,6 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 					delete(s.activeActionRT, pluginID)
 				}
 				s.mu.Unlock()
-				if err == nil && res != nil && res.OK != nil && *res.OK && pluginID == "block-sync" &&
-					actionID == "forget_credential" && rt.manifest.HasPermission(PermSystemSecrets) && rt.manifest.HasPermission(PermEventsSystem) {
-					s.queueSystemEvent(pluginID, blockSyncCredentialEvent, map[string]any{"event": blockSyncCredentialEvent})
-				}
 				_ = wasHeader
 			}
 		}
@@ -2582,12 +2614,6 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 
 		if err != nil && !errors.Is(ctx.Err(), context.Canceled) {
 			files.LogErrorf("plugin action failed: id=%s action=%s err=%v", pluginID, actionID, err)
-			if pluginID == "block-sync" && !syncFailureAlreadyReported(err) &&
-				(actionID == "sync_now" || strings.HasPrefix(actionID, "sync_") || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
-				if installed, ok := s.GetInstalled(pluginID); ok {
-					s.reportSyncFailure(installed, rt, nbRoot, errors.Is(ctx.Err(), context.DeadlineExceeded), syncStateNotSaved(err), true, false)
-				}
-			}
 		}
 
 		tone := resolveActionTone(res, err)
@@ -2615,18 +2641,15 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.LastActionID = actionID
 				cur.LastActionTone = "danger"
 				cur.LastActionMessage = err.Error()
+				cur.LastActionBusyLabel = ""
+				cur.LastActionSuccessLabel = ""
+				cur.LastActionErrorLabel = ""
+				cur.LastActionRetryLabel = ""
+				cur.LastActionIcon = nil
 				cur.LastActionButtonActive = false
 				cur.LastActionWasHeader = prevWasHeader
 				cur.RetryKind = RetryKindAction
-				failedID := actionID
-				if pluginID == "block-sync" && (actionID == "confirm_sync" || actionID == "confirm_sync_card") {
-					if cur.Page != nil && cur.Page.HasHeaderAction("confirm_sync") {
-						failedID = "confirm_sync"
-					} else {
-						failedID = "sync_now"
-					}
-				}
-				cur.FailedActionID = failedID
+				cur.FailedActionID = actionID
 				cur.errorFromBg = true
 			} else if res != nil {
 				s.formVersions[sKey]++
@@ -2635,36 +2658,35 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.RetryKind = RetryKindNone
 				cur.FailedActionID = ""
 				cur.errorFromBg = false
-				if pluginID == "block-sync" && (actionID == "sync_now" || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
-					delete(s.system.syncErrors, nbRoot)
-					if tone == "success" {
-						s.clearSyncedNotebookErrorsLocked(pluginID, res.SyncedNotebooks)
-					}
+				if tone == "success" && len(res.SyncedNotebooks) > 0 {
+					s.clearNotebookSaveErrorsLocked(pluginID, res.SyncedNotebooks)
 				}
 				statusMsg := strings.TrimSpace(res.Status)
 				if statusMsg != "" {
 					cur.Notice = statusMsg
 				}
-				isHeader := prevWasHeader || res.Page.HasHeaderAction(actionID) || (pluginID == "block-sync" && (actionID == "confirm_sync" || actionID == "confirm_sync_card"))
+				isHeader := prevWasHeader || res.Page.HasHeaderAction(actionID)
 				if tone == "danger" && isHeader {
 					if statusMsg == "" {
 						statusMsg = "action failed"
 					}
 					cur.RetryKind = RetryKindAction
-					failedID := actionID
-					if pluginID == "block-sync" && (actionID == "confirm_sync" || actionID == "confirm_sync_card") {
-						if res.Page != nil && res.Page.HasHeaderAction("confirm_sync") {
-							failedID = "confirm_sync"
-						} else {
-							failedID = "sync_now"
-						}
-					}
-					cur.FailedActionID = failedID
+					cur.FailedActionID = actionID
 					cur.errorFromBg = true
 				}
 				cur.LastActionID = actionID
 				cur.LastActionTone = tone
 				cur.LastActionMessage = statusMsg
+				cur.LastActionBusyLabel = res.BusyLabel
+				cur.LastActionSuccessLabel = res.SuccessLabel
+				cur.LastActionErrorLabel = res.ErrorLabel
+				cur.LastActionRetryLabel = res.RetryLabel
+				if res.Icon != nil {
+					icCopy := *res.Icon
+					cur.LastActionIcon = &icCopy
+				} else {
+					cur.LastActionIcon = nil
+				}
 				cur.LastActionButtonActive = tone == "success"
 				cur.LastActionWasHeader = isHeader
 				if cur.LastActionButtonActive && !testing.Testing() && !isStickyActionButton(actionID) {
@@ -2683,7 +2705,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 						}
 					})
 				}
-				keepDrafts := actionID == "test_conn" && len(res.Values) == 0
+				keepDrafts := isStickyActionButton(actionID) && len(res.Values) == 0
 				if res.Page != nil {
 					cur.Page = res.Page
 					if cur.Page.Status == "" && statusMsg != "" {
@@ -3057,7 +3079,11 @@ func (s *Supervisor) RetrySurfaceAsync(pluginID string, surface Surface) {
 	switch kind {
 	case RetryKindAction:
 		if actionID != "" {
-			s.TriggerSurfaceActionAsync(pluginID, surface, actionID)
+			var payload map[string]any
+			if snapshot.BackgroundError != nil && snapshot.BackgroundError.RetryAction == actionID {
+				payload = cloneAnyMap(snapshot.BackgroundError.RetryPayload)
+			}
+			s.triggerSurfaceActionAsync(pluginID, surface, actionID, payload)
 			return
 		}
 		s.ReloadSurfaceViewAsync(pluginID, surface)
@@ -3241,7 +3267,39 @@ func cloneChannelProgress(in map[string]ActionProgress) map[string]ActionProgres
 	return out
 }
 
+func (s *Supervisor) selectBackgroundErrorLocked(pluginID, nbRoot string) (BackgroundError, bool) {
+	perPlugin := s.bgErrors[pluginID]
+	if len(perPlugin) == 0 {
+		return BackgroundError{}, false
+	}
+	if nbRoot != "" {
+		if entry, ok := perPlugin[nbRoot]; ok {
+			return entry, true
+		}
+		cleanRoot := cleanNotebookKey(nbRoot)
+		for k, entry := range perPlugin {
+			if cleanNotebookKey(k) == cleanRoot {
+				return entry, true
+			}
+		}
+	}
+	if entry, ok := perPlugin["default"]; ok {
+		return entry, true
+	}
+	keys := make([]string, 0, len(perPlugin))
+	for k := range perPlugin {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return perPlugin[keys[0]], true
+}
+
 func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) PluginViewState {
+	var iconCopy *UIIcon
+	if in.LastActionIcon != nil {
+		ic := *in.LastActionIcon
+		iconCopy = &ic
+	}
 	out := PluginViewState{
 		Loading:                in.Loading,
 		Refreshing:             in.Refreshing,
@@ -3255,6 +3313,11 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 		LastActionID:           in.LastActionID,
 		LastActionTone:         in.LastActionTone,
 		LastActionMessage:      in.LastActionMessage,
+		LastActionBusyLabel:    in.LastActionBusyLabel,
+		LastActionSuccessLabel: in.LastActionSuccessLabel,
+		LastActionErrorLabel:   in.LastActionErrorLabel,
+		LastActionRetryLabel:   in.LastActionRetryLabel,
+		LastActionIcon:         iconCopy,
 		LastActionButtonActive: in.LastActionButtonActive,
 		LastActionWasHeader:    in.LastActionWasHeader,
 		RetryKind:              in.RetryKind,
@@ -3303,13 +3366,20 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 			out.RetryKind = RetryKindNoteSaved
 			out.SavePausedConfirm = failedPaused
 		}
-		if current.pluginID == "block-sync" && out.Error == "" && out.BusyAction == "" && out.RetryKind == RetryKindNone {
-			if failure := s.system.syncErrors[current.notebookRoot]; failure != "" {
-				out.Error = failure
-				out.RetryKind = RetryKindReload
-				if out.Page.HasHeaderAction("sync_now") {
+		if out.Error == "" && out.BusyAction == "" && out.RetryKind == RetryKindNone {
+			if bgErr, ok := s.selectBackgroundErrorLocked(current.pluginID, current.notebookRoot); ok {
+				cp := bgErr
+				cp.RetryPayload = cloneAnyMap(bgErr.RetryPayload)
+				out.BackgroundError = &cp
+				out.Error = bgErr.Detail
+				if out.Error == "" {
+					out.Error = bgErr.Label
+				}
+				if bgErr.RetryAction != "" {
 					out.RetryKind = RetryKindAction
-					out.FailedActionID = "sync_now"
+					out.FailedActionID = bgErr.RetryAction
+				} else {
+					out.RetryKind = RetryKindReload
 				}
 			}
 		}
@@ -3378,36 +3448,18 @@ func (s *Supervisor) recoverViewsAfterReplaceLocked(pluginID string) []viewKey {
 	return reload
 }
 
-func syncNotebookKey(root string) string {
-	trimmed := strings.TrimSpace(root)
-	if trimmed == "" {
-		return ""
-	}
-	if resolved, err := filepath.EvalSymlinks(trimmed); err == nil && resolved != "" {
-		return filepath.Clean(resolved)
-	}
-	return filepath.Clean(trimmed)
-}
-
-func (s *Supervisor) clearSyncedNotebookErrorsLocked(pluginID string, roots []string) {
+func (s *Supervisor) clearNotebookSaveErrorsLocked(pluginID string, roots []string) {
 	if len(roots) == 0 {
 		return
 	}
-	syncedRoots := make(map[string]bool, len(roots))
+	clearedRoots := make(map[string]bool, len(roots))
 	for _, root := range roots {
-		if key := syncNotebookKey(root); key != "" {
-			syncedRoots[key] = true
-		}
-	}
-	if pluginID == "block-sync" {
-		for root := range s.system.syncErrors {
-			if syncedRoots[syncNotebookKey(root)] {
-				delete(s.system.syncErrors, root)
-			}
+		if key := cleanNotebookKey(root); key != "" {
+			clearedRoots[key] = true
 		}
 	}
 	for key, view := range s.views {
-		if key.pluginID == pluginID && key.surface == SurfaceSettingsPage && view != nil && syncedRoots[syncNotebookKey(key.notebookRoot)] {
+		if key.pluginID == pluginID && key.surface == SurfaceSettingsPage && view != nil && clearedRoots[cleanNotebookKey(key.notebookRoot)] {
 			clear(view.failedSaves)
 			clear(view.failedSaveEvents)
 			clear(view.savePausedConfirm)

@@ -548,6 +548,88 @@ func TestHostExecRun(t *testing.T) {
 	if sleepRes["timed_out"] != true {
 		t.Fatalf("expected timed_out=true, got %v", sleepRes)
 	}
+
+	// Safe GIT_CONFIG_* allowlist passes through; dangerous executable git config keys are blocked.
+	gitEnvRes := mustDispatch(t, rt, "host.exec.run", map[string]any{
+		"program": "env",
+		"env": map[string]string{
+			"GIT_AUTHOR_NAME":     "Alice",
+			"GIT_AUTHOR_EMAIL":    "alice@example.com",
+			"GIT_COMMITTER_NAME":  "Bob",
+			"GIT_COMMITTER_EMAIL": "bob@example.com",
+			"GIT_CONFIG_COUNT":    "6",
+			"GIT_CONFIG_KEY_0":    "http.extraheader",
+			"GIT_CONFIG_VALUE_0":  "Authorization: Basic abc",
+			"GIT_CONFIG_KEY_1":    "HTTP.https://example.com/repo.git.extraHeader",
+			"GIT_CONFIG_VALUE_1":  "Authorization: Bearer xyz",
+			"GIT_CONFIG_KEY_2":    "user.name",
+			"GIT_CONFIG_VALUE_2":  "Alice",
+			"GIT_CONFIG_KEY_3":    "user.email",
+			"GIT_CONFIG_VALUE_3":  "alice@example.com",
+			"GIT_CONFIG_KEY_4":    "core.quotePath",
+			"GIT_CONFIG_VALUE_4":  "false",
+			"GIT_CONFIG_KEY_5":    "advice.detachedHead",
+			"GIT_CONFIG_VALUE_5":  "false",
+		},
+	})
+	gitEnvOut := gitEnvRes["stdout"].(string)
+	for _, want := range []string{
+		"GIT_AUTHOR_NAME=Alice",
+		"GIT_AUTHOR_EMAIL=alice@example.com",
+		"GIT_COMMITTER_NAME=Bob",
+		"GIT_COMMITTER_EMAIL=bob@example.com",
+		"GIT_CONFIG_COUNT=6",
+		"GIT_CONFIG_KEY_0=http.extraheader",
+		"GIT_CONFIG_VALUE_0=Authorization: Basic abc",
+		"GIT_CONFIG_KEY_1=HTTP.https://example.com/repo.git.extraHeader",
+		"GIT_CONFIG_KEY_5=advice.detachedHead",
+	} {
+		if !strings.Contains(gitEnvOut, want) {
+			t.Fatalf("git env missing %q:\n%s", want, gitEnvOut)
+		}
+	}
+
+	for _, dangerousKey := range []string{
+		"core.sshCommand",
+		"core.fsmonitor",
+		"core.pager",
+		"credential.helper",
+		"core.hooksPath",
+		"alias.co",
+		"http.sslVerify",
+	} {
+		mustFailDispatch(t, rt, "host.exec.run", map[string]any{
+			"program": "env",
+			"env": map[string]string{
+				"GIT_CONFIG_COUNT":   "1",
+				"GIT_CONFIG_KEY_0":   dangerousKey,
+				"GIT_CONFIG_VALUE_0": "touch /tmp/pwned",
+			},
+		}, -32001)
+	}
+	mustFailDispatch(t, rt, "host.exec.run", map[string]any{
+		"program": "env",
+		"env": map[string]string{
+			"GIT_CONFIG_KEY_0":   "user.name",
+			"GIT_CONFIG_VALUE_0": "Alice",
+		},
+	}, -32602)
+	mustFailDispatch(t, rt, "host.exec.run", map[string]any{
+		"program": "env",
+		"env": map[string]string{
+			"GIT_CONFIG_COUNT":   "17",
+			"GIT_CONFIG_KEY_0":   "user.name",
+			"GIT_CONFIG_VALUE_0": "Alice",
+		},
+	}, -32602)
+	mustFailDispatch(t, rt, "host.exec.run", map[string]any{
+		"program": "env",
+		"env": map[string]string{
+			"GIT_CONFIG_COUNT":   "1",
+			"GIT_CONFIG_KEY_0":   "http.extraheader",
+			"GIT_CONFIG_VALUE_0": "Authorization: Bearer x\nX-Injected: y",
+		},
+	}, -32602)
 }
 
 func TestEndToEndJSSandboxCallsPhase2ACapabilities(t *testing.T) {
@@ -837,5 +919,177 @@ func TestPhase2BBackdropDecoratorsTitlebarAndRemovedRPCs(t *testing.T) {
 		if _, rerr, handled := sup.dispatchContribHostMethod(rtPaper, removed, json.RawMessage(`{}`)); !handled || rerr == nil || rerr.Code != -32601 {
 			t.Fatalf("expected removed RPC %s to return -32601, got handled=%v err=%v", removed, handled, rerr)
 		}
+	}
+}
+
+func TestPhase2BPart2SchedulerBackgroundErrorsAndButtonLabels(t *testing.T) {
+	// Scheduler requires PermEventsSystem.
+	rtNoSched, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermStorage}, nil, nil)
+	mustFailDispatch(t, rtNoSched, "host.scheduler.register", map[string]any{"id": "job1", "interval_sec": 120}, -32001)
+
+	rt, _, dataDir, _, nbDir := newTestCapabilityRuntime(t, []Permission{PermEventsSystem}, nil, nil)
+	regLow := mustDispatch(t, rt, "host.scheduler.register", map[string]any{
+		"id":                     "periodic-job",
+		"interval_sec":           5,
+		"require_network":        true,
+		"run_on_wake":            true,
+		"run_on_network_restore": true,
+		"run_on_focus":           true,
+	})
+	if regLow["ok"] != true || regLow["id"] != "periodic-job" {
+		t.Fatalf("unexpected register result: %v", regLow)
+	}
+	mustDispatch(t, rt, "host.scheduler.register", map[string]any{
+		"id":           "daily-job",
+		"interval_sec": 999999,
+		"event":        "custom.tick",
+	})
+
+	listRes := mustDispatch(t, rt, "host.scheduler.list", map[string]any{})
+	rawJobs, _ := json.Marshal(listRes["jobs"])
+	var jobs []ScheduledJob
+	if err := json.Unmarshal(rawJobs, &jobs); err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 scheduled jobs, got %d (%+v)", len(jobs), jobs)
+	}
+	if jobs[0].IntervalSec != minSchedulerIntervalSec || jobs[0].Event != defaultSchedulerEvent {
+		t.Fatalf("expected interval clamped to 60 and default event, got %+v", jobs[0])
+	}
+	if jobs[1].IntervalSec != maxSchedulerIntervalSec || jobs[1].Event != "custom.tick" {
+		t.Fatalf("expected interval clamped to 86400 and custom event, got %+v", jobs[1])
+	}
+
+	// Verify scheduler.json persisted in DataDir.
+	if _, err := os.Stat(filepath.Join(dataDir, schedulerFile)); err != nil {
+		t.Fatalf("expected scheduler.json to be persisted: %v", err)
+	}
+
+	// Supervisor TickScheduledJobs & clearPluginScheduler.
+	online := false
+	sup := NewSupervisor(SupervisorConfig{
+		AppDataDir: filepath.Dir(filepath.Dir(dataDir)),
+		GetLocale:  func() string { return "en" },
+		IsOnline:   func() bool { return online },
+	})
+	mSched := Manifest{
+		ID:          "cap-test",
+		Name:        LocalizedText{Zh: "调度测试", En: "Scheduler Test"},
+		Version:     "1.0.0",
+		Entry:       EntrySpec{JS: "main.js"},
+		Permissions: []Permission{PermEventsSystem},
+	}
+	rt.manifest = mSched
+	sup.mu.Lock()
+	sup.installed = []InstalledApp{{Manifest: mSched, Enabled: true, DataDir: dataDir}}
+	sup.runtimes[mSched.ID] = rt
+	sup.mu.Unlock()
+
+	// Offline: require_network job is skipped, daily-job (no require_network) runs once due.
+	future := time.Now().UTC().Add(25 * time.Hour)
+	unlock := sup.lockPluginRPC(mSched.ID)
+	sup.TickScheduledJobs(future)
+	sup.system.mu.Lock()
+	q := sup.system.events[mSched.ID]
+	hasDaily := q != nil && q.pending["job:daily-job:interval"] != nil
+	hasPeriodic := q != nil && q.pending["job:periodic-job:interval"] != nil
+	if q != nil {
+		clear(q.pending)
+	}
+	sup.system.mu.Unlock()
+	if !hasDaily || hasPeriodic {
+		unlock()
+		t.Fatalf("offline tick mismatch: hasDaily=%v hasPeriodic=%v", hasDaily, hasPeriodic)
+	}
+
+	// Online: periodic-job now fires on tick and wake/network/focus triggers.
+	online = true
+	sup.TickScheduledJobs(future.Add(2 * time.Minute))
+	sup.dispatchScheduledJobsForTrigger("system.wake", true)
+	sup.system.mu.Lock()
+	q = sup.system.events[mSched.ID]
+	hasPeriodicTick := q != nil && q.pending["job:periodic-job:interval"] != nil
+	hasPeriodicWake := q != nil && q.pending["job:periodic-job:wake"] != nil
+	if hasPeriodicWake {
+		if q.pending["job:periodic-job:wake"]["trigger"] != "wake" || q.pending["job:periodic-job:wake"]["job_id"] != "periodic-job" {
+			sup.system.mu.Unlock()
+			unlock()
+			t.Fatalf("unexpected wake payload: %+v", q.pending["job:periodic-job:wake"])
+		}
+	}
+	if q != nil {
+		clear(q.pending)
+	}
+	sup.system.mu.Unlock()
+	unlock()
+	if !hasPeriodicTick || !hasPeriodicWake {
+		t.Fatalf("online tick/wake mismatch: tick=%v wake=%v", hasPeriodicTick, hasPeriodicWake)
+	}
+
+	mustDispatch(t, rt, "host.scheduler.unregister", map[string]any{"id": "daily-job"})
+	jobsAfterUnreg, err := loadScheduledJobsDir(dataDir)
+	if err != nil || len(jobsAfterUnreg) != 1 || jobsAfterUnreg[0].ID != "periodic-job" {
+		t.Fatalf("unexpected jobs after unregister: err=%v jobs=%+v", err, jobsAfterUnreg)
+	}
+
+	sup.clearPluginScheduler(mSched.ID)
+	if _, err := os.Stat(filepath.Join(dataDir, schedulerFile)); !os.IsNotExist(err) {
+		t.Fatalf("expected scheduler.json removed by clearPluginScheduler, err=%v", err)
+	}
+
+	// Background errors: set, snapshot, HasPluginError, and clear.
+	if _, rerr, handled := sup.dispatchContribHostMethod(rt, "host.ui.set_background_error", json.RawMessage(`{
+		"key":"`+strings.ReplaceAll(nbDir, `\`, `\\`)+`",
+		"label":"Task failed",
+		"detail":"Remote server returned 503",
+		"retry_action":"retry_task",
+		"retry_label":"Retry Task",
+		"retry_payload":{"attempt":2},
+		"severity":"warning"
+	}`)); !handled || rerr != nil {
+		t.Fatalf("set_background_error failed: handled=%v err=%v", handled, rerr)
+	}
+	if !sup.HasPluginError(mSched.ID) {
+		t.Fatalf("expected HasPluginError=true after set_background_error")
+	}
+	sup.mu.Lock()
+	snap := sup.snapshotViewLocked(viewKey{pluginID: mSched.ID, notebookRoot: nbDir, surface: SurfaceSettingsPage}, &PluginViewState{})
+	sup.mu.Unlock()
+	if snap.BackgroundError == nil || snap.BackgroundError.Label != "Task failed" ||
+		snap.BackgroundError.RetryAction != "retry_task" || snap.BackgroundError.RetryLabel != "Retry Task" ||
+		snap.BackgroundError.Severity != "warning" || snap.Error != "Remote server returned 503" ||
+		snap.RetryKind != RetryKindAction || snap.FailedActionID != "retry_task" {
+		t.Fatalf("unexpected background error snapshot: %+v (bg=%+v)", snap, snap.BackgroundError)
+	}
+	if _, rerr, handled := sup.dispatchContribHostMethod(rt, "host.ui.clear_background_error", json.RawMessage(`{}`)); !handled || rerr != nil {
+		t.Fatalf("clear_background_error failed: handled=%v err=%v", handled, rerr)
+	}
+	if sup.HasPluginError(mSched.ID) {
+		t.Fatalf("expected HasPluginError=false after clear_background_error")
+	}
+
+	// Button label & icon fields on UIPage decode cleanly.
+	pageJSON := []byte(`{
+		"title": "Test",
+		"header_actions": [{
+			"id": "run",
+			"label": "Run",
+			"variant": "primary",
+			"busy_label": "Running...",
+			"success_label": "Completed",
+			"error_label": "Run failed",
+			"retry_label": "Run again",
+			"icon": "refresh"
+		}],
+		"cards": [{"id": "c1", "title": "General", "items": [{"kind": "kv", "rows": [{"label": "State", "value": "OK"}]}]}]
+	}`)
+	page, err := DecodePageStrict(pageJSON)
+	if err != nil {
+		t.Fatalf("DecodePageStrict failed: %v", err)
+	}
+	btn := page.HeaderActions[0]
+	if btn.BusyLabel != "Running..." || btn.SuccessLabel != "Completed" || btn.ErrorLabel != "Run failed" || btn.RetryLabel != "Run again" || btn.Icon == nil || btn.Icon.Name != "refresh" {
+		t.Fatalf("unexpected button fields: %+v", btn)
 	}
 }

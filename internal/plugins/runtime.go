@@ -106,6 +106,11 @@ type ActionResult struct {
 	Values          map[string]any `json:"values,omitempty"`
 	Page            *UIPage        `json:"page,omitempty"`
 	Status          string         `json:"status,omitempty"`
+	BusyLabel       string         `json:"busy_label,omitempty"`
+	SuccessLabel    string         `json:"success_label,omitempty"`
+	ErrorLabel      string         `json:"error_label,omitempty"`
+	RetryLabel      string         `json:"retry_label,omitempty"`
+	Icon            *UIIcon        `json:"icon,omitempty"`
 	OpenPath        string         `json:"open_path,omitempty"`
 	RevealPath      string         `json:"reveal_path,omitempty"`
 	SyncedNotebooks []string       `json:"synced_notebooks,omitempty"`
@@ -1295,6 +1300,11 @@ func (rt *Runtime) ActionWithDialogToken(ctx context.Context, surface Surface, a
 		Values          map[string]any  `json:"values,omitempty"`
 		Page            json.RawMessage `json:"page,omitempty"`
 		Status          string          `json:"status,omitempty"`
+		BusyLabel       string          `json:"busy_label,omitempty"`
+		SuccessLabel    string          `json:"success_label,omitempty"`
+		ErrorLabel      string          `json:"error_label,omitempty"`
+		RetryLabel      string          `json:"retry_label,omitempty"`
+		Icon            *UIIcon         `json:"icon,omitempty"`
 		OpenPath        string          `json:"open_path,omitempty"`
 		RevealPath      string          `json:"reveal_path,omitempty"`
 		SyncedNotebooks []string        `json:"synced_notebooks,omitempty"`
@@ -1310,11 +1320,21 @@ func (rt *Runtime) ActionWithDialogToken(ctx context.Context, surface Surface, a
 	if err := rt.call(ctx, "plugin.action", params, &rawRes); err != nil {
 		return nil, err
 	}
+	if rawRes.Icon != nil {
+		if err := validateUIIcon("plugin.action.icon", *rawRes.Icon); err != nil {
+			return nil, fmt.Errorf("plugin.action(%s) invalid icon: %w", actionID, err)
+		}
+	}
 	out := &ActionResult{
 		OK:              rawRes.OK,
 		Tone:            strings.TrimSpace(rawRes.Tone),
 		Values:          rawRes.Values,
 		Status:          rawRes.Status,
+		BusyLabel:       strings.TrimSpace(rawRes.BusyLabel),
+		SuccessLabel:    strings.TrimSpace(rawRes.SuccessLabel),
+		ErrorLabel:      strings.TrimSpace(rawRes.ErrorLabel),
+		RetryLabel:      strings.TrimSpace(rawRes.RetryLabel),
+		Icon:            rawRes.Icon,
 		OpenPath:        strings.TrimSpace(rawRes.OpenPath),
 		RevealPath:      strings.TrimSpace(rawRes.RevealPath),
 		SyncedNotebooks: rawRes.SyncedNotebooks,
@@ -2191,6 +2211,9 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 
 	case "host.exec.run":
 		return rt.dispatchExecHostMethod(params)
+
+	case "host.scheduler.register", "host.scheduler.unregister", "host.scheduler.list":
+		return rt.dispatchSchedulerHostMethod(method, params)
 
 	default:
 		if rt.cfg.ContribHost != nil {

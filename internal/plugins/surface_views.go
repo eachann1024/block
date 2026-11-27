@@ -16,7 +16,7 @@ func (s *Supervisor) ReloadSurfaceViewAsync(pluginID string, surface Surface) {
 
 // TriggerSurfaceActionAsync runs plugin.action for a button on one surface.
 func (s *Supervisor) TriggerSurfaceActionAsync(pluginID string, surface Surface, actionID string) {
-	s.triggerSurfaceActionAsync(pluginID, surface, actionID)
+	s.triggerSurfaceActionAsync(pluginID, surface, actionID, nil)
 }
 
 // UpdateSurfaceControlValue records a control edit on one surface.

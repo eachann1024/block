@@ -59,11 +59,6 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 	go watchPluginNetworkInterfaces(w.pluginUI.closing, sup)
 	go tickPluginSyncInterval(w.pluginUI.closing, sup)
 	onFocus := func() { sup.EmitSystemEvent("app.focus", false) }
-	if win := w.Window(); win != nil {
-		win.OnFocus(func() {
-			sup.RetrySyncNotifications()
-		})
-	}
 	if runtime.GOOS == "darwin" {
 		mygo.App.OnDidBecomeActive(onFocus)
 		return
@@ -115,7 +110,7 @@ func tickPluginSyncInterval(closing <-chan struct{}, sup *plugins.Supervisor) {
 		case <-closing:
 			return
 		case <-ticker.C:
-			sup.EmitSyncInterval(mygo.Network.Status().Online)
+			sup.TickScheduledJobs(time.Now())
 		}
 	}
 }

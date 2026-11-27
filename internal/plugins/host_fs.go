@@ -333,6 +333,9 @@ func (rt *Runtime) resolveFSScope(rawPath string, write bool) (*resolvedFSTarget
 		if write && sc.isDataDir && rel == grantedPathsFile {
 			return nil, rpcErr(-32001, "cannot modify granted-paths.json directly")
 		}
+		if write && sc.isDataDir && rel == schedulerFile {
+			return nil, rpcErr(-32001, "cannot modify scheduler.json directly")
+		}
 		return &resolvedFSTarget{
 			canonPath: canon,
 			rootDir:   rootDir,

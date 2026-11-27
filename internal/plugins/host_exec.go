@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -38,6 +39,21 @@ var allowedExecEnvOverrides = map[string]bool{
 	"GIT_COMMITTER_NAME":  true,
 	"GIT_COMMITTER_EMAIL": true,
 	"GIT_COMMITTER_DATE":  true,
+	"GIT_TERMINAL_PROMPT": true,
+}
+
+const maxExecGitConfigCount = 16
+
+func isAllowedGitConfigKey(raw string) bool {
+	if raw == "" || raw != strings.TrimSpace(raw) || strings.ContainsAny(raw, "\r\n\x00") {
+		return false
+	}
+	lower := strings.ToLower(raw)
+	switch lower {
+	case "http.extraheader", "user.name", "user.email", "core.quotepath", "advice.detachedhead":
+		return true
+	}
+	return strings.HasPrefix(lower, "http.") && strings.HasSuffix(lower, ".extraheader") && len(lower) > len("http..extraheader")
 }
 
 type cappedOutputBuffer struct {
@@ -138,6 +154,11 @@ func (rt *Runtime) dispatchExecHostMethod(params json.RawMessage) (any, *rpcErro
 		maxOut = maxExecOutputBytes
 	}
 
+	sanitizedEnv, envErr := buildSanitizedExecEnv(p.Env)
+	if envErr != nil {
+		return nil, envErr
+	}
+
 	resolvedBin, err := exec.LookPath(prog)
 	if err != nil {
 		return nil, rpcErr(-32005, err.Error())
@@ -148,7 +169,7 @@ func (rt *Runtime) dispatchExecHostMethod(params json.RawMessage) (any, *rpcErro
 
 	cmd := exec.CommandContext(ctx, resolvedBin, p.Args...)
 	cmd.Dir = cwd
-	cmd.Env = buildSanitizedExecEnv(p.Env)
+	cmd.Env = sanitizedEnv
 	cmd.WaitDelay = 200 * time.Millisecond
 	configurePluginProcess(cmd)
 
@@ -187,13 +208,76 @@ func (rt *Runtime) dispatchExecHostMethod(params json.RawMessage) (any, *rpcErro
 	}, nil
 }
 
-func buildSanitizedExecEnv(overrides map[string]string) []string {
+func buildSanitizedExecEnv(overrides map[string]string) ([]string, *rpcError) {
 	envMap := make(map[string]string, 8)
 	for _, k := range []string{"PATH", "HOME", "LANG", "LC_ALL"} {
 		if v := os.Getenv(k); v != "" {
 			envMap[k] = v
 		}
 	}
+
+	hasGitConfig := false
+	for k := range overrides {
+		if k == "GIT_CONFIG_COUNT" || strings.HasPrefix(k, "GIT_CONFIG_KEY_") || strings.HasPrefix(k, "GIT_CONFIG_VALUE_") {
+			hasGitConfig = true
+			break
+		}
+	}
+	if hasGitConfig {
+		countRaw, ok := overrides["GIT_CONFIG_COUNT"]
+		if !ok {
+			return nil, rpcErr(-32602, "GIT_CONFIG_COUNT is required when passing GIT_CONFIG_* variables")
+		}
+		if countRaw == "" || strings.TrimSpace(countRaw) != countRaw {
+			return nil, rpcErr(-32602, "GIT_CONFIG_COUNT must be an integer between 0 and 16")
+		}
+		for i := 0; i < len(countRaw); i++ {
+			if countRaw[i] < '0' || countRaw[i] > '9' {
+				return nil, rpcErr(-32602, "GIT_CONFIG_COUNT must be an integer between 0 and 16")
+			}
+		}
+		count, err := strconv.Atoi(countRaw)
+		if err != nil || count < 0 || count > maxExecGitConfigCount {
+			return nil, rpcErr(-32602, "GIT_CONFIG_COUNT must be an integer between 0 and 16")
+		}
+		for k := range overrides {
+			var suffix string
+			switch {
+			case strings.HasPrefix(k, "GIT_CONFIG_KEY_"):
+				suffix = strings.TrimPrefix(k, "GIT_CONFIG_KEY_")
+			case strings.HasPrefix(k, "GIT_CONFIG_VALUE_"):
+				suffix = strings.TrimPrefix(k, "GIT_CONFIG_VALUE_")
+			default:
+				continue
+			}
+			idx, err := strconv.Atoi(suffix)
+			if err != nil || idx < 0 || idx >= count || strconv.Itoa(idx) != suffix {
+				return nil, rpcErr(-32602, "invalid or out-of-range git config variable: "+k)
+			}
+		}
+		envMap["GIT_CONFIG_COUNT"] = strconv.Itoa(count)
+		for i := 0; i < count; i++ {
+			kName := "GIT_CONFIG_KEY_" + strconv.Itoa(i)
+			vName := "GIT_CONFIG_VALUE_" + strconv.Itoa(i)
+			cfgKey, hasKey := overrides[kName]
+			cfgVal, hasVal := overrides[vName]
+			if !hasKey || !hasVal {
+				return nil, rpcErr(-32602, "missing matching git config key/value for index "+strconv.Itoa(i))
+			}
+			if strings.ContainsRune(cfgKey, 0) || strings.ContainsRune(cfgVal, 0) {
+				return nil, rpcErr(-32602, "git config entries must not contain NUL bytes")
+			}
+			if !isAllowedGitConfigKey(cfgKey) {
+				return nil, rpcErr(-32001, "forbidden git config key: "+cfgKey)
+			}
+			if strings.HasSuffix(strings.ToLower(cfgKey), ".extraheader") && strings.ContainsAny(cfgVal, "\r\n") {
+				return nil, rpcErr(-32602, "http extraheader value must not contain newlines")
+			}
+			envMap[kName] = cfgKey
+			envMap[vName] = cfgVal
+		}
+	}
+
 	for k, v := range overrides {
 		if !allowedExecEnvOverrides[k] {
 			continue
@@ -209,5 +293,5 @@ func buildSanitizedExecEnv(overrides map[string]string) []string {
 	for k, v := range envMap {
 		out = append(out, k+"="+v)
 	}
-	return out
+	return out, nil
 }

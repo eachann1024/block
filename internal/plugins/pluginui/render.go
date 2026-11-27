@@ -33,10 +33,16 @@ type InputBindings struct {
 // ActionFeedback describes the live execution and completion state of plugin actions.
 type ActionFeedback struct {
 	BusyAction             string
+	ActionProgress         plugins.ActionProgress
 	ChannelProgress        map[string]plugins.ActionProgress
 	LastActionID           string
 	LastActionTone         string
 	LastActionMessage      string
+	LastActionBusyLabel    string
+	LastActionSuccessLabel string
+	LastActionErrorLabel   string
+	LastActionRetryLabel   string
+	LastActionIcon         *plugins.UIIcon
 	LastActionButtonActive bool
 	FailedActionID         string
 	Error                  string
@@ -47,10 +53,16 @@ type ActionFeedback struct {
 func actionFeedbackFromView(vs plugins.PluginViewState) ActionFeedback {
 	return ActionFeedback{
 		BusyAction:             vs.BusyAction,
+		ActionProgress:         vs.ActionProgress,
 		ChannelProgress:        vs.ChannelProgress,
 		LastActionID:           vs.LastActionID,
 		LastActionTone:         vs.LastActionTone,
 		LastActionMessage:      vs.LastActionMessage,
+		LastActionBusyLabel:    vs.LastActionBusyLabel,
+		LastActionSuccessLabel: vs.LastActionSuccessLabel,
+		LastActionErrorLabel:   vs.LastActionErrorLabel,
+		LastActionRetryLabel:   vs.LastActionRetryLabel,
+		LastActionIcon:         vs.LastActionIcon,
 		LastActionButtonActive: vs.LastActionButtonActive,
 		FailedActionID:         vs.FailedActionID,
 		Error:                  vs.Error,
@@ -103,7 +115,14 @@ func RenderPage(
 				ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
 					for _, btn := range page.HeaderActions {
 						b := btn
-						el := bui.ActionButton(c, "plugin-act-"+pluginID+"-"+b.ID, b.Label, resolveActionButtonIcon(b.ID), mapButtonStyle(b.Variant), false)
+						leading, leadingCustom := resolveButtonIcon(c, b.Icon)
+						el := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+							ID:            "plugin-act-" + pluginID + "-" + b.ID,
+							Label:         b.Label,
+							Leading:       leading,
+							LeadingCustom: leadingCustom,
+							Style:         mapButtonStyle(b.Variant),
+						})
 						if el.Clicked() && onAction != nil {
 							onAction(b.ID, cloneValues(values))
 						}
@@ -1867,121 +1886,69 @@ func mapButtonStyle(v plugins.ButtonVariant) bui.ActionButtonStyle {
 	}
 }
 
-func isSyncActionID(id string) bool {
-	return id == "sync_now" || strings.HasPrefix(id, "sync_") || id == "confirm_sync" || id == "confirm_sync_card"
-}
-
-func resolveActionButtonLabel(actionID, baseLabel string, isBusy, isSuccess bool) string {
-	id := strings.ToLower(strings.TrimSpace(actionID))
+func resolveActionButtonLabel(btn plugins.UIButton, fb ActionFeedback, isBusy, isSuccess bool) string {
 	if isBusy {
-		if isSyncActionID(id) || id == "__retry_note_saved__" {
-			return theme.Tr("同步中…", "Syncing…")
+		if lbl := strings.TrimSpace(btn.BusyLabel); lbl != "" {
+			return lbl
 		}
-		switch id {
-		case "test_conn":
-			return theme.Tr("测试中…", "Testing…")
-		case "save_config":
-			return theme.Tr("保存中…", "Saving…")
-		case "cancel_confirm":
-			return theme.Tr("取消中…", "Cancelling…")
-		case "upload_now":
-			return theme.Tr("上传中…", "Uploading…")
-		case "rescan":
-			return theme.Tr("扫描中…", "Scanning…")
-		case "run_import", "run_import_card":
-			return theme.Tr("迁入中…", "Importing…")
-		case "refresh":
-			return theme.Tr("刷新中…", "Refreshing…")
-		default:
-			if theme.IsEn() {
-				return "Working…"
+		if fb.LastActionID == btn.ID {
+			if lbl := strings.TrimSpace(fb.LastActionBusyLabel); lbl != "" {
+				return lbl
 			}
-			trimmed := strings.TrimSpace(baseLabel)
-			for _, pfx := range []string{"立即", "开始", "重新"} {
-				trimmed = strings.TrimPrefix(trimmed, pfx)
-			}
-			if idx := strings.Index(trimmed, " ("); idx > 0 {
-				trimmed = trimmed[:idx]
-			}
-			if trimmed == "" || strings.HasSuffix(trimmed, "…") {
-				return baseLabel
-			}
-			return trimmed + "中…"
 		}
+		return theme.Tr("处理中…", "Working…")
 	}
 	if isSuccess {
-		if isSyncActionID(id) {
-			return theme.Tr("已同步", "Synced")
+		if fb.LastActionID == btn.ID {
+			if lbl := strings.TrimSpace(fb.LastActionSuccessLabel); lbl != "" {
+				return lbl
+			}
 		}
-		switch id {
-		case "test_conn":
-			return theme.Tr("连接可用", "Connected")
-		case "save_config":
-			return theme.Tr("已保存", "Saved")
-		case "upload_now":
-			return theme.Tr("已上传", "Uploaded")
-		case "rescan":
-			return theme.Tr("已扫描", "Scanned")
-		case "run_import", "run_import_card":
-			return theme.Tr("已迁入", "Imported")
-		case "refresh":
-			return theme.Tr("已刷新", "Refreshed")
-		default:
-			return theme.Tr("已完成", "Done")
+		if lbl := strings.TrimSpace(btn.SuccessLabel); lbl != "" {
+			return lbl
 		}
+		return theme.Tr("已完成", "Done")
 	}
-	return baseLabel
+	return btn.Label
 }
 
-func resolveBusyActionHint(actionID string) string {
-	id := strings.ToLower(strings.TrimSpace(actionID))
-	if isSyncActionID(id) {
-		return theme.Tr("正在执行同步…", "Syncing notes…")
+func resolveBusyActionHint(btn *plugins.UIButton, ap plugins.ActionProgress) string {
+	if lbl := strings.TrimSpace(ap.Label); lbl != "" {
+		return lbl
 	}
-	switch id {
-	case "test_conn":
-		return theme.Tr("正在验证远端连接…", "Verifying remote connection…")
-	case "save_config":
-		return theme.Tr("正在保存配置…", "Saving configuration…")
-	case "upload_now":
-		return theme.Tr("正在上传图片…", "Uploading images…")
-	case "rescan":
-		return theme.Tr("正在扫描笔记图片…", "Scanning note images…")
-	case "run_import", "run_import_card":
-		return theme.Tr("正在迁入笔记与附件…", "Importing notes and assets…")
-	case "refresh":
-		return theme.Tr("正在刷新统计…", "Refreshing metrics…")
-	default:
-		return theme.Tr("正在处理…", "Processing…")
+	if btn != nil {
+		if lbl := strings.TrimSpace(btn.BusyLabel); lbl != "" {
+			return lbl
+		}
 	}
+	return theme.Tr("正在处理…", "Processing…")
 }
 
-func resolveActionButtonIcon(actionID string) *icons.Icon {
-	var ic icons.Icon
-	id := strings.ToLower(strings.TrimSpace(actionID))
-	if isSyncActionID(id) {
-		ic = icons.Refresh
-		return &ic
-	}
-	switch id {
-	case "test_conn", "test_connection", "ping":
-		ic = icons.Plug
-	case "save_config", "save", "apply":
-		ic = icons.Check
-	case "rescan", "refresh", "reload":
-		ic = icons.Refresh
-	case "upload_now", "upload":
-		ic = icons.Upload
-	case "run_import", "run_import_card", "import", "download", "export":
-		ic = icons.Download
-	case "cancel_confirm", "cancel":
-		ic = icons.Close
-	case "clear", "reset", "delete", "remove":
-		ic = icons.Trash
-	default:
+func resolveBuiltInButtonIcon(icon *plugins.UIIcon) *icons.Icon {
+	if icon == nil {
 		return nil
 	}
-	return &ic
+	if name := strings.TrimSpace(icon.Name); name != "" {
+		ic := icons.Icon(name)
+		return &ic
+	}
+	return nil
+}
+
+func resolveButtonIcon(c *ui.Context, icon *plugins.UIIcon) (*icons.Icon, func(size float32, colors theme.IconColors, active bool)) {
+	if icon == nil {
+		return nil, nil
+	}
+	if ic := resolveBuiltInButtonIcon(icon); ic != nil {
+		return ic, nil
+	}
+	if icon.Chip != "" || icon.Dot || len(icon.FillPaths) > 0 || len(icon.StrokePaths) > 0 || len(icon.AccentPaths) > 0 {
+		ic := *icon
+		return nil, func(size float32, colors theme.IconColors, active bool) {
+			DrawUIIconAnimated(c, ic, size, colors, active)
+		}
+	}
+	return nil, nil
 }
 
 func renderPluginActionButton(
@@ -1997,19 +1964,25 @@ func renderPluginActionButton(
 
 	style := mapButtonStyle(btn.Variant)
 	var leading *icons.Icon
+	var leadingCustom func(size float32, colors theme.IconColors, active bool)
 	if isSuccess {
 		style = bui.ButtonSuccess
-		chk := icons.Check
-		leading = &chk
+		if fb.LastActionIcon != nil {
+			leading, leadingCustom = resolveButtonIcon(c, fb.LastActionIcon)
+		} else {
+			chk := icons.Check
+			leading = &chk
+		}
 	} else {
-		leading = resolveActionButtonIcon(btn.ID)
+		leading, leadingCustom = resolveButtonIcon(c, btn.Icon)
 	}
-	label := resolveActionButtonLabel(btn.ID, btn.Label, isBusy, isSuccess)
+	label := resolveActionButtonLabel(btn, fb, isBusy, isSuccess)
 	opts := bui.ActionButtonOptions{
 		ID:                 idPrefix + pluginID + "-" + btn.ID,
 		Label:              label,
 		AccessibilityLabel: label,
 		Leading:            leading,
+		LeadingCustom:      leadingCustom,
 		Style:              style,
 		Disabled:           disabled,
 		Loading:            isBusy,
@@ -2033,13 +2006,17 @@ func renderActionsItem(
 	pal := theme.Ocean()
 
 	activeBusyID := ""
+	var activeBusyBtn *plugins.UIButton
 	matchedResult := false
 	resTone := strings.ToLower(strings.TrimSpace(fb.LastActionTone))
 	resMsg := strings.TrimSpace(fb.LastActionMessage)
 
-	for _, btn := range item.Buttons {
+	for i := range item.Buttons {
+		btn := item.Buttons[i]
 		if fb.BusyAction != "" && fb.BusyAction == btn.ID {
 			activeBusyID = btn.ID
+			cp := btn
+			activeBusyBtn = &cp
 		}
 		if fb.BusyAction == "" {
 			if fb.LastActionID != "" && fb.LastActionID == btn.ID {
@@ -2057,7 +2034,7 @@ func renderActionsItem(
 
 	renderStatusNode := func(stacked bool) {
 		if activeBusyID != "" {
-			hint := resolveBusyActionHint(activeBusyID)
+			hint := resolveBusyActionHint(activeBusyBtn, fb.ActionProgress)
 			row := ui.Row(c.Key("plugin-act-busy-hint-" + pluginID + "-" + activeBusyID)).
 				Gap(theme.Space6).AlignItems(ui.Center).
 				Transition(bui.CascadeRowTransition(0))

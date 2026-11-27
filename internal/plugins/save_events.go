@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"strings"
 	"time"
@@ -144,6 +143,9 @@ func (s *Supervisor) HasPluginError(id string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.uninstallErrors[id] != "" {
+		return true
+	}
+	if len(s.bgErrors[id]) > 0 {
 		return true
 	}
 	for key, v := range s.views {
@@ -295,7 +297,7 @@ func (s *Supervisor) queueFolderDeleted(pluginID, root, cleanDir, relFolder stri
 func (s *Supervisor) dispatchNoteEvent(key viewKey, queueKey, relSlash string, request *noteSaveRequest) {
 	defer s.lockPluginRPC(key.pluginID)()
 	inst, installed := s.GetInstalled(key.pluginID)
-	blockSync := installed && key.pluginID == "block-sync"
+	longRunning := installed && (inst.Manifest.HasPermission(PermNetwork) || inst.Manifest.HasPermission(PermSystemFS))
 	s.mu.Lock()
 	original := s.views[key]
 	if original == nil || original.queuedSaves[queueKey] != request {
@@ -321,7 +323,7 @@ func (s *Supervisor) dispatchNoteEvent(key viewKey, queueKey, relSlash string, r
 	folderName := request.folder
 	request.again = false
 	timeout := 45 * time.Second
-	if blockSync {
+	if longRunning {
 		timeout = 135 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -330,23 +332,21 @@ func (s *Supervisor) dispatchNoteEvent(key viewKey, queueKey, relSlash string, r
 	s.mu.Unlock()
 	defer cancel()
 	startCtx := ctx
-	if blockSync {
+	if longRunning {
 		var finishStart context.CancelFunc
 		startCtx, finishStart = context.WithTimeout(ctx, 15*time.Second)
 		defer finishStart()
 	}
 	rt, err := s.ensureRuntime(startCtx, key.pluginID, key.notebookRoot)
-	timedOut := errors.Is(startCtx.Err(), context.DeadlineExceeded)
 	var eventOutcome string
 	if err == nil {
 		eventCtx := ctx
-		if blockSync {
+		if longRunning {
 			var finishEvent context.CancelFunc
 			eventCtx, finishEvent = context.WithTimeout(ctx, 120*time.Second)
 			defer finishEvent()
 		}
 		eventOutcome, err = rt.NotifyNoteEventResult(eventCtx, eventName, key.notebookRoot, relSlash, folderName)
-		timedOut = errors.Is(eventCtx.Err(), context.DeadlineExceeded)
 	}
 	s.mu.Lock()
 	v := s.views[key]
@@ -418,9 +418,6 @@ func (s *Supervisor) dispatchNoteEvent(key viewKey, queueKey, relSlash string, r
 		delete(v.failedSaveEvents, queueKey)
 		delete(v.savePausedConfirm, queueKey)
 	}
-	if blockSync && eventOutcome == "synced" {
-		delete(s.system.syncErrors, key.notebookRoot)
-	}
 	s.viewEpoch.Add(1)
 	refreshPage := v.Page != nil && v.BusyAction == "" && !supersededByDelete
 	editSeq := v.editSeq
@@ -430,9 +427,6 @@ func (s *Supervisor) dispatchNoteEvent(key viewKey, queueKey, relSlash string, r
 	}
 	s.mu.Unlock()
 	s.notifyChanged()
-	if blockSync && err != nil && !supersededByDelete && !syncFailureAlreadyReported(err) && !errors.Is(ctx.Err(), context.Canceled) {
-		s.reportSystemSyncFailure(inst, rt, key.notebookRoot, timedOut, syncStateNotSaved(err))
-	}
 	if err == nil && refreshPage {
 		if page, returnedVals, err := rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, draftVals); err == nil {
 			s.mu.Lock()

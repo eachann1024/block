@@ -2892,6 +2892,120 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		})
 		return map[string]any{"ok": true, "shown": res.Shown, "queued": res.Queued}, nil, true
 
+	case "host.ui.set_background_error":
+		var p struct {
+			Key          string         `json:"key"`
+			Label        string         `json:"label"`
+			Detail       string         `json:"detail"`
+			RetryAction  string         `json:"retry_action"`
+			RetryLabel   string         `json:"retry_label"`
+			RetryPayload map[string]any `json:"retry_payload"`
+			Severity     string         `json:"severity"`
+		}
+		if e := decode(&p); e != nil {
+			return nil, e, true
+		}
+		label := systemText(p.Label, 120)
+		if label == "" {
+			return nil, rpcErr(-32602, "label is required"), true
+		}
+		if ContainsEmoji(label) {
+			return nil, rpcErr(-32602, "label must not contain emoji"), true
+		}
+		key := strings.TrimSpace(p.Key)
+		if key == "" {
+			key = "default"
+		}
+		if len(key) > 1024 || strings.ContainsRune(key, 0) {
+			return nil, rpcErr(-32602, "invalid background error key"), true
+		}
+		retryAction := strings.TrimSpace(p.RetryAction)
+		if len(retryAction) > 128 || strings.ContainsAny(retryAction, "\r\n\x00") {
+			return nil, rpcErr(-32602, "invalid retry_action"), true
+		}
+		retryLabel := systemText(p.RetryLabel, 64)
+		if ContainsEmoji(retryLabel) {
+			return nil, rpcErr(-32602, "retry_label must not contain emoji"), true
+		}
+		if len(p.RetryPayload) > 64 {
+			return nil, rpcErr(-32602, "retry_payload has too many entries"), true
+		}
+		severity := strings.ToLower(strings.TrimSpace(p.Severity))
+		switch severity {
+		case "", "error", "danger":
+			severity = "danger"
+		case "warning", "warn":
+			severity = "warning"
+		default:
+			return nil, rpcErr(-32602, "severity must be error, danger, or warning"), true
+		}
+		detail := truncateRunes(strings.TrimSpace(p.Detail), 2000)
+
+		s.mu.Lock()
+		if !s.isRuntimeActiveLocked(m.ID, rt) {
+			s.mu.Unlock()
+			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
+		}
+		if s.bgErrors == nil {
+			s.bgErrors = make(map[string]map[string]BackgroundError)
+		}
+		perPlugin := s.bgErrors[m.ID]
+		if perPlugin == nil {
+			perPlugin = make(map[string]BackgroundError)
+			s.bgErrors[m.ID] = perPlugin
+		}
+		if _, exists := perPlugin[key]; !exists && len(perPlugin) >= 32 {
+			s.mu.Unlock()
+			return nil, rpcErr(-32602, "too many background errors registered"), true
+		}
+		perPlugin[key] = BackgroundError{
+			Key:          key,
+			Label:        label,
+			Detail:       detail,
+			RetryAction:  retryAction,
+			RetryLabel:   retryLabel,
+			RetryPayload: cloneAnyMap(p.RetryPayload),
+			Severity:     severity,
+			UpdatedAt:    time.Now().UTC(),
+		}
+		s.viewEpoch.Add(1)
+		s.mu.Unlock()
+		s.notifyChanged()
+		return map[string]any{"ok": true, "key": key}, nil, true
+
+	case "host.ui.clear_background_error":
+		var p struct {
+			Key string `json:"key"`
+		}
+		if len(params) > 0 {
+			if e := decode(&p); e != nil {
+				return nil, e, true
+			}
+		}
+		key := strings.TrimSpace(p.Key)
+		if len(key) > 1024 || strings.ContainsRune(key, 0) {
+			return nil, rpcErr(-32602, "invalid background error key"), true
+		}
+		s.mu.Lock()
+		if !s.isRuntimeActiveLocked(m.ID, rt) {
+			s.mu.Unlock()
+			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
+		}
+		if perPlugin := s.bgErrors[m.ID]; perPlugin != nil {
+			if key == "" {
+				delete(s.bgErrors, m.ID)
+			} else {
+				delete(perPlugin, key)
+				if len(perPlugin) == 0 {
+					delete(s.bgErrors, m.ID)
+				}
+			}
+		}
+		s.viewEpoch.Add(1)
+		s.mu.Unlock()
+		s.notifyChanged()
+		return map[string]any{"ok": true}, nil, true
+
 	case "host.ui.open_settings":
 		if !m.HasSettingsPage() {
 			return nil, rpcErr(-32602, "plugin declares no settings_page"), true

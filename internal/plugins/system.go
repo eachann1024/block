@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -33,8 +32,6 @@ const (
 	PermSystemBadge    Permission = "system:badge"
 	PermEventsSystem   Permission = "events:system"
 )
-
-const blockSyncCredentialEvent = "plugin.credentials_migrate"
 
 var systemPermissions = map[Permission][4]string{
 	PermSystemNotify:   {"系统通知", "System Notifications", "发送操作系统原生系统通知。", "Send native operating system notifications."},
@@ -97,15 +94,8 @@ type systemState struct {
 	badges       map[string]systemBadge
 	events       map[string]*systemEventQueue
 	activeEvents map[string]*Runtime
-	syncErrors   map[string]string
-	failureQueue []*systemFailureNotice
-	failureDrain bool
-	failureRetry bool
-}
-
-type systemFailureNotice struct {
-	title, body, root string
-	allowed           func() bool
+	onlineKnown  bool
+	online       bool
 }
 
 // systemNoticeBurst caps native notifications per plugin inside
@@ -618,8 +608,11 @@ func (s *Supervisor) EmitSystemEvent(name string, online bool) {
 	if name != "system.wake" && name != "network.changed" && name != "app.focus" {
 		return
 	}
-	if name == "app.focus" {
-		s.retrySystemFailureNotices(nil)
+	if name == "network.changed" || name == "system.wake" {
+		s.system.mu.Lock()
+		s.system.onlineKnown = true
+		s.system.online = online
+		s.system.mu.Unlock()
 	}
 	for _, installed := range s.Installed() {
 		manifest := installed.Manifest
@@ -632,30 +625,7 @@ func (s *Supervisor) EmitSystemEvent(name string, online bool) {
 		}
 		s.queueSystemEvent(manifest.ID, name, params)
 	}
-}
-
-const blockSyncNotificationEvent = "plugin.notifications_retry"
-const blockSyncIntervalEvent = "plugin.sync_interval"
-
-func (s *Supervisor) RetrySyncNotifications() {
-	s.retrySystemFailureNotices(nil)
-	s.queueSystemEvent("block-sync", blockSyncNotificationEvent, map[string]any{"event": blockSyncNotificationEvent})
-}
-
-// EmitSyncInterval wakes block-sync so it can run its scheduled sync when due.
-func (s *Supervisor) EmitSyncInterval(online bool) {
-	installed, ok := s.GetInstalled("block-sync")
-	if !ok || !installed.Enabled || !installed.Manifest.HasPermission(PermEventsSystem) {
-		return
-	}
-	if state := readSyncState(installed.DataDir); state["config"] == nil && state["notebook_configs"] == nil {
-		return
-	}
-	s.queueSystemEvent("block-sync", blockSyncIntervalEvent, map[string]any{
-		"event":     blockSyncIntervalEvent,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"online":    online,
-	})
+	s.dispatchScheduledJobsForTrigger(name, online)
 }
 
 func (s *Supervisor) queueSystemEvent(pluginID, name string, params map[string]any) {
@@ -685,10 +655,21 @@ func (s *Supervisor) dispatchSystemEvents(pluginID string, queue *systemEventQue
 			return
 		}
 		var params map[string]any
-		for _, name := range []string{blockSyncNotificationEvent, "system.wake", "network.changed", blockSyncIntervalEvent, "app.focus", blockSyncCredentialEvent} {
+		for _, name := range []string{"system.wake", "network.changed", "app.focus"} {
 			if params = queue.pending[name]; params != nil {
 				delete(queue.pending, name)
 				break
+			}
+		}
+		if params == nil {
+			keys := make([]string, 0, len(queue.pending))
+			for k := range queue.pending {
+				keys = append(keys, k)
+			}
+			slices.Sort(keys)
+			if len(keys) > 0 {
+				params = queue.pending[keys[0]]
+				delete(queue.pending, keys[0])
 			}
 		}
 		if params == nil {
@@ -709,17 +690,10 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 	if !ok || !installed.Enabled || !installed.Manifest.HasPermission(PermEventsSystem) {
 		return
 	}
-	syncEvent := pluginID == "block-sync" && (params["event"] == "system.wake" || params["event"] == "network.changed" || params["event"] == blockSyncIntervalEvent)
-	if syncEvent && params["event"] == "network.changed" && params["online"] != true {
-		return
-	}
 	startCtx, finishStart := context.WithTimeout(context.Background(), 15*time.Second)
 	rt, err := s.ensureRuntime(startCtx, pluginID, root)
 	finishStart()
 	if err != nil {
-		if syncEvent && params["event"] != blockSyncIntervalEvent {
-			go s.reportSystemSyncStartFailure(installed, root, params["event"] == "network.changed")
-		}
 		return
 	}
 	if !rt.manifest.HasPermission(PermEventsSystem) {
@@ -744,41 +718,16 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 		params["notebook_root"] = root
 	}
 	var res struct {
-		Outcome          string   `json:"outcome"`
-		SyncedNotebooks  []string `json:"synced_notebooks"`
-		NotebookOutcomes map[string]struct {
-			Outcome  string `json:"outcome"`
-			Notified bool   `json:"notified"`
-		} `json:"notebook_outcomes"`
+		Outcome         string   `json:"outcome"`
+		SyncedNotebooks []string `json:"synced_notebooks"`
 	}
 	timeout := 45 * time.Second
-	if syncEvent {
+	if rt.manifest.HasPermission(PermNetwork) || rt.manifest.HasPermission(PermSystemFS) || rt.manifest.HasPermission(PermSystemExec) {
 		timeout = 120 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := rt.call(ctx, "plugin.event", params, &res); err != nil {
-		if syncEvent {
-			s.reportSystemSyncFailure(installed, rt, root, errors.Is(ctx.Err(), context.DeadlineExceeded), false)
-		}
-		return
-	}
-	if params["event"] == blockSyncCredentialEvent {
-		switch res.Outcome {
-		case "migration_pending":
-			s.queueSystemEvent(pluginID, blockSyncCredentialEvent, map[string]any{"event": blockSyncCredentialEvent})
-		case "migration_retry":
-			attempt, _ := params["retry_attempt"].(int)
-			next := min(attempt+1, 5)
-			time.AfterFunc(time.Second<<next, func() {
-				s.mu.RLock()
-				active := s.isRuntimeActiveLocked(pluginID, rt)
-				s.mu.RUnlock()
-				if active {
-					s.queueSystemEvent(pluginID, blockSyncCredentialEvent, map[string]any{"event": blockSyncCredentialEvent, "retry_attempt": next})
-				}
-			})
-		}
 		return
 	}
 	if res.Outcome != "skipped" && res.Outcome != "" {
@@ -787,354 +736,15 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 			s.mu.Unlock()
 			return
 		}
-		if syncEvent {
-			s.clearSyncedNotebookErrorsLocked(pluginID, res.SyncedNotebooks)
-			if len(res.NotebookOutcomes) == 0 && res.Outcome != "state_error" {
-				delete(s.system.syncErrors, root)
-			}
-			for notebook, result := range res.NotebookOutcomes {
-				if result.Outcome == "synced" || result.Outcome == "pending_confirm" || (result.Outcome == "failed" && result.Notified) {
-					delete(s.system.syncErrors, notebook)
-				}
-			}
+		if len(res.SyncedNotebooks) > 0 {
+			s.clearNotebookSaveErrorsLocked(pluginID, res.SyncedNotebooks)
 		}
 		view := s.views[viewKey{pluginID, root, SurfaceSettingsPage}]
 		refresh := view != nil && view.Page != nil && view.BusyAction == ""
 		s.mu.Unlock()
-		if syncEvent {
-			if len(res.NotebookOutcomes) == 0 && res.Outcome == "state_error" {
-				s.reportSyncFailure(installed, rt, root, false, true, false, true)
-			}
-			for notebook, result := range res.NotebookOutcomes {
-				if result.Outcome == "state_error" || (result.Outcome == "failed" && !result.Notified) {
-					if registered, err := rt.resolveNotebookRoot(notebook); err == nil {
-						s.reportSyncFailure(installed, rt, registered, false, result.Outcome == "state_error", false, result.Notified)
-					}
-				}
-			}
-		}
 		if refresh {
 			s.reloadSurfaceViewForNotebookAsync(pluginID, root, SurfaceSettingsPage)
 		}
 		s.notifyChanged()
 	}
-}
-
-func (s *Supervisor) reportSystemSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed bool) {
-	s.reportSyncFailure(inst, rt, root, timedOut, storageFailed, false, false)
-}
-
-func syncFailureAlreadyReported(err error) bool {
-	var response *rpcError
-	return errors.As(err, &response) && response.Code == -32008
-}
-
-func syncStateNotSaved(err error) bool {
-	var response *rpcError
-	return errors.As(err, &response) && response.Code == -32009
-}
-
-func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed, manual, notified bool) {
-	config := systemSyncConfig(inst.DataDir, root)
-	if rt == nil && !manual {
-		if !autoSyncConfigured(config) {
-			return
-		}
-	}
-	s.reportSyncFailureWithConfig(inst, rt, root, config, timedOut, storageFailed, manual, notified)
-}
-
-func (s *Supervisor) reportSystemSyncStartFailure(inst InstalledApp, active string, networkChange bool) {
-	state := readSyncState(inst.DataDir)
-	global, _ := state["config"].(map[string]any)
-	report := func(root string, config map[string]any) {
-		if !autoSyncConfigured(config) {
-			return
-		}
-		if networkChange {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			needsNetwork := systemSyncNeedsNetwork(ctx, inst.DataDir, config)
-			cancel()
-			if !needsNetwork {
-				return
-			}
-		}
-		s.reportSyncFailureWithConfig(inst, nil, root, config, false, false, false, false)
-	}
-	if _, shared := global["selected_notebooks"]; shared {
-		report(active, global)
-		return
-	}
-	for _, root := range s.Notebooks() {
-		config := systemSyncNotebookConfig(state, root)
-		if config == nil && root == active {
-			config = global
-		}
-		report(root, config)
-	}
-}
-
-var syncGitNetworkURL = regexp.MustCompile(`^(?:[^/@:\\]+@)?[^/\\:]+:`)
-var syncGitDrivePath = regexp.MustCompile(`^[A-Za-z]:`)
-var syncGitProbeSlots = make(chan struct{}, 4)
-
-func gitURLNeedsNetwork(raw string) bool {
-	return strings.HasPrefix(raw, `\\`) || (!strings.HasPrefix(strings.ToLower(raw), "file://") && !syncGitDrivePath.MatchString(raw) && syncGitNetworkURL.MatchString(raw))
-}
-
-func systemSyncNeedsNetwork(ctx context.Context, dataDir string, config map[string]any) bool {
-	protocol, _ := config["protocol"].(string)
-	if protocol == "webdav" {
-		return true
-	}
-	if protocol != "git" {
-		return false
-	}
-	raw, _ := config["git_remote"].(string)
-	raw = strings.TrimSpace(raw)
-	if raw == "" || strings.HasPrefix(strings.ToLower(raw), "file://") {
-		return false
-	}
-	if gitURLNeedsNetwork(raw) {
-		return true
-	}
-	repo := raw
-	if strings.HasPrefix(repo, "~/") || strings.HasPrefix(repo, `~\`) || repo == "~" {
-		if home, err := os.UserHomeDir(); err == nil {
-			repo = filepath.Join(home, strings.TrimLeft(repo[1:], `/\`))
-		}
-	}
-	if !filepath.IsAbs(repo) {
-		repo = filepath.Join(dataDir, repo)
-	}
-	select {
-	case syncGitProbeSlots <- struct{}{}:
-	case <-ctx.Done():
-		return true
-	}
-	result := make(chan bool, 1)
-	go func() {
-		defer func() { <-syncGitProbeSlots }()
-		result <- systemSyncRepositoryNeedsNetwork(ctx, repo)
-	}()
-	select {
-	case needsNetwork := <-result:
-		return needsNetwork
-	case <-ctx.Done():
-		return true
-	}
-}
-
-func systemSyncRepositoryNeedsNetwork(ctx context.Context, repo string) bool {
-	if err := exec.CommandContext(ctx, "git", "-C", repo, "rev-parse", "--resolve-git-dir", ".git").Run(); err != nil {
-		return ctx.Err() != nil
-	}
-	remotes, err := exec.CommandContext(ctx, "git", "-C", repo, "remote").Output()
-	names := strings.Fields(string(remotes))
-	if err != nil || len(names) == 0 {
-		return ctx.Err() != nil
-	}
-	name := names[0]
-	for _, candidate := range names {
-		if candidate == "origin" {
-			name = candidate
-			break
-		}
-	}
-	for _, push := range []bool{false, true} {
-		args := []string{"-C", repo, "remote", "get-url", "--all"}
-		if push {
-			args = append(args, "--push")
-		}
-		urls, err := exec.CommandContext(ctx, "git", append(args, name)...).Output()
-		if err != nil {
-			continue
-		}
-		for rawURL := range strings.SplitSeq(strings.TrimSpace(string(urls)), "\n") {
-			if gitURLNeedsNetwork(strings.TrimSpace(rawURL)) {
-				return true
-			}
-		}
-	}
-	return ctx.Err() != nil
-}
-
-func autoSyncConfigured(config map[string]any) bool {
-	enabled, set := config["auto_sync"].(bool)
-	return config != nil && (!set || enabled)
-}
-
-func (s *Supervisor) reportSyncFailureWithConfig(inst InstalledApp, rt *Runtime, root string, config map[string]any, timedOut, storageFailed, manual, notified bool) {
-	const pluginID = "block-sync"
-	title, body := "自动同步未完成", "打开同步设置查看状态或重试。"
-	if timedOut {
-		title = "自动同步超时"
-	}
-	locale := normalizeLocale(s.Locale())
-	if rt != nil {
-		locale = rt.locale()
-	}
-	if locale == "en" {
-		title, body = "Automatic sync did not finish", "Open Sync settings to check the status or retry."
-		if timedOut {
-			title = "Automatic sync timed out"
-		}
-	}
-	if rt == nil {
-		title = "自动同步未能启动"
-		if locale == "en" {
-			title = "Automatic sync could not start"
-		}
-	}
-	if manual {
-		title = "同步未完成"
-		if locale == "en" {
-			title = "Sync did not finish"
-		}
-		if timedOut {
-			title = "同步超时"
-			if locale == "en" {
-				title = "Sync timed out"
-			}
-		}
-	}
-	if storageFailed {
-		title = "同步状态未保存"
-		if locale == "en" {
-			title = "Sync state could not be saved"
-		}
-	}
-	currentInstallLocked := func() bool {
-		if s.stopping {
-			return false
-		}
-		for _, installed := range s.installed {
-			if installed.Manifest.ID == pluginID {
-				return installed.Enabled && s.replacingID != pluginID && installed.InstallDir == inst.InstallDir && installed.InstalledAt.Equal(inst.InstalledAt)
-			}
-		}
-		return false
-	}
-	s.mu.Lock()
-	currentRuntime := s.runtimes[pluginID]
-	if !currentInstallLocked() || (rt != nil && currentRuntime != rt) ||
-		(rt == nil && !manual && currentRuntime != nil && currentRuntime.initialized.Load() && !currentRuntime.closed.Load()) {
-		s.mu.Unlock()
-		return
-	}
-	if !manual {
-		if s.system.syncErrors == nil {
-			s.system.syncErrors = make(map[string]string)
-		}
-		s.system.syncErrors[root] = title + " · " + body
-	}
-	s.mu.Unlock()
-	if !manual {
-		s.notifyChanged()
-		files.LogWarnf("plugin %s background system sync failed (timed out: %t)", pluginID, timedOut)
-	}
-	if notified || s.cfg.System == nil || !inst.Manifest.HasPermission(PermSystemNotify) || (config == nil && !manual) {
-		return
-	}
-	if enabled, ok := config["system_notifications"].(bool); ok && !enabled {
-		return
-	}
-	s.retrySystemFailureNotices(&systemFailureNotice{title: title, body: body, root: root, allowed: func() bool {
-		s.mu.RLock()
-		current := currentInstallLocked() && (manual || s.system.syncErrors[root] == title+" · "+body)
-		s.mu.RUnlock()
-		return current && SyncNotificationsEnabled(inst.DataDir, root)
-	}})
-}
-
-func (s *Supervisor) retrySystemFailureNotices(notice *systemFailureNotice) {
-	s.system.mu.Lock()
-	defer s.system.mu.Unlock()
-	if notice != nil {
-		if len(s.system.failureQueue) >= 32 {
-			s.system.failureQueue = s.system.failureQueue[1:]
-		}
-		s.system.failureQueue = append(s.system.failureQueue, notice)
-	}
-	if s.system.failureDrain {
-		s.system.failureRetry = true
-		return
-	}
-	if len(s.system.failureQueue) != 0 {
-		s.system.failureDrain = true
-		go s.drainSystemFailureNotices()
-	}
-}
-
-func (s *Supervisor) drainSystemFailureNotices() {
-	for {
-		s.system.mu.Lock()
-		pending := slices.Clone(s.system.failureQueue)
-		s.system.failureRetry = false
-		s.system.mu.Unlock()
-		for _, notice := range pending {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			_, _, err := s.sendSystemNotice(ctx, "block-sync", notice.title, notice.body, "error", notice.root, "", "", notice.allowed)
-			expired := ctx.Err() != nil
-			cancel()
-			if errors.Is(err, ErrSystemQueued) {
-				continue
-			}
-			if err != nil && (!errors.Is(err, ErrSystemCanceled) || expired) {
-				break
-			}
-			s.system.mu.Lock()
-			s.system.failureQueue = slices.DeleteFunc(s.system.failureQueue, func(queued *systemFailureNotice) bool { return queued == notice })
-			s.system.mu.Unlock()
-		}
-		s.system.mu.Lock()
-		if !s.system.failureRetry || len(s.system.failureQueue) == 0 {
-			s.system.failureDrain = false
-			s.system.mu.Unlock()
-			return
-		}
-		s.system.mu.Unlock()
-	}
-}
-
-func SyncNotificationsEnabled(dataDir, root string) bool {
-	enabled, set := systemSyncConfig(dataDir, root)["system_notifications"].(bool)
-	return !set || enabled
-}
-
-func systemSyncConfig(dataDir, root string) map[string]any {
-	state := readSyncState(dataDir)
-	config, _ := state["config"].(map[string]any)
-	if _, global := config["selected_notebooks"]; !global {
-		if local := systemSyncNotebookConfig(state, root); local != nil {
-			return local
-		}
-	}
-	return config
-}
-
-func readSyncState(dataDir string) map[string]any {
-	data, err := os.OpenRoot(dataDir)
-	if err != nil {
-		return nil
-	}
-	defer data.Close()
-	state, err := readPluginStorageMap(data)
-	if err != nil {
-		return nil
-	}
-	return state
-}
-
-func systemSyncNotebookConfig(state map[string]any, root string) map[string]any {
-	notebooks, _ := state["notebook_configs"].(map[string]any)
-	key := "default"
-	if root != "" {
-		key = filepath.Clean(root)
-	}
-	if local, ok := notebooks[key].(map[string]any); ok {
-		return local
-	}
-	local, _ := notebooks[syncNotebookKey(root)].(map[string]any)
-	return local
 }

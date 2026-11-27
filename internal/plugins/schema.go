@@ -49,9 +49,14 @@ type UIOption struct {
 }
 
 type UIButton struct {
-	ID      string        `json:"id"`
-	Label   string        `json:"label"`
-	Variant ButtonVariant `json:"variant"`
+	ID           string        `json:"id"`
+	Label        string        `json:"label"`
+	Variant      ButtonVariant `json:"variant"`
+	BusyLabel    string        `json:"busy_label,omitempty"`
+	SuccessLabel string        `json:"success_label,omitempty"`
+	ErrorLabel   string        `json:"error_label,omitempty"`
+	RetryLabel   string        `json:"retry_label,omitempty"`
+	Icon         *UIIcon       `json:"icon,omitempty"`
 }
 
 type UIKVRow struct {
@@ -72,6 +77,29 @@ type UIIcon struct {
 	Tooltip     string   `json:"tooltip,omitempty"`
 	Chip        string   `json:"chip,omitempty"`
 	Dot         bool     `json:"dot,omitempty"`
+}
+
+// UnmarshalJSON accepts either a built-in icon name string ("refresh") or a
+// structured UIIcon object while preserving strict unknown-field checks.
+func (ic *UIIcon) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '"' {
+		var name string
+		if err := json.Unmarshal(trimmed, &name); err != nil {
+			return err
+		}
+		*ic = UIIcon{Name: strings.TrimSpace(name)}
+		return nil
+	}
+	type uiIconAlias UIIcon
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	dec.DisallowUnknownFields()
+	var alias uiIconAlias
+	if err := dec.Decode(&alias); err != nil {
+		return err
+	}
+	*ic = UIIcon(alias)
+	return nil
 }
 
 // Spec returns the inline vector form of the icon.
@@ -881,6 +909,23 @@ func validateButton(prefix string, b UIButton, seen map[string]bool) error {
 	seen[b.ID] = true
 	if err := checkText(prefix+".label", b.Label, true); err != nil {
 		return err
+	}
+	if err := checkText(prefix+".busy_label", b.BusyLabel, false); err != nil {
+		return err
+	}
+	if err := checkText(prefix+".success_label", b.SuccessLabel, false); err != nil {
+		return err
+	}
+	if err := checkText(prefix+".error_label", b.ErrorLabel, false); err != nil {
+		return err
+	}
+	if err := checkText(prefix+".retry_label", b.RetryLabel, false); err != nil {
+		return err
+	}
+	if b.Icon != nil {
+		if err := validateUIIcon(prefix+".icon", *b.Icon); err != nil {
+			return err
+		}
 	}
 	switch b.Variant {
 	case VariantPrimary, VariantSecondary, VariantDanger:

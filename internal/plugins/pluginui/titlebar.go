@@ -273,7 +273,8 @@ func (c *Controller) renderPluginTitlebarTrailing(
 		switch {
 		case hasError:
 			hasLeadingContent = true
-			c.renderTitlebarErrorPill(ctx, pluginID, shortPluginErrorLabel(pluginID, failed, uninstErr != "", vs), errDetail)
+			isWarning := !failed && uninstErr == "" && vs.BackgroundError != nil && vs.BackgroundError.Severity == "warning"
+			c.renderTitlebarErrorPill(ctx, pluginID, shortPluginErrorLabel(failed, uninstErr != "", vs), errDetail, isWarning)
 		case actionRunning:
 			// Progress is integrated directly into the running primary action control.
 		case starting:
@@ -322,7 +323,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			c.renderRunningActionPill(ctx, pluginID, vs, primaryAct, canCancel)
 		case showRetryPrimary:
 			hasLeadingContent = true
-			retryLabel := resolvePluginRetryLabel(pluginID, failed, uninstErr != "", vs)
+			retryLabel := resolvePluginRetryLabel(failed, uninstErr != "", vs)
 			refIc := icons.Refresh
 			retryDisabled := vs.Loading || (uninstErr != "" && pluginBusyAny)
 			retryBtn := renderTitlebarGhostAction(ctx, titlebarGhostActionOpts{
@@ -356,23 +357,29 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			isSuccess := fb.BusyAction == "" && fb.LastActionButtonActive && fb.LastActionID == b.ID && fb.LastActionTone == "success"
 			tone := ""
 			var leading *icons.Icon
+			var leadingCustom func(size float32, colors theme.IconColors, active bool)
 			if isSuccess {
 				tone = "success"
-				chk := icons.Check
-				leading = &chk
+				if fb.LastActionIcon != nil {
+					leading, leadingCustom = resolveButtonIcon(ctx, fb.LastActionIcon)
+				} else {
+					chk := icons.Check
+					leading = &chk
+				}
 			} else {
 				if b.Variant == plugins.VariantDanger {
 					tone = "danger"
 				}
-				leading = resolveActionButtonIcon(b.ID)
+				leading, leadingCustom = resolveButtonIcon(ctx, b.Icon)
 			}
-			label := resolveActionButtonLabel(b.ID, b.Label, false, isSuccess)
+			label := resolveActionButtonLabel(b, fb, false, isSuccess)
 			btn := renderTitlebarGhostAction(ctx, titlebarGhostActionOpts{
-				ID:       "plugin-hdr-act-" + pluginID + "-" + b.ID,
-				Label:    label,
-				Leading:  leading,
-				Tone:     tone,
-				Disabled: vs.Loading,
+				ID:            "plugin-hdr-act-" + pluginID + "-" + b.ID,
+				Label:         label,
+				Leading:       leading,
+				LeadingCustom: leadingCustom,
+				Tone:          tone,
+				Disabled:      vs.Loading,
 			})
 			if btn.Clicked() && !vs.Loading {
 				c.CloseTitlebarOverlays()
@@ -414,7 +421,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 	})
 }
 
-func (c *Controller) renderTitlebarErrorPill(ctx *ui.Context, pluginID, label, detail string) {
+func (c *Controller) renderTitlebarErrorPill(ctx *ui.Context, pluginID, label, detail string, isWarning bool) {
 	pal := theme.Ocean()
 	open := c.titlebarErrOpen && c.titlebarErrPluginID == pluginID
 	btn := ui.ButtonBase(ctx.Key("plugin-tb-error-" + pluginID)).Height(theme.HeightChrome).
@@ -422,18 +429,23 @@ func (c *Controller) renderTitlebarErrorPill(ctx *ui.Context, pluginID, label, d
 		Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Shrink(0).Label(label)
 	hov := btn.Hovered()
 	prs := btn.Pressed()
+	fg := pal.Danger
 	bg := pal.DangerSurface
+	if isWarning {
+		fg = pal.Warning
+		bg = pal.WarningSurface
+	}
 	bd := ui.Transparent
 	hasBD := false
 	switch {
 	case open:
-		bg = pal.Danger.Alpha(0.16)
-		bd = pal.Danger.Alpha(0.45)
+		bg = fg.Alpha(0.16)
+		bd = fg.Alpha(0.45)
 		hasBD = true
 	case prs:
-		bg = pal.Danger.Alpha(0.20)
+		bg = fg.Alpha(0.20)
 	case hov:
-		bg = pal.Danger.Alpha(0.14)
+		bg = fg.Alpha(0.14)
 	}
 	bui.AnimateSurfaceColors(btn, bg, bd, hasBD)
 	bui.TactileButton(btn, hov, prs, false)
@@ -441,9 +453,9 @@ func (c *Controller) renderTitlebarErrorPill(ctx *ui.Context, pluginID, label, d
 		bui.Tooltip(ctx, btn, theme.Tr("点击查看失败原因", "Click to view error details"))
 	}
 	btn.Children(func() {
-		drawDangerAlertIcon(ctx, theme.IconInline, pal.Danger)
+		drawDangerAlertIcon(ctx, theme.IconInline, fg)
 		ui.Text(ctx, label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-			FontWeight(theme.WeightControl).TextColor(pal.Danger).SingleLine()
+			FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
 	})
 	bui.Probe(btn, "plugin-tb-error-"+pluginID)
 	if open {
@@ -489,9 +501,6 @@ func drawDangerAlertIcon(ctx *ui.Context, size float32, col ui.Color) {
 func (c *Controller) renderTitlebarPendingStatus(ctx *ui.Context, pluginID string, count int) {
 	pal := theme.Ocean()
 	suffix := theme.Tr(" 项待处理", " pending")
-	if pluginID == "block-sync" {
-		suffix = theme.Tr(" 项待同步", " pending sync")
-	}
 	ui.Row(ctx.Key("plugin-tb-pending-" + pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 		ui.Box(ctx).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).
 			Radius(theme.RadiusPill).Background(pal.Accent).Shrink(0)
@@ -505,11 +514,12 @@ func (c *Controller) renderTitlebarPendingStatus(ctx *ui.Context, pluginID strin
 }
 
 type titlebarGhostActionOpts struct {
-	ID       string
-	Label    string
-	Leading  *icons.Icon
-	Tone     string // "", "success", "danger"
-	Disabled bool
+	ID            string
+	Label         string
+	Leading       *icons.Icon
+	LeadingCustom func(size float32, colors theme.IconColors, active bool)
+	Tone          string // "", "success", "danger"
+	Disabled      bool
 }
 
 // renderTitlebarGhostAction renders the unified lightweight ghost text button
@@ -560,6 +570,8 @@ func renderTitlebarGhostAction(ctx *ui.Context, opts titlebarGhostActionOpts) ui
 	btn.Children(func() {
 		if opts.Leading != nil {
 			icons.DrawAnimated(ctx, *opts.Leading, theme.IconInline, pal.DuoIconColors(fg), hov || prs)
+		} else if opts.LeadingCustom != nil {
+			opts.LeadingCustom(theme.IconInline, pal.DuoIconColors(fg), hov || prs)
 		}
 		ui.Text(ctx, opts.Label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 			FontWeight(theme.WeightControl).TextColor(fg).MaxWidth(150).SingleLine().Ellipsis("…")
@@ -645,21 +657,22 @@ func (c *Controller) renderRunningActionPill(
 ) {
 	pal := theme.Ocean()
 	actionID := vs.BusyAction
-	baseLabel := ""
+	var activeBtn *plugins.UIButton
 	if actionID == "" && primaryAct != nil {
 		actionID = primaryAct.ID
-		baseLabel = primaryAct.Label
+		activeBtn = primaryAct
 	} else if primaryAct != nil && primaryAct.ID == actionID {
-		baseLabel = primaryAct.Label
+		activeBtn = primaryAct
 	} else if vs.Page != nil {
-		for _, b := range vs.Page.HeaderActions {
-			if b.ID == actionID {
-				baseLabel = b.Label
+		for i := range vs.Page.HeaderActions {
+			if vs.Page.HeaderActions[i].ID == actionID {
+				cp := vs.Page.HeaderActions[i]
+				activeBtn = &cp
 				break
 			}
 		}
 	}
-	verb, progressText := formatRunningActionLabel(actionID, baseLabel, vs)
+	verb, progressText := formatRunningActionLabel(actionID, activeBtn, vs)
 
 	cursor := ui.CursorDefault
 	if canCancel {
@@ -823,9 +836,13 @@ func (c *Controller) renderTitlebarErrorPopover(ctx *ui.Context, tab string, _ f
 		c.titlebarErrNotebook = ""
 		return ui.Element{}, false
 	}
-	headline := shortPluginErrorLabel(pluginID, failed, uninstErr != "", vs)
+	headline := shortPluginErrorLabel(failed, uninstErr != "", vs)
 	if detail == "" {
 		detail = theme.Tr("未能启动插件进程，请查看日志了解详情。", "Failed to start plugin process. Open logs for details.")
+	}
+	headlineCol := theme.Ocean().Danger
+	if !failed && uninstErr == "" && vs.BackgroundError != nil && vs.BackgroundError.Severity == "warning" {
+		headlineCol = theme.Ocean().Warning
 	}
 
 	pal := theme.Ocean()
@@ -845,7 +862,7 @@ func (c *Controller) renderTitlebarErrorPopover(ctx *ui.Context, tab string, _ f
 	bui.Probe(card, "plugin-tb-err-popover-"+pluginID)
 	card.Children(func() {
 		ui.Text(ctx, headline).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-			FontWeight(theme.WeightTitle).TextColor(pal.Danger)
+			FontWeight(theme.WeightTitle).TextColor(headlineCol)
 
 		bui.Scroll(ctx.Key("plugin-tb-err-scroll-"+pluginID), &c.titlebarErrScroll).
 			FillWidth().MinWidth(0).MaxHeight(max(maxH-96, 80)).Children(func() {
@@ -1033,7 +1050,7 @@ func (c *Controller) buildPluginMoreMenuItems(
 		primaryDisplaced := hasError && !(vs.RetryKind == plugins.RetryKindNoteSaved && vs.SavePausedConfirm)
 		if primaryDisplaced && primaryAct != nil {
 			b := *primaryAct
-			ic := resolveActionButtonIcon(b.ID)
+			ic := resolveBuiltInButtonIcon(b.Icon)
 			items = append(items, bui.MenuItemSpec{
 				ID:       "plugin-menu-act-" + pluginID + "-" + b.ID,
 				Label:    b.Label,
@@ -1048,7 +1065,7 @@ func (c *Controller) buildPluginMoreMenuItems(
 		}
 		for _, act := range secondaryActs {
 			b := act
-			ic := resolveActionButtonIcon(b.ID)
+			ic := resolveBuiltInButtonIcon(b.Icon)
 			items = append(items, bui.MenuItemSpec{
 				ID:       "plugin-menu-act-" + pluginID + "-" + b.ID,
 				Label:    b.Label,
@@ -1063,13 +1080,10 @@ func (c *Controller) buildPluginMoreMenuItems(
 		}
 	}
 
-	// 2. Scoped cancel for queued background note.saved sync tasks (if any).
+	// 2. Scoped cancel for queued background note.saved tasks (if any).
 	if live && vs.PendingSaves > 0 {
 		stopIc := icons.Stop
 		cancelLabel := theme.Tr("取消待处理任务", "Cancel pending tasks")
-		if pluginID == "block-sync" {
-			cancelLabel = theme.Tr("取消待同步任务", "Cancel pending sync")
-		}
 		items = append(items, bui.MenuItemSpec{
 			ID:    "plugin-menu-cancel-pending-" + pluginID,
 			Label: cancelLabel,
@@ -1189,37 +1203,81 @@ func resolvePluginErrorDetail(vs plugins.PluginViewState, uninstErr string) stri
 	return ""
 }
 
-func shortPluginErrorLabel(pluginID string, failed, hasUninstErr bool, vs plugins.PluginViewState) string {
+func findPageButton(page *plugins.UIPage, actionID string) *plugins.UIButton {
+	if page == nil || actionID == "" {
+		return nil
+	}
+	for i := range page.HeaderActions {
+		if page.HeaderActions[i].ID == actionID {
+			return &page.HeaderActions[i]
+		}
+	}
+	for ci := range page.Cards {
+		for ii := range page.Cards[ci].Items {
+			for bi := range page.Cards[ci].Items[ii].Buttons {
+				if page.Cards[ci].Items[ii].Buttons[bi].ID == actionID {
+					return &page.Cards[ci].Items[ii].Buttons[bi]
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func shortPluginErrorLabel(failed, hasUninstErr bool, vs plugins.PluginViewState) string {
 	if hasUninstErr || vs.RetryKind == plugins.RetryKindUninstall {
 		return theme.Tr("卸载失败", "Uninstall failed")
 	}
 	if failed {
 		return theme.Tr("启动失败", "Failed to start")
 	}
-	switch pluginID {
-	case "block-sync":
-		if vs.RetryKind == plugins.RetryKindNoteSaved || isSyncActionID(vs.FailedActionID) || isSyncActionID(vs.LastActionID) {
-			return theme.Tr("同步失败", "Sync failed")
-		}
-	case "block-image-host":
-		if vs.FailedActionID == "upload_now" || vs.LastActionID == "upload_now" {
-			return theme.Tr("上传失败", "Upload failed")
-		}
+	if vs.BackgroundError != nil && strings.TrimSpace(vs.BackgroundError.Label) != "" {
+		return strings.TrimSpace(vs.BackgroundError.Label)
+	}
+	if lbl := strings.TrimSpace(vs.LastActionErrorLabel); lbl != "" {
+		return lbl
+	}
+	if btn := findPageButton(vs.Page, vs.FailedActionID); btn != nil && strings.TrimSpace(btn.ErrorLabel) != "" {
+		return strings.TrimSpace(btn.ErrorLabel)
+	}
+	if btn := findPageButton(vs.Page, vs.LastActionID); btn != nil && strings.TrimSpace(btn.ErrorLabel) != "" {
+		return strings.TrimSpace(btn.ErrorLabel)
 	}
 	return theme.Tr("操作失败", "Error")
 }
 
-func resolvePluginRetryLabel(pluginID string, failed, hasUninstErr bool, vs plugins.PluginViewState) string {
+func resolvePluginRetryLabel(failed, hasUninstErr bool, vs plugins.PluginViewState) string {
 	if hasUninstErr || vs.RetryKind == plugins.RetryKindUninstall {
 		return theme.Tr("重试卸载", "Retry Uninstall")
 	}
 	if failed || vs.RetryKind == plugins.RetryKindReload {
 		return theme.Tr("重新加载", "Reload")
 	}
-	if pluginID == "block-sync" && (vs.RetryKind == plugins.RetryKindNoteSaved || isSyncActionID(vs.FailedActionID) || isSyncActionID(vs.LastActionID)) {
-		return theme.Tr("重试同步", "Retry Sync")
+	if vs.BackgroundError != nil && strings.TrimSpace(vs.BackgroundError.RetryLabel) != "" {
+		return strings.TrimSpace(vs.BackgroundError.RetryLabel)
+	}
+	if lbl := strings.TrimSpace(vs.LastActionRetryLabel); lbl != "" {
+		return lbl
+	}
+	if btn := findPageButton(vs.Page, vs.FailedActionID); btn != nil && strings.TrimSpace(btn.RetryLabel) != "" {
+		return strings.TrimSpace(btn.RetryLabel)
+	}
+	if btn := findPageButton(vs.Page, vs.LastActionID); btn != nil && strings.TrimSpace(btn.RetryLabel) != "" {
+		return strings.TrimSpace(btn.RetryLabel)
 	}
 	return theme.Tr("重试", "Retry")
+}
+
+func hasDangerHeaderAction(page *plugins.UIPage) bool {
+	if page == nil {
+		return false
+	}
+	for _, b := range page.HeaderActions {
+		if b.Variant == plugins.VariantDanger {
+			return true
+		}
+	}
+	return false
 }
 
 func resolvePluginTitlebarStatus(vs plugins.PluginViewState) (text, tone string) {
@@ -1244,18 +1302,24 @@ func resolvePluginTitlebarStatus(vs plugins.PluginViewState) (text, tone string)
 	case "已启用", "enabled", "已停用", "disabled":
 		return "", ""
 	}
-	if tone == "" && text != "" && vs.Page != nil && vs.Page.HasHeaderAction("confirm_sync") {
+	if tone == "" && text != "" && hasDangerHeaderAction(vs.Page) {
 		tone = "warning"
 	}
 	return text, tone
 }
 
-func formatRunningActionLabel(actionID, baseLabel string, vs plugins.PluginViewState) (verb, progress string) {
+func formatRunningActionLabel(actionID string, btn *plugins.UIButton, vs plugins.PluginViewState) (verb, progress string) {
 	ap := vs.ActionProgress
 	if ap.Label != "" {
 		verb = ap.Label
 	} else {
-		verb = resolveActionButtonLabel(actionID, baseLabel, true, false)
+		var b plugins.UIButton
+		if btn != nil {
+			b = *btn
+		} else {
+			b = plugins.UIButton{ID: actionID}
+		}
+		verb = resolveActionButtonLabel(b, actionFeedbackFromView(vs), true, false)
 	}
 	switch {
 	case ap.Total > 0:

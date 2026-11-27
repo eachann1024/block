@@ -204,6 +204,7 @@ type ActionButtonOptions struct {
 	Label              string
 	AccessibilityLabel string
 	Leading            *icons.Icon
+	LeadingCustom      func(size float32, colors theme.IconColors, active bool)
 	LeadingDot         bool
 	AlwaysDuo          bool
 	Style              ActionButtonStyle
@@ -369,7 +370,7 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		} else if opts.LeadingDot {
 			ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).
 				Radius(theme.RadiusPill).Background(fg).Shrink(0)
-		} else if opts.Leading != nil {
+		} else if opts.Leading != nil || opts.LeadingCustom != nil {
 			var ic theme.IconColors
 			switch opts.Style {
 			case ButtonPrimary:
@@ -381,7 +382,11 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 			default:
 				ic = pal.DuoIconColors(fg)
 			}
-			icons.DrawAnimated(c, *opts.Leading, theme.IconAction, ic, hovered || pressed)
+			if opts.Leading != nil {
+				icons.DrawAnimated(c, *opts.Leading, theme.IconAction, ic, hovered || pressed)
+			} else {
+				opts.LeadingCustom(theme.IconAction, ic, hovered || pressed)
+			}
 		}
 		txt := ui.Text(c, opts.Label).FontSize(fontSize).FixedLineHeight(lineHeight).FontWeight(weight).TextColor(fg).SingleLine()
 		if opts.Truncate {
