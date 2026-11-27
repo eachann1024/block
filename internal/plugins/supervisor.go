@@ -371,56 +371,104 @@ func (s *Supervisor) Notebooks() []string {
 }
 
 // NotebookInfos returns known notebooks paired with their durable registry IDs
-// from the published snapshot without writing to disk or resurrecting cleaning IDs.
+// from the published snapshot and performs a lightweight live identity check
+// on each directory before returning without mutating notebooks.json.
 func (s *Supervisor) NotebookInfos() []NotebookInfo {
 	nbs := s.Notebooks()
-	out := make([]NotebookInfo, 0, len(nbs))
+	if len(nbs) == 0 {
+		return []NotebookInfo{}
+	}
 	appDir := strings.TrimSpace(s.cfg.AppDataDir)
-	for _, nb := range nbs {
-		if appDir == "" {
-			out = append(out, NotebookInfo{
-				ID:   files.DeterministicFallbackNotebookID(nb),
-				Path: nb,
-			})
-			continue
-		}
-		if rec, ok := files.LookupSnapshotNotebookIn(appDir, nb); ok && rec.ID != "" {
-			out = append(out, NotebookInfo{
-				ID:            rec.ID,
-				Path:          rec.Path,
-				PreviousPaths: append([]string(nil), rec.PreviousPaths...),
-			})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	slots := make([]NotebookInfo, len(nbs))
+	present := make([]bool, len(nbs))
+	workers := min(4, len(nbs))
+	jobs := make(chan int, len(nbs))
+	for i := range nbs {
+		jobs <- i
+	}
+	close(jobs)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				nb := nbs[idx]
+				if appDir == "" {
+					slots[idx] = NotebookInfo{
+						ID:               files.DeterministicFallbackNotebookID(nb),
+						Path:             nb,
+						IdentityVerified: false,
+						RootIdentity:     files.DirRootIdentity(ctx, nb),
+					}
+					present[idx] = true
+					continue
+				}
+				rec, ok := files.LookupSnapshotNotebookIn(appDir, nb)
+				if !ok || rec.ID == "" {
+					continue
+				}
+				verified, rootIdent := files.VerifyNotebookIdentity(ctx, appDir, rec)
+				slots[idx] = NotebookInfo{
+					ID:               rec.ID,
+					Path:             rec.Path,
+					PreviousPaths:    append([]string(nil), rec.PreviousPaths...),
+					IdentityVerified: verified,
+					RootIdentity:     rootIdent,
+				}
+				present[idx] = true
+			}
+		}()
+	}
+	wg.Wait()
+
+	out := make([]NotebookInfo, 0, len(nbs))
+	for i := range nbs {
+		if present[i] {
+			out = append(out, slots[i])
 		}
 	}
 	return out
 }
 
-// EnsureNotebookInfo resolves or registers a single known notebook path.
+// EnsureNotebookInfo resolves or registers a single known notebook path and
+// runs a live identity verification before returning.
 func (s *Supervisor) EnsureNotebookInfo(rawPath string) (NotebookInfo, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 	appDir := strings.TrimSpace(s.cfg.AppDataDir)
 	if appDir == "" {
 		return NotebookInfo{
-			ID:   files.DeterministicFallbackNotebookID(rawPath),
-			Path: rawPath,
+			ID:               files.DeterministicFallbackNotebookID(rawPath),
+			Path:             rawPath,
+			IdentityVerified: false,
+			RootIdentity:     files.DirRootIdentity(ctx, rawPath),
 		}, true
 	}
 	if rec, ok := files.LookupSnapshotNotebookIn(appDir, rawPath); ok && rec.ID != "" {
+		verified, rootIdent := files.VerifyNotebookIdentity(ctx, appDir, rec)
 		return NotebookInfo{
-			ID:            rec.ID,
-			Path:          rec.Path,
-			PreviousPaths: append([]string(nil), rec.PreviousPaths...),
+			ID:               rec.ID,
+			Path:             rec.Path,
+			PreviousPaths:    append([]string(nil), rec.PreviousPaths...),
+			IdentityVerified: verified,
+			RootIdentity:     rootIdent,
 		}, true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
 	rec, _, err := files.EnsureNotebookContext(ctx, appDir, rawPath)
 	if err != nil || !rec.IsActive() || !files.IsSafeNotebookID(rec.ID) || files.IsNotebookCleaningIn(appDir, rec.ID) {
 		return NotebookInfo{}, false
 	}
+	verified, rootIdent := files.VerifyNotebookIdentity(ctx, appDir, rec)
 	return NotebookInfo{
-		ID:            rec.ID,
-		Path:          rec.Path,
-		PreviousPaths: append([]string(nil), rec.PreviousPaths...),
+		ID:               rec.ID,
+		Path:             rec.Path,
+		PreviousPaths:    append([]string(nil), rec.PreviousPaths...),
+		IdentityVerified: verified,
+		RootIdentity:     rootIdent,
 	}, true
 }
 

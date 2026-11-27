@@ -525,19 +525,23 @@ func writeBytesAtomicIn(dir *os.Root, name string, data []byte, preservePerms bo
 	}
 
 	var (
-		tmpPath string
-		tmpFile *os.File
+		tmpPath  string
+		tmpFile  *os.File
+		leaseTmp *activeTempLease
 	)
 	pid := os.Getpid()
 	for range 100 {
 		seq := opsSeq.Add(1)
 		candidate := fmt.Sprintf(".block-%d-%d.tmp", pid, seq)
+		candLease := acquireActiveConditionalTemp(dir, candidate)
 		f, openErr := dir.OpenFile(candidate, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 		if openErr == nil {
 			tmpPath = candidate
 			tmpFile = f
+			leaseTmp = candLease
 			break
 		}
+		candLease.release()
 		if !errors.Is(openErr, os.ErrExist) {
 			return openErr
 		}
@@ -569,8 +573,10 @@ func writeBytesAtomicIn(dir *os.Root, name string, data []byte, preservePerms bo
 	}()
 	if commitErr != nil {
 		_ = dir.Remove(tmpPath)
+		leaseTmp.release()
 		return commitErr
 	}
+	leaseTmp.release()
 	return nil
 }
 

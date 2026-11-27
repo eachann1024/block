@@ -94,7 +94,7 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
 
 ### Host Method Index
 
-This table lists all 79 `host.*` JSON-RPC methods currently dispatched by the host and their exact permission / manifest requirements. Capabilities marked "default-allowed" may be omitted from `manifest.permissions` unless an explicit declaration is noted; all other permissions must be declared explicitly.
+This table lists all 80 `host.*` JSON-RPC methods currently dispatched by the host and their exact permission / manifest requirements. Capabilities marked "default-allowed" may be omitted from `manifest.permissions` unless an explicit declaration is noted; all other permissions must be declared explicitly.
 
 <!-- host-methods-table:start -->
 | Method | Required Permission / Manifest Condition | Purpose | Details |
@@ -121,6 +121,7 @@ This table lists all 79 `host.*` JSON-RPC methods currently dispatched by the ho
 | `host.fs.write` | `system:fs` | Write UTF-8 or Base64 data to a granted path (supports atomic) | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.mkdir` | `system:fs` | Create a directory under a granted path | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.delete` | `system:fs` | Delete a granted file or directory | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.delete_data` | `system:fs` | Delete a file or directory strictly under plugin `data_dir` without following symlinks or junctions | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.rename` | `system:fs` | Rename or move a granted file or directory | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.copy` | `system:fs` | Stream-copy a regular file on the host without Wasm buffering | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.atomic_swap` | `system:fs` | Atomically exchange two granted files in the same directory | [§4.2 · 14](protocol-and-ui.md) |
@@ -196,8 +197,8 @@ Note path rules: case-insensitive `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`,
 2. **`host.storage.set`** / **`host.storage.set_many`** (no permission; 8 MiB cap): `{"key", "value"}` or `{"values": {...}}` (1–64 non-blank keys) -> `{"ok": true}`. Preserves raw JSON numbers.
 3. **`host.notes.active`** (`"notes:read"`): `{}` -> `{"path": "welcome.md"}`.
 4. **`host.notebooks.list`** / **`host.notebooks.data_dir`** (`"notes:read"`):
-   - `host.notebooks.list {}` -> `{"notebooks": [{"id", "path", "name", "active", "previous_paths"}]}` (`id` is a host-managed durable identifier preserved across moves/renames; `previous_paths` lists previously recorded paths).
-   - `host.notebooks.data_dir` (`{"id" | "path" | "notebook" | "notebook_id" | "notebook_root"}`, defaulting to the active notebook when omitted) creates and returns `{"id", "path", "previous_paths"}` pointing to `<data_dir>/notebooks/<id>/` (stable across renames; cleaned by the host 30 days after removal or confirmed absence).
+   - `host.notebooks.list {}` -> `{"notebooks": [{"id", "path", "name", "active", "previous_paths", "identity_verified", "root_identity"}]}` (`id` is a host-managed durable identifier preserved across moves/renames; `previous_paths` lists previously recorded paths; `identity_verified` reports whether live filesystem identity—xattr and/or `dev:ino`—matches the registered notebook without following symlinks; `root_identity` reports `"<dev>:<ino>"` when available).
+   - `host.notebooks.data_dir` (`{"id" | "path" | "notebook" | "notebook_id" | "notebook_root"}`, defaulting to the active notebook when omitted) creates and returns `{"id", "path", "previous_paths", "identity_verified", "root_identity"?}` pointing to `<data_dir>/notebooks/<id>/` (stable across renames; cleaned by the host 30 days after removal or confirmed absence).
 5. **`host.notes.list`** (`"notes:read"`): `{"notebook_root"?}` -> `{"notes": [{"path", "size", "mod_time"}]}` (returns `{"notes": []}` when no notebook is active; unregistered notebook returns `-32003`).
 6. **`host.notes.read`** (`"notes:read"`): `{"notebook_root"?, "path"}` -> `{"path", "content", "revision"}` (`revision` is 64-char lowercase SHA-256).
 7. **`host.notes.write`** (`"notes:write"`): `{"notebook_root"?, "path", "content", "expected_revision"?}` -> `{"ok": true, "changed": true|false}`. `content` must be a string (max 16 MiB). Checks dirty editor / virtual preview (`-32006`), then byte equality (`changed: false`), then `expected_revision` (`""` requires non-existent file; SHA-256 requires match, else `-32006`). Does not return new `revision`—re-read before chained writes.
@@ -213,7 +214,7 @@ Note path rules: case-insensitive `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`,
     - `host.fs.list` (`{"path", "recursive"}`, max 10000 entries): `{"path", "entries": [...], "truncated": bool}` (recursive entries include `rel_path`).
     - `host.fs.read` (`{"path", "encoding": "utf8"|"base64", "max_bytes"}`, default 16 MiB, host cap 64 MiB): `{"path", "encoding", "size", "content"|"content_base64"}`.
     - `host.fs.write` (`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`, host cap 64 MiB).
-    - `host.fs.mkdir` (`{"path", "recursive"|"parents"}`), `host.fs.delete` (`{"path", "recursive"}`), `host.fs.rename` (`{"from", "to", "overwrite", "mkdir_parents"}`; falls back to copy+delete across different grant roots), `host.fs.copy` (`{"from", "to", "overwrite", "mkdir_parents"}`; host-side streaming atomic copy of regular non-symlink files bypassing Wasm memory, rejects identical paths and grant roots themselves, returns `{"ok": true, "from", "to", "size"}`), `host.fs.atomic_swap` (`{"path_a", "path_b"}`; may succeed with `atomic: false` if OS atomic exchange is unavailable).
+    - `host.fs.mkdir` (`{"path", "recursive"|"parents"}`), `host.fs.delete` (`{"path", "recursive"}`), `host.fs.delete_data` (`{"path", "recursive"?}` -> `{"ok": true, "deleted": bool, "path"}`; strictly confined to plugin `data_dir`—never grants, downloads, or notebooks—checks every parent layer, target, and subtree with `lstat` via `os.Root` and rejects any symlink/junction or protected host file with `-32004`/`-32001`), `host.fs.rename` (`{"from", "to", "overwrite", "mkdir_parents"}`; falls back to copy+delete across different grant roots), `host.fs.copy` (`{"from", "to", "overwrite", "mkdir_parents"}`; host-side streaming atomic copy of regular non-symlink files bypassing Wasm memory, rejects identical paths and grant roots themselves, returns `{"ok": true, "from", "to", "size"}`), `host.fs.atomic_swap` (`{"path_a", "path_b"}`; may succeed with `atomic: false` if OS atomic exchange is unavailable).
 15. **`host.crypto.*`** (memory hashing requires no permission; `file_path` requires `"system:fs"`):
     - `host.crypto.hash`: `{"algorithm": "sha1"|"sha256"|"sha512"|"md5", "text"|"base64"|"file_path"}` -> `{"algorithm", "hex", "base64", "size"}`.
     - `host.crypto.hmac`: `{"algorithm": "sha1"|"sha256"|"sha512", "key_text"|"key_base64", "data_text"|"data_base64"}` -> `{"algorithm", "hex", "base64"}`.

@@ -460,6 +460,8 @@ func (rt *Runtime) dispatchFSHostMethod(method string, params json.RawMessage) (
 		return rt.fsMkdir(params)
 	case "host.fs.delete":
 		return rt.fsDelete(params)
+	case "host.fs.delete_data":
+		return rt.fsDeleteData(params)
 	case "host.fs.rename":
 		return rt.fsRename(params)
 	case "host.fs.copy":
@@ -889,6 +891,295 @@ func (rt *Runtime) fsDelete(params json.RawMessage) (any, *rpcError) {
 	return map[string]any{
 		"ok":   true,
 		"path": target.canonPath,
+	}, nil
+}
+
+func (rt *Runtime) resolveDataDirChildRel(rawPath string) (dataCanon string, targetDisplay string, relSlash string, rerr *rpcError) {
+	if strings.TrimSpace(rawPath) == "" || strings.ContainsRune(rawPath, 0) || !utf8.ValidString(rawPath) {
+		return "", "", "", rpcErr(-32602, "invalid path")
+	}
+	if !filepath.IsAbs(rawPath) {
+		return "", "", "", rpcErr(-32602, "path must be absolute")
+	}
+	for _, seg := range strings.FieldsFunc(rawPath, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == ".." {
+			return "", "", "", rpcErr(-32602, "path must not contain '..' segments")
+		}
+	}
+	rt.cfgMu.RLock()
+	cfgDataDir := strings.TrimSpace(rt.cfg.DataDir)
+	rt.cfgMu.RUnlock()
+	if cfgDataDir == "" {
+		return "", "", "", rpcErr(-32004, "plugin data directory unavailable")
+	}
+	dataAbs, err := filepath.Abs(cfgDataDir)
+	if err != nil {
+		return "", "", "", rpcErr(-32004, err.Error())
+	}
+	dataAbs = filepath.Clean(dataAbs)
+	dataCanonPath, err := resolveCanonicalPath(cfgDataDir)
+	if err != nil {
+		return "", "", "", rpcErr(-32004, err.Error())
+	}
+	targetAbs, err := filepath.Abs(rawPath)
+	if err != nil {
+		return "", "", "", rpcErr(-32602, err.Error())
+	}
+	targetAbs = filepath.Clean(targetAbs)
+
+	rel, ok := pathWithinDir(targetAbs, dataCanonPath)
+	if !ok && dataAbs != dataCanonPath {
+		if r2, ok2 := pathWithinDir(targetAbs, dataAbs); ok2 {
+			if i1, e1 := os.Stat(dataAbs); e1 == nil {
+				if i2, e2 := os.Stat(dataCanonPath); e2 == nil && os.SameFile(i1, i2) {
+					rel = r2
+					ok = true
+				}
+			}
+		}
+	}
+	if !ok {
+		return "", "", "", rpcErr(-32001, "path is outside plugin data_dir")
+	}
+	if rel == "." || rel == "" {
+		return "", "", "", rpcErr(-32001, "cannot delete plugin data_dir itself")
+	}
+	if reserved, blocked := matchProtectedDataFile(rel); blocked {
+		return "", "", "", rpcErr(-32001, "cannot modify "+reserved+" directly")
+	}
+	return dataCanonPath, filepath.Join(dataCanonPath, filepath.FromSlash(rel)), rel, nil
+}
+
+func readRootDirNamesNoSymlink(dir *os.Root) ([]string, error) {
+	f, err := dir.Open(".")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	entries, err := f.ReadDir(0)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(entries))
+	for _, ent := range entries {
+		name := ent.Name()
+		if name == "" || name == "." || name == ".." {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+func validateDeleteDataTreeNoSymlink(parent *os.Root, name, relPrefix string, depth int) *rpcError {
+	if depth > 64 {
+		return rpcErr(-32004, "directory nesting limit exceeded")
+	}
+	relPath := name
+	if relPrefix != "" {
+		relPath = relPrefix + "/" + name
+	}
+	if reserved, blocked := matchProtectedDataFile(relPath); blocked {
+		return rpcErr(-32001, "cannot modify "+reserved+" directly")
+	}
+	info, err := parent.Lstat(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return rpcErr(-32004, err.Error())
+	}
+	if files.IsSymlinkOrReparseInfo(info) {
+		return rpcErr(-32004, "refusing to delete symlink or junction in data_dir")
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	sub, err := parent.OpenRoot(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return rpcErr(-32004, err.Error())
+	}
+	defer sub.Close()
+	subInfo, err := sub.Stat(".")
+	if err != nil || !os.SameFile(info, subInfo) {
+		return rpcErr(-32004, "directory identity changed while validating")
+	}
+	names, err := readRootDirNamesNoSymlink(sub)
+	if err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	for _, cn := range names {
+		if rerr := validateDeleteDataTreeNoSymlink(sub, cn, relPath, depth+1); rerr != nil {
+			return rerr
+		}
+	}
+	return nil
+}
+
+func deleteDataTreeNoSymlink(parent *os.Root, name, relPrefix string, depth int) *rpcError {
+	if depth > 64 {
+		return rpcErr(-32004, "directory nesting limit exceeded")
+	}
+	relPath := name
+	if relPrefix != "" {
+		relPath = relPrefix + "/" + name
+	}
+	if reserved, blocked := matchProtectedDataFile(relPath); blocked {
+		return rpcErr(-32001, "cannot modify "+reserved+" directly")
+	}
+	info, err := parent.Lstat(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return rpcErr(-32004, err.Error())
+	}
+	if files.IsSymlinkOrReparseInfo(info) {
+		return rpcErr(-32004, "refusing to delete symlink or junction in data_dir")
+	}
+	if info.IsDir() {
+		sub, err := parent.OpenRoot(name)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return rpcErr(-32004, err.Error())
+		}
+		subInfo, sErr := sub.Stat(".")
+		if sErr != nil || !os.SameFile(info, subInfo) {
+			_ = sub.Close()
+			return rpcErr(-32004, "directory identity changed during deletion")
+		}
+		names, rErr := readRootDirNamesNoSymlink(sub)
+		if rErr != nil {
+			_ = sub.Close()
+			return rpcErr(-32004, rErr.Error())
+		}
+		for _, cn := range names {
+			if rerr := deleteDataTreeNoSymlink(sub, cn, relPath, depth+1); rerr != nil {
+				_ = sub.Close()
+				return rerr
+			}
+		}
+		_ = sub.Close()
+	}
+	if err := parent.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return rpcErr(-32004, err.Error())
+	}
+	return nil
+}
+
+func (rt *Runtime) fsDeleteData(params json.RawMessage) (any, *rpcError) {
+	var p struct {
+		Path      string `json:"path"`
+		Recursive bool   `json:"recursive"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.Path) == "" {
+		return nil, rpcErr(-32602, "host.fs.delete_data requires non-empty path")
+	}
+	dataCanon, targetDisplay, relSlash, rerr := rt.resolveDataDirChildRel(p.Path)
+	if rerr != nil {
+		return nil, rerr
+	}
+	dInfo, err := os.Lstat(dataCanon)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
+		}
+		return nil, rpcErr(-32004, err.Error())
+	}
+	if files.IsSymlinkOrReparseInfo(dInfo) || !dInfo.IsDir() {
+		return nil, rpcErr(-32004, "plugin data_dir must not be a symlink or junction")
+	}
+	dataRoot, err := os.OpenRoot(dataCanon)
+	if err != nil {
+		return nil, rpcErr(-32004, err.Error())
+	}
+	defer dataRoot.Close()
+	rInfo, err := dataRoot.Stat(".")
+	if err != nil || !os.SameFile(dInfo, rInfo) {
+		return nil, rpcErr(-32004, "plugin data_dir identity mismatch")
+	}
+
+	segs := strings.Split(filepath.ToSlash(relSlash), "/")
+	opened := make([]*os.Root, 0, len(segs)-1)
+	defer func() {
+		for i := len(opened) - 1; i >= 0; i-- {
+			_ = opened[i].Close()
+		}
+	}()
+	cur := dataRoot
+	for _, seg := range segs[:len(segs)-1] {
+		if seg == "" || seg == "." || seg == ".." {
+			return nil, rpcErr(-32602, "invalid path segment")
+		}
+		info, lErr := cur.Lstat(seg)
+		if lErr != nil {
+			if errors.Is(lErr, os.ErrNotExist) {
+				return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
+			}
+			return nil, rpcErr(-32004, lErr.Error())
+		}
+		if files.IsSymlinkOrReparseInfo(info) {
+			return nil, rpcErr(-32004, "refusing to traverse symlink or junction in data_dir")
+		}
+		if !info.IsDir() {
+			return nil, rpcErr(-32004, "parent path is not a directory")
+		}
+		next, oErr := cur.OpenRoot(seg)
+		if oErr != nil {
+			if errors.Is(oErr, os.ErrNotExist) {
+				return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
+			}
+			return nil, rpcErr(-32004, oErr.Error())
+		}
+		nInfo, sErr := next.Stat(".")
+		if sErr != nil || !os.SameFile(info, nInfo) {
+			_ = next.Close()
+			return nil, rpcErr(-32004, "directory identity changed while traversing data_dir")
+		}
+		opened = append(opened, next)
+		cur = next
+	}
+
+	leaf := segs[len(segs)-1]
+	if leaf == "" || leaf == "." || leaf == ".." {
+		return nil, rpcErr(-32602, "invalid target name")
+	}
+	leafInfo, err := cur.Lstat(leaf)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
+		}
+		return nil, rpcErr(-32004, err.Error())
+	}
+	if files.IsSymlinkOrReparseInfo(leafInfo) {
+		return nil, rpcErr(-32004, "refusing to delete symlink or junction in data_dir")
+	}
+	if !leafInfo.IsDir() || !p.Recursive {
+		if err := cur.Remove(leaf); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return map[string]any{"ok": true, "deleted": false, "path": targetDisplay}, nil
+			}
+			return nil, rpcErr(-32004, err.Error())
+		}
+		return map[string]any{"ok": true, "deleted": true, "path": targetDisplay}, nil
+	}
+
+	parentPrefix := strings.Join(segs[:len(segs)-1], "/")
+	if rerr := validateDeleteDataTreeNoSymlink(cur, leaf, parentPrefix, 0); rerr != nil {
+		return nil, rerr
+	}
+	if rerr := deleteDataTreeNoSymlink(cur, leaf, parentPrefix, 0); rerr != nil {
+		return nil, rerr
+	}
+	return map[string]any{
+		"ok":      true,
+		"deleted": true,
+		"path":    targetDisplay,
 	}, nil
 }
 

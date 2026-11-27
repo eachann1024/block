@@ -9,11 +9,10 @@ import (
 	"runtime"
 )
 
-func supportsNotebookXattr() bool     { return false }
-func readNotebookXattr(string) string { return "" }
-func writeNotebookXattr(string, string) {
-}
-func clearNotebookXattr(string) {}
+func supportsNotebookXattr() bool              { return false }
+func readNotebookXattr(string) (string, error) { return "", nil }
+func writeNotebookXattr(string, string) error  { return nil }
+func clearNotebookXattr(string)                {}
 
 func liveRootDirPath(dir *os.Root) string {
 	if dir == nil {

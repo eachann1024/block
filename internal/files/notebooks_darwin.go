@@ -3,6 +3,7 @@
 package files
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,43 +16,50 @@ const notebookIDXattr = "com.blockmd.notebook-id"
 
 func supportsNotebookXattr() bool { return true }
 
-func readNotebookXattr(dirPath string) string {
+func readNotebookXattr(dirPath string) (string, error) {
 	fd, err := unix.Open(dirPath, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	defer unix.Close(fd)
 	var buf [128]byte
 	n, err := unix.Fgetxattr(fd, notebookIDXattr, buf[:])
 	runtime.KeepAlive(fd)
-	if err != nil || n <= 0 {
-		return ""
+	if err != nil {
+		if errors.Is(err, unix.ENOATTR) || errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	if n <= 0 {
+		return "", nil
 	}
 	val := strings.TrimSpace(string(buf[:n]))
 	if !IsSafeNotebookID(val) {
-		return ""
+		return "", errors.New("invalid notebook xattr")
 	}
-	return val
+	return val, nil
 }
 
-func writeNotebookXattr(dirPath, id string) {
+func writeNotebookXattr(dirPath, id string) error {
 	if !IsSafeNotebookID(id) {
-		return
+		return errors.New("invalid notebook id")
 	}
 	fd, err := unix.Open(dirPath, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return
+		return err
 	}
 	defer unix.Close(fd)
 	var curBuf [128]byte
 	if n, gErr := unix.Fgetxattr(fd, notebookIDXattr, curBuf[:]); gErr == nil && n > 0 {
 		if strings.TrimSpace(string(curBuf[:n])) == id {
 			runtime.KeepAlive(fd)
-			return
+			return nil
 		}
 	}
-	_ = unix.Fsetxattr(fd, notebookIDXattr, []byte(id), 0)
+	err = unix.Fsetxattr(fd, notebookIDXattr, []byte(id), 0)
 	runtime.KeepAlive(fd)
+	return err
 }
 
 func clearNotebookXattr(dirPath string) {
@@ -112,7 +120,7 @@ func findSiblingByNotebookXattr(parent, expectedID string) (string, bool) {
 			continue
 		}
 		probed++
-		if readNotebookXattr(cand) == expectedID {
+		if xid, xErr := readNotebookXattr(cand); xErr == nil && xid == expectedID {
 			return cand, true
 		}
 	}

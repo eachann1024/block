@@ -99,12 +99,14 @@ type HostConfig struct {
 
 var ErrNoteConflict = errors.New("note changed; read it again before writing")
 
-// NotebookInfo pairs a registered notebook path with its durable registry ID
-// and historical paths.
+// NotebookInfo pairs a registered notebook path with its durable registry ID,
+// historical paths, and live filesystem identity verification status.
 type NotebookInfo struct {
-	ID            string   `json:"id"`
-	Path          string   `json:"path"`
-	PreviousPaths []string `json:"previous_paths,omitempty"`
+	ID               string   `json:"id"`
+	Path             string   `json:"path"`
+	PreviousPaths    []string `json:"previous_paths,omitempty"`
+	IdentityVerified bool     `json:"identity_verified"`
+	RootIdentity     string   `json:"root_identity,omitempty"`
 }
 
 type ActionResult struct {
@@ -549,20 +551,32 @@ func (rt *Runtime) knownNotebookInfos() []NotebookInfo {
 			}
 			seen[p] = true
 			id := strings.TrimSpace(item.ID)
+			verified := item.IdentityVerified
 			if !files.IsSafeNotebookID(id) {
 				id = files.DeterministicFallbackNotebookID(p)
+				verified = false
 			}
 			prev := append([]string(nil), item.PreviousPaths...)
-			out = append(out, NotebookInfo{ID: id, Path: p, PreviousPaths: prev})
+			out = append(out, NotebookInfo{
+				ID:               id,
+				Path:             p,
+				PreviousPaths:    prev,
+				IdentityVerified: verified,
+				RootIdentity:     strings.TrimSpace(item.RootIdentity),
+			})
 		}
 		return out
 	}
 	nbs := rt.knownNotebooks()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 	out := make([]NotebookInfo, 0, len(nbs))
 	for _, nb := range nbs {
 		out = append(out, NotebookInfo{
-			ID:   files.DeterministicFallbackNotebookID(nb),
-			Path: nb,
+			ID:               files.DeterministicFallbackNotebookID(nb),
+			Path:             nb,
+			IdentityVerified: false,
+			RootIdentity:     files.DirRootIdentity(ctx, nb),
 		})
 	}
 	return out
@@ -1337,11 +1351,13 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			}
 		}
 		type notebookEntry struct {
-			ID            string   `json:"id"`
-			Path          string   `json:"path"`
-			Name          string   `json:"name"`
-			Active        bool     `json:"active"`
-			PreviousPaths []string `json:"previous_paths"`
+			ID               string   `json:"id"`
+			Path             string   `json:"path"`
+			Name             string   `json:"name"`
+			Active           bool     `json:"active"`
+			PreviousPaths    []string `json:"previous_paths"`
+			IdentityVerified bool     `json:"identity_verified"`
+			RootIdentity     string   `json:"root_identity,omitempty"`
 		}
 		nbs := rt.knownNotebookInfos()
 		entries := make([]notebookEntry, 0, len(nbs))
@@ -1355,11 +1371,13 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 				prevPaths = []string{}
 			}
 			entries = append(entries, notebookEntry{
-				ID:            nb.ID,
-				Path:          nb.Path,
-				Name:          name,
-				Active:        activeRoot != "" && nb.Path == activeRoot,
-				PreviousPaths: prevPaths,
+				ID:               nb.ID,
+				Path:             nb.Path,
+				Name:             name,
+				Active:           activeRoot != "" && nb.Path == activeRoot,
+				PreviousPaths:    prevPaths,
+				IdentityVerified: nb.IdentityVerified,
+				RootIdentity:     nb.RootIdentity,
 			})
 		}
 		return map[string]any{"notebooks": entries}, nil
@@ -1415,11 +1433,16 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		if prevPaths == nil {
 			prevPaths = []string{}
 		}
-		return map[string]any{
-			"id":             nb.ID,
-			"path":           filepath.Join(canonDataDir, "notebooks", nb.ID),
-			"previous_paths": prevPaths,
-		}, nil
+		res := map[string]any{
+			"id":                nb.ID,
+			"path":              filepath.Join(canonDataDir, "notebooks", nb.ID),
+			"previous_paths":    prevPaths,
+			"identity_verified": nb.IdentityVerified,
+		}
+		if nb.RootIdentity != "" {
+			res["root_identity"] = nb.RootIdentity
+		}
+		return res, nil
 
 	case "host.notes.list":
 		if !rt.manifest.HasPermission(PermNotesRead) {
@@ -1775,6 +1798,7 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		"host.fs.write",
 		"host.fs.mkdir",
 		"host.fs.delete",
+		"host.fs.delete_data",
 		"host.fs.rename",
 		"host.fs.copy",
 		"host.fs.atomic_swap":
