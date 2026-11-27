@@ -253,7 +253,7 @@ func walkSearchDir(
 			continue
 		}
 
-		if isIgnoredFile(rawName) {
+		if isCommonIgnoredName(rawName) || (!opts.ShowHidden && strings.HasPrefix(rawName, ".")) {
 			continue
 		}
 		mdExt := markdownExtension(rawName)

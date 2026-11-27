@@ -22,6 +22,7 @@ const maxScanDepth = 256
 type ScanOptions struct {
 	HideNonMarkdown bool
 	HideAssets      bool
+	ShowHidden      bool
 	AssetsFolder    string
 	FileOrder       map[string][]string
 	SortMode        model.TreeSortMode
@@ -100,7 +101,9 @@ func isCommonIgnoredName(name string) bool {
 	if ignoredCommonNames[name] {
 		return true
 	}
-	return strings.EqualFold(name, "thumbs.db") || strings.EqualFold(name, "desktop.ini")
+	return strings.EqualFold(name, "thumbs.db") ||
+		strings.EqualFold(name, "desktop.ini") ||
+		strings.EqualFold(name, ".ds_store")
 }
 
 var allowedConfigDotfiles = map[string]bool{
@@ -162,12 +165,21 @@ func isAllowedConfigDotfile(name string) bool {
 	return false
 }
 
-func isIgnoredFile(name string) bool {
-	return strings.HasPrefix(name, ".") || isCommonIgnoredName(name)
+func isIgnoredFile(name string, opts ScanOptions) bool {
+	if isCommonIgnoredName(name) {
+		return true
+	}
+	if !strings.HasPrefix(name, ".") {
+		return false
+	}
+	if opts.ShowHidden {
+		return false
+	}
+	return opts.HideNonMarkdown || !isAllowedConfigDotfile(name)
 }
 
 func isIgnoredDir(name string, opts ScanOptions) bool {
-	if theme.IsFolderHidden(name, opts.AssetsFolder, opts.HideAssets) {
+	if theme.IsFolderHidden(name, opts.AssetsFolder, opts.HideAssets, opts.ShowHidden) {
 		return true
 	}
 	return isCommonIgnoredName(name)
@@ -223,7 +235,7 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 			continue
 		}
 
-		if isIgnoredFile(rawName) && (opts.HideNonMarkdown || !isAllowedConfigDotfile(rawName)) {
+		if isIgnoredFile(rawName, opts) {
 			continue
 		}
 		mdExt := markdownExtension(rawName)

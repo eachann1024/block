@@ -222,6 +222,7 @@ type AppState struct {
 	AssetsFolder          string              `json:"assets_folder,omitempty"`
 	HideAssetsFolder      *bool               `json:"hide_assets_folder,omitempty"`
 	HideNonMarkdownFiles  *bool               `json:"hide_non_markdown_files,omitempty"`
+	ShowHiddenFiles       bool                `json:"show_hidden_files,omitempty"`
 	SourceSoftWrap        bool                `json:"source_soft_wrap,omitempty"`
 	HiddenFolderRegex     string              `json:"hidden_folder_regex,omitempty"`
 	FolderRules           []FolderRule        `json:"folder_rules,omitempty"`

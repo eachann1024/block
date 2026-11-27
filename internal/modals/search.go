@@ -375,6 +375,7 @@ func scanOptionsFromAppState(st model.AppState) files.ScanOptions {
 	return files.ScanOptions{
 		HideNonMarkdown: hideNonMD,
 		HideAssets:      hideAssets,
+		ShowHidden:      st.ShowHiddenFiles,
 		AssetsFolder:    assets,
 	}
 }

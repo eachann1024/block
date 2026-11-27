@@ -990,8 +990,8 @@ func (e errString) Error() string { return string(e) }
 
 // IsFolderHidden evaluates default hidden dot-folders, assets folder, and custom FolderRules.
 // Later rules override earlier rules, allowing explicit unhide (`Hidden: false`) of dot-folders.
-func IsFolderHidden(folderName string, assetsFolder string, hideAssets bool) bool {
-	hidden := strings.HasPrefix(folderName, ".")
+func IsFolderHidden(folderName string, assetsFolder string, hideAssets bool, showHidden bool) bool {
+	hidden := !showHidden && strings.HasPrefix(folderName, ".")
 	if hideAssets && assetsFolder != "" && strings.EqualFold(folderName, assetsFolder) {
 		hidden = true
 	}
