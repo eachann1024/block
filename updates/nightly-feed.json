@@ -1,10 +1,72 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T21:16:56.553Z",
-  "latest_version": "1.0.975",
-  "latest_tag": "v1.0.975",
+  "updated_at": "2026-11-27T21:41:02.153Z",
+  "latest_version": "1.0.976",
+  "latest_tag": "v1.0.976",
   "releases": [
+    {
+      "version": "1.0.976",
+      "tag": "v1.0.976",
+      "published_at": "2026-11-27T21:41:01Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.976",
+      "prerelease": true,
+      "channel": "nightly",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "编辑器：首次使用思维导图时，可查看快捷键动画教程。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "插件接口：文件访问现在能更可靠地识别笔记本根目录、规范化路径，并避免目录替换后误报目录缺失。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Editor: New users can view an animated tutorial for mind map shortcuts during first use."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Plugin API: File access now recognizes notebook roots more reliably, normalizes paths, and avoids missing directory alerts when a directory is replaced."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.976/block-macos-arm64.dmg",
+          "size": 22092609,
+          "sha256": "0e676f7d05fe556b639ca5db90462a7942261b4a64c223c06815c79460b58391"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.976/block-macos-x64.dmg",
+          "size": 24179773,
+          "sha256": "dbcaae994921a5a0e33f64d8f246dda8f7c67518c1d12fa93eb8ce7f8f8e8565"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.976/block-windows-x64-setup.exe",
+          "size": 19477422,
+          "sha256": "299fd1aa2380a342ca4d9130d307b6d25644983dc10b4fc098f0af3559553f8f"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.976/block-linux-x64.deb",
+          "size": 15847034,
+          "sha256": "66bc3f58f67702298891ce83065c60fc3aa9604dea6a93fcd7938fc90a7cdd38"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.976/block-linux-x64.AppImage",
+          "size": 29542904,
+          "sha256": "2ffa9674ccf1a17fc5b4650026d9d51538603776bf96dcc735959bf1a1c0b8fc"
+        }
+      ]
+    },
     {
       "version": "1.0.975",
       "tag": "v1.0.975",
@@ -44,38 +106,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-macos-arm64.dmg",
-          "size": 20706194,
-          "sha256": "81805b9f5501d7491ec4c6d680cc488c39a609bb20c7c5f1aced77ce6d6a4642"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-macos-x64.dmg",
-          "size": 22781596,
-          "sha256": "9df3cd267e78727502c61869e9af358be63b01107ad237f1bbac82937cfb010c"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-windows-x64-setup.exe",
-          "size": 18100346,
-          "sha256": "1bee28c2668695675b82533d60080ab520706257397f12dc2ee611dbc8a0069b"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-linux-x64.deb",
-          "size": 14480498,
-          "sha256": "fb1cd263d5fce3a000568c767369b396f4dd5a1dce2972bb9c609ba1756b71f7"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.975/block-linux-x64.AppImage",
-          "size": 28166648,
-          "sha256": "eae08942f7ff73ddcb2157cfc4ec2e8d8b381c6716f5d571edeb5c9625f1220a"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.974",
@@ -1830,37 +1861,6 @@
         "fixes": [
           "Plugin Store: The staged plugin installation workflow now enforces stricter package integrity and provenance checks, and hardens the permission confirmation modal.",
           "Plugin API: The app now enforces clipboard permissions for menu bar contributions and hardens interactive toast notification actions."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.923",
-      "tag": "v1.0.923",
-      "published_at": "2026-11-24T05:42:34Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.923",
-      "prerelease": false,
-      "channel": "stable",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "菜单栏：执行菜单栏命令时，图标旁现在会即时显示运行状态与执行结果。"
-        ],
-        "improvements": [],
-        "fixes": [
-          "菜单栏：修复了 macOS 下向菜单栏图标拖拽内容时未能正常接收拖拽事件的问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Menu Bar: Command execution status and results are now displayed in real time next to the menu bar icon."
-        ],
-        "improvements": [],
-        "fixes": [
-          "Menu Bar: The menu bar icon now reliably receives drag-and-drop events on macOS."
         ],
         "other": []
       },
