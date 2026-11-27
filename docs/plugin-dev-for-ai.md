@@ -251,11 +251,12 @@ example-sync/
     - `"events:note_saved"`：订阅笔记保存事件（`plugin.event`）
     - `"events:system"`：订阅系统唤醒、网络变化、焦点事件及 `host.scheduler.*` 后台定时任务
     - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已启动的沙盒）
-  - **已免声明能力（默认放行，共 12 项）**：插件私有存储 `"storage"`、全部 9 项界面扩展 `"ui:*"`（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）、系统原生通知 `"system:notify"` 与 Dock 角标 `"system:badge"` 在运行时均默认放行。**四项清单校验例外**：若声明了 `contributes.titlebar_manager: true`（需 `"ui:titlebar"`）、`contributes.block_decorators`（需 `"ui:appearance"` 或 `"editor:write"`）、`contributes.themes`（需 `"ui:appearance"`）或 `contributes.stages`（需 `"ui:appearance"` / `"ui:commands"` / `"ui:panels"`），清单仍必须显式保留对应权限（注意：`block-plugin-check` 当前也会对这几项输出 `[WARN]`，勿据此误删）。删除其他确属冗余的权限时，须同步删除其在 `permission_reasons` 中的对应键；纯声明式语言扩展必须保持 `permissions` 为空数组，即使只填 `"storage"` 也会失去免入口资格。
+  - **默认放行权限（共 12 项）**：插件私有存储 `"storage"`、9 项 `"ui:*"` 界面权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）和系统的 `"system:notify"`、`"system:badge"`。部分扩展需要显式声明权限。`titlebar_manager` 需要 `"ui:titlebar"`，`block_decorators` 需要 `"ui:appearance"` 或 `"editor:write"`，`themes` 需要 `"ui:appearance"`，`stages` 需要 `"ui:appearance"`、`"ui:commands"` 或 `"ui:panels"`。`contributes.ignored_dirs` 和 `host.sidebar.*_ignored_dirs` 都需要显式声明 `"ui:sidebar"`，安装和更新时无须确认。删除冗余权限时，同步删除 `permission_reasons` 中对应的键。纯声明式语言扩展的 `permissions` 必须为空数组。
 - `network_domains`：可选字符串数组（最多 64 项、不区分大小写去重），限制 `host.http.request` 目标主机与重定向目标：支持精确主机（`"api.example.com"`，允许任意端口）、显式端口形式（`"127.0.0.1:8080"`，匹配 URL 中显式填写的端口）或单前缀通配（`"*.example.com"`，仅匹配子域而不含裸域），禁止协议前缀、路径与空白。无论是否配置本字段，运行时都会拦截未指定地址、链路本地与 `0.0.0.0/8`；配置本字段后，普通域名若解析到私网或回环 IP 同样会被拒绝（显式 IP 字面量与 `localhost` / `*.localhost` 除外）。
 - `exec_allowlist`：可选字符串数组（最多 8 项、区分大小写去重与运行时匹配）。`host.exec.run` 仅允许从宿主 `PATH` 启动列表内的裸程序名（如 `"git"` 或 `"rclone"`）。程序名须匹配 `^[a-zA-Z0-9._-]+$`，禁止 `.`、`..`、路径分隔符以及以下禁用名单（剥离 `.exe` / `.cmd` / `.bat` / `.com` 后按小写比对）：`sh`、`bash`、`zsh`、`dash`、`fish`、`cmd`、`powershell`、`pwsh`、`python`、`pythonw`、`py`、`pyw`、`node`、`perl`、`ruby`、`osascript`，以及匹配 `^(pythonw?|pyw?)[0-9]+(\.[0-9]+)*$` 的版本化 Python 解释器名称。
 - `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions) 与 [语言扩展](https://docs.block.cooool.top/plugins/languages)。
-- `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。
+  - `contributes.ignored_dirs` 接受目录名字符串数组，例如 `[".generated"]`。格式与生效范围见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions)。
+- `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。商店可选 SVG 见 [应用商店](https://docs.block.cooool.top/plugins/check-and-store)。
 
 #### 低频可选字段
 - `repo`：可选，GitHub 仓库标识 `"owner/repo"`（匹配 `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`）。上架应用商店时若填写，必须与实际 GitHub 仓库一致（不区分大小写）。
@@ -297,7 +298,7 @@ example-sync/
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本时，宿主通常在下次调用该插件且目标根目录不同（含后台 `note.saved` 事件）时关闭旧沙盒并按新 `notebook_root` 重新初始化；部分外观或界面扩展类插件会在切本时立即预热。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
-     - `ui_capabilities`：渐进能力声明数组，最多包含 39 项能力键（含按配置与平台追加的键，旧宿主可能省略部分键）；完整清单见下文「兼容性与平台实现说明」。
+     - `ui_capabilities`：渐进能力声明数组，最多包含 40 项能力键（含按配置与平台追加的键，旧宿主可能省略部分键）；完整清单见下文「兼容性与平台实现说明」。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -462,6 +463,11 @@ example-sync/
     - `host.ai.complete`：`{"system_prompt", "user_prompt", "max_tokens"}`（`user_prompt` 必填非空、提示词合计 <= 128 KiB、`max_tokens` <= 16384、120s 超时）-> `{"text", "model"}`（`model` 可省略）。
     - `host.ai.open_with_prompt`：`{"prompt", "note_path"}`（`prompt` 上限 128 KiB）-> `{"ok": true}`（预填提示词并打开 AI 面板）。
 
+20. **`host.sidebar.set_ignored_dirs` / `host.sidebar.get_ignored_dirs`** 需要显式声明 `"ui:sidebar"`，无须用户确认。调用前检查 `ui_capabilities` 中是否包含 `"sidebar_ignored_dirs"`。
+    - `set_ignored_dirs` 接受 `{"dirs": [".generated"]}`，将本插件的运行时列表整体替换，返回 `{"ok": true}`。传 `{"dirs": []}` 可清空运行时列表。
+    - `get_ignored_dirs` 接受 `{}`，返回本插件当前的运行时列表 `{"dirs": [...]}`，初始值为 `{"dirs": []}`。
+    - 宿主合并各已启用插件的静态和运行时列表。运行时列表保存在内存中，停用、卸载、更新插件或重启 Block 时清空。目录名约束见 [宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions)。
+
 ### 4.3 系统集成
 
 桌面宿主在 `plugin.initialize.ui_capabilities` 中提供 `"system_integration"`。`host.system.capabilities {}` 无需额外权限，返回布尔值对象，字段为 `notify`、`notify_click`、`secrets`、`open_url`、`reveal`、`open_dialog`、`save_dialog`、`clipboard_read`、`clipboard_write`、`trash`、`badge`、`wake`、`network`、`focus`。结果反映当前桌面可用性，实际调用还受清单权限、系统授权和服务状态影响。
@@ -483,8 +489,8 @@ example-sync/
 
 ### 4.4 兼容性与平台实现说明
 
-- **全部 `ui_capabilities` 能力键**（最多 39 项，旧宿主或特定平台/配置可能省略部分键，用于渐进启用特性）：
-  `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`toast_banner`（右上角全局通知横幅支持 `body`/`action`、`shown` 返回值与默认插件图标）、`open_settings`（`host.ui.open_settings` 打开插件设置页）、`form_autosave`（表单控件自动触发 `plugin.action`）、`button_link`（卡片内文字按钮 `variant: "link"`）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）、`system_integration`（`host.system.*` / `host.clipboard.*` / `host.secrets.*` 系统集成能力）、`menubar`（系统菜单栏图标 `contributes.menubar_items` 与 `host.menubar.set`）、`menubar_drop`（菜单栏图标接收拖放，目前仅 macOS）。
+- **全部 `ui_capabilities` 能力键**（最多 40 项，旧宿主或特定平台/配置可能省略部分键，用于渐进启用特性）：
+  `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`sidebar_ignored_dirs`（目录忽略 RPC）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`toast_banner`（右上角全局通知横幅支持 `body`/`action`、`shown` 返回值与默认插件图标）、`open_settings`（`host.ui.open_settings` 打开插件设置页）、`form_autosave`（表单控件自动触发 `plugin.action`）、`button_link`（卡片内文字按钮 `variant: "link"`）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）、`system_integration`（`host.system.*` / `host.clipboard.*` / `host.secrets.*` 系统集成能力）、`menubar`（系统菜单栏图标 `contributes.menubar_items` 与 `host.menubar.set`）、`menubar_drop`（菜单栏图标接收拖放，目前仅 macOS）。
 - **各平台系统集成细节**：
   macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 需要通知服务支持 `actions` 才能点击通知，`notify_click:false` 时仍可能显示通知。Linux 系统凭据需在系统凭据管理器中先解锁。单次运行最多保留最近 128 条插件原生通知。系统选择框已打开时，原生后端可能需要用户关闭窗口，宿主会丢弃已过期动作的选择结果。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
 - **安全回收实现机制**：
@@ -825,7 +831,7 @@ serve((method, params) => {
 
 ## 7. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](https://docs.block.cooool.top/plugins/manifest) 的「字段约束」：所有 `ui:*` 界面扩展在运行时均已默认放行（注：`titlebar_manager`、`block_decorators`、`themes`、`stages` 在清单校验阶段仍要求显式列出对应权限），编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）按需声明。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、目录忽略项、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。默认放行能力和显式声明要求见 [清单与权限](https://docs.block.cooool.top/plugins/manifest)。
 
 ### 7.1 多表面（Surfaces）渲染与状态隔离
 
@@ -879,6 +885,7 @@ serve((method, params) => {
 9.1. **`file_icons`**（最多 **1** 个）：声明笔记本、文件与文件夹自定义图标包及原生交互选择器；停用或卸载插件时立即恢复默认图标。
    - `id`（必填）、`pack`（必填，插件目录内相对 `.json` 路径，<= 512 KiB）、`title`（可选 `LocalizedText`）、`picker`（可选 bool，启用点击侧栏/笔记本切换器/顶栏图标打开选择器）、`sync_tabs`（可选 bool，同步在顶栏标签页显示自定义图标）。
    - 图标包 JSON 顶层字段：`schema_version`（固定 `1`）、`categories`（1–16 项，含 `id`、`name`、`icon`）与 `icons`（1–256 项，含 `id`、`category`、`name`、可选 `keywords`，且 `ref` 宿主内置图标名与 `spec` 内联 `DuoIconSpec` 二选一）。
+9.2. **`ignored_dirs`** 需要显式声明 `"ui:sidebar"`。列表最多含 32 个目录名，每个 1–128 字节，不能是 `.` 或 `..`，也不能含 `/`、`\` 或 NUL。名字按原样精确匹配。启用的插件可在所有笔记本中将匹配目录及其内容从文件树、工作区扫描和搜索中排除，「显示隐藏文件」开启时同样生效。停用或卸载插件会移除它的忽略项并刷新文件树。
 10. **`backdrops`**（最多 **8** 个）：声明编辑区自定义矢量背景或统一纸纹背景，运行时通过 `host.ui.set_backdrop` 启用、切换或调节（宿主自动钳制透明度在 `0.03`–`0.25` 以保证正文清晰可读，停用或卸载插件立即消失）。
     - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
     - `pattern`（可选：`"scatter"` | `"grid"` | `"watermark"` | `"corners"` | `"paper_dots"` | `"paper_grid"`，默认 `"scatter"`，其中 `paper_dots` 与 `paper_grid` 为与编辑器行高对齐的纸纹背景）、`density`（可选：`"sparse"` | `"medium"` | `"dense"`，默认 `"medium"`）、`contrast`（可选：`"standard"` | `"high"`，默认 `"standard"`，用于纸纹对比度）、`opacity`（可选：`0.01`–`0.35`，渲染钳制 `0.03`–`0.25`，默认 `0.09`）、`tint`（可选：`"accent"` | `"muted"` | `"warm"` | `"glow"`，默认 `"accent"`）、`dark_glow`（可选 bool，深色主题下提亮为夜光质感）。
@@ -1008,6 +1015,7 @@ serve((method, params) => {
 9.1. **`host.sidebar.set_file_icons` / `host.sidebar.get_file_icons`**（无需声明权限，需声明 `contributes.file_icons`）
    - `host.sidebar.set_file_icons` 参数：`{"notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {".": {"icon": "book", "tint": "blue"}, "welcome.md": {"icon": "wave", "tint": "blue"}}, "prefs": {"picker": true, "sync_tabs": true}}`（`notebook_root` 省略时取当前笔记本；`"."` 表示笔记本自身图标，其余为笔记本内相对路径；`entries` 最多 2048 项，`icon` 须存在于图标包，`tint` 支持 `"none"` | `"blue"` | `"teal"` | `"green"` | `"amber"` | `"red"` | `"purple"`；`patch: true` 时传 `null` 删除单项，`clear: true` 清空当前笔记本映射；`prefs` 覆盖选择器与标签页同步开关；文件重命名/移入回收站时宿主自动同步路径）。
    - `host.sidebar.get_file_icons` 参数：`{"notebook_root": "..."}` -> 返回 `{"notebook_root": "...", "entries": {...}, "recent": [...], "prefs": {"picker": true, "sync_tabs": true}}`。
+9.2. **`host.sidebar.set_ignored_dirs` / `host.sidebar.get_ignored_dirs`** 需要显式声明 `"ui:sidebar"`。参数和返回值见 [双向 JSON-RPC 2.0 协议](https://docs.block.cooool.top/plugins/protocol-and-ui)。
 10. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
     - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
 11. **`host.editor.insert`**（需 `"editor:write"`）
@@ -1217,7 +1225,7 @@ CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check [-bilingual] /�
 
 `-bilingual` 须放在目录路径之前，单次只接收一个插件目录。终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。若清单声明了已默认放行的权限（如 `storage`、`ui:*`、`system:notify`、`system:badge`），校验器会输出 `[WARN]` 提示删减（不阻断通过；注意 `titlebar_manager`、`block_decorators`、`themes`、`stages` 在清单校验阶段仍需要对应 `ui:*` 权限，勿据此误删）。
 
-- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `network_domains`、`exec_allowlist`、`permission_reasons` 键匹配、字数与禁 Emoji 规则）、`languages` / `file_icons` / `themes` / `stages`（含 `web/` 静态外网字面量与体积校验）、目录安装（含纯声明式语言包）、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无运行时入口，只校验清单、目录安装、双语文档与语法编译；`entry.js` / `entry.wasm` 在内置 `wazero` + `quickjs-ng` 沙盒中实跑验证）。
+- **自动检查流水**：在临时笔记本与插件数据目录中执行（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `network_domains`、`exec_allowlist`、`permission_reasons` 键匹配、字数与禁 Emoji 规则，以及 `ignored_dirs` 的权限与目录名约束）、`languages` / `file_icons` / `themes` / `stages`（含 `web/` 静态外网字面量与体积校验）、目录安装（含纯声明式语言包）、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无运行时入口，只校验清单、目录安装、双语文档与语法编译；`entry.js` / `entry.wasm` 在内置 `wazero` + `quickjs-ng` 沙盒中实跑验证）。
 - **双语门禁**：当 `manifest.repo` 属于官方组织（`blockmd-plugins/*`）时，校验器会自动启用双语检查（`verified.json` 1:1 绑定由商店采集器执行；官方仓库 CI 建议显式追加 `-bilingual`，避免清单漏写 `repo` 时跳过检查；社区插件也可追加 `-bilingual` 主动开启）：
   1. 校验清单中 `name.en`、`summary.en`、`contributes.*.en` 及已声明的 `permission_reasons[*].en` 均为非空纯英文且不含中文字符或中文标点；
   2. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；若 README 引用了本地图片或 SVG，本地资产须存在，位图与含中文资源须为中英文版本分别提供独立路径，纯英文 UTF-8 `.svg`（零中文字符及全角标点）可由 `README.md` 与 `README.en.md` 共用同一路径（英文版引用的 `.svg` 不得包含中文字符或全角标点）；
@@ -1246,4 +1254,5 @@ Block 应用商店采用无审批自动采集机制。**硬门槛与采集上限
    - **桌面端不同安装来源的校验力度与权限确认**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会先暂存并校验清单与打包上限，但不做商店 `sha256`/索引比对。无论商店还是手动来源，首次安装请求 5 类敏感权限任一项或更新新增敏感权限时，桌面端均会先弹出权限确认卡片，用户确认后才落盘；「全部更新」会先自动更新无新增敏感权限的插件，将新增敏感权限的插件留待用户逐项确认（若此时已离开商店页，则通过右上角通知横幅引导返回确认）。
 
 - 索引通过 `system_apps` 提供带系统权限的发行包，通过 `apps` 提供其余发行包。支持 `system_apps` 的 Block 会合并两组条目。
-- **离线兜底索引与 `builtin://` 机制**：主程序在编译期仅通过内嵌 `default_index.json` 作为离线兜底索引（`DefaultSeedIndex()` 会过滤保留 ID `block-diagnostics` 及已由宿主内置接管的语言包 ID）；主仓当前不含 `plugins/` 目录或内置插件，`RegisterBuiltinCatalogApp` 暂无调用方。`LoadCachedOrSeedCatalog` 仅在无本地缓存、缓存无效或兜底索引更新时间戳更新时返回兜底索引，否则以本地缓存优先；`RefreshCatalog` 拉取远端 `store-index.json` 后以远端目录优先（若存在已注册的 `builtin://` 种子，则按 `mergeStoreIndexes(parsed/idx, DefaultSeedIndex())` 以缓存/远端条目优先合并）。外部插件一律通过独立公开仓库与 `blockmd-plugin` Topic 参与自动采集，禁止提交到主仓 `plugins/`。
+- **商店索引和离线缓存**：桌面端从 GitHub 或 jsDelivr 加载 `store-index.json`，把 `system_apps` 合入 `apps`，并缓存到 `<BlockAppData>/apps-cache/`。桌面商店和采集器都使用 `store/blocklist.json` 按插件 ID 或仓库过滤。首次离线打开且没有索引缓存时，商店只显示已安装条目。外部插件在独立仓库发布。
+- **可选商店美术**：所有插件均可在仓库默认分支提供 `store/icon.svg` 和 `store/hero.svg`，每个文件最多 512 KiB。宿主先从 GitHub 获取，失败时尝试 jsDelivr，并在本次运行中缓存。缺少图标时使用 `manifest.icon`。缺少轮播图时，在色调背景上显示放大的 `manifest.icon`。商店按 `store/featured.json` 中的 `id` 与 `tone` 选定轮播内容，支持 `ocean`、`amber`、`violet`。

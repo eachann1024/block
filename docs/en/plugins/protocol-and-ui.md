@@ -32,7 +32,7 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
      ```
      - **Runtime Context**: `notebook_root` is populated only when declaring `notes:read`, `notes:write`, or `events:note_saved` and a notebook is active (otherwise `""`); `notebooks` is populated only when declaring `notes:read` (otherwise `[]`). Switching notebooks typically re-initializes the sandbox with the new `notebook_root` on the next call (including background `note.saved` events), while certain appearance/UI plugins may warm immediately on switch.
      - `downloads_dir` (defaults to `~/Downloads`, env `BLOCKMD_DOWNLOADS_DIR`): export files, backups, and user-facing output should default to `downloads_dir` rather than hidden directories inside `apps-data` or notebooks.
-     - `ui_capabilities`: progressive capability flags (up to 39 keys depending on host version, config, and OS; see Section 4.4).
+     - `ui_capabilities`: progressive capability flags (up to 40 keys depending on host version, config, and OS; see Section 4.4).
    - Return `result`: `{"ready": true}`.
 
 2. **`plugin.render`**
@@ -137,6 +137,11 @@ Note path rules: case-insensitive `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`,
     - `host.ai.complete`: `{"system_prompt", "user_prompt", "max_tokens"}` (`user_prompt` required non-empty, combined prompts `<= 128 KiB`, `max_tokens <= 16384`, 120s timeout) -> `{"text", "model"}` (`model` may be omitted).
     - `host.ai.open_with_prompt`: `{"prompt", "note_path"}` (`prompt <= 128 KiB`) -> `{"ok": true}`.
 
+20. **`host.sidebar.set_ignored_dirs` / `host.sidebar.get_ignored_dirs`** require an explicit `"ui:sidebar"` declaration without a consent prompt. Check for `"sidebar_ignored_dirs"` in `ui_capabilities` before calling.
+    - `set_ignored_dirs` takes `{"dirs": [".generated"]}`, replaces the calling plugin's runtime list, and returns `{"ok": true}`. Send `{"dirs": []}` to clear the runtime list.
+    - `get_ignored_dirs` takes `{}` and returns the calling plugin's runtime list as `{"dirs": [...]}`. The initial value is `{"dirs": []}`.
+    - Block combines the static and runtime lists of all enabled plugins. Runtime lists are held in memory and cleared on disable, uninstall, plugin update, or Block restart. See [Host UI Contributions](ui-contributions.md) for directory name rules.
+
 ### 4.3 System Integration
 
 Desktop hosts advertise `"system_integration"` in `ui_capabilities`. Call `host.system.capabilities {}` (no permission) to query live boolean support for `notify`, `notify_click`, `secrets`, `open_url`, `reveal`, `open_dialog`, `save_dialog`, `clipboard_read`, `clipboard_write`, `trash`, `badge`, `wake`, `network`, and `focus`.
@@ -156,8 +161,8 @@ Interactive system operations (open URL, reveal, dialogs, clipboard, trash) requ
 
 ### 4.4 Compatibility & Platform Notes
 
-- **`ui_capabilities` keys** (up to 39 total, depending on host version, config, and OS):
-  `kv_tooltip`, `treemap`, `host_perf`, `checklist`, `checklist_add_folder`, `form_layout`, `multi_notebook`, `card_collapse`, `metric_tone`, `log_columns`, `file_picker`, `action_feedback`, `action_progress`, `note_revision`, `sidebar_sections`, `file_badges`, `sidebar_menu`, `backdrops`, `status_icon`, `toast_icon`, `notes_open`, `log_actions`, `panel_toggle`, `editor_insert_mode`, `dialog_token`, `item_icons`, `tab_menu`, `file_path`, `log_timeline`, `progress_bar`, `segmented_status`, `toast_banner`, `open_settings`, `form_autosave`, `button_link`, `store_changelog`, `system_integration`, `menubar`, `menubar_drop` (macOS only).
+- **`ui_capabilities` keys** (up to 40 total, depending on host version, config, and OS):
+  `kv_tooltip`, `treemap`, `host_perf`, `checklist`, `checklist_add_folder`, `form_layout`, `multi_notebook`, `card_collapse`, `metric_tone`, `log_columns`, `file_picker`, `action_feedback`, `action_progress`, `note_revision`, `sidebar_sections`, `file_badges`, `sidebar_menu`, `sidebar_ignored_dirs`, `backdrops`, `status_icon`, `toast_icon`, `notes_open`, `log_actions`, `panel_toggle`, `editor_insert_mode`, `dialog_token`, `item_icons`, `tab_menu`, `file_path`, `log_timeline`, `progress_bar`, `segmented_status`, `toast_banner`, `open_settings`, `form_autosave`, `button_link`, `store_changelog`, `system_integration`, `menubar`, `menubar_drop` (macOS only).
 - **Platform Details**: macOS uses Notification Center (click targets persist 7 days across restarts), Keychain, and Dock; Windows uses native notifications, Credential Manager, and taskbar badge; Linux uses desktop notifications, Secret Service (must be unlocked), Unity Launcher Dock, and logind wake events.
 - **Safe Trash**: saves dirty editors before confirming, stages on the same volume, verifies file identity, restores on failure, and tracks original paths for recovery prompts.
 

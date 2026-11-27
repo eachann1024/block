@@ -8,7 +8,7 @@
 
 ## 7. Host UI Contributions
 
-Plugins extend Block outside their settings page via `manifest.contributes`: titlebar buttons, titlebar layout management, built-in settings sections, commands/shortcuts, page/editor/sidebar/tab menus, sidebar sections, file tree badges, custom file icon packs, editor backdrops, block decorators, theme skins, offline WebView stages, right-side panels, status bar items, modal dialogs, and system menu bar items. All `ui:*` permissions are default-allowed at runtime, except `titlebar_manager`, `block_decorators`, `themes`, and `stages`, which still require explicit permission entries during manifest validation (see [Manifest & Permissions](manifest.md)).
+Plugins extend Block outside their settings page via `manifest.contributes`. Contributions include titlebar buttons and layout management, built-in settings sections, commands and shortcuts, context menus, sidebar sections, file tree badges, file icon packs, ignored directories, editor backdrops, block decorators, theme skins, offline WebView stages, panels, status items, dialogs, and system menu bar items. See [Manifest & Permissions](manifest.md) for defaults and explicit permission requirements.
 
 ### 7.1 Multi-Surface Rendering & State Isolation
 
@@ -38,6 +38,7 @@ Shared validation rules:
 8. **`sidebar_sections`** (max 4): compact collapsible cards below the file tree (`id`, `title`, `icon`, optional `collapsible`, `default_collapsed`; surface `"sidebar_section:<id>"`).
 9. **`file_badges`** (max 4): trailing file tree badges pushed via `host.sidebar.set_badges` (max 2 shown per row; cleared on disable/uninstall).
 9.1. **`file_icons`** (max 1): custom notebook/file/folder icon pack (`id`, `pack` relative `.json <= 512 KiB`, optional `title`, `picker`, `sync_tabs`). Pack schema: `schema_version: 1`, `categories` (1–16), `icons` (1–256, each using either host `ref` or inline `spec`).
+9.2. **`ignored_dirs`** requires an explicit `"ui:sidebar"` declaration. Each list accepts up to 32 exact directory names of 1–128 bytes each. Names may not contain `/`, `\`, or NUL, or equal `.` or `..`. An enabled plugin can exclude matching directories and their contents from the file tree, workspace scans, and search in every notebook, including when Show Hidden Files is on. Disable or uninstall removes that plugin's exclusions and refreshes the tree.
 10. **`backdrops`** (max 8): custom editor vector or paper-grain backgrounds controlled via `host.ui.set_backdrop` (`pattern`: `"scatter"` | `"grid"` | `"watermark"` | `"corners"` | `"paper_dots"` | `"paper_grid"`; `density`, `contrast`, `opacity` clamped to `0.03`–`0.25`, `tint`, `dark_glow`).
 11. **`status_items`**: bottom status bar entries (`id`, optional `text`, `command`, `icon`).
 12. **`dialogs`**: modal dialogs opened via `host.ui.open_dialog` (`id`, `title`, optional `width` `320`–`720` default `460`, `icon`; surface `"dialog:<id>"`).
@@ -68,6 +69,7 @@ Shared validation rules:
 8. **`host.ui.refresh`**: `{"surface"}` asynchronously re-renders an already-opened surface; returns `{"ok": true}` or `{"ok": true, "skipped": true}` if notebook scope does not match.
 9. **`host.sidebar.set_badges` / `get_badges`**: `{"badge_id": "review-mark", "notebook_root"?, "clear"?, "patch"?, "entries": {...}}` (`<= 512` entries, `text <= 4` no Emoji, `tooltip <= 120` no Emoji, `tone` in `accent|success|warning|danger`).
 9.1. **`host.sidebar.set_file_icons` / `get_file_icons`** (requires `contributes.file_icons`): `entries` (`<= 2048`, `"."` for notebook itself), `tint` (`none|blue|teal|green|amber|red|purple`), `prefs` (`picker`, `sync_tabs`).
+9.2. **`host.sidebar.set_ignored_dirs` / `host.sidebar.get_ignored_dirs`** both require an explicit `"ui:sidebar"` declaration. See the [JSON-RPC protocol](protocol-and-ui.md) for request and response shapes.
 10. **`host.editor.selection`** (`"editor:read"`): `{"note", "text", "has_focus"}`.
 11. **`host.editor.insert`** (`"editor:write"`): `{"text", "note"?, "mode": "replace"|"insert"}` (`text` required string `<= 4 MiB`; parses Markdown into native blocks and saves immediately; rejects folder/out-of-notebook context menu targets with `-32004`).
 12. **`host.menubar.set`**: `{"id", "title"?, "tooltip"?, "menu"?, "clear_menu"?}` (`title <= 16` no Emoji, `menu <= 20` dynamic items in memory, `payload <= 4096` bytes).

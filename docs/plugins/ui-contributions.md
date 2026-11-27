@@ -8,7 +8,7 @@
 
 ## 7. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。权限与免声明能力详见 [清单与权限](manifest.md) 的「字段约束」：所有 `ui:*` 界面扩展在运行时均已默认放行（注：`titlebar_manager`、`block_decorators`、`themes`、`stages` 在清单校验阶段仍要求显式列出对应权限），编辑器读写（`editor:read`、`editor:write`）、文件路径（`notes:path`）与工作区事件订阅（`events:workspace`）按需声明。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、顶栏布局管理、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、目录忽略项、编辑区矢量/纸纹背景、块装饰器、主题皮肤、离线 WebView 舞台、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标。默认放行能力和显式声明要求见 [清单与权限](manifest.md)。
 
 ### 7.1 多表面（Surfaces）渲染与状态隔离
 
@@ -62,6 +62,7 @@
 9.1. **`file_icons`**（最多 **1** 个）：声明笔记本、文件与文件夹自定义图标包及原生交互选择器；停用或卸载插件时立即恢复默认图标。
    - `id`（必填）、`pack`（必填，插件目录内相对 `.json` 路径，<= 512 KiB）、`title`（可选 `LocalizedText`）、`picker`（可选 bool，启用点击侧栏/笔记本切换器/顶栏图标打开选择器）、`sync_tabs`（可选 bool，同步在顶栏标签页显示自定义图标）。
    - 图标包 JSON 顶层字段：`schema_version`（固定 `1`）、`categories`（1–16 项，含 `id`、`name`、`icon`）与 `icons`（1–256 项，含 `id`、`category`、`name`、可选 `keywords`，且 `ref` 宿主内置图标名与 `spec` 内联 `DuoIconSpec` 二选一）。
+9.2. **`ignored_dirs`** 需要显式声明 `"ui:sidebar"`。列表最多含 32 个目录名，每个 1–128 字节，不能是 `.` 或 `..`，也不能含 `/`、`\` 或 NUL。名字按原样精确匹配。启用的插件可在所有笔记本中将匹配目录及其内容从文件树、工作区扫描和搜索中排除，「显示隐藏文件」开启时同样生效。停用或卸载插件会移除它的忽略项并刷新文件树。
 10. **`backdrops`**（最多 **8** 个）：声明编辑区自定义矢量背景或统一纸纹背景，运行时通过 `host.ui.set_backdrop` 启用、切换或调节（宿主自动钳制透明度在 `0.03`–`0.25` 以保证正文清晰可读，停用或卸载插件立即消失）。
     - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
     - `pattern`（可选：`"scatter"` | `"grid"` | `"watermark"` | `"corners"` | `"paper_dots"` | `"paper_grid"`，默认 `"scatter"`，其中 `paper_dots` 与 `paper_grid` 为与编辑器行高对齐的纸纹背景）、`density`（可选：`"sparse"` | `"medium"` | `"dense"`，默认 `"medium"`）、`contrast`（可选：`"standard"` | `"high"`，默认 `"standard"`，用于纸纹对比度）、`opacity`（可选：`0.01`–`0.35`，渲染钳制 `0.03`–`0.25`，默认 `0.09`）、`tint`（可选：`"accent"` | `"muted"` | `"warm"` | `"glow"`，默认 `"accent"`）、`dark_glow`（可选 bool，深色主题下提亮为夜光质感）。
@@ -191,6 +192,7 @@
 9.1. **`host.sidebar.set_file_icons` / `host.sidebar.get_file_icons`**（无需声明权限，需声明 `contributes.file_icons`）
    - `host.sidebar.set_file_icons` 参数：`{"notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {".": {"icon": "book", "tint": "blue"}, "welcome.md": {"icon": "wave", "tint": "blue"}}, "prefs": {"picker": true, "sync_tabs": true}}`（`notebook_root` 省略时取当前笔记本；`"."` 表示笔记本自身图标，其余为笔记本内相对路径；`entries` 最多 2048 项，`icon` 须存在于图标包，`tint` 支持 `"none"` | `"blue"` | `"teal"` | `"green"` | `"amber"` | `"red"` | `"purple"`；`patch: true` 时传 `null` 删除单项，`clear: true` 清空当前笔记本映射；`prefs` 覆盖选择器与标签页同步开关；文件重命名/移入回收站时宿主自动同步路径）。
    - `host.sidebar.get_file_icons` 参数：`{"notebook_root": "..."}` -> 返回 `{"notebook_root": "...", "entries": {...}, "recent": [...], "prefs": {"picker": true, "sync_tabs": true}}`。
+9.2. **`host.sidebar.set_ignored_dirs` / `host.sidebar.get_ignored_dirs`** 需要显式声明 `"ui:sidebar"`。参数和返回值见 [双向 JSON-RPC 2.0 协议](protocol-and-ui.md)。
 10. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
     - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
 11. **`host.editor.insert`**（需 `"editor:write"`）
