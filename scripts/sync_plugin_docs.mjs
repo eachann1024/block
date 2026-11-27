@@ -8,10 +8,13 @@
  *   node scripts/sync_plugin_docs.mjs          # regenerate both outputs
  *   node scripts/sync_plugin_docs.mjs --check  # exit 1 if any output is out of sync
  */
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const execFileAsync = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const CHAPTER_FILES = [
@@ -76,93 +79,24 @@ async function composeTarget(target) {
   return parts.join("\n\n---\n\n") + "\n";
 }
 
-const HOST_METHOD_RE = /"(host\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"/g;
 const HOST_METHOD_DOC_RE = /`(host\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)`/g;
 const TABLE_START = "<!-- host-methods-table:start -->";
 const TABLE_END = "<!-- host-methods-table:end -->";
 
-function stripGoComments(source) {
-  let out = "";
-  let inStr = null;
-  let inBlock = false;
-  for (let i = 0; i < source.length; i += 1) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (inBlock) {
-      if (ch === "*" && next === "/") {
-        inBlock = false;
-        i += 1;
-      } else if (ch === "\n") {
-        out += "\n";
-      }
-      continue;
-    }
-    if (inStr) {
-      out += ch;
-      if (inStr === "`") {
-        if (ch === "`") inStr = null;
-      } else if (ch === "\\") {
-        if (next !== undefined) {
-          out += next;
-          i += 1;
-        }
-      } else if (ch === inStr) {
-        inStr = null;
-      }
-      continue;
-    }
-    if (ch === "/" && next === "/") {
-      while (i < source.length && source[i] !== "\n") i += 1;
-      out += "\n";
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      inBlock = true;
-      i += 1;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      inStr = ch;
-    }
-    out += ch;
-  }
-  return out;
-}
-
 async function extractDispatchedHostMethods() {
-  const pluginsDir = resolve(ROOT, "internal/plugins");
-  const entries = await readdir(pluginsDir, { withFileTypes: true });
+  const { stdout } = await execFileAsync(
+    "go",
+    ["run", "./scripts/extract_host_methods"],
+    {
+      cwd: ROOT,
+      env: { ...process.env, CGO_ENABLED: "0" },
+    },
+  );
   const methods = new Set();
-  for (const ent of entries) {
-    if (!ent.isFile() || !ent.name.endsWith(".go") || ent.name.endsWith("_test.go")) {
-      continue;
-    }
-    const raw = await readFile(resolve(pluginsDir, ent.name), "utf8");
-    const code = stripGoComments(raw);
-    const lines = code.split("\n");
-    let inCase = false;
-    let caseBuf = "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (inCase || /^case\b/.test(trimmed)) {
-        caseBuf += " " + trimmed;
-        inCase = !trimmed.includes(":");
-        if (!inCase) {
-          for (const m of caseBuf.matchAll(HOST_METHOD_RE)) {
-            methods.add(m[1]);
-          }
-          caseBuf = "";
-        }
-        continue;
-      }
-      if (/^"(host\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"\s*:/.test(trimmed)) {
-        for (const m of trimmed.matchAll(HOST_METHOD_RE)) {
-          methods.add(m[1]);
-        }
-      }
-      for (const m of trimmed.matchAll(/(?:method\s*[!=]=\s*"(host\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"|"(host\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"\s*[!=]=\s*method)/g)) {
-        methods.add(m[1] || m[2]);
-      }
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed) {
+      methods.add(trimmed);
     }
   }
   return methods;
