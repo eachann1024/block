@@ -720,6 +720,12 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 		s.mu.Unlock()
 		return
 	}
+	for _, inst := range s.installed {
+		if inst.Manifest.ID == pluginID && inst.NeedsUpdate {
+			s.mu.Unlock()
+			return
+		}
+	}
 	if err := s.store.SetEnabled(pluginID, enabled); err != nil {
 		s.mu.Unlock()
 		return
@@ -1282,7 +1288,7 @@ func (s *Supervisor) startInstallAsync(
 
 func (s *Supervisor) applyInstalledLocked(inst *InstalledApp, installedList []InstalledApp) []InstalledApp {
 	for i := range installedList {
-		installedList[i].Enabled = s.store.IsEnabled(installedList[i].Manifest.ID)
+		installedList[i].Enabled = !installedList[i].NeedsUpdate && s.store.IsEnabled(installedList[i].Manifest.ID)
 	}
 	s.installed = installedList
 	langSnap := append([]InstalledApp(nil), s.installed...)
@@ -1430,7 +1436,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.replacingID = ""
 		if err == nil {
 			for i := range installedList {
-				installedList[i].Enabled = s.store.IsEnabled(installedList[i].Manifest.ID)
+				installedList[i].Enabled = !installedList[i].NeedsUpdate && s.store.IsEnabled(installedList[i].Manifest.ID)
 			}
 			s.installed = installedList
 		}
@@ -2124,8 +2130,11 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	if !ok {
 		return nil, "", osErrNotInstalled(pluginID)
 	}
+	if inst.NeedsUpdate {
+		return nil, "", errRetiredPluginEntry
+	}
 	if inst.Manifest.IsDeclarativeOnly() {
-		return nil, "", errors.New("declarative language plugin has no runtime process")
+		return nil, "", errors.New("declarative language plugin has no runtime")
 	}
 	if !inst.Enabled {
 		s.mu.Lock()

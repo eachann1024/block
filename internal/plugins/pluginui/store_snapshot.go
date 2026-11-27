@@ -44,6 +44,9 @@ func storeBaseKey(catalog *plugins.StoreIndex, installed []plugins.InstalledApp,
 		b.WriteString(app.Manifest.Version)
 		b.WriteByte('@')
 		b.WriteString(app.InstallDir)
+		if app.NeedsUpdate {
+			b.WriteByte('!')
+		}
 		b.WriteByte(';')
 	}
 	return b.String()

@@ -505,6 +505,24 @@ func LoadManifest(pluginDir string) (*Manifest, error) {
 	return DecodeManifestStrict(raw)
 }
 
+// loadInstalledManifest reads metadata for an existing installation, including
+// packages whose retired entry can be replaced by a sandboxed update.
+func loadInstalledManifest(pluginDir string) (*Manifest, bool, error) {
+	raw, err := readManifest(pluginDir)
+	if err != nil {
+		return nil, false, err
+	}
+	m, err := decodeManifest(raw)
+	retired := errors.Is(err, errRetiredPluginEntry) && m.Entry.IsEmpty()
+	if err != nil && !retired {
+		return nil, false, err
+	}
+	if err := m.validate(retired); err != nil {
+		return nil, false, err
+	}
+	return m, retired, nil
+}
+
 func readManifest(pluginDir string) ([]byte, error) {
 	root, err := os.OpenRoot(pluginDir)
 	if err != nil {
@@ -701,6 +719,10 @@ func (m *Manifest) HasSettingsPage() bool {
 }
 
 func (m *Manifest) Validate() error {
+	return m.validate(false)
+}
+
+func (m *Manifest) validate(retiredEntry bool) error {
 	if m.App != TargetApp {
 		return fmt.Errorf("manifest.app must be %q, got %q", TargetApp, m.App)
 	}
@@ -760,7 +782,7 @@ func (m *Manifest) Validate() error {
 		if _, err := wasmrt.ValidateEntryPath(m.Entry.Wasm, ".wasm"); err != nil {
 			return fmt.Errorf("manifest.entry.wasm: %w", err)
 		}
-	case !m.IsDeclarativeOnly():
+	case !retiredEntry && !m.IsDeclarativeOnly():
 		return errors.New("manifest.entry must specify one of js or wasm")
 	}
 	seenPerm := map[Permission]bool{}

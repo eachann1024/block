@@ -129,6 +129,9 @@ func renderStoreRow(
 				if storeAppIsBeta(entry, card.installed, card.isInstalled) {
 					bui.BetaBadge(c, true)
 				}
+				if card.installed.NeedsUpdate {
+					renderPluginUpdateRequired(c)
+				}
 			})
 			if summary := strings.TrimSpace(entry.Summary.Resolve(locale)); summary != "" {
 				ui.Text(c, summary).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).

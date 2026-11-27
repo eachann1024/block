@@ -385,6 +385,15 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 	})
 }
 
+func pluginUpdateRequiredLabel() string {
+	return theme.Tr("需要更新", "Update required")
+}
+
+func renderPluginUpdateRequired(ctx *ui.Context) {
+	ui.Text(ctx, pluginUpdateRequiredLabel()).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+		TextColor(theme.Ocean().Warning).SingleLine().Shrink(0)
+}
+
 func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins.InstalledApp) {
 	pal := theme.Ocean()
 	locale := ctrl.sup.Locale()
@@ -414,6 +423,9 @@ func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins
 			if appName != "" {
 				bannerTitle = theme.Tr(appName+"已停用", appName+" is disabled")
 			}
+			if inst.NeedsUpdate {
+				bannerTitle = pluginUpdateRequiredLabel()
+			}
 			ui.Row(ctx.Key("plugin-disabled-banner-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
 				Padding(theme.CardPadY, theme.CardPadX).Gap(theme.Space12).AlignItems(ui.Center).
 				Radius(theme.RadiusXL).Background(pal.WarningSurface).Border(1, pal.Warning).Children(func() {
@@ -424,9 +436,20 @@ func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins
 				ui.Column(ctx).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 					ui.Text(ctx, bannerTitle).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
 						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
-					ui.Text(ctx, theme.Tr("启用后即可使用插件功能与设置项", "Enable to use this plugin's features and settings")).
-						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+					if !inst.NeedsUpdate {
+						ui.Text(ctx, theme.Tr("启用后即可使用插件功能与设置项", "Enable to use this plugin's features and settings")).
+							FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+					}
 				})
+				if inst.NeedsUpdate {
+					entry := ctrl.findCatalogEntry(inst.Manifest.ID)
+					if entry != nil && storeEntryHasUpdate(*entry, inst) {
+						_, installingID, _, _ := ctrl.sup.StoreStatus()
+						renderStoreCardAction(ctx, ctrl, storeCard{entry: *entry, installed: inst, isInstalled: true},
+							installingID == entry.ID, false, installingID, nil)
+					}
+					return
+				}
 				enableBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
 					ID:     "plugin-dormant-enable-" + inst.Manifest.ID,
 					Label:  theme.Tr("立即启用", "Enable"),

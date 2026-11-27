@@ -76,6 +76,7 @@ type InstalledApp struct {
 	InstallDir  string    `json:"install_dir"`
 	DataDir     string    `json:"data_dir"`
 	Enabled     bool      `json:"enabled"`
+	NeedsUpdate bool      `json:"needs_update,omitempty"`
 	InstalledAt time.Time `json:"installed_at"`
 }
 
@@ -757,7 +758,7 @@ func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
 			continue
 		}
 		dir := filepath.Join(s.AppsRoot, e.Name())
-		m, err := LoadManifest(dir)
+		m, needsUpdate, err := loadInstalledManifest(dir)
 		if err != nil || m.ID != e.Name() {
 			continue
 		}
@@ -766,7 +767,8 @@ func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
 			Manifest:    *m,
 			InstallDir:  dir,
 			DataDir:     dataDir,
-			Enabled:     stateErr == nil && m.ID != DiagnosticsPluginID && !disabled[m.ID],
+			Enabled:     !needsUpdate && stateErr == nil && m.ID != DiagnosticsPluginID && !disabled[m.ID],
+			NeedsUpdate: needsUpdate,
 			InstalledAt: pluginInstalledAt(dir),
 		})
 	}
@@ -1149,7 +1151,7 @@ func (s *StoreManager) finalizeStagedPlugin(stagingDir, pluginRoot, source strin
 		},
 	}
 	dstDir := filepath.Join(s.AppsRoot, m.ID)
-	if prev, err := LoadManifest(dstDir); err == nil && prev != nil && prev.ID == m.ID {
+	if prev, _, err := loadInstalledManifest(dstDir); err == nil && prev.ID == m.ID {
 		staged.Previous = prev
 		staged.IsUpdate = true
 		staged.SourceChanged = !sourceMatchesInstalled(dstDir, source, entry)
@@ -1817,7 +1819,7 @@ func (s *StoreManager) installDirectory(srcDir, source string, entry *StoreAppEn
 		if !info.IsDir() {
 			return nil, errors.New("existing plugin path must be a directory")
 		}
-		prev, err := LoadManifest(dstDir)
+		prev, _, err := loadInstalledManifest(dstDir)
 		if err != nil {
 			return nil, err
 		}

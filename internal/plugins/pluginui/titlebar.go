@@ -165,6 +165,9 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 			return
 		}
 
+		if installedApp.NeedsUpdate {
+			renderPluginUpdateRequired(ctx)
+		}
 		hasUpdate := storeEntryHasUpdate(entry, installedApp)
 		pluginBusy := c.sup.IsPluginBusyAnyNotebook(entry.ID)
 		if hasUpdate {
@@ -409,7 +412,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			Phase:       phase,
 			ErrorKey:    vs.Error,
 			AsyncEnable: !declarative,
-			Disabled:    pluginBusyAny,
+			Disabled:    pluginBusyAny || inst.NeedsUpdate,
 			Tooltip:     theme.Tr("启用或停用插件", "Enable or disable plugin"),
 		}) {
 			c.CloseTitlebarOverlays()

@@ -259,6 +259,9 @@ func renderStoreHero(
 								if storeAppIsBeta(entry, slide.card.installed, slide.card.isInstalled) {
 									bui.BetaBadge(c, true)
 								}
+								if slide.card.installed.NeedsUpdate {
+									renderPluginUpdateRequired(c)
+								}
 							})
 						})
 						if summary != "" {
