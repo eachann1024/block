@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T13:17:57.502Z",
-  "latest_version": "1.0.959",
-  "latest_tag": "v1.0.959",
+  "updated_at": "2026-11-27T13:34:49.106Z",
+  "latest_version": "1.0.960",
+  "latest_tag": "v1.0.960",
   "releases": [
+    {
+      "version": "1.0.960",
+      "tag": "v1.0.960",
+      "published_at": "2026-11-27T13:34:48Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.960",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件接口：运行时现在可以正确处理插件发起的文件复制请求。"
+        ],
+        "other": [
+          "其他：发版检查现在可以正确处理取消忽略规则。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugin API: The runtime now dispatches file copy requests from plugins correctly."
+        ],
+        "other": [
+          "Other: Release checks now account for negated ignore rules correctly."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.960/block-macos-arm64.dmg",
+          "size": 18767898,
+          "sha256": "3c0adeb1af364bb7efc9de567d1ce57b2c9e1c8cb0b19560774ade1523f10928"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.960/block-macos-x64.dmg",
+          "size": 20701841,
+          "sha256": "df2eede7fa28a00901dfed360a9a765c5783b5a1fa5bd3aca07d128246fd381a"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.960/block-windows-x64-setup.exe",
+          "size": 16229335,
+          "sha256": "77b07e32c7b5e7fc33caad900fca25349c9dc1d9e0103a143c40d0af747f0414"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.960/block-linux-x64.deb",
+          "size": 13193274,
+          "sha256": "32354d6f0c2714a545bb9f90672f5189e995d7eb2b0eb1c5c74f53884153a11b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.960/block-linux-x64.AppImage",
+          "size": 26466808,
+          "sha256": "630c25448706519c8235221b3d666139a3a3968307088753558a943467ab8162"
+        }
+      ]
+    },
     {
       "version": "1.0.959",
       "tag": "v1.0.959",
@@ -28,38 +88,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-macos-arm64.dmg",
-          "size": 18768614,
-          "sha256": "49665bc789d71eaf6661b06fd41f0ec2d3ff02944b5cbc6a4e507dedcb027042"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-macos-x64.dmg",
-          "size": 20701932,
-          "sha256": "7712f97c9d2645d980c102eb9d2e66d5969a628c8067bf5b1016080b841ee7cb"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-windows-x64-setup.exe",
-          "size": 16229069,
-          "sha256": "ac3b88e5587961b5eb3a3f56f129d158ad4e4c7def88e8f1995305efe9fc20fb"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-linux-x64.deb",
-          "size": 13194212,
-          "sha256": "86652389d89f8766baac24ed36202631c525fa13cd24237b2e7c6fd9bad7266b"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.959/block-linux-x64.AppImage",
-          "size": 26466808,
-          "sha256": "4fd684f78be348f87942208a3f24b7ed0b8e6f0059e3a88c577b6594b99f7dd4"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.958",
@@ -1680,31 +1709,6 @@
         "fixes": [
           "Unbroken words and long text strings in horizontal row layouts no longer overflow their container boundaries.",
           "Plugin commands can now trigger interactive system prompts and actions without encountering authorization errors."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.907",
-      "tag": "v1.0.907",
-      "published_at": "2026-11-22T09:55:54Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.907",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "在灯箱中打开视频时会自动进入原生全屏，并修复了深色界面外框样式的显示问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Videos opened in the lightbox viewer now automatically enter native fullscreen, and styling issues with dark interface chrome have been resolved."
         ],
         "other": []
       },
