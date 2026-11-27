@@ -518,6 +518,7 @@ func (rt *Runtime) fsList(params json.RawMessage) (any, *rpcError) {
 	}
 
 	entries := make([]map[string]any, 0)
+	truncated := false
 	if !p.Recursive {
 		dirEntries, err := fs.ReadDir(root.FS(), target.rel)
 		if err != nil {
@@ -525,6 +526,7 @@ func (rt *Runtime) fsList(params json.RawMessage) (any, *rpcError) {
 		}
 		for _, de := range dirEntries {
 			if len(entries) >= maxFSListEntries {
+				truncated = true
 				break
 			}
 			di, err := de.Info()
@@ -543,6 +545,7 @@ func (rt *Runtime) fsList(params json.RawMessage) (any, *rpcError) {
 				return nil
 			}
 			if len(entries) >= maxFSListEntries {
+				truncated = true
 				return fs.SkipAll
 			}
 			di, err := de.Info()
@@ -567,8 +570,9 @@ func (rt *Runtime) fsList(params json.RawMessage) (any, *rpcError) {
 		return entries[i]["path"].(string) < entries[j]["path"].(string)
 	})
 	return map[string]any{
-		"path":    target.canonPath,
-		"entries": entries,
+		"path":      target.canonPath,
+		"entries":   entries,
+		"truncated": truncated,
 	}, nil
 }
 
