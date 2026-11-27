@@ -431,6 +431,7 @@ func (s *Supervisor) fillMenubarPayload(pluginID string, drop *MenubarDrop, p Me
 				continue
 			}
 			cc.Files = append(cc.Files, f)
+			_ = s.GrantFSPath(pluginID, f, "menubar_drop")
 			if len(cc.Files) == maxMenubarFiles {
 				break
 			}
@@ -450,6 +451,7 @@ func (s *Supervisor) fillMenubarPayload(pluginID string, drop *MenubarDrop, p Me
 			}
 			path, err := s.writeMenubarInbox(pluginID, img)
 			if err == nil {
+				_ = s.GrantFSPath(pluginID, path, "menubar_image")
 				cc.Files = append(cc.Files, path)
 			}
 		}

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"block/internal/files"
+	"block/internal/plugins/wasmrt"
 )
 
 // RetryKind identifies what operation a failed PluginViewState should retry.
@@ -117,11 +118,15 @@ type SupervisorConfig struct {
 // Supervisor coordinates StoreManager, lazy plugin Runtime subprocesses, async form actions,
 // and non-blocking note-saved event dispatch without ever stalling the 60fps UI render thread.
 type Supervisor struct {
-	rpcLocks sync.Map // plugin ID -> *sync.Mutex, serializes notebook-scoped RPCs
-	store    *StoreManager
-	cfg      SupervisorConfig
-	contrib  *contribRegistry
-	system   systemState
+	rpcLocks   sync.Map // plugin ID -> *sync.Mutex, serializes notebook-scoped RPCs
+	store      *StoreManager
+	cfg        SupervisorConfig
+	contrib    *contribRegistry
+	system     systemState
+	wasmEngine *wasmrt.Engine
+	wasmCtx    context.Context
+	wasmCancel context.CancelFunc
+	warmupDone chan struct{}
 
 	mu                 sync.RWMutex
 	viewEpoch          atomic.Uint64
@@ -149,16 +154,35 @@ type Supervisor struct {
 	storeNotice        string
 }
 
+func hasWasmOrJSPlugin(apps []InstalledApp) bool {
+	for _, app := range apps {
+		if app.Manifest.Entry.JS != "" || app.Manifest.Entry.Wasm != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	sm := NewStoreManager(cfg.AppDataDir)
 	_ = sm.EnsureDirs()
 	installed, _ := sm.ListInstalled()
+	wasmCtx, wasmCancel := context.WithCancel(context.Background())
+	wasmEng, err := wasmrt.NewEngine(filepath.Join(sm.CacheRoot, "wasm-cache"))
+	if err != nil {
+		files.LogErrorf("init shared wasm runtime failed: %v", err)
+	}
+	warmupDone := make(chan struct{})
 	s := &Supervisor{
 		store:              sm,
 		cfg:                cfg,
 		contrib:            newContribRegistry(cfg.AppDataDir),
 		catalog:            sm.LoadCachedOrSeedCatalog(),
 		installed:          installed,
+		wasmEngine:         wasmEng,
+		wasmCtx:            wasmCtx,
+		wasmCancel:         wasmCancel,
+		warmupDone:         warmupDone,
 		installEpoch:       make(map[string]uint64),
 		runtimes:           make(map[string]*Runtime),
 		views:              make(map[viewKey]*PluginViewState),
@@ -174,6 +198,16 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	}
 	sm.beforeReplace = s.preparePluginReplacement
 	SyncActiveLanguagesSeq(installed, NextLanguageSyncSeq())
+	if s.wasmEngine != nil && (!testing.Testing() || hasWasmOrJSPlugin(installed)) {
+		go func() {
+			defer close(s.warmupDone)
+			if err := s.wasmEngine.Warmup(s.wasmCtx); err != nil && s.wasmCtx.Err() == nil {
+				files.LogErrorf("warmup wasm runtime failed: %v", err)
+			}
+		}()
+	} else {
+		close(s.warmupDone)
+	}
 	return s
 }
 
@@ -362,6 +396,7 @@ func (s *Supervisor) PickSurfaceDirectoryForControl(pluginID string, surface Sur
 		if s.NotebookRoot() != nbRoot {
 			return
 		}
+		_ = s.GrantFSPath(pluginID, p, "picker:"+string(surface)+":"+controlID)
 		s.updateSurfaceControlValue(pluginID, nbRoot, surface, controlID, p, true)
 	})
 }
@@ -394,6 +429,7 @@ func (s *Supervisor) PickChecklistFolderForControl(pluginID string, surface Surf
 				return
 			}
 		}
+		_ = s.GrantFSPath(pluginID, abs, "checklist:"+string(surface)+":"+controlID)
 		s.mu.RLock()
 		var current []string
 		if live := s.views[key]; live != nil {
@@ -423,6 +459,29 @@ func (s *Supervisor) pickDirectory(title, defaultPath string, onPicked func(path
 		onPicked(p)
 		s.notifyChanged()
 	})
+}
+
+// GrantFSPath persists a directory or file authorization for pluginID under its apps-data dir.
+func (s *Supervisor) GrantFSPath(pluginID, path, source string) error {
+	if s == nil || strings.TrimSpace(pluginID) == "" {
+		return errors.New("plugin ID is required")
+	}
+	var dataDir string
+	s.mu.RLock()
+	for _, a := range s.installed {
+		if a.Manifest.ID == pluginID && strings.TrimSpace(a.DataDir) != "" {
+			dataDir = a.DataDir
+			break
+		}
+	}
+	s.mu.RUnlock()
+	if dataDir == "" && s.store != nil && strings.TrimSpace(s.store.DataRoot) != "" {
+		dataDir = filepath.Join(s.store.DataRoot, pluginID)
+	}
+	if dataDir == "" {
+		return errors.New("plugin data directory unavailable")
+	}
+	return GrantFSPath(dataDir, path, source)
 }
 
 func (s *Supervisor) notifyChanged() {
@@ -2091,6 +2150,8 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	cfg := HostConfig{
 		PluginDir:         inst.InstallDir,
 		DataDir:           inst.DataDir,
+		CacheDir:          filepath.Join(s.store.CacheRoot, "wasm-cache"),
+		DownloadsDir:      "",
 		NotebookRoot:      nbRoot,
 		ActiveNote:        s.activeNoteFor(nbRoot),
 		Locale:            rawLocale,
@@ -2106,6 +2167,7 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		OpenNote:          openNoteFn,
 		ContribHost:       s.dispatchExtensionHostMethod,
 		SystemIntegration: s.cfg.System != nil,
+		wasmEngine:        s.wasmEngine,
 	}
 	if cfg.SystemIntegration && inst.Manifest.HasPermission(PermSystemSecrets) {
 		cfg.credentialScope = inst.credentialScope()
@@ -3111,6 +3173,9 @@ func (s *Supervisor) ShutdownAll() {
 	if c, ok := s.cfg.UI.(interface{ HostClosing() }); ok {
 		c.HostClosing()
 	}
+	if s.wasmCancel != nil {
+		s.wasmCancel()
+	}
 	s.mu.Lock()
 	s.stopping = true
 	for k := range s.liveTimers {
@@ -3141,6 +3206,12 @@ func (s *Supervisor) ShutdownAll() {
 		}(rt)
 	}
 	wg.Wait()
+	if s.warmupDone != nil {
+		<-s.warmupDone
+	}
+	if s.wasmEngine != nil {
+		_ = s.wasmEngine.Close(context.Background())
+	}
 }
 
 func cloneAnyMap(in map[string]any) map[string]any {

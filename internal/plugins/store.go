@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"block/internal/files"
+	"block/internal/plugins/wasmrt"
 )
 
 // StoreAppEntry describes an entry in the Block App Store catalog index (topic: blockmd-plugin).
@@ -1709,7 +1710,16 @@ func validateCandidateDir(tmpDir string, entry *StoreAppEntry) (*Manifest, error
 			return nil, fmt.Errorf("plugin permissions differ from catalog entry %s", entry.ID)
 		}
 	}
-	if len(m.Entry.Command) > 0 {
+	switch {
+	case m.Entry.JS != "":
+		if err := wasmrt.ValidateEntryFile(tmpDir, m.Entry.JS, 0, ".js", ".mjs"); err != nil {
+			return nil, fmt.Errorf("manifest.entry.js: %w", err)
+		}
+	case m.Entry.Wasm != "":
+		if err := wasmrt.ValidateEntryFile(tmpDir, m.Entry.Wasm, wasmrt.MaxWasmEntryBytes, ".wasm"); err != nil {
+			return nil, fmt.Errorf("manifest.entry.wasm: %w", err)
+		}
+	case len(m.Entry.Command) > 0:
 		// Resolve bare PATH interpreters (python3) only when the runtime actually
 		// starts: probing them during install blocks the store on the host
 		// environment and caches an interpreter the plugin has not run under yet.

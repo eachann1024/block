@@ -24,6 +24,7 @@ import (
 	"unicode/utf8"
 
 	"block/internal/files"
+	"block/internal/plugins/wasmrt"
 )
 
 type rpcEnvelope struct {
@@ -73,6 +74,7 @@ type PerfSnapshot struct {
 type HostConfig struct {
 	PluginDir       string
 	DataDir         string
+	CacheDir        string
 	DownloadsDir    string
 	NotebookRoot    string
 	ActiveNote      string
@@ -93,6 +95,7 @@ type HostConfig struct {
 	ContribHost       func(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError, bool)
 	SystemIntegration bool
 	credentialScope   string
+	wasmEngine        *wasmrt.Engine
 }
 
 var ErrNoteConflict = errors.New("note changed; read it again before writing")
@@ -193,8 +196,50 @@ func (r *ringBuffer) String() string {
 	return string(out)
 }
 
-// Runtime hosts a single out-of-process plugin speaking newline-delimited
-// bidirectional JSON-RPC 2.0 over stdin/stdout.
+type runtimeTransport interface {
+	Stdin() io.WriteCloser
+	Stdout() io.ReadCloser
+	CloseWrite() error
+	Kill() error
+	Wait() error
+}
+
+type processTransport struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+}
+
+func (t *processTransport) Stdin() io.WriteCloser { return t.stdin }
+func (t *processTransport) Stdout() io.ReadCloser { return t.stdout }
+func (t *processTransport) CloseWrite() error     { return t.stdin.Close() }
+func (t *processTransport) Kill() error {
+	if t.cmd != nil && t.cmd.Process != nil {
+		return stopPluginProcess(t.cmd)
+	}
+	return nil
+}
+func (t *processTransport) Wait() error { return t.cmd.Wait() }
+
+type wasmTransport struct {
+	sess     *wasmrt.Session
+	ownedEng *wasmrt.Engine
+}
+
+func (t *wasmTransport) Stdin() io.WriteCloser { return t.sess.Stdin() }
+func (t *wasmTransport) Stdout() io.ReadCloser { return t.sess.Stdout() }
+func (t *wasmTransport) CloseWrite() error     { return t.sess.Stdin().Close() }
+func (t *wasmTransport) Kill() error           { return t.sess.Kill() }
+func (t *wasmTransport) Wait() error {
+	err := t.sess.Wait()
+	if t.ownedEng != nil {
+		_ = t.ownedEng.Close(context.Background())
+	}
+	return err
+}
+
+// Runtime hosts a single out-of-process or sandboxed plugin speaking
+// newline-delimited bidirectional JSON-RPC 2.0 over stdin/stdout.
 type Runtime struct {
 	exited   chan struct{}
 	reaped   chan struct{}
@@ -202,10 +247,11 @@ type Runtime struct {
 	cfg      HostConfig
 	dataRoot *os.Root
 
-	cmd    *exec.Cmd
-	stdin  *os.File
-	stdout io.ReadCloser
-	stderr *ringBuffer
+	transport runtimeTransport
+	cmd       *exec.Cmd
+	stdin     io.WriteCloser
+	stdout    io.ReadCloser
+	stderr    *ringBuffer
 
 	writeGate    chan struct{}
 	callGate     chan struct{}
@@ -266,10 +312,8 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
-	isPython3 := isPython3Command(m.Entry.Command[0])
-	cmdName, err := pluginCommand(cfg.PluginDir, m.Entry.Command[0])
-	if err != nil {
-		return nil, err
+	if m.IsDeclarativeOnly() || m.Entry.IsEmpty() {
+		return nil, errors.New("declarative plugin has no runtime entry")
 	}
 	dataRoot, err := openPluginDataRoot(cfg.DataDir)
 	if err != nil {
@@ -289,76 +333,134 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	}
 	cfg.DownloadsDir = downloadsDir
 
-	childPath := prependEnvPathDir(os.Getenv("PATH"), filepath.Dir(cmdName))
-	cmd := exec.CommandContext(ctx, cmdName, m.Entry.Command[1:]...)
-	configurePluginProcess(cmd)
-	cmd.WaitDelay = time.Second
-	cmd.Dir = cfg.PluginDir
-	cmd.Env = []string{
-		"PATH=" + childPath,
-		"HOME=" + os.Getenv("HOME"),
-		"TMPDIR=" + os.TempDir(),
-		"PYTHONUNBUFFERED=1",
-		"BLOCK_PLUGIN_ID=" + m.ID,
-		"BLOCK_DATA_DIR=" + cfg.DataDir,
-		"BLOCKMD_PLUGIN_ID=" + m.ID,
-		"BLOCKMD_DATA_DIR=" + cfg.DataDir,
-		"BLOCKMD_DOWNLOADS_DIR=" + downloadsDir,
+	stderr := newRingBuffer(maxStderrBytes)
+	var (
+		tr         runtimeTransport
+		cmd        *exec.Cmd
+		cmdName    string
+		isPython3  bool
+		entryLabel string
+	)
+
+	switch {
+	case m.Entry.JS != "" || m.Entry.Wasm != "":
+		eng := cfg.wasmEngine
+		var ownedEng *wasmrt.Engine
+		if eng == nil {
+			eng, err = wasmrt.NewEngine(cfg.CacheDir)
+			if err != nil {
+				return nil, fmt.Errorf("init wasm runtime: %w", err)
+			}
+			ownedEng = eng
+		}
+		opts := wasmrt.StartOptions{
+			Stderr: stderr,
+			Env: map[string]string{
+				"BLOCK_PLUGIN_ID":       m.ID,
+				"BLOCK_DATA_DIR":        cfg.DataDir,
+				"BLOCKMD_PLUGIN_ID":     m.ID,
+				"BLOCKMD_DATA_DIR":      cfg.DataDir,
+				"BLOCKMD_DOWNLOADS_DIR": downloadsDir,
+			},
+		}
+		var sess *wasmrt.Session
+		if m.Entry.JS != "" {
+			entryLabel = m.Entry.JS
+			sess, err = eng.StartJS(ctx, cfg.PluginDir, m.Entry.JS, opts)
+		} else {
+			entryLabel = m.Entry.Wasm
+			sess, err = eng.StartWasm(ctx, cfg.PluginDir, m.Entry.Wasm, opts)
+		}
+		if err != nil {
+			if ownedEng != nil {
+				_ = ownedEng.Close(context.Background())
+			}
+			files.LogErrorf("plugin start failed: id=%s version=%s entry=%s err=%v stderr=%s",
+				m.ID, m.Version, entryLabel, err, truncatePluginStderr(stderr.String()))
+			return nil, fmt.Errorf("start wasm plugin %s: %w", entryLabel, err)
+		}
+		tr = &wasmTransport{sess: sess, ownedEng: ownedEng}
+
+	default:
+		isPython3 = isPython3Command(m.Entry.Command[0])
+		cmdName, err = pluginCommand(cfg.PluginDir, m.Entry.Command[0])
+		if err != nil {
+			return nil, err
+		}
+		entryLabel = cmdName
+		childPath := prependEnvPathDir(os.Getenv("PATH"), filepath.Dir(cmdName))
+		cmd = exec.CommandContext(ctx, cmdName, m.Entry.Command[1:]...)
+		configurePluginProcess(cmd)
+		cmd.WaitDelay = time.Second
+		cmd.Dir = cfg.PluginDir
+		cmd.Env = []string{
+			"PATH=" + childPath,
+			"HOME=" + os.Getenv("HOME"),
+			"TMPDIR=" + os.TempDir(),
+			"PYTHONUNBUFFERED=1",
+			"BLOCK_PLUGIN_ID=" + m.ID,
+			"BLOCK_DATA_DIR=" + cfg.DataDir,
+			"BLOCKMD_PLUGIN_ID=" + m.ID,
+			"BLOCKMD_DATA_DIR=" + cfg.DataDir,
+			"BLOCKMD_DOWNLOADS_DIR=" + downloadsDir,
+		}
+		stdinPipe, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, err
+		}
+		// Own the stdout pipe instead of cmd.StdoutPipe: Wait must run while the
+		// read loop is still draining, so a crashed plugin whose children keep
+		// the pipe open can still be reaped.
+		stdoutPipe, stdoutW, err := os.Pipe()
+		if err != nil {
+			_ = stdinPipe.Close()
+			return nil, err
+		}
+		cmd.Stdout = stdoutW
+		cmd.Stderr = stderr
+		if err := cmd.Start(); err != nil {
+			if isPython3 {
+				python3Cache.invalidate(cmdName)
+			}
+			files.LogErrorf("plugin start failed: id=%s version=%s cmd=%s err=%v stderr=%s",
+				m.ID, m.Version, cmdName, err, truncatePluginStderr(stderr.String()))
+			_ = stdinPipe.Close()
+			_ = stdoutPipe.Close()
+			_ = stdoutW.Close()
+			return nil, fmt.Errorf("start plugin process %v (%s): %w", m.Entry.Command, cmdName, err)
+		}
+		_ = stdoutW.Close()
+		tr = &processTransport{cmd: cmd, stdin: stdinPipe, stdout: stdoutPipe}
 	}
 
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	// Own the stdout pipe instead of cmd.StdoutPipe: Wait must run while the
-	// read loop is still draining, so a crashed plugin whose children keep
-	// the pipe open can still be reaped.
-	stdout, stdoutW, err := os.Pipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, err
-	}
-	cmd.Stdout = stdoutW
 	rt := &Runtime{
 		exited:    make(chan struct{}),
 		reaped:    make(chan struct{}),
 		manifest:  m,
 		cfg:       cfg,
 		dataRoot:  dataRoot,
+		transport: tr,
 		cmd:       cmd,
-		stdin:     stdin.(*os.File),
-		stdout:    stdout,
-		stderr:    newRingBuffer(maxStderrBytes),
+		stdin:     tr.Stdin(),
+		stdout:    tr.Stdout(),
+		stderr:    stderr,
 		pending:   make(map[string]chan rpcEnvelope),
 		writeGate: make(chan struct{}, 1),
 		callGate:  make(chan struct{}, 1),
 		hostCalls: make(chan struct{}, maxPluginHostRPCs),
 	}
-	cmd.Stderr = rt.stderr
 
 	startedAt := time.Now()
-	if err := cmd.Start(); err != nil {
-		if isPython3 {
-			python3Cache.invalidate(cmdName)
-		}
-		files.LogErrorf("plugin start failed: id=%s version=%s cmd=%s err=%v stderr=%s",
-			m.ID, m.Version, cmdName, err, truncatePluginStderr(rt.Stderr()))
-		_ = stdin.Close()
-		_ = stdout.Close()
-		_ = stdoutW.Close()
-		return nil, fmt.Errorf("start plugin process %v (%s): %w", m.Entry.Command, cmdName, err)
-	}
 	files.LogInfof("plugin started: id=%s version=%s", m.ID, m.Version)
-	_ = stdoutW.Close()
 	started = true
 
 	readDone := make(chan struct{})
 	go func() {
-		rt.readLoop(stdout)
+		rt.readLoop(rt.stdout)
 		close(readDone)
 	}()
 	go func() {
-		waitErr := cmd.Wait()
+		waitErr := tr.Wait()
 		// Invalidation must not depend on a local abort: a plugin that dies before
 		// the first request often fails that write with a broken pipe, which aborts
 		// the runtime and would otherwise leave the broken interpreter cached.
@@ -368,18 +470,18 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 			}
 		}
 		if !rt.shuttingDown.Load() && ctx.Err() == nil {
-			files.LogErrorf("plugin exited unexpectedly: id=%s cmd=%s err=%v stderr=%s",
-				rt.manifest.ID, cmdName, waitErr, truncatePluginStderr(rt.Stderr()))
+			files.LogErrorf("plugin exited unexpectedly: id=%s entry=%s err=%v stderr=%s",
+				rt.manifest.ID, entryLabel, waitErr, truncatePluginStderr(rt.Stderr()))
 		}
 		select {
 		case <-readDone:
 		case <-time.After(time.Second):
-			// Leftover children still hold stdout: stop the process group.
-			_ = stopPluginProcess(cmd)
-			_ = stdout.Close()
+			// Leftover children still hold stdout: stop the process group / session.
+			_ = tr.Kill()
+			_ = rt.stdout.Close()
 			<-readDone
 		}
-		_ = stdout.Close()
+		_ = rt.stdout.Close()
 		_ = dataRoot.Close()
 		close(rt.reaped)
 	}()
@@ -1280,7 +1382,11 @@ func (rt *Runtime) Shutdown(ctx context.Context) error {
 	rt.shuttingDown.Store(true)
 	if !rt.closed.Swap(true) {
 		_ = rt.call(ctx, "plugin.shutdown", map[string]any{}, nil)
-		_ = rt.stdin.Close()
+		if rt.transport != nil {
+			_ = rt.transport.CloseWrite()
+		} else if rt.stdin != nil {
+			_ = rt.stdin.Close()
+		}
 	}
 	select {
 	case <-rt.reaped:
@@ -1302,10 +1408,18 @@ func (rt *Runtime) abort() {
 		select {
 		case <-rt.reaped:
 		default:
-			_ = stopPluginProcess(rt.cmd)
+			if rt.transport != nil {
+				_ = rt.transport.Kill()
+			} else if rt.cmd != nil && rt.cmd.Process != nil {
+				_ = stopPluginProcess(rt.cmd)
+			}
 		}
-		_ = rt.stdin.Close()
-		_ = rt.stdout.Close()
+		if rt.stdin != nil {
+			_ = rt.stdin.Close()
+		}
+		if rt.stdout != nil {
+			_ = rt.stdout.Close()
+		}
 	})
 }
 
@@ -1426,9 +1540,11 @@ func (rt *Runtime) writeLine(ctx context.Context, v any) error {
 	case <-rt.exited:
 		return rt.exitedError("plugin exited")
 	}
-	deadline, _ := ctx.Deadline()
-	if err := rt.stdin.SetWriteDeadline(deadline); err != nil && !errors.Is(err, os.ErrNoDeadline) {
-		return err
+	if dw, ok := rt.stdin.(interface{ SetWriteDeadline(time.Time) error }); ok {
+		deadline, _ := ctx.Deadline()
+		if err := dw.SetWriteDeadline(deadline); err != nil && !errors.Is(err, os.ErrNoDeadline) {
+			return err
+		}
 	}
 	b = append(b, '\n')
 	_, err = rt.stdin.Write(b)
@@ -2055,6 +2171,26 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, &rpcError{Code: -32005, Message: err.Error()}
 		}
 		return snap, nil
+
+	case "host.fs.list_grants",
+		"host.fs.stat",
+		"host.fs.list",
+		"host.fs.read",
+		"host.fs.write",
+		"host.fs.mkdir",
+		"host.fs.delete",
+		"host.fs.rename",
+		"host.fs.atomic_swap":
+		return rt.dispatchFSHostMethod(method, params)
+
+	case "host.crypto.hash", "host.crypto.hmac":
+		return rt.dispatchCryptoHostMethod(method, params)
+
+	case "host.http.request":
+		return rt.dispatchHTTPHostMethod(params)
+
+	case "host.exec.run":
+		return rt.dispatchExecHostMethod(params)
 
 	default:
 		if rt.cfg.ContribHost != nil {

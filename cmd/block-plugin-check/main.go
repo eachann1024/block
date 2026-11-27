@@ -99,13 +99,32 @@ func main() {
 		return
 	}
 
-	zhSnap, err := runLocaleChecks(m, pluginDir, "zh", false)
+	var wasmCacheDir string
+	if m.Entry.JS != "" || m.Entry.Wasm != "" {
+		dir, err := os.MkdirTemp("", "block-plugin-check-wasm-*")
+		if err != nil {
+			fail("create wasm cache dir: %v", err)
+		}
+		defer os.RemoveAll(dir)
+		wasmCacheDir = dir
+	}
+
+	switch {
+	case m.Entry.JS != "":
+		fmt.Printf("[OK] entry: js=%s\n", m.Entry.JS)
+	case m.Entry.Wasm != "":
+		fmt.Printf("[OK] entry: wasm=%s\n", m.Entry.Wasm)
+	case len(m.Entry.Command) > 0:
+		fmt.Printf("[OK] entry: command=%v\n", m.Entry.Command)
+	}
+
+	zhSnap, err := runLocaleChecks(m, pluginDir, "zh", false, wasmCacheDir)
 	if err != nil {
 		fail("%v", err)
 	}
 
 	if requireBilingual {
-		enSnap, err := runLocaleChecks(m, pluginDir, "en", true)
+		enSnap, err := runLocaleChecks(m, pluginDir, "en", true, wasmCacheDir)
 		if err != nil {
 			fail("%v", err)
 		}
@@ -139,7 +158,7 @@ func allPluginSurfaces(m *plugins.Manifest) []plugins.Surface {
 	return surfaces
 }
 
-func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChinese bool) (map[plugins.Surface]string, error) {
+func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChinese bool, wasmCacheDir string) (map[plugins.Surface]string, error) {
 	sandboxDir, err := os.MkdirTemp("", "block-plugin-check-"+locale+"-*")
 	if err != nil {
 		return nil, fmt.Errorf("[%s] create sandbox: %w", locale, err)
@@ -176,6 +195,7 @@ func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChi
 	rt, err := plugins.StartRuntime(ctx, installed.Manifest, plugins.HostConfig{
 		PluginDir:    installed.InstallDir,
 		DataDir:      dataDir,
+		CacheDir:     wasmCacheDir,
 		DownloadsDir: downloadsDir,
 		NotebookRoot: notebookDir,
 		ActiveNote:   "welcome.md",

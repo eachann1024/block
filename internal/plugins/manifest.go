@@ -12,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/mod/semver"
+
+	"block/internal/plugins/wasmrt"
 )
 
 const (
@@ -29,6 +31,8 @@ const (
 	PermNotesWrite     Permission = "notes:write"
 	PermNetwork        Permission = "network"
 	PermEventNoteSaved Permission = "events:note_saved"
+	PermSystemFS       Permission = "system:fs"
+	PermSystemExec     Permission = "system:exec"
 )
 
 var validPermissions = map[Permission]bool{
@@ -37,6 +41,8 @@ var validPermissions = map[Permission]bool{
 	PermNotesWrite:     true,
 	PermNetwork:        true,
 	PermEventNoteSaved: true,
+	PermSystemFS:       true,
+	PermSystemExec:     true,
 }
 
 func PermissionLabel(p Permission, locale string) string {
@@ -73,6 +79,16 @@ func PermissionLabel(p Permission, locale string) string {
 			return "Save Hook"
 		}
 		return "保存触发"
+	case PermSystemFS:
+		if en {
+			return "Scoped File Access"
+		}
+		return "受控文件读写"
+	case PermSystemExec:
+		if en {
+			return "Allowlisted Executables"
+		}
+		return "受控命令行工具"
 	default:
 		if l, ok := contribPermissionLabel(p, en); ok {
 			return l
@@ -117,6 +133,16 @@ func PermissionDescription(p Permission, locale string) string {
 			return "Receive notifications whenever a note is saved so the plugin can run automatic workflows."
 		}
 		return "在用户保存笔记后接收事件通知，以便自动触发同步或后续处理。"
+	case PermSystemFS:
+		if en {
+			return "Read and write files inside plugin data, Downloads, known notebooks, and paths explicitly granted via pickers or drag-and-drop."
+		}
+		return "在插件数据目录、下载目录、已知笔记本以及通过选择框或拖放明确授权的路径内读写文件。"
+	case PermSystemExec:
+		if en {
+			return "Run specific allowlisted executables declared in the manifest without a shell inside granted directories."
+		}
+		return "以无 Shell 方式运行清单白名单声明的特定外部程序，并在授权目录内执行。"
 	default:
 		if d, ok := contribPermissionDescription(p, en); ok {
 			return d
@@ -158,7 +184,7 @@ func PermissionCategoryOf(p Permission) (PermissionCategory, bool) {
 		return PermCategoryCredentials, true
 	case PermClipboardRead, PermClipboardWrite:
 		return PermCategoryClipboard, true
-	case PermSystemTrash, PermSystemOpen, PermSystemDialogs:
+	case PermSystemTrash, PermSystemOpen, PermSystemDialogs, PermSystemFS, PermSystemExec:
 		return PermCategorySystem, true
 	case PermNetwork:
 		return PermCategoryNetwork, true
@@ -305,7 +331,14 @@ func (t LocalizedText) IsEmpty() bool {
 }
 
 type EntrySpec struct {
-	Command []string `json:"command"`
+	JS      string   `json:"js,omitempty"`
+	Wasm    string   `json:"wasm,omitempty"`
+	Command []string `json:"command,omitempty"`
+}
+
+// IsEmpty reports whether no entry mode (js, wasm, or command) is configured.
+func (e EntrySpec) IsEmpty() bool {
+	return e.JS == "" && e.Wasm == "" && len(e.Command) == 0
 }
 
 // DuoIconSpec describes an Ocean Paper Scheme A two-tone icon in 24x24 space.
@@ -349,6 +382,8 @@ type Manifest struct {
 	Entry             EntrySpec                    `json:"entry,omitempty"`
 	Permissions       []Permission                 `json:"permissions,omitempty"`
 	PermissionReasons map[Permission]LocalizedText `json:"permission_reasons,omitempty"`
+	NetworkDomains    []string                     `json:"network_domains,omitempty"`
+	ExecAllowlist     []string                     `json:"exec_allowlist,omitempty"`
 	Surfaces          []Surface                    `json:"surfaces,omitempty"`
 	Icon              DuoIconSpec                  `json:"icon"`
 	Contributes       *Contributes                 `json:"contributes,omitempty"`
@@ -384,7 +419,7 @@ func (m *Manifest) IsDeclarativeOnly() bool {
 	if m == nil {
 		return false
 	}
-	return len(m.Entry.Command) == 0 &&
+	return m.Entry.IsEmpty() &&
 		len(m.Permissions) == 0 &&
 		len(m.Surfaces) == 0 &&
 		m.Category == CategoryLanguage &&
@@ -394,10 +429,59 @@ func (m *Manifest) IsDeclarativeOnly() bool {
 }
 
 var (
-	pluginIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,47}$`)
-	semverRe   = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
-	repoSlugRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	pluginIDRe          = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,47}$`)
+	semverRe            = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
+	repoSlugRe          = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	execAllowlistNameRe = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 )
+
+var forbiddenExecPrograms = map[string]bool{
+	"sh":         true,
+	"bash":       true,
+	"zsh":        true,
+	"dash":       true,
+	"fish":       true,
+	"cmd":        true,
+	"cmd.exe":    true,
+	"powershell": true,
+	"pwsh":       true,
+	"python":     true,
+	"python3":    true,
+	"node":       true,
+	"perl":       true,
+	"ruby":       true,
+	"osascript":  true,
+}
+
+func validateExecAllowlistProgram(prog string) error {
+	if prog == "" || prog != strings.TrimSpace(prog) {
+		return errors.New("manifest.exec_allowlist entries must not be empty or have surrounding whitespace")
+	}
+	if prog == "." || prog == ".." || !execAllowlistNameRe.MatchString(prog) {
+		return fmt.Errorf("manifest.exec_allowlist entry %q must be a bare executable basename matching ^[a-zA-Z0-9._-]+$", prog)
+	}
+	lower := strings.ToLower(prog)
+	base := strings.TrimSuffix(lower, ".exe")
+	if forbiddenExecPrograms[lower] || forbiddenExecPrograms[base] {
+		return fmt.Errorf("manifest.exec_allowlist forbids shell or script interpreter %q", prog)
+	}
+	return nil
+}
+
+func validateNetworkDomain(domain string) error {
+	if domain == "" || domain != strings.TrimSpace(domain) {
+		return errors.New("manifest.network_domains entries must not be empty or have surrounding whitespace")
+	}
+	if strings.ContainsAny(domain, " \t\r\n\x00/?#@\\") || strings.Contains(domain, "://") {
+		return fmt.Errorf("manifest.network_domains entry %q must be a host or *.domain pattern without scheme or path", domain)
+	}
+	if strings.Contains(domain, "*") {
+		if !strings.HasPrefix(domain, "*.") || strings.Count(domain, "*") != 1 || len(domain) <= 2 || strings.HasSuffix(domain, ".") {
+			return fmt.Errorf("manifest.network_domains wildcard %q must have form *.example.com", domain)
+		}
+	}
+	return nil
+}
 
 func LoadManifest(pluginDir string) (*Manifest, error) {
 	root, err := os.OpenRoot(pluginDir)
@@ -626,10 +710,44 @@ func (m *Manifest) Validate() error {
 	if ContainsEmoji(m.Summary.Zh) || ContainsEmoji(m.Summary.En) {
 		return errors.New("manifest.summary must not contain emoji")
 	}
+	hasJS := m.Entry.JS != ""
+	hasWasm := m.Entry.Wasm != ""
+	hasCommand := len(m.Entry.Command) > 0
+	entryCount := 0
+	if hasJS {
+		entryCount++
+	}
+	if hasWasm {
+		entryCount++
+	}
+	if hasCommand {
+		entryCount++
+	}
+	if entryCount > 1 {
+		return errors.New("manifest.entry must specify at most one of js, wasm, or command")
+	}
 	declarative := m.IsDeclarativeOnly()
-	if !declarative {
-		if len(m.Entry.Command) == 0 || strings.TrimSpace(m.Entry.Command[0]) == "" {
-			return errors.New("manifest.entry.command must be a non-empty string array")
+	if declarative {
+		if entryCount != 0 {
+			return errors.New("declarative-only manifest must not specify entry")
+		}
+	} else {
+		if entryCount == 0 {
+			return errors.New("manifest.entry must specify one of js, wasm, or command")
+		}
+		switch {
+		case hasJS:
+			if _, err := wasmrt.ValidateEntryPath(m.Entry.JS, ".js", ".mjs"); err != nil {
+				return fmt.Errorf("manifest.entry.js: %w", err)
+			}
+		case hasWasm:
+			if _, err := wasmrt.ValidateEntryPath(m.Entry.Wasm, ".wasm"); err != nil {
+				return fmt.Errorf("manifest.entry.wasm: %w", err)
+			}
+		case hasCommand:
+			if strings.TrimSpace(m.Entry.Command[0]) == "" {
+				return errors.New("manifest.entry.command must be a non-empty string array")
+			}
 		}
 	}
 	seenPerm := map[Permission]bool{}
@@ -670,6 +788,33 @@ func (m *Manifest) Validate() error {
 			return fmt.Errorf("manifest.surfaces duplicates %q", s)
 		}
 		seenSurf[s] = true
+	}
+	if len(m.NetworkDomains) > 64 {
+		return errors.New("manifest.network_domains allows at most 64 entries")
+	}
+	seenDomains := map[string]bool{}
+	for _, d := range m.NetworkDomains {
+		if err := validateNetworkDomain(d); err != nil {
+			return err
+		}
+		key := strings.ToLower(d)
+		if seenDomains[key] {
+			return fmt.Errorf("manifest.network_domains duplicates %q", d)
+		}
+		seenDomains[key] = true
+	}
+	if len(m.ExecAllowlist) > 8 {
+		return errors.New("manifest.exec_allowlist allows at most 8 entries")
+	}
+	seenExec := map[string]bool{}
+	for _, prog := range m.ExecAllowlist {
+		if err := validateExecAllowlistProgram(prog); err != nil {
+			return err
+		}
+		if seenExec[prog] {
+			return fmt.Errorf("manifest.exec_allowlist duplicates %q", prog)
+		}
+		seenExec[prog] = true
 	}
 	if err := validateContribIcon("manifest.icon", m.Icon); err != nil {
 		return err
