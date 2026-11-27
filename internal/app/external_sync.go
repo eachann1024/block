@@ -45,6 +45,8 @@ type externalSyncState struct {
 
 	trackerMu   sync.Mutex
 	trackedPath string // canonical path at bind time, accounting for symlink aliases
+
+	maintStop chan struct{}
 }
 
 type diskMarkdownSnapshot struct {
@@ -186,6 +188,10 @@ func (w *Workspace) StopExternalSync() {
 		s.blurTimer.Stop()
 		s.blurTimer = nil
 	}
+	if s.maintStop != nil {
+		close(s.maintStop)
+		s.maintStop = nil
+	}
 	s.focusEpoch++
 	s.mu.Unlock()
 
@@ -209,7 +215,63 @@ func (w *Workspace) ResumeExternalSync() {
 	}
 	s.mu.Unlock()
 	if wasStopped {
+		w.StartNotebookMaintenance()
 		w.ReconcileExternalChanges("startup")
+	}
+}
+
+const notebookMaintenanceInterval = time.Hour
+
+// StartNotebookMaintenance begins background cleanup of expired replaced stash
+// entries (7 days / 64 max) and disappeared notebooks (>30 days missing).
+func (w *Workspace) StartNotebookMaintenance() {
+	s := &w.externalSync
+	s.mu.Lock()
+	if s.stopped || s.maintStop != nil {
+		s.mu.Unlock()
+		return
+	}
+	stop := make(chan struct{})
+	s.maintStop = stop
+	s.mu.Unlock()
+	go w.runNotebookMaintenance(stop)
+}
+
+func (w *Workspace) runNotebookMaintenance(stop <-chan struct{}) {
+	w.runNotebookMaintenancePass(true)
+	ticker := time.NewTicker(notebookMaintenanceInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			w.runNotebookMaintenancePass(false)
+		}
+	}
+}
+
+func (w *Workspace) runNotebookMaintenancePass(migrateAll bool) {
+	if migrateAll {
+		seen := make(map[string]bool)
+		for _, nb := range w.Notebooks() {
+			if nb == "" || seen[nb] {
+				continue
+			}
+			seen[nb] = true
+			files.MigrateLegacyReplacedDirIn(w.dataDir, nb)
+		}
+		if active := w.ActiveNotebook(); active != "" && !seen[active] {
+			files.MigrateLegacyReplacedDirIn(w.dataDir, active)
+		}
+	}
+	files.CleanupReplacedDirsIn(w.dataDir)
+	if expired, err := files.SweepNotebookRegistryIn(w.dataDir); err == nil && len(expired) > 0 {
+		if sup := w.Plugins(); sup != nil {
+			for _, rem := range expired {
+				sup.EmitNotebookRemovedEvent(rem.ID, rem.Path)
+			}
+		}
 	}
 }
 
@@ -543,6 +605,7 @@ func (w *Workspace) rebaseNotebookRoot(oldRoot, newRoot string) bool {
 	if !rebased {
 		return false
 	}
+	renamedRec, _, _ := files.RenameNotebookIn(w.dataDir, oldRoot, newRoot)
 	files.RebaseFileOrder(oldRoot, newRoot)
 	order := files.LoadState().FileOrder
 	w.mu.Lock()
@@ -558,6 +621,9 @@ func (w *Workspace) rebaseNotebookRoot(oldRoot, newRoot string) bool {
 	w.bindNotebookTracker(newRoot)
 	if sup := w.Plugins(); sup != nil {
 		sup.RenameNotebookRoot(oldRoot, newRoot)
+		if renamedRec.ID != "" {
+			sup.EmitNotebookRenamedEvent(renamedRec.ID, oldRoot, newRoot)
+		}
 	}
 	w.sidebarUI.notebookAvail().Forget(oldRoot)
 	w.checkNotebookAvailability()

@@ -370,6 +370,26 @@ func (s *Supervisor) Notebooks() []string {
 	return out
 }
 
+// NotebookInfos returns known notebooks paired with their durable registry IDs.
+func (s *Supervisor) NotebookInfos() []NotebookInfo {
+	nbs := s.Notebooks()
+	out := make([]NotebookInfo, 0, len(nbs))
+	appDir := strings.TrimSpace(s.cfg.AppDataDir)
+	for _, nb := range nbs {
+		id := ""
+		if appDir != "" {
+			if rec, _, err := files.EnsureNotebookIn(appDir, nb); err == nil && rec.ID != "" {
+				id = rec.ID
+			}
+		}
+		if id == "" {
+			id = files.DeterministicFallbackNotebookID(nb)
+		}
+		out = append(out, NotebookInfo{ID: id, Path: nb})
+	}
+	return out
+}
+
 func (s *Supervisor) notebooksFingerprint() string {
 	return strings.Join(s.Notebooks(), "\x00")
 }
@@ -2399,6 +2419,7 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		Theme:             curTheme,
 		HostVersion:       hostVer,
 		GetNotebooks:      s.Notebooks,
+		GetNotebookInfos:  s.NotebookInfos,
 		GetPerfSnapshot:   s.cfg.GetPerfSnapshot,
 		ApplyNoteWrite:    s.cfg.ApplyNoteWrite,
 		ApplyNoteTrash:    s.cfg.ApplyNoteTrash,

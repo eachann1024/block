@@ -112,7 +112,7 @@ example-sync/
     - 系统集成与 `host.fs.*` / `host.http.request` / `host.exec.run` / `host.ai.*` 细则见 [协议、UI 与骨架](protocol-and-ui.md)。
   - **静默事件订阅（按需声明，不弹窗确认，共 3 项）**：仅作为事件订阅开关，不会触发安装/更新权限弹窗：
     - `"events:note_saved"`：订阅笔记保存事件（`plugin.event`）
-    - `"events:system"`：订阅系统唤醒、网络变化、焦点事件及 `host.scheduler.*` 后台定时任务
+    - `"events:system"`：订阅系统唤醒、网络变化、焦点事件、笔记本改名/移除生命周期事件（`notebook.renamed` / `notebook.removed`，须同时具备笔记读取/写入/保存事件权限之一）及 `host.scheduler.*` 后台定时任务
     - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已启动的沙盒）
   - **默认放行权限（共 12 项）**：插件私有存储 `"storage"`、9 项 `"ui:*"` 界面权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）和系统的 `"system:notify"`、`"system:badge"`。部分扩展需要显式声明权限。`titlebar_manager` 需要 `"ui:titlebar"`，`block_decorators` 需要 `"ui:appearance"` 或 `"editor:write"`，`themes` 需要 `"ui:appearance"`，`stages` 需要 `"ui:appearance"`、`"ui:commands"` 或 `"ui:panels"`。`contributes.ignored_dirs` 和 `host.sidebar.*_ignored_dirs` 都需要显式声明 `"ui:sidebar"`，安装和更新时无须确认。删除冗余权限时，同步删除 `permission_reasons` 中对应的键。纯声明式语言扩展的 `permissions` 必须为空数组。
 - `network_domains`：可选字符串数组（最多 64 项、不区分大小写去重），限制 `host.http.request` 目标主机与重定向目标：支持精确主机（`"api.example.com"`，允许任意端口）、显式端口形式（`"127.0.0.1:8080"`，匹配 URL 中显式填写的端口）或单前缀通配（`"*.example.com"`，仅匹配子域而不含裸域），禁止协议前缀、路径与空白。无论是否配置本字段，运行时都会拦截未指定地址、链路本地与 `0.0.0.0/8`；配置本字段后，普通域名若解析到私网或回环 IP 同样会被拒绝（显式 IP 字面量与 `localhost` / `*.localhost` 除外）。

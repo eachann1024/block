@@ -204,6 +204,9 @@ func NewWorkspace(dataDir string) *Workspace {
 	if available && startupMove == "" {
 		w.bindNotebookTracker(startupRoot)
 	}
+	if activeNow := w.ActiveNotebook(); activeNow != "" {
+		files.MigrateLegacyReplacedDirIn(actualDir, activeNow)
+	}
 	w.exportCtrl = export.NewController(actualDir, w.RequestRedraw)
 	w.ai = ai.NewController(actualDir, w, codec)
 	w.ai.SetOnEnabledChanged(w.onAIEnabledChanged)
@@ -404,11 +407,16 @@ func NewWorkspace(dataDir string) *Workspace {
 	if startupMove != "" {
 		if sup := w.Plugins(); sup != nil {
 			sup.RenameNotebookRoot(startupRoot, startupMove)
+			if id := files.NotebookIDForPathIn(actualDir, startupMove); id != "" {
+				sup.EmitNotebookRenamedEvent(id, startupRoot, startupMove)
+			}
 		}
 		w.notifyNotebookMoved(startupMove)
 	} else if startupRoot != "" && !available {
 		w.checkNotebookAvailability()
 	}
+	w.syncStartupNotebookRegistry()
+	w.StartNotebookMaintenance()
 	if d := time.Since(processStartedAt); d >= 0 {
 		w.startupNanos.Store(d.Nanoseconds())
 	} else {
@@ -3290,6 +3298,11 @@ func (w *Workspace) SetNotebook(folder string) error {
 
 	w.bindNotebookTracker(clean)
 	w.bgSaveMu.Unlock()
+	regRec, regRenamedFrom, regErr := files.EnsureNotebookIn(w.dataDir, clean)
+	files.MigrateLegacyReplacedDirIn(w.dataDir, clean)
+	if regErr == nil && regRenamedFrom != "" {
+		w.handleExternalNotebookReclaim(regRenamedFrom, clean, regRec.ID)
+	}
 	w.RescanNotebook()
 	if switched {
 		notes, dirs := countWorkspaceEntries(w.Entries())
@@ -3533,6 +3546,12 @@ func (w *Workspace) ForgetNotebook(root string) {
 	}
 	w.bgSaveMu.Unlock()
 	if err == nil {
+		removedRec, removedOK, _ := files.RemoveNotebookIn(w.dataDir, clean)
+		if removedOK {
+			if sup := w.Plugins(); sup != nil {
+				sup.EmitNotebookRemovedEvent(removedRec.ID, removedRec.Path)
+			}
+		}
 		theme.SetIgnoredSearchFolders(next.IgnoredSearchFolders)
 	}
 	if switched && err == nil {
@@ -3585,8 +3604,82 @@ func (w *Workspace) RegisterNotebook(folder string) error {
 	w.mu.Lock()
 	w.state.Notebooks = next.Notebooks
 	w.mu.Unlock()
+	regRec, regRenamedFrom, regErr := files.EnsureNotebookIn(w.dataDir, clean)
+	files.MigrateLegacyReplacedDirIn(w.dataDir, clean)
+	if regErr == nil && regRenamedFrom != "" {
+		w.handleExternalNotebookReclaim(regRenamedFrom, clean, regRec.ID)
+	}
 	w.RequestRedraw()
 	return nil
+}
+
+func (w *Workspace) syncStartupNotebookRegistry() {
+	for _, nb := range w.Notebooks() {
+		rec, renamedFrom, err := files.EnsureNotebookIn(w.dataDir, nb)
+		if err == nil && renamedFrom != "" {
+			w.handleExternalNotebookReclaim(renamedFrom, nb, rec.ID)
+		}
+	}
+}
+
+func (w *Workspace) handleExternalNotebookReclaim(renamedFrom, newRoot, nbID string) {
+	oldClean := filepath.Clean(renamedFrom)
+	newClean := filepath.Clean(newRoot)
+	if oldClean == "" || newClean == "" || oldClean == newClean {
+		return
+	}
+	var changed bool
+	next, err := w.updateStateSync(func(st *model.AppState) {
+		if st.Folder != "" && filepath.Clean(st.Folder) == oldClean {
+			st.Folder = newClean
+			changed = true
+		}
+		hasNew := false
+		for _, nb := range st.Notebooks {
+			if filepath.Clean(nb) == newClean {
+				hasNew = true
+				break
+			}
+		}
+		filtered := make([]string, 0, len(st.Notebooks))
+		for _, nb := range st.Notebooks {
+			if filepath.Clean(nb) == oldClean {
+				changed = true
+				if !hasNew {
+					filtered = append(filtered, newClean)
+					hasNew = true
+				}
+				continue
+			}
+			filtered = append(filtered, nb)
+		}
+		st.Notebooks = filtered
+		if len(st.NotebookIdentities) > 0 {
+			if loc, ok := st.NotebookIdentities[oldClean]; ok {
+				delete(st.NotebookIdentities, oldClean)
+				if loc != "" {
+					st.NotebookIdentities[newClean] = loc
+				}
+				changed = true
+			}
+		}
+	})
+	if err == nil && changed {
+		files.RebaseFileOrder(oldClean, newClean)
+		order := files.LoadState().FileOrder
+		w.mu.Lock()
+		w.state.Folder = next.Folder
+		w.state.Notebooks = next.Notebooks
+		w.state.NotebookIdentities = next.NotebookIdentities
+		w.state.FileOrder = order
+		w.mu.Unlock()
+	}
+	if sup := w.Plugins(); sup != nil {
+		sup.RenameNotebookRoot(oldClean, newClean)
+		if nbID != "" {
+			sup.EmitNotebookRenamedEvent(nbID, oldClean, newClean)
+		}
+	}
 }
 
 // ChooseNotebookDialog opens the native directory picker to switch notebooks.
@@ -3635,6 +3728,7 @@ func (w *Workspace) rescanNotebook() bool {
 	var list []model.FileEntry
 	var err error
 	if folder != "" {
+		files.MigrateLegacyReplacedDirIn(w.dataDir, folder)
 		list, err = files.ScanNotebook(folder, opts)
 		if err == nil {
 			captureWindowsDirIdentities(list, entries)
@@ -3884,6 +3978,14 @@ func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error)
 	w.mu.Lock()
 	w.state.FileOrder = nextState.FileOrder
 	w.mu.Unlock()
+	if isDir {
+		if id := files.NotebookIDForPathIn(w.dataDir, oldPath); id != "" {
+			_, _, _ = files.RenameNotebookIn(w.dataDir, oldPath, newPath)
+			if sup := w.Plugins(); sup != nil {
+				sup.EmitNotebookRenamedEvent(id, oldPath, newPath)
+			}
+		}
+	}
 	if sup := w.Plugins(); sup != nil {
 		if isDir {
 			sup.NotifyFolderDeleted(oldPath)
@@ -3924,6 +4026,14 @@ func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 	w.mu.Lock()
 	w.state.FileOrder = nextState.FileOrder
 	w.mu.Unlock()
+	if isDir {
+		if id := files.NotebookIDForPathIn(w.dataDir, srcPath); id != "" {
+			_, _, _ = files.RenameNotebookIn(w.dataDir, srcPath, newPath)
+			if sup := w.Plugins(); sup != nil {
+				sup.EmitNotebookRenamedEvent(id, srcPath, newPath)
+			}
+		}
+	}
 	if sup := w.Plugins(); sup != nil {
 		if isDir {
 			sup.NotifyFolderDeleted(srcPath)

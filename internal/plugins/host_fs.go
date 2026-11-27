@@ -1104,10 +1104,17 @@ func fallbackSwapFilesInDir(dir *os.Root, a, b string) error {
 	if _, err := dir.Lstat(b); err != nil {
 		return err
 	}
-	if err := dir.Mkdir(".block-replaced", 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return err
+	var backup string
+	for range 20 {
+		cand := ".block-swap-" + randomHex(8) + ".tmp"
+		if _, err := dir.Lstat(cand); errors.Is(err, os.ErrNotExist) {
+			backup = cand
+			break
+		}
 	}
-	backup := ".block-replaced/" + a + "." + randomHex(6) + ".bak"
+	if backup == "" {
+		return errors.New("failed to allocate swap temp name")
+	}
 	if err := dir.Rename(a, backup); err != nil {
 		return err
 	}
@@ -1120,7 +1127,6 @@ func fallbackSwapFilesInDir(dir *os.Root, a, b string) error {
 		_ = dir.Rename(backup, a)
 		return err
 	}
-	_ = dir.Remove(".block-replaced")
 	return nil
 }
 

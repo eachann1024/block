@@ -709,7 +709,7 @@ func classifyOverridePath(root, path string) int {
 		switch p {
 		case "history":
 			return 2
-		case "recovery", "cache", "quick":
+		case "recovery", "cache", "quick", "replaced":
 			return 3
 		case "ai", "ai_sessions", "ai-sessions":
 			return 4
@@ -750,7 +750,7 @@ func classifyDataDirPath(root, path string) int {
 		switch p {
 		case "history":
 			return 2
-		case "recovery", "cache", "quick":
+		case "recovery", "cache", "quick", "replaced":
 			return 3
 		case "logs", "log":
 			return 5

@@ -137,6 +137,7 @@ type systemBadge struct {
 
 type systemEventQueue struct {
 	pending map[string]map[string]any
+	ordered []map[string]any
 }
 
 type systemActionKey struct{}
@@ -638,12 +639,58 @@ func (s *Supervisor) EmitSystemEvent(name string, online bool) {
 	s.dispatchScheduledJobsForTrigger(name, online)
 }
 
+func (s *Supervisor) EmitNotebookRenamedEvent(id, oldPath, newPath string) {
+	if s == nil || id == "" || oldPath == "" || newPath == "" {
+		return
+	}
+	for _, installed := range s.Installed() {
+		manifest := installed.Manifest
+		if !installed.Enabled || manifest.IsDeclarativeOnly() || !manifest.HasPermission(PermEventsSystem) {
+			continue
+		}
+		if !manifest.HasPermission(PermNotesRead) && !manifest.HasPermission(PermNotesWrite) && !manifest.HasPermission(PermEventNoteSaved) {
+			continue
+		}
+		s.queueOrderedSystemEvent(manifest.ID, map[string]any{
+			"event":     "notebook.renamed",
+			"id":        id,
+			"old_path":  oldPath,
+			"new_path":  newPath,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+}
+
+func (s *Supervisor) EmitNotebookRemovedEvent(id, path string) {
+	if s == nil || id == "" || path == "" {
+		return
+	}
+	for _, installed := range s.Installed() {
+		manifest := installed.Manifest
+		if !installed.Enabled || manifest.IsDeclarativeOnly() || !manifest.HasPermission(PermEventsSystem) {
+			continue
+		}
+		if !manifest.HasPermission(PermNotesRead) && !manifest.HasPermission(PermNotesWrite) && !manifest.HasPermission(PermEventNoteSaved) {
+			continue
+		}
+		s.queueOrderedSystemEvent(manifest.ID, map[string]any{
+			"event":     "notebook.removed",
+			"id":        id,
+			"path":      path,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+}
+
 func (s *Supervisor) queueSystemEvent(pluginID, name string, params map[string]any) {
 	s.system.mu.Lock()
 	if s.system.events == nil {
 		s.system.events = make(map[string]*systemEventQueue)
 	}
 	if queue := s.system.events[pluginID]; queue != nil {
+		if queue.pending == nil {
+			queue.pending = make(map[string]map[string]any)
+		}
 		queue.pending[name] = params
 		s.system.mu.Unlock()
 		return
@@ -654,11 +701,27 @@ func (s *Supervisor) queueSystemEvent(pluginID, name string, params map[string]a
 	go s.dispatchSystemEvents(pluginID, queue)
 }
 
+func (s *Supervisor) queueOrderedSystemEvent(pluginID string, params map[string]any) {
+	s.system.mu.Lock()
+	if s.system.events == nil {
+		s.system.events = make(map[string]*systemEventQueue)
+	}
+	if queue := s.system.events[pluginID]; queue != nil {
+		queue.ordered = append(queue.ordered, params)
+		s.system.mu.Unlock()
+		return
+	}
+	queue := &systemEventQueue{ordered: []map[string]any{params}}
+	s.system.events[pluginID] = queue
+	s.system.mu.Unlock()
+	go s.dispatchSystemEvents(pluginID, queue)
+}
+
 func (s *Supervisor) dispatchSystemEvents(pluginID string, queue *systemEventQueue) {
 	for {
 		unlock := s.lockPluginRPC(pluginID)
 		s.system.mu.Lock()
-		if len(queue.pending) == 0 {
+		if len(queue.pending) == 0 && len(queue.ordered) == 0 {
 			delete(s.system.events, pluginID)
 			s.system.mu.Unlock()
 			unlock()
@@ -670,6 +733,10 @@ func (s *Supervisor) dispatchSystemEvents(pluginID string, queue *systemEventQue
 				delete(queue.pending, name)
 				break
 			}
+		}
+		if params == nil && len(queue.ordered) > 0 {
+			params = queue.ordered[0]
+			queue.ordered = queue.ordered[1:]
 		}
 		if params == nil {
 			keys := make([]string, 0, len(queue.pending))

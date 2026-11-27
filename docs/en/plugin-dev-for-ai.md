@@ -238,7 +238,7 @@ example-sync/
     5. **Network**: `"network"` (mandatory for `host.http.request`; pair with `network_domains` to restrict target hosts)
   - **Silent Event Subscriptions (3 permissions; no confirmation prompt)**:
     - `"events:note_saved"`: note save/delete events via `plugin.event`
-    - `"events:system"`: wake, network change, app focus, and `host.scheduler.*` ticks
+    - `"events:system"`: wake, network change, app focus, `notebook.renamed` / `notebook.removed` lifecycle events (requires note permissions), and `host.scheduler.*` ticks
     - `"events:workspace"`: `note.opened`, `theme.changed`, `locale.changed` (delivered only to already-running sandboxes)
   - **Default-allowed permissions (12)** include `"storage"`, the nine `"ui:*"` permissions (`ui:titlebar`, `ui:settings`, `ui:commands`, `ui:panels`, `ui:status`, `ui:notify`, `ui:sidebar`, `ui:appearance`, `ui:menubar`), `"system:notify"`, and `"system:badge"`. Some extensions still require explicit declarations. `titlebar_manager` requires `"ui:titlebar"`. `block_decorators` requires `"ui:appearance"` or `"editor:write"`. `themes` requires `"ui:appearance"`. `stages` requires `"ui:appearance"`, `"ui:commands"`, or `"ui:panels"`. Both `contributes.ignored_dirs` and `host.sidebar.*_ignored_dirs` require `"ui:sidebar"` without prompting for consent. When removing a redundant permission, also remove its key from `permission_reasons`. Pure declarative language extensions require `permissions: []`.
 - `network_domains`: optional array (`<= 64` entries, case-insensitive deduplication) restricting `host.http.request` targets and redirects. Accepts exact hosts (`"api.example.com"`, any port), explicit host:port (`"127.0.0.1:8080"`, matches explicit URL port), or single-label wildcard subdomains (`"*.example.com"`, subdomains only, not apex). Schemes, paths, and whitespace are forbidden. Regardless of whether `network_domains` is set, runtime SSRF guards block unspecified, link-local, and `0.0.0.0/8` addresses; when `network_domains` is configured, non-literal/non-`localhost` domains resolving to private or loopback IPs are also blocked.
@@ -342,7 +342,7 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
 
 ### Host Method Index
 
-This table lists all 78 `host.*` JSON-RPC methods currently dispatched by the host and their exact permission / manifest requirements. Capabilities marked "default-allowed" may be omitted from `manifest.permissions` unless an explicit declaration is noted; all other permissions must be declared explicitly.
+This table lists all 79 `host.*` JSON-RPC methods currently dispatched by the host and their exact permission / manifest requirements. Capabilities marked "default-allowed" may be omitted from `manifest.permissions` unless an explicit declaration is noted; all other permissions must be declared explicitly.
 
 <!-- host-methods-table:start -->
 | Method | Required Permission / Manifest Condition | Purpose | Details |
@@ -351,7 +351,8 @@ This table lists all 78 `host.*` JSON-RPC methods currently dispatched by the ho
 | `host.storage.set` | `storage` (default-allowed) | Write or overwrite a single private storage key | [§4.2 · 2](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
 | `host.storage.set_many` | `storage` (default-allowed) | Atomically write 1–64 private storage keys at once | [§4.2 · 2](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
 | `host.notes.active` | `notes:read` | Get the active tab's relative note path | [§4.2 · 3](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
-| `host.notebooks.list` | `notes:read` | List known notebooks and which notebook is active | [§4.2 · 4](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notebooks.list` | `notes:read` | List known notebook IDs, paths, and active state | [§4.2 · 4](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
+| `host.notebooks.data_dir` | `notes:read` | Resolve or create a per-notebook data directory under plugin `data_dir` | [§4.2 · 4](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
 | `host.notes.list` | `notes:read` | List visible Markdown notes inside a notebook | [§4.2 · 5](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
 | `host.notes.read` | `notes:read` | Read note Markdown content and SHA-256 `revision` | [§4.2 · 6](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
 | `host.notes.write` | `notes:write` | Write or update a note (supports `expected_revision`) | [§4.2 · 7](https://docs.block.cooool.top/en/plugins/protocol-and-ui) |
@@ -442,7 +443,9 @@ Note path rules: case-insensitive `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`,
 1. **`host.storage.get`** (no permission): `{"key": "config"}` -> `{"value", "found"}` or `{}` -> `{"data": {...}}`.
 2. **`host.storage.set`** / **`host.storage.set_many`** (no permission; 8 MiB cap): `{"key", "value"}` or `{"values": {...}}` (1–64 non-blank keys) -> `{"ok": true}`. Preserves raw JSON numbers.
 3. **`host.notes.active`** (`"notes:read"`): `{}` -> `{"path": "welcome.md"}`.
-4. **`host.notebooks.list`** (`"notes:read"`): `{}` -> `{"notebooks": [{"path", "name", "active"}]}`.
+4. **`host.notebooks.list`** / **`host.notebooks.data_dir`** (`"notes:read"`):
+   - `host.notebooks.list {}` -> `{"notebooks": [{"id", "path", "name", "active"}]}` (`id` is a host-managed durable identifier preserved across moves/renames).
+   - `host.notebooks.data_dir` (`{"id" | "path" | "notebook" | "notebook_id" | "notebook_root"}`, defaulting to the active notebook when omitted) creates and returns `{"id", "path"}` pointing to `<data_dir>/notebooks/<id>/` (stable across renames; cleaned by the host when removed or missing for over 30 days).
 5. **`host.notes.list`** (`"notes:read"`): `{"notebook_root"?}` -> `{"notes": [{"path", "size", "mod_time"}]}` (returns `{"notes": []}` when no notebook is active; unregistered notebook returns `-32003`).
 6. **`host.notes.read`** (`"notes:read"`): `{"notebook_root"?, "path"}` -> `{"path", "content", "revision"}` (`revision` is 64-char lowercase SHA-256).
 7. **`host.notes.write`** (`"notes:write"`): `{"notebook_root"?, "path", "content", "expected_revision"?}` -> `{"ok": true, "changed": true|false}`. `content` must be a string (max 16 MiB). Checks dirty editor / virtual preview (`-32006`), then byte equality (`changed: false`), then `expected_revision` (`""` requires non-existent file; SHA-256 requires match, else `-32006`). Does not return new `revision`—re-read before chained writes.
@@ -496,7 +499,7 @@ Desktop hosts advertise `"system_integration"` in `ui_capabilities`. Call `host.
 | `host.system.badge` | Default-allowed | `{"count": 0..999}` (0 clears plugin contribution; host sums enabled plugins up to 999). |
 | `host.secrets.get`, `set`, `delete` | `system:secrets` | `{"key", "value"?}` (`key <= 128` ASCII alnum/`._-`, `value` 1–1536 bytes, no NUL). Isolated by app data dir, plugin ID, and install provenance. |
 
-Interactive system operations (open URL, reveal, dialogs, clipboard, trash) require a user-triggered `plugin.action` or `plugin.command` while Block is focused. `events:system` delivers `system.wake`, `network.changed`, and `app.focus` via `plugin.event`.
+Interactive system operations (open URL, reveal, dialogs, clipboard, trash) require a user-triggered `plugin.action` or `plugin.command` while Block is focused. `events:system` delivers `system.wake`, `network.changed`, and `app.focus` via `plugin.event`, plus ordered `notebook.renamed` (`{"id", "old_path", "new_path"}`) and `notebook.removed` (`{"id", "path"}`) lifecycle events when the plugin also holds note permissions.
 
 ### 4.4 Compatibility & Platform Notes
 
@@ -677,7 +680,7 @@ Shared validation rules:
 
 ### 7.4 Host UI RPC Methods (Plugin -> Host)
 
-> Note: Methods marked `"ui:*" (default-allowed)` are checked against that permission in code, which is auto-granted without declaring it in `manifest.permissions`. Methods marked **explicit** or sensitive permissions must be declared in `manifest.permissions`. See the [Host Method Index](https://docs.block.cooool.top/en/plugins/protocol-and-ui#host-method-index) for all 78 `host.*` methods.
+> Note: Methods marked `"ui:*" (default-allowed)` are checked against that permission in code, which is auto-granted without declaring it in `manifest.permissions`. Methods marked **explicit** or sensitive permissions must be declared in `manifest.permissions`. See the [Host Method Index](https://docs.block.cooool.top/en/plugins/protocol-and-ui#host-method-index) for all 79 `host.*` methods.
 
 1. **`host.titlebar.get_items`** (runtime checks `"ui:titlebar"`, default-allowed; `{}`): returns `{"items": [...], "groups": [...]}`.
    - Each `item` includes `id`, `label`, `locked`, `hidden`, optional `plugin` (**returned only on plugin buttons** and omitted on built-in slots), `icon` (for `switch` rows), **`group`** (`"markdown"`, `"source"`, or `"preview"`; plugin buttons use `"markdown"`), and **`preview`** (array of `UIIcon`s generated from the same definitions as real titlebar rendering, ready for `icon_strip.icons`—e.g. `zoom` is `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}, {"chip": "Fit"}]`, `send_all` is `[{"chip": "Send all", "dot": true}]`, and plugin buttons return a 1-element inline-vector array).

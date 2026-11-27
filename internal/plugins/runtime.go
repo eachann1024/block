@@ -77,8 +77,9 @@ type HostConfig struct {
 	ActiveNote      string
 	Locale          string
 	Theme           string
-	HostVersion     string
-	GetNotebooks    func() []string
+	HostVersion      string
+	GetNotebooks     func() []string
+	GetNotebookInfos func() []NotebookInfo
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
 	// ApplyNoteTrash runs verify then trash under the editor save lock so an
@@ -96,6 +97,12 @@ type HostConfig struct {
 }
 
 var ErrNoteConflict = errors.New("note changed; read it again before writing")
+
+// NotebookInfo pairs a registered notebook path with its durable registry ID.
+type NotebookInfo struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+}
 
 type ActionResult struct {
 	OK              *bool          `json:"ok,omitempty"`
@@ -514,6 +521,86 @@ func (rt *Runtime) knownNotebooks() []string {
 	}
 	add(active)
 	return out
+}
+
+func (rt *Runtime) knownNotebookInfos() []NotebookInfo {
+	rt.cfgMu.RLock()
+	infoGetter := rt.cfg.GetNotebookInfos
+	rt.cfgMu.RUnlock()
+	if infoGetter != nil {
+		raw := infoGetter()
+		seen := make(map[string]bool, len(raw))
+		out := make([]NotebookInfo, 0, len(raw))
+		for _, item := range raw {
+			p := strings.TrimSpace(item.Path)
+			if p == "" {
+				continue
+			}
+			if abs, err := filepath.Abs(p); err == nil {
+				p = abs
+			} else {
+				p = filepath.Clean(p)
+			}
+			if seen[p] {
+				continue
+			}
+			seen[p] = true
+			id := strings.TrimSpace(item.ID)
+			if !files.IsSafeNotebookID(id) {
+				id = files.DeterministicFallbackNotebookID(p)
+			}
+			out = append(out, NotebookInfo{ID: id, Path: p})
+		}
+		return out
+	}
+	nbs := rt.knownNotebooks()
+	out := make([]NotebookInfo, 0, len(nbs))
+	for _, nb := range nbs {
+		out = append(out, NotebookInfo{
+			ID:   files.DeterministicFallbackNotebookID(nb),
+			Path: nb,
+		})
+	}
+	return out
+}
+
+func (rt *Runtime) resolveNotebookInfo(selector string) (NotebookInfo, error) {
+	infos := rt.knownNotebookInfos()
+	sel := strings.TrimSpace(selector)
+	if sel == "" {
+		nbRoot := strings.TrimSpace(rt.notebookRoot())
+		if nbRoot == "" {
+			return NotebookInfo{}, errors.New("no active notebook folder")
+		}
+		sel = nbRoot
+	} else {
+		for _, info := range infos {
+			if info.ID == sel {
+				return info, nil
+			}
+		}
+	}
+	selAbs, err := filepath.Abs(sel)
+	if err != nil {
+		selAbs = filepath.Clean(sel)
+	}
+	selCanon := selAbs
+	if resolved, err := filepath.EvalSymlinks(selAbs); err == nil && resolved != "" {
+		selCanon = filepath.Clean(resolved)
+	}
+	for _, info := range infos {
+		if info.Path == selAbs {
+			return info, nil
+		}
+		infoCanon := info.Path
+		if resolved, err := filepath.EvalSymlinks(info.Path); err == nil && resolved != "" {
+			infoCanon = filepath.Clean(resolved)
+		}
+		if infoCanon == selCanon {
+			return info, nil
+		}
+	}
+	return NotebookInfo{}, fmt.Errorf("notebook %q is not registered in host", selector)
 }
 
 func (rt *Runtime) resolveNotebookRoot(requested string) (string, error) {
@@ -1223,24 +1310,78 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			}
 		}
 		type notebookEntry struct {
+			ID     string `json:"id"`
 			Path   string `json:"path"`
 			Name   string `json:"name"`
 			Active bool   `json:"active"`
 		}
-		nbs := rt.knownNotebooks()
+		nbs := rt.knownNotebookInfos()
 		entries := make([]notebookEntry, 0, len(nbs))
 		for _, nb := range nbs {
-			name := filepath.Base(nb)
+			name := filepath.Base(nb.Path)
 			if name == "" || name == "." || name == string(filepath.Separator) {
-				name = nb
+				name = nb.Path
 			}
 			entries = append(entries, notebookEntry{
-				Path:   nb,
+				ID:     nb.ID,
+				Path:   nb.Path,
 				Name:   name,
-				Active: activeRoot != "" && nb == activeRoot,
+				Active: activeRoot != "" && nb.Path == activeRoot,
 			})
 		}
 		return map[string]any{"notebooks": entries}, nil
+
+	case "host.notebooks.data_dir":
+		if !rt.manifest.HasPermission(PermNotesRead) {
+			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
+		}
+		var p struct {
+			ID           string `json:"id"`
+			Path         string `json:"path"`
+			Notebook     string `json:"notebook"`
+			NotebookID   string `json:"notebook_id"`
+			NotebookRoot string `json:"notebook_root"`
+		}
+		if len(bytes.TrimSpace(params)) > 0 && string(bytes.TrimSpace(params)) != "null" {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, &rpcError{Code: -32602, Message: err.Error()}
+			}
+		}
+		selector := strings.TrimSpace(p.ID)
+		if selector == "" {
+			selector = strings.TrimSpace(p.NotebookID)
+		}
+		if selector == "" {
+			selector = strings.TrimSpace(p.Path)
+		}
+		if selector == "" {
+			selector = strings.TrimSpace(p.NotebookRoot)
+		}
+		if selector == "" {
+			selector = strings.TrimSpace(p.Notebook)
+		}
+		nb, err := rt.resolveNotebookInfo(selector)
+		if err != nil {
+			return nil, &rpcError{Code: -32003, Message: err.Error()}
+		}
+		if !files.IsSafeNotebookID(nb.ID) {
+			return nil, &rpcError{Code: -32004, Message: "invalid notebook id"}
+		}
+		if rt.dataRoot == nil {
+			return nil, &rpcError{Code: -32004, Message: "plugin data directory unavailable"}
+		}
+		relDir := filepath.Join("notebooks", nb.ID)
+		if err := rt.dataRoot.MkdirAll(relDir, 0o700); err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		canonDataDir, err := resolveCanonicalPath(rt.cfg.DataDir)
+		if err != nil {
+			canonDataDir = filepath.Clean(rt.cfg.DataDir)
+		}
+		return map[string]any{
+			"id":   nb.ID,
+			"path": filepath.Join(canonDataDir, "notebooks", nb.ID),
+		}, nil
 
 	case "host.notes.list":
 		if !rt.manifest.HasPermission(PermNotesRead) {

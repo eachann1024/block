@@ -58,7 +58,7 @@ Shared validation rules:
 
 ### 7.4 Host UI RPC Methods (Plugin -> Host)
 
-> Note: Methods marked `"ui:*" (default-allowed)` are checked against that permission in code, which is auto-granted without declaring it in `manifest.permissions`. Methods marked **explicit** or sensitive permissions must be declared in `manifest.permissions`. See the [Host Method Index](protocol-and-ui.md#host-method-index) for all 78 `host.*` methods.
+> Note: Methods marked `"ui:*" (default-allowed)` are checked against that permission in code, which is auto-granted without declaring it in `manifest.permissions`. Methods marked **explicit** or sensitive permissions must be declared in `manifest.permissions`. See the [Host Method Index](protocol-and-ui.md#host-method-index) for all 79 `host.*` methods.
 
 1. **`host.titlebar.get_items`** (runtime checks `"ui:titlebar"`, default-allowed; `{}`): returns `{"items": [...], "groups": [...]}`.
    - Each `item` includes `id`, `label`, `locked`, `hidden`, optional `plugin` (**returned only on plugin buttons** and omitted on built-in slots), `icon` (for `switch` rows), **`group`** (`"markdown"`, `"source"`, or `"preview"`; plugin buttons use `"markdown"`), and **`preview`** (array of `UIIcon`s generated from the same definitions as real titlebar rendering, ready for `icon_strip.icons`—e.g. `zoom` is `[{"name": "tb-minus"}, {"chip": "100%"}, {"name": "tb-plus"}, {"chip": "Fit"}]`, `send_all` is `[{"chip": "Send all", "dot": true}]`, and plugin buttons return a 1-element inline-vector array).

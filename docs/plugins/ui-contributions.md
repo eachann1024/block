@@ -138,7 +138,7 @@
 
 ### 7.4 通用 UI 贡献宿主方法（Plugin -> Host）
 
-> 注：下述标注「`ui:*`（默认放行，无需声明）」的方法在宿主运行时按对应权限校验，但因属于默认放行权限，通常无需在 `manifest.permissions` 中重复声明；明确标注「须显式声明」或涉及编辑器读写的方法必须声明在 `manifest.permissions` 中。完整 78 个 `host.*` 方法索引见 [宿主方法总表](protocol-and-ui.md#宿主方法总表)。
+> 注：下述标注「`ui:*`（默认放行，无需声明）」的方法在宿主运行时按对应权限校验，但因属于默认放行权限，通常无需在 `manifest.permissions` 中重复声明；明确标注「须显式声明」或涉及编辑器读写的方法必须声明在 `manifest.permissions` 中。完整 79 个 `host.*` 方法索引见 [宿主方法总表](protocol-and-ui.md#宿主方法总表)。
 
 1. **`host.titlebar.get_items`**（代码检查 `"ui:titlebar"`，默认放行，无需显式声明；参数 `{}`）
    - 返回：

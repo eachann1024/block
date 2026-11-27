@@ -106,125 +106,295 @@ func sanitizeStashBase(name string) string {
 	return b.String()
 }
 
-// stashReplacedInodeInRoot moves a swapped-out old inode into <root>/.block-replaced/
-// (same filesystem, exact same inode) so any external editor still holding an open fd that
-// flushes in-place writes after RENAME_SWAP remains recoverable on disk.
-func stashReplacedInodeInRoot(root *os.Root, parent, tmpPath, relName string) bool {
-	if root == nil || tmpPath == "" {
-		return false
+const (
+	replacedMaxEntries     = 64
+	replacedRetention      = 7 * 24 * time.Hour
+	externalReplacedBucket = "_external"
+)
+
+func replacedStashDir(appDataDir, rootHint string, dir *os.Root) string {
+	base := strings.TrimSpace(appDataDir)
+	if base == "" {
+		base = AppDataDir()
 	}
-	const stashDirName = ".block-replaced"
-	if err := root.MkdirAll(stashDirName, 0o755); err != nil {
-		return false
-	}
-	srcRel := tmpPath
-	if parent != "" && parent != "." {
-		srcRel = filepath.Join(parent, tmpPath)
-	}
-	nowMs := time.Now().UnixMilli()
-	shortHash := conditionalSHA256Hex([]byte(relName))
-	if len(shortHash) > 8 {
-		shortHash = shortHash[:8]
-	}
-	baseTag := fmt.Sprintf("%015d-%s-%s", nowMs, shortHash, sanitizeStashBase(filepath.Base(relName)))
-	var chosenName string
-	for i := range 50 {
-		candName := baseTag
-		if i > 0 {
-			candName = fmt.Sprintf("%s-%d", baseTag, i)
+	nbID := ""
+	if rootHint != "" {
+		nbID = NotebookIDForPathIn(base, rootHint)
+		if nbID == "" {
+			nbID = NotebookIDForDescendantIn(base, rootHint)
 		}
-		dstRel := filepath.Join(stashDirName, candName)
-		if _, err := root.Lstat(dstRel); err == nil {
+	}
+	if nbID == "" && dir != nil {
+		nbID = NotebookIDForDescendantIn(base, dir.Name())
+	}
+	if !IsSafeNotebookID(nbID) {
+		nbID = externalReplacedBucket
+	}
+	return filepath.Join(base, "replaced", nbID)
+}
+
+func replacedEntryTimestamp(name string, info os.FileInfo) time.Time {
+	if tsStr, _, ok := strings.Cut(name, "-"); ok && tsStr != "" {
+		if tsVal, err := strconv.ParseInt(tsStr, 10, 64); err == nil && tsVal >= 1_000_000_000_000 {
+			return time.UnixMilli(tsVal)
+		}
+	}
+	if info != nil {
+		return info.ModTime()
+	}
+	return time.Time{}
+}
+
+func pruneReplacedDir(stashDir, keepName string, now time.Time) {
+	entries, err := os.ReadDir(stashDir)
+	if err != nil {
+		return
+	}
+	type candidate struct {
+		name string
+		ts   time.Time
+	}
+	expireBefore := now.Add(-replacedRetention)
+	kept := make([]candidate, 0, len(entries))
+	for _, ent := range entries {
+		name := ent.Name()
+		if name == "" || name == "." || name == ".." {
 			continue
 		}
-		if err := root.Rename(srcRel, dstRel); err == nil {
-			chosenName = candName
-			break
+		info, iErr := ent.Info()
+		if iErr != nil {
+			continue
 		}
-		return false
+		if ent.IsDir() {
+			continue
+		}
+		ts := replacedEntryTimestamp(name, info)
+		if name != keepName && !ts.IsZero() && ts.Before(expireBefore) {
+			_ = os.Remove(filepath.Join(stashDir, name))
+			continue
+		}
+		kept = append(kept, candidate{name: name, ts: ts})
 	}
-	if chosenName == "" {
-		return false
+	if len(kept) > replacedMaxEntries {
+		sort.Slice(kept, func(i, j int) bool {
+			if !kept[i].ts.Equal(kept[j].ts) {
+				return kept[i].ts.Before(kept[j].ts)
+			}
+			return kept[i].name < kept[j].name
+		})
+		excess := len(kept) - replacedMaxEntries
+		for i := 0; i < excess; i++ {
+			if kept[i].name == keepName {
+				continue
+			}
+			_ = os.Remove(filepath.Join(stashDir, kept[i].name))
+		}
 	}
-	// Prune oldest entries beyond 64 by stash-entry timestamp prefix, never pruning the freshly
-	// stashed inode or any entry stashed within the last 60 seconds.
-	if sdir, err := root.Open(stashDirName); err == nil {
-		names, rErr := sdir.Readdirnames(-1)
-		_ = sdir.Close()
-		if rErr == nil && len(names) > 64 {
-			sort.Strings(names)
-			cutoffMs := nowMs - 60000
-			for _, oldName := range names[:len(names)-64] {
-				if oldName == chosenName {
-					continue
-				}
-				if tsStr, _, ok := strings.Cut(oldName, "-"); ok {
-					if tsVal, pErr := strconv.ParseInt(tsStr, 10, 64); pErr == nil && tsVal >= cutoffMs {
-						continue
-					}
-				}
-				_ = root.Remove(filepath.Join(stashDirName, oldName))
+	if keepName == "" {
+		if rem, rErr := os.ReadDir(stashDir); rErr == nil && len(rem) == 0 {
+			_ = os.Remove(stashDir)
+		}
+	}
+}
+
+// CleanupReplacedDirs prunes expired (>7 days) and excess (>64 per notebook)
+// stashed inodes inside AppDataDir()/replaced/.
+func CleanupReplacedDirs() {
+	CleanupReplacedDirsIn(AppDataDir())
+}
+
+// CleanupReplacedDirsIn is CleanupReplacedDirs scoped to appDataDir.
+func CleanupReplacedDirsIn(appDataDir string) {
+	base := strings.TrimSpace(appDataDir)
+	if base == "" {
+		base = AppDataDir()
+	}
+	replacedRoot := filepath.Join(base, "replaced")
+	entries, err := os.ReadDir(replacedRoot)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, ent := range entries {
+		if !ent.IsDir() {
+			continue
+		}
+		pruneReplacedDir(filepath.Join(replacedRoot, ent.Name()), "", now)
+	}
+}
+
+// MigrateLegacyReplacedDir silently moves any legacy regular files from
+// <nbRoot>/.block-replaced/ into <AppDataDir()>/replaced/<notebookID>/ and
+// deletes the empty legacy directory.
+func MigrateLegacyReplacedDir(nbRoot string) {
+	MigrateLegacyReplacedDirIn(AppDataDir(), nbRoot)
+}
+
+// MigrateLegacyReplacedDirIn is MigrateLegacyReplacedDir scoped to appDataDir.
+func MigrateLegacyReplacedDirIn(appDataDir, nbRoot string) {
+	cleanRoot := normalizeNotebookPath(nbRoot)
+	if cleanRoot == "" {
+		return
+	}
+	legacyAbs := filepath.Join(cleanRoot, ".block-replaced")
+	linfo, err := os.Lstat(legacyAbs)
+	if err != nil || !linfo.IsDir() {
+		return
+	}
+	root, err := os.OpenRoot(cleanRoot)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+
+	legacyRoot, err := root.OpenRoot(".block-replaced")
+	if err != nil {
+		return
+	}
+	defer legacyRoot.Close()
+
+	base := strings.TrimSpace(appDataDir)
+	if base == "" {
+		base = AppDataDir()
+	}
+	rec, _, err := EnsureNotebookIn(base, cleanRoot)
+	nbID := externalReplacedBucket
+	if err == nil && IsSafeNotebookID(rec.ID) {
+		nbID = rec.ID
+	}
+	dstDir := filepath.Join(base, "replaced", nbID)
+
+	entries, err := os.ReadDir(legacyRoot.Name())
+	if err != nil {
+		return
+	}
+	ensuredDst := false
+	for _, ent := range entries {
+		name := ent.Name()
+		if name == "" || name == "." || name == ".." {
+			continue
+		}
+		info, lErr := legacyRoot.Lstat(name)
+		if lErr != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if !ensuredDst {
+			if mErr := os.MkdirAll(dstDir, 0o700); mErr != nil {
+				return
+			}
+			ensuredDst = true
+		}
+		dstName := name
+		for idx := 0; idx < 50; idx++ {
+			cand := name
+			if idx > 0 {
+				cand = fmt.Sprintf("%s-%d", name, idx)
+			}
+			if _, sErr := os.Lstat(filepath.Join(dstDir, cand)); errors.Is(sErr, os.ErrNotExist) {
+				dstName = cand
+				break
 			}
 		}
+		srcAbs := filepath.Join(legacyRoot.Name(), name)
+		dstAbs := filepath.Join(dstDir, dstName)
+		if renErr := os.Rename(srcAbs, dstAbs); renErr == nil {
+			continue
+		} else if !isCrossDeviceErr(renErr) {
+			continue
+		}
+		if copyCrossDevicePreservingMtime(legacyRoot, name, dstDir, dstAbs, info.ModTime()) {
+			_ = legacyRoot.Remove(name)
+		}
+	}
+	if ensuredDst {
+		pruneReplacedDir(dstDir, "", time.Now())
+	}
+	if rem, rErr := os.ReadDir(legacyRoot.Name()); rErr == nil && len(rem) == 0 {
+		_ = root.Remove(".block-replaced")
+	}
+}
+
+func copyCrossDevicePreservingMtime(srcDir *os.Root, srcName, dstDir, dstAbs string, mtime time.Time) bool {
+	src, err := srcDir.OpenFile(srcName, os.O_RDONLY|oNonBlockFlag, 0)
+	if err != nil {
+		return false
+	}
+	defer src.Close()
+	tmpFile, err := os.CreateTemp(dstDir, ".migrate-*.tmp")
+	if err != nil {
+		return false
+	}
+	tmpAbs := tmpFile.Name()
+	_, cErr := io.Copy(tmpFile, src)
+	sErr := tmpFile.Sync()
+	clErr := tmpFile.Close()
+	if cErr != nil || sErr != nil || clErr != nil {
+		_ = os.Remove(tmpAbs)
+		return false
+	}
+	if !mtime.IsZero() {
+		_ = os.Chtimes(tmpAbs, mtime, mtime)
+	}
+	if renErr := os.Rename(tmpAbs, dstAbs); renErr != nil {
+		_ = os.Remove(tmpAbs)
+		return false
 	}
 	return true
 }
 
-// stashReplacedInodeInDir moves a swapped-out or replaced old inode into
-// <dir>/.block-replaced/ (same volume, exact same inode) so any external
-// editor holding an open fd keeps nlink >= 1 and late writes stay recoverable.
-func stashReplacedInodeInDir(dir *os.Root, tmpPath, baseName string) bool {
+// stashReplacedInode moves a swapped-out or replaced old inode from dir/tmpPath
+// into <AppDataDir()>/replaced/<notebookID>/ using same-volume os.Rename so any
+// external editor still holding an open fd keeps nlink >= 1 and exact inode identity.
+func stashReplacedInode(dir *os.Root, rootHint, tmpPath, relOrBaseName string) bool {
 	if dir == nil || tmpPath == "" {
 		return false
 	}
-	const stashDirName = ".block-replaced"
-	if err := dir.MkdirAll(stashDirName, 0o755); err != nil {
+	dstDir := replacedStashDir(AppDataDir(), rootHint, dir)
+	if err := os.MkdirAll(dstDir, 0o700); err != nil {
+		_ = dir.Remove(tmpPath)
 		return false
 	}
-	nowMs := time.Now().UnixMilli()
-	shortHash := conditionalSHA256Hex([]byte(baseName))
+	now := time.Now()
+	nowMs := now.UnixMilli()
+	shortHash := conditionalSHA256Hex([]byte(relOrBaseName))
 	if len(shortHash) > 8 {
 		shortHash = shortHash[:8]
 	}
-	baseTag := fmt.Sprintf("%015d-%s-%s", nowMs, shortHash, sanitizeStashBase(filepath.Base(baseName)))
+	baseTag := fmt.Sprintf("%015d-%s-%s", nowMs, shortHash, sanitizeStashBase(filepath.Base(relOrBaseName)))
+	srcAbs := filepath.Join(dir.Name(), tmpPath)
+
 	var chosenName string
 	for i := range 50 {
 		candName := baseTag
 		if i > 0 {
 			candName = fmt.Sprintf("%s-%d", baseTag, i)
 		}
-		dstRel := filepath.Join(stashDirName, candName)
-		if _, err := dir.Lstat(dstRel); err == nil {
+		dstAbs := filepath.Join(dstDir, candName)
+		if _, err := os.Lstat(dstAbs); err == nil {
 			continue
 		}
-		if err := dir.Rename(tmpPath, dstRel); err == nil {
+		err := os.Rename(srcAbs, dstAbs)
+		if err == nil {
 			chosenName = candName
 			break
 		}
+		if isCrossDeviceErr(err) {
+			// Cross-volume (EXDEV): remove tmpPath directly instead of copying or
+			// stashing inside the target volume. Copying creates a new inode that
+			// cannot keep an external editor's open file descriptor linked, while
+			// creating hidden stash dirs on the target volume/notebook pollutes user
+			// notebooks and cloud sync trees.
+			_ = dir.Remove(tmpPath)
+			return false
+		}
+		_ = dir.Remove(tmpPath)
 		return false
 	}
 	if chosenName == "" {
+		_ = dir.Remove(tmpPath)
 		return false
 	}
-	if sdir, err := dir.Open(stashDirName); err == nil {
-		names, rErr := sdir.Readdirnames(-1)
-		_ = sdir.Close()
-		if rErr == nil && len(names) > 64 {
-			sort.Strings(names)
-			cutoffMs := nowMs - 60000
-			for _, oldName := range names[:len(names)-64] {
-				if oldName == chosenName {
-					continue
-				}
-				if tsStr, _, ok := strings.Cut(oldName, "-"); ok {
-					if tsVal, pErr := strconv.ParseInt(tsStr, 10, 64); pErr == nil && tsVal >= cutoffMs {
-						continue
-					}
-				}
-				_ = dir.Remove(filepath.Join(stashDirName, oldName))
-			}
-		}
-	}
+	pruneReplacedDir(dstDir, chosenName, now)
 	return true
 }
 
@@ -533,10 +703,9 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 			}
 			return false, errConflict
 		}
-		// Preserve the swapped-out old inode in <root>/.block-replaced/ (same volume, exact inode)
-		// so late in-place writes from an editor holding an open fd remain recoverable on disk.
-		// If stashing fails, keep tmpPath on disk rather than unlinking the inode.
-		stashReplacedInodeInRoot(root, parent, tmpPath, name)
+		// Preserve the swapped-out old inode in <AppDataDir()>/replaced/<notebookID>/
+		// (same volume, exact inode) so late in-place writes remain recoverable on disk.
+		stashReplacedInode(dir, root.Name(), tmpPath, name)
 		keepTmp = true
 		if file, oErr := dir.Open("."); oErr == nil {
 			_ = file.Sync()
@@ -602,13 +771,13 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 		if errors.Is(pubErr, os.ErrExist) {
 			// An external writer created base in the interim; leave their file untouched
 			// and stash the prior inode so any open fd keeps nlink >= 1.
-			stashReplacedInodeInRoot(root, parent, movedOld, name)
+			stashReplacedInode(dir, root.Name(), movedOld, name)
 			return false, errConflict
 		}
 		restoreMovedOldInDir(dir, movedOld, base, oldHash, false)
 		return false, pubErr
 	}
-	stashReplacedInodeInRoot(root, parent, movedOld, name)
+	stashReplacedInode(dir, root.Name(), movedOld, name)
 	_ = dir.Remove(tmpPath)
 	keepTmp = true
 	if file, oErr := dir.Open("."); oErr == nil {
@@ -784,8 +953,8 @@ func WriteNoteConditionalFingerprint(path, content string, expected int64) (int6
 			return 0, conflictErr
 		}
 		// Verified: replaced inode matched expected fingerprint; stash it under
-		// .block-replaced/ so any external editor holding an open fd keeps nlink >= 1.
-		stashReplacedInodeInDir(dir, tmpPath, base)
+		// <AppDataDir()>/replaced/ so any external editor holding an open fd keeps nlink >= 1.
+		stashReplacedInode(dir, "", tmpPath, base)
 		keepTmp = true
 		if file, oErr := dir.Open("."); oErr == nil {
 			_ = file.Sync()
@@ -836,13 +1005,13 @@ func WriteNoteConditionalFingerprint(path, content string, expected int64) (int6
 	}
 	if pubErr := dir.Link(tmpPath, base); pubErr != nil {
 		if errors.Is(pubErr, os.ErrExist) {
-			stashReplacedInodeInDir(dir, movedOld, base)
+			stashReplacedInode(dir, "", movedOld, base)
 			return 0, conflictErr
 		}
 		restoreMovedOldInDir(dir, movedOld, base, conditionalSHA256Hex(curBytes), false)
 		return 0, pubErr
 	}
-	stashReplacedInodeInDir(dir, movedOld, base)
+	stashReplacedInode(dir, "", movedOld, base)
 	_ = dir.Remove(tmpPath)
 	keepTmp = true
 	if file, oErr := dir.Open("."); oErr == nil {
@@ -977,7 +1146,7 @@ func WriteBytesConditionalFingerprintInRoot(confineRoot, confineRel string, data
 		defer sub.Close()
 		dir = sub
 	}
-	return writeBytesConditionalFingerprintInDir(dir, filepath.Base(cleanRel), data, expected, expectedInfo)
+	return writeBytesConditionalFingerprintInDir(dir, confineRoot, filepath.Base(cleanRel), data, expected, expectedInfo)
 }
 
 // WriteBytesConditionalFingerprintChecked atomically writes raw bytes to path without
@@ -990,10 +1159,10 @@ func WriteBytesConditionalFingerprintChecked(path string, data []byte, expected 
 		return 0, nil, "", err
 	}
 	defer dir.Close()
-	return writeBytesConditionalFingerprintInDir(dir, filepath.Base(clean), data, expected, expectedInfo)
+	return writeBytesConditionalFingerprintInDir(dir, "", filepath.Base(clean), data, expected, expectedInfo)
 }
 
-func writeBytesConditionalFingerprintInDir(dir *os.Root, base string, data []byte, expected int64, expectedInfo os.FileInfo) (int64, os.FileInfo, string, error) {
+func writeBytesConditionalFingerprintInDir(dir *os.Root, rootHint, base string, data []byte, expected int64, expectedInfo os.FileInfo) (int64, os.FileInfo, string, error) {
 	conflictErr := errors.New(theme.Tr("磁盘上的文件已修改，未覆盖", "The file changed on disk and was not overwritten"))
 	identityErr := errors.New(theme.Tr("目标文件身份已变化，未覆盖", "Target file identity changed and was not overwritten"))
 
@@ -1157,7 +1326,7 @@ func writeBytesConditionalFingerprintInDir(dir *os.Root, base string, data []byt
 			}
 			return 0, nil, "", conflictErr
 		}
-		stashReplacedInodeInDir(dir, tmpPath, base)
+		stashReplacedInode(dir, rootHint, tmpPath, base)
 		keepTmp = true
 		if file, oErr := dir.Open("."); oErr == nil {
 			_ = file.Sync()
@@ -1223,7 +1392,7 @@ func writeBytesConditionalFingerprintInDir(dir *os.Root, base string, data []byt
 	}
 	if pubErr := dir.Link(tmpPath, base); pubErr != nil {
 		if errors.Is(pubErr, os.ErrExist) {
-			stashReplacedInodeInDir(dir, movedOld, base)
+			stashReplacedInode(dir, rootHint, movedOld, base)
 			return 0, nil, "", conflictErr
 		}
 		restoreMovedOldInDir(dir, movedOld, base, conditionalSHA256Hex(oldBytes), false)
@@ -1237,11 +1406,11 @@ func writeBytesConditionalFingerprintInDir(dir *os.Root, base string, data []byt
 				_ = dir.Rename(movedOld, base)
 			}
 		} else {
-			stashReplacedInodeInDir(dir, movedOld, base)
+			stashReplacedInode(dir, rootHint, movedOld, base)
 		}
 		return 0, nil, "", conflictErr
 	}
-	stashReplacedInodeInDir(dir, movedOld, base)
+	stashReplacedInode(dir, rootHint, movedOld, base)
 	if sameInodeInDir(dir, tmpPath, ourTmpInfo) {
 		_ = dir.Remove(tmpPath)
 	}

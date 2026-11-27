@@ -249,7 +249,7 @@ example-sync/
     - 系统集成与 `host.fs.*` / `host.http.request` / `host.exec.run` / `host.ai.*` 细则见 [协议、UI 与骨架](https://docs.block.cooool.top/plugins/protocol-and-ui)。
   - **静默事件订阅（按需声明，不弹窗确认，共 3 项）**：仅作为事件订阅开关，不会触发安装/更新权限弹窗：
     - `"events:note_saved"`：订阅笔记保存事件（`plugin.event`）
-    - `"events:system"`：订阅系统唤醒、网络变化、焦点事件及 `host.scheduler.*` 后台定时任务
+    - `"events:system"`：订阅系统唤醒、网络变化、焦点事件、笔记本改名/移除生命周期事件（`notebook.renamed` / `notebook.removed`，须同时具备笔记读取/写入/保存事件权限之一）及 `host.scheduler.*` 后台定时任务
     - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已启动的沙盒）
   - **默认放行权限（共 12 项）**：插件私有存储 `"storage"`、9 项 `"ui:*"` 界面权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）和系统的 `"system:notify"`、`"system:badge"`。部分扩展需要显式声明权限。`titlebar_manager` 需要 `"ui:titlebar"`，`block_decorators` 需要 `"ui:appearance"` 或 `"editor:write"`，`themes` 需要 `"ui:appearance"`，`stages` 需要 `"ui:appearance"`、`"ui:commands"` 或 `"ui:panels"`。`contributes.ignored_dirs` 和 `host.sidebar.*_ignored_dirs` 都需要显式声明 `"ui:sidebar"`，安装和更新时无须确认。删除冗余权限时，同步删除 `permission_reasons` 中对应的键。纯声明式语言扩展的 `permissions` 必须为空数组。
 - `network_domains`：可选字符串数组（最多 64 项、不区分大小写去重），限制 `host.http.request` 目标主机与重定向目标：支持精确主机（`"api.example.com"`，允许任意端口）、显式端口形式（`"127.0.0.1:8080"`，匹配 URL 中显式填写的端口）或单前缀通配（`"*.example.com"`，仅匹配子域而不含裸域），禁止协议前缀、路径与空白。无论是否配置本字段，运行时都会拦截未指定地址、链路本地与 `0.0.0.0/8`；配置本字段后，普通域名若解析到私网或回环 IP 同样会被拒绝（显式 IP 字面量与 `localhost` / `*.localhost` 除外）。
@@ -364,7 +364,7 @@ example-sync/
 
 ### 宿主方法总表
 
-下表列出当前宿主实际分发的全部 78 个 `host.*` JSON-RPC 方法及权限/清单条件。标记「默认放行，无需声明」的能力在 `manifest.permissions` 中可省略（除非另有显式声明要求）；标记「须显式声明」或敏感权限的能力必须写入 `manifest.permissions`。
+下表列出当前宿主实际分发的全部 79 个 `host.*` JSON-RPC 方法及权限/清单条件。标记「默认放行，无需声明」的能力在 `manifest.permissions` 中可省略（除非另有显式声明要求）；标记「须显式声明」或敏感权限的能力必须写入 `manifest.permissions`。
 
 <!-- host-methods-table:start -->
 | 方法 | 所需权限或清单条件 | 一句话用途 | 详细说明 |
@@ -373,7 +373,8 @@ example-sync/
 | `host.storage.set` | `storage`（默认放行，无需声明） | 写入或覆盖单个插件私有持久化键 | [§4.2 · 2](https://docs.block.cooool.top/plugins/protocol-and-ui) |
 | `host.storage.set_many` | `storage`（默认放行，无需声明） | 一次原子写入 1–64 个插件私有持久化键 | [§4.2 · 2](https://docs.block.cooool.top/plugins/protocol-and-ui) |
 | `host.notes.active` | `notes:read` | 获取当前活动标签相对路径 | [§4.2 · 3](https://docs.block.cooool.top/plugins/protocol-and-ui) |
-| `host.notebooks.list` | `notes:read` | 列举已知笔记本路径与当前激活态 | [§4.2 · 4](https://docs.block.cooool.top/plugins/protocol-and-ui) |
+| `host.notebooks.list` | `notes:read` | 列举已知笔记本 ID、路径与当前激活态 | [§4.2 · 4](https://docs.block.cooool.top/plugins/protocol-and-ui) |
+| `host.notebooks.data_dir` | `notes:read` | 获取或创建指定笔记本在插件 `data_dir` 下的专属数据目录 | [§4.2 · 4](https://docs.block.cooool.top/plugins/protocol-and-ui) |
 | `host.notes.list` | `notes:read` | 列举指定笔记本内的可见 Markdown 笔记 | [§4.2 · 5](https://docs.block.cooool.top/plugins/protocol-and-ui) |
 | `host.notes.read` | `notes:read` | 读取笔记正文与 SHA-256 `revision` | [§4.2 · 6](https://docs.block.cooool.top/plugins/protocol-and-ui) |
 | `host.notes.write` | `notes:write` | 写入或更新笔记（支持 `expected_revision` 校验） | [§4.2 · 7](https://docs.block.cooool.top/plugins/protocol-and-ui) |
@@ -468,8 +469,9 @@ example-sync/
    - `host.storage.set_many` 同样无需声明权限并受 8 MiB 限制。`{"values": {"config": {...}, "migration": null}}` 一次写入 1–64 个非空白键，成功返回 `{"ok": true}`。
 3. **`host.notes.active`**（需 `"notes:read"`，忽略参数）
    - `{}` -> `{"path": "welcome.md"}`（返回宿主缓存的活动标签相对路径，可能为空、非 Markdown 或尚未更新）。
-4. **`host.notebooks.list`**（需 `"notes:read"`，忽略参数）
-   - `{}` -> `{"notebooks": [{"path": "/abs/path/to/notebook", "name": "notebook", "active": true}]}`（`active` 反映当前运行时上下文根，建议配合 `checklist` 控件勾选范围）。
+4. **`host.notebooks.list`** / **`host.notebooks.data_dir`**（需 `"notes:read"`）
+   - `host.notebooks.list {}` -> `{"notebooks": [{"id": "nb_0123456789abcdef", "path": "/abs/path/to/notebook", "name": "notebook", "active": true}]}`（`id` 为宿主持久维护的笔记本稳定标识，改名/外移后保留；`active` 反映当前运行时上下文根）。
+   - `host.notebooks.data_dir`：参数可传 `{"path": "/abs/path/to/notebook"}` 或 `{"id": "nb_..."}`（也兼容 `notebook` / `notebook_id` / `notebook_root`，省略或空串时默认取当前激活笔记本），返回 `{"id": "nb_...", "path": "<data_dir>/notebooks/nb_..."}`（宿主自动创建该目录；笔记本改名后路径不变，笔记本被移除或路径消失超过 30 天后由宿主清理）。
 5. **`host.notes.list`**（需 `"notes:read"`）
    - `{"notebook_root": "/abs/path/to/notebook"}`（可选；解码失败按省略处理；省略且运行时根为空时返回 `{"notes": []}`；传未注册笔记本报 `-32003`）-> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
 6. **`host.notes.read`**（需 `"notes:read"`）
@@ -576,7 +578,7 @@ example-sync/
 
 其余写操作成功返回 `{"ok":true}`。打开网页、定位文件、文件选择、剪贴板和回收站操作需要由用户触发的 `plugin.action` 或 `plugin.command`，且 Block 窗口有焦点。授权随动作结束或切换笔记本而失效。笔记本路径使用 `/` 分隔，相对路径须指向可见项目，路径组件须为真实文件或目录。省略 `notebook_root` 时使用运行时笔记本。系统能力不可用时返回 `-32005`，繁忙时返回 `-32006`，操作取消或失效时返回 `-32007`。系统通知（`host.system.notify`）与右上角全局通知横幅（`host.ui.toast`）均无需声明权限，开放给所有插件直接调用。
 
-`events:system` 通过 `plugin.event` 接收 `system.wake`、`network.changed`、`app.focus`。事件包含 `event` 和 UTC `timestamp`，唤醒和网络变化包含系统报告的 `online` 布尔值。需要笔记权限或保存事件权限才能收到 `notebook_root`。宿主可启动已启用的订阅插件，并按插件串行处理，排队中的同类事件只保留最新一条。`network.changed` 涵盖系统报告的状态变化和检测到的网卡地址变化。服务器可达性由插件自行判断。（macOS / Windows / Linux 平台实现及安全回收细节见下文「兼容性与平台实现说明」。）
+`events:system` 通过 `plugin.event` 接收 `system.wake`、`network.changed`、`app.focus`，并在同时持有笔记权限时按顺序接收笔记本生命周期事件 `notebook.renamed`（`{"id", "old_path", "new_path"}`）与 `notebook.removed`（`{"id", "path"}`）。事件包含 `event` 和 UTC `timestamp`，唤醒和网络变化包含系统报告的 `online` 布尔值。需要笔记权限或保存事件权限才能收到 `notebook_root`。宿主可启动已启用的订阅插件，并按插件串行处理，排队中的同类事件只保留最新一条。`network.changed` 涵盖系统报告的状态变化和检测到的网卡地址变化。服务器可达性由插件自行判断。（macOS / Windows / Linux 平台实现及安全回收细节见下文「兼容性与平台实现说明」。）
 
 ### 4.4 兼容性与平台实现说明
 
@@ -1052,7 +1054,7 @@ serve((method, params) => {
 
 ### 7.4 通用 UI 贡献宿主方法（Plugin -> Host）
 
-> 注：下述标注「`ui:*`（默认放行，无需声明）」的方法在宿主运行时按对应权限校验，但因属于默认放行权限，通常无需在 `manifest.permissions` 中重复声明；明确标注「须显式声明」或涉及编辑器读写的方法必须声明在 `manifest.permissions` 中。完整 78 个 `host.*` 方法索引见 [宿主方法总表](https://docs.block.cooool.top/plugins/protocol-and-ui#宿主方法总表)。
+> 注：下述标注「`ui:*`（默认放行，无需声明）」的方法在宿主运行时按对应权限校验，但因属于默认放行权限，通常无需在 `manifest.permissions` 中重复声明；明确标注「须显式声明」或涉及编辑器读写的方法必须声明在 `manifest.permissions` 中。完整 79 个 `host.*` 方法索引见 [宿主方法总表](https://docs.block.cooool.top/plugins/protocol-and-ui#宿主方法总表)。
 
 1. **`host.titlebar.get_items`**（代码检查 `"ui:titlebar"`，默认放行，无需显式声明；参数 `{}`）
    - 返回：
