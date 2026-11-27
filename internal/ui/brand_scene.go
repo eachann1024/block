@@ -59,7 +59,7 @@ type BrandScenePaintOpts struct {
 	Now        time.Time
 	SkinChrome bool     // a plugin theme skin overrides chrome ground/accents
 	SkinAccent ui.Color // accent color of the active theme skin
-	GlassAlpha float32  // ground opacity over the window material; <= 0 or 1 means opaque
+	Glass      bool     // window glass is live: composite with alpha masks over the material
 }
 
 // ResolveBrandMotion converts persisted BrandDeco preferences into runtime motion settings.

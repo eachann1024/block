@@ -458,6 +458,7 @@ func (w *Workspace) renderFloatingSidebarCard(
 		State:           w.sidebarUI,
 		Width:           &fw,
 		FloatingCard:    true,
+		Glass:           stSnap.WindowGlassOn(),
 		ActiveNotebook:  activeNB,
 		Notebooks:       notebooks,
 		Entries:         entries,

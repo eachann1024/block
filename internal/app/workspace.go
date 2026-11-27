@@ -6487,10 +6487,12 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 	w.chromePopups = w.chromePopups[:0]
 	w.sidebarPopupsQueued = false
 	shellGround := chrome.Ground
-	if w.syncWindowGlass(c, stSnap) {
+	glassActive := w.syncWindowGlass(c, stSnap)
+	if glassActive {
 		shellGround = pal.GlassGround(chrome.Ground)
 		// The framework fills the root with the opaque theme background every
-		// frame; clear it so the window material shows through the shell.
+		// frame and on each SetTheme; it is cleared again after the children
+		// build so modals and popovers keep the opaque theme background.
 		c.Root().Background(ui.Transparent)
 	}
 	c.Key("workspace-root")
@@ -6533,7 +6535,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 			brandBand := ui.Box(c.Key("workspace-brand-band")).
 				Absolute().Left(0).Top(0).Right(0).Height(blockui.BrandBandHeight).
 				IgnoreInput(true).ZIndex(-1).Clip()
-			blockui.PaintBrandSceneBand(brandBand, scID, chrome.Ground, blockui.BrandScenePaintOpts{
+			blockui.PaintBrandSceneBand(c, brandBand, scID, chrome.Ground, blockui.BrandScenePaintOpts{
 				ShowOrb:    sidebarWide && !stSnap.BrandDeco.HideOrb,
 				ShowCat:    !stSnap.BrandDeco.HideCat,
 				SceneWidth: sceneW,
@@ -6542,9 +6544,10 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 				Now:        now,
 				SkinChrome: theme.IsSkinActive(),
 				SkinAccent: pal.Accent,
-				GlassAlpha: float32(shellGround.A) / 255,
+				Glass:      glassActive,
 			})
 		}
+
 		// 1. Top 40px Titlebar (hidden in AI Immersive full-window mode).
 		if aiImmersive {
 			w.tabMenu.Close()
@@ -7107,6 +7110,9 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 		// 4. Visual Smoke HUD (click ripple + step banner when smoke mode is enabled).
 		blockui.RenderSmokeHUD(c)
 	})
+	if glassActive {
+		c.Root().Background(ui.Transparent)
+	}
 }
 
 func (w *Workspace) deferChromePopup(fn func()) {
@@ -7511,6 +7517,7 @@ func (w *Workspace) renderSidebarColumn(
 		State:        w.sidebarUI,
 		Width:        &w.sidebarWidth,
 		FloatingCard: isDrawer,
+		Glass:        stSnap.WindowGlassOn(),
 		OnWidthChanged: func(nw float32) {
 			w.scheduleSaveSidebarWidth(ClampSidebarWidth(nw))
 		},

@@ -267,6 +267,7 @@ type SidebarProps struct {
 	Width          *float32
 	OnWidthChanged func(w float32)
 	FloatingCard   bool
+	Glass          bool
 
 	ActiveNotebook string
 	Notebooks      []string
@@ -535,6 +536,7 @@ func moveNotebookMenuItems(p SidebarProps, srcPath string) []blockui.MenuItemSpe
 func RenderSidebar(c *ui.Context, p SidebarProps) {
 	pal := theme.Ocean()
 	chrome := pal.ShellChrome()
+	glassActive := theme.WindowGlassActive(c, p.Glass)
 	w := SidebarDefaultW
 	if p.Width != nil && *p.Width > 0 {
 		w = ClampSidebarWidth(*p.Width)
@@ -609,6 +611,13 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					treeScroll := blockui.Scroll(c, &p.State.treeScroll).Fill().Padding(0, theme.TreeOuterPadX, 8, theme.TreeOuterPadX)
 					blockui.Probe(treeScroll, "file-tree-root")
 					scrollBounds := treeScroll.Bounds()
+					if glassActive {
+						topFade := p.State.treeScroll.Y > 0.5
+						botFade := p.State.treeScroll.MaxY > 0.5 && p.State.treeScroll.Y < p.State.treeScroll.MaxY-0.5
+						if mask, ok := theme.GlassScrollEdgeMask(topFade, botFade, scrollBounds.H); ok {
+							treeScroll.MaskLinearGradient(mask)
+						}
+					}
 					treeScroll.Children(func() {
 						if p.ActiveNotebook == "" {
 							ui.Column(c).FillWidth().Padding(theme.Space8, 0, 0, 0).Children(func() {
@@ -695,7 +704,10 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 			// 3. Footer: Notebook Switcher + Settings Button.
 			footer := ui.Row(c).FillWidth().Height(48).Shrink(0).Padding(0, 8, 8, 12).Gap(4).AlignItems(ui.Center)
 			if p.FloatingCard {
-				footer.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Background(pal.Sidebar)
+				footer.Background(pal.Sidebar)
+				if !glassActive {
+					footer.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
+				}
 			}
 			footer.Children(func() {
 				nbTitle := theme.Tr("选择笔记本", "Select Notebook")

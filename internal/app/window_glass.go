@@ -18,6 +18,9 @@ var mainGlass struct {
 	applied mygo.Vibrancy
 }
 
+// mainGlassApply serializes native SetVibrancy calls.
+var mainGlassApply sync.Mutex
+
 // MainWindowVibrancy returns the material the main window should show for st.
 func MainWindowVibrancy(st model.AppState) mygo.Vibrancy {
 	if !theme.WindowGlassSupported() || !st.WindowGlassOn() {
@@ -51,11 +54,18 @@ func (w *Workspace) syncWindowGlass(c *ui.Context, st model.AppState) bool {
 		}
 		mainGlass.Unlock()
 		if changed {
+			// Off the render thread (SetVibrancy waits on the main loop); each
+			// apply reads the newest wanted material, so the last toggle wins.
 			go func() {
-				win.SetVibrancy(want)
+				mainGlassApply.Lock()
+				mainGlass.Lock()
+				latest := mainGlass.applied
+				mainGlass.Unlock()
+				win.SetVibrancy(latest)
+				mainGlassApply.Unlock()
 				time.AfterFunc(60*time.Millisecond, w.RequestRedraw)
 			}()
 		}
 	}
-	return want != mygo.VibrancyNone && c.Vibrancy() && !c.Preferences().ReduceTransparency
+	return theme.WindowGlassActive(c, st.WindowGlassOn())
 }

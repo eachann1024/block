@@ -452,7 +452,12 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 	st := m.currentState()
 	showDockedSidebar := !st.SidebarCollapsed && sbW+680 <= vpW+0.5
 
-	ui.Row(c.Key("settings-standalone-root")).Fill().Background(pal.ShellChrome().Ground).Children(func() {
+	ground := pal.ShellChrome().Ground
+	if theme.WindowGlassActive(c, st.WindowGlassOn()) {
+		ground = pal.GlassGround(ground)
+		c.Root().Background(ui.Transparent)
+	}
+	ui.Row(c.Key("settings-standalone-root")).Fill().Background(ground).Children(func() {
 		if showDockedSidebar {
 			m.RenderSettingsSidebar(c, false, nil)
 		}
@@ -468,6 +473,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 	}
 	pal := theme.Ocean()
 	chrome := pal.ShellChrome()
+	glassActive := theme.WindowGlassActive(c, m.currentState().WindowGlassOn())
 	tab := m.ActiveSettingsTab()
 	sbW := theme.SidebarMinWidth
 	if m.SidebarWidth != nil && *m.SidebarWidth > 0 {
@@ -482,7 +488,15 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 			col.Background(pal.Sidebar)
 		}
 		col.Children(func() {
-			internalui.Scroll(c.Key("settings-sidebar-scroll"), &m.settingsSidebarScroll).Grow(1).MinHeight(0).FillWidth().Children(func() {
+			sbScroll := internalui.Scroll(c.Key("settings-sidebar-scroll"), &m.settingsSidebarScroll).Grow(1).MinHeight(0).FillWidth()
+			if glassActive {
+				topFade := m.settingsSidebarScroll.Y > 0.5
+				botFade := m.settingsSidebarScroll.MaxY > 0.5 && m.settingsSidebarScroll.Y < m.settingsSidebarScroll.MaxY-0.5
+				if mask, ok := theme.GlassScrollEdgeMask(topFade, botFade, sbScroll.Bounds().H); ok {
+					sbScroll.MaskLinearGradient(mask)
+				}
+			}
+			sbScroll.Children(func() {
 				ui.Column(c).FillWidth().Padding(4, 8, 8, 12).Gap(2).Children(func() {
 					backRow := ui.ButtonBase(c.Key("settings-sidebar-back")).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).Gap(theme.Space10).
 						Margin(0, 0, 8, 0).AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).
@@ -692,7 +706,9 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 			})
 			ui.Column(c.Key("settings-about-footer")).FillWidth().Shrink(0).
 				Padding(theme.Space8, theme.Space8, theme.Space8, theme.Space12).Gap(theme.Space8).Children(func() {
-				ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+				if !glassActive {
+					ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+				}
 				active := tab == "about"
 				navID := "settings-tab-about"
 				title := theme.Tr("关于与隐私", "About & Privacy")
@@ -738,7 +754,9 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 				sbSpec := EffectiveShortcut(st, "toggle_sidebar")
 				ui.Column(c.Key("settings-drawer-footer")).FillWidth().Shrink(0).
 					Padding(theme.Space8, theme.Space8, theme.Space8, theme.Space12).Gap(theme.Space8).Children(func() {
-					ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+					if !glassActive {
+						ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+					}
 					dismissBtn := ui.ButtonBase(c.Key("settings-drawer-dismiss")).FillWidth().Height(theme.HeightControl).
 						PaddingX(theme.Space10).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 						Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
