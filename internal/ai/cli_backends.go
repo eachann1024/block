@@ -1516,6 +1516,9 @@ func (c *Controller) startExternalTurn(turn *assistantTurn, kind model.BackendKi
 		if !turn.nativeTools {
 			prompt += " Use only Block MCP tools for notebook access and propose all note changes through executeBatchPlan."
 		}
+		if turn.deepUI {
+			prompt += "\n\n" + deepUIPromptHint
+		}
 	}
 	selectedModel := c.effectiveBackendModelLocked(kind)
 	st := c.ensureRunStateLocked(turn.convID)

@@ -5520,6 +5520,8 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 		if annotErr != "" {
 			ui.Text(cUI, annotErr).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
 		}
+
+		c.renderDeepAISettingRow(cUI)
 	})
 	return trigAnchor
 }

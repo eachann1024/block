@@ -278,6 +278,7 @@ type Controller struct {
 	addAgentErr       string
 
 	annotCfg            model.AnnotationConfig
+	deepAI              bool
 	annotMenuOpen       bool
 	annotMenuBackend    model.BackendKind
 	annotMenuSearch     string
@@ -383,6 +384,7 @@ func (c *Controller) loadAllFromDisk() model.BackendKind {
 		c.applyNotebookStateLocked(legacyTop, "")
 	}
 	c.ensureValidSelectionLocked()
+	c.loadDeepAIConfigLocked()
 	return c.loadOrSeedAnnotationConfigLocked()
 }
 
@@ -2307,7 +2309,7 @@ func (c *Controller) SendPrompt(text string) {
 		turn = &assistantTurn{
 			ctx: ctx, cancel: cancel, notebookScope: scope, convID: convID, serial: c.streamSerial,
 			cfg: resolveProviderExecutionConfig(c.providerCfg), thinking: c.backendThinkingLocked(backend),
-			nativeTools: nativeTools, attachmentImages: images,
+			nativeTools: nativeTools, attachmentImages: images, deepUI: c.deepAI,
 			userIndex: st.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
 		}
 		if backend != model.BackendBuiltin {

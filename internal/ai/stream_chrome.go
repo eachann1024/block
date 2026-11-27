@@ -164,6 +164,9 @@ func aiMarkdownTheme(pal theme.Palette, chrome *streamChromeState) *markdown.The
 }
 
 func (c *Controller) renderAICodeBlock(cUI *ui.Context, b *markdown.CodeBlockView, chrome *streamChromeState) {
+	if c.renderDeepUICodeBlock(cUI, b) {
+		return
+	}
 	pal := theme.Ocean()
 	cardKey := fmt.Sprintf("ai-code-%d-%d", b.SourceLine(), b.Index)
 	card := ui.Column(cUI.Key(cardKey)).FillWidth().

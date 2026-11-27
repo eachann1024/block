@@ -33,6 +33,7 @@ type assistantTurn struct {
 	cfg              model.AIProviderConfig
 	thinking         string
 	nativeTools      bool
+	deepUI           bool
 	attachmentImages []map[string]any
 	cliPath          string
 	userIndex        int
