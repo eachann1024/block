@@ -4235,6 +4235,17 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			// SpaceHeld is set only by an unmodified Space KeyDown the canvas itself
 			// received and cleared on KeyUp, so it is live here (no frame-old snapshot).
 			wasSpacePan := st.SpaceHeld
+			// Space pressed before the canvas had focus (e.g. scrolled into an embedded map):
+			// honour the physically held key unless a text field owns it.
+			if !wasSpacePan && c.KeyDown(ui.KeySpace) && !c.FocusTakesText() && (ev.Mods&(ui.Cmd|ui.Ctrl|ui.Alt|ui.Shift)) == 0 &&
+				st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) {
+				st.SpaceHeld = true
+				wasSpacePan = true
+			}
+			if wasSpacePan {
+				// Any click while Space is held means "pan", never "fold" on release.
+				st.SpaceUsedForPan = true
+			}
 			st.CanvasHandle.Focus(c)
 			if cb.OnRequestFocus != nil {
 				cb.OnRequestFocus()
@@ -6677,6 +6688,25 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string, cb Callbacks) {
 			}
 			return handleHintInput(ev)
 		})
+		// Stepped edge fades on the scrolling strip only, so the pinned Shortcuts button stays crisp.
+		strip.DrawOver(func(p *ui.Painter, r ui.Rect) {
+			if st.HintScroll.MaxX <= 1 {
+				return
+			}
+			fadeAlphas := [3]float32{0.92, 0.58, 0.25}
+			const bandW float32 = 7
+			if st.HintScroll.X > 1 {
+				for i, a := range fadeAlphas {
+					p.Fill(ui.Rect{X: r.X + float32(i)*bandW, Y: r.Y + 1, W: bandW, H: r.H - 1}, pal.HintBand.Alpha(a), 0)
+				}
+			}
+			if st.HintScroll.X < st.HintScroll.MaxX-1 {
+				for i, a := range fadeAlphas {
+					x := r.X + r.W - float32(i+1)*bandW
+					p.Fill(ui.Rect{X: x, Y: r.Y + 1, W: bandW, H: r.H - 1}, pal.HintBand.Alpha(a), 0)
+				}
+			}
+		})
 		strip.Children(func() {
 			type hintItem struct {
 				keys      []string
@@ -6787,25 +6817,8 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string, cb Callbacks) {
 		}
 	})
 
-	// Smooth stepped edge fades when overflowing horizontally on ultra-narrow windows.
 	bar.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		p.Line(r.X, r.Y+0.5, r.X+r.W, r.Y+0.5, 1, pal.Hairline)
-		if st.HintScroll.MaxX <= 1 {
-			return
-		}
-		fadeAlphas := [3]float32{0.92, 0.58, 0.25}
-		const bandW float32 = 7
-		if st.HintScroll.X > 1 {
-			for i, a := range fadeAlphas {
-				p.Fill(ui.Rect{X: r.X + float32(i)*bandW, Y: r.Y + 1, W: bandW, H: r.H - 1}, pal.HintBand.Alpha(a), 0)
-			}
-		}
-		if st.HintScroll.X < st.HintScroll.MaxX-1 {
-			for i, a := range fadeAlphas {
-				x := r.X + r.W - float32(i+1)*bandW
-				p.Fill(ui.Rect{X: x, Y: r.Y + 1, W: bandW, H: r.H - 1}, pal.HintBand.Alpha(a), 0)
-			}
-		}
 	})
 }
 
