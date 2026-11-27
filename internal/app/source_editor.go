@@ -484,28 +484,40 @@ func (s *TabSurface) OpenFind(replace bool) bool {
 	return false
 }
 
+const sourceCodeFallbackFonts = "JetBrains Mono, Menlo, Monaco, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"
+
+func sourceCodeFont() string {
+	_, codeFont, _ := theme.Typography()
+	f := strings.TrimSpace(codeFont)
+	if f == "" || strings.EqualFold(f, "auto") {
+		return sourceCodeFallbackFonts
+	}
+	if !strings.Contains(f, ",") {
+		return f + ", " + sourceCodeFallbackFonts
+	}
+	return f
+}
+
 // renderSourceEditor shows non-Markdown text as a full-bleed code editor (Zed/VS Code
 // style): gutter flush left, current-line band, syntax colors, no paper margins.
 func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	pal := theme.Ocean()
 	st := s.ensureCodeState()
 
-	_, codeFont, _ := theme.Typography()
-	if strings.TrimSpace(codeFont) == "" {
-		codeFont = "monospace"
-	}
 	z := theme.Zoom()
 	if z <= 0 {
 		z = 1.0
 	}
-	st.Font = ui.Font{Family: codeFont, Size: 13 * z}
+	st.Font = ui.Font{Family: sourceCodeFont(), Size: 13 * z}
 	st.LineHeight = 1.54
 	st.SoftWrap = sourceSoftWrap
 	st.Theme = sourceEditorTheme(pal)
 	findRendered := false
+	var findBarBounds ui.Rect
 	st.Bindings = sourceFindBindings(st.Bindings)
 	st.RenderFindBar = func(ctx *ui.Context, bar ui.Element, f *codeed.FindBar) {
 		findRendered = true
+		findBarBounds = bar.Bounds()
 		renderSourceFindBar(ctx, bar, f)
 	}
 
@@ -516,15 +528,20 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	blockui.Probe(outer, "source-surface")
 	var ed ui.Element
 	outer.Children(func() {
-		c.Key("source-editor:" + s.Path)
-		ed = codeed.View(c, st).Fill()
-		blockui.Probe(ed, "source-editor")
+		c.Key("source-editor-wrap:" + s.Path)
+		edWrap := ui.Box(c).Fill()
+		blockui.Probe(edWrap, "source-editor")
+		edWrap.Children(func() {
+			c.Key("source-editor:" + s.Path)
+			ed = codeed.View(c, st).Fill()
+		})
 	})
 	if findRendered != s.findOpen {
 		s.findOpen = findRendered
 		c.Invalidate()
 	}
 	s.scrollbars.Observe(c, outer, ed, st)
+	s.tabArrows.Observe(c, ed, st, findBarBounds)
 
 	if v := st.Buffer.Version(); v != s.codeVersion {
 		s.codeVersion = v

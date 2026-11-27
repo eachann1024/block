@@ -267,23 +267,21 @@ func (w *Workspace) renderNoteSource(c *ui.Context, sess *editor.Session) {
 		w.mu.Unlock()
 	}
 
-	_, codeFont, _ := theme.Typography()
-	if strings.TrimSpace(codeFont) == "" {
-		codeFont = "monospace"
-	}
 	z := theme.Zoom()
 	if z <= 0 {
 		z = 1.0
 	}
 	st.ReadOnly = isVirtual
-	st.Font = ui.Font{Family: codeFont, Size: 13 * z}
+	st.Font = ui.Font{Family: sourceCodeFont(), Size: 13 * z}
 	st.LineHeight = 1.54
 	st.SoftWrap = true
 	st.Theme = sourceEditorTheme(pal)
 	findRendered := false
+	var findBarBounds ui.Rect
 	st.Bindings = sourceFindBindings(st.Bindings)
 	st.RenderFindBar = func(ctx *ui.Context, bar ui.Element, f *codeed.FindBar) {
 		findRendered = true
+		findBarBounds = bar.Bounds()
 		renderSourceFindBar(ctx, bar, f)
 	}
 
@@ -294,9 +292,13 @@ func (w *Workspace) renderNoteSource(c *ui.Context, sess *editor.Session) {
 	blockui.Probe(outer, "note-source")
 	var ed ui.Element
 	outer.Children(func() {
-		c.Key("note-source-editor:" + tab)
-		ed = codeed.View(c, st).Fill()
-		blockui.Probe(ed, "note-source-editor")
+		c.Key("note-source-editor-wrap:" + tab)
+		edWrap := ui.Box(c).Fill()
+		blockui.Probe(edWrap, "note-source-editor")
+		edWrap.Children(func() {
+			c.Key("note-source-editor:" + tab)
+			ed = codeed.View(c, st).Fill()
+		})
 		w.mu.Lock()
 		shouldFocus := w.noteSourceActiveLocked(tab) && w.noteSource.st == st && w.noteSource.focusPending
 		if shouldFocus {
@@ -316,6 +318,7 @@ func (w *Workspace) renderNoteSource(c *ui.Context, sess *editor.Session) {
 		c.Invalidate()
 	}
 	w.noteSource.scrollbars.Observe(c, outer, ed, st)
+	w.noteSource.tabArrows.Observe(c, ed, st, findBarBounds)
 
 	w.mu.RLock()
 	prevVer := w.noteSource.codeVersion
