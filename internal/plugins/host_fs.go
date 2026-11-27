@@ -181,6 +181,32 @@ func resolveCanonicalPath(raw string) (string, error) {
 	}
 }
 
+func resolveCanonicalLeafPath(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" || strings.ContainsRune(raw, 0) || !utf8.ValidString(raw) {
+		return "", errors.New("invalid path")
+	}
+	if !filepath.IsAbs(raw) {
+		return "", errors.New("path must be absolute")
+	}
+	abs, err := filepath.Abs(raw)
+	if err != nil {
+		return "", err
+	}
+	parent := filepath.Dir(abs)
+	if parent == abs {
+		return resolveCanonicalPath(raw)
+	}
+	canonParent, err := resolveCanonicalPath(parent)
+	if err != nil {
+		return "", err
+	}
+	base := filepath.Base(abs)
+	if base == "" || base == "." || base == ".." {
+		return canonParent, nil
+	}
+	return filepath.Join(canonParent, base), nil
+}
+
 type fsScopeEntry struct {
 	canonPath string
 	isDir     bool
@@ -312,7 +338,19 @@ func matchProtectedDataFile(rel string) (string, bool) {
 }
 
 func (rt *Runtime) resolveFSScope(rawPath string, write bool) (*resolvedFSTarget, *rpcError) {
-	canon, err := resolveCanonicalPath(rawPath)
+	return rt.resolveFSScopeOpts(rawPath, write, true)
+}
+
+func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSymlink bool) (*resolvedFSTarget, *rpcError) {
+	var (
+		canon string
+		err   error
+	)
+	if followLeafSymlink {
+		canon, err = resolveCanonicalPath(rawPath)
+	} else {
+		canon, err = resolveCanonicalLeafPath(rawPath)
+	}
 	if err != nil {
 		return nil, rpcErr(-32602, err.Error())
 	}
@@ -382,16 +420,24 @@ func isICloudPlaceholder(name string, info os.FileInfo) bool {
 }
 
 func fsInfoEntry(fullPath, name string, info os.FileInfo) map[string]any {
+	isSymlink := info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0
+	isDir := info.IsDir() && !isSymlink
+	isRegular := info.Mode().IsRegular() && !isSymlink
+	icloud := false
+	if !isSymlink {
+		icloud = isICloudPlaceholder(name, info)
+	}
 	return map[string]any{
 		"exists":                true,
 		"path":                  fullPath,
 		"name":                  name,
-		"is_dir":                info.IsDir(),
-		"is_regular":            info.Mode().IsRegular(),
+		"is_dir":                isDir,
+		"is_regular":            isRegular,
+		"is_symlink":            isSymlink,
 		"size":                  info.Size(),
 		"mod_time":              info.ModTime().UTC().Format(time.RFC3339Nano),
 		"mod_time_ms":           info.ModTime().UnixMilli(),
-		"is_icloud_placeholder": isICloudPlaceholder(name, info),
+		"is_icloud_placeholder": icloud,
 	}
 }
 
@@ -459,12 +505,13 @@ func (rt *Runtime) fsListGrants() (any, *rpcError) {
 
 func (rt *Runtime) fsStat(params json.RawMessage) (any, *rpcError) {
 	var p struct {
-		Path string `json:"path"`
+		Path  string `json:"path"`
+		Lstat bool   `json:"lstat"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.Path) == "" {
 		return nil, rpcErr(-32602, "host.fs.stat requires non-empty path")
 	}
-	target, rerr := rt.resolveFSScope(p.Path, false)
+	target, rerr := rt.resolveFSScopeOpts(p.Path, false, !p.Lstat)
 	if rerr != nil {
 		return nil, rerr
 	}
@@ -476,7 +523,12 @@ func (rt *Runtime) fsStat(params json.RawMessage) (any, *rpcError) {
 		return nil, rpcErr(-32004, err.Error())
 	}
 	defer root.Close()
-	info, err := root.Stat(target.rel)
+	var info os.FileInfo
+	if p.Lstat {
+		info, err = root.Lstat(target.rel)
+	} else {
+		info, err = root.Stat(target.rel)
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return map[string]any{"exists": false, "path": target.canonPath}, nil

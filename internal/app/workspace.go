@@ -204,9 +204,7 @@ func NewWorkspace(dataDir string) *Workspace {
 	if available && startupMove == "" {
 		w.bindNotebookTracker(startupRoot)
 	}
-	if activeNow := w.ActiveNotebook(); activeNow != "" {
-		files.MigrateLegacyReplacedDirIn(actualDir, activeNow)
-	}
+	_ = files.WarmNotebookSnapshotIn(actualDir)
 	w.exportCtrl = export.NewController(actualDir, w.RequestRedraw)
 	w.ai = ai.NewController(actualDir, w, codec)
 	w.ai.SetOnEnabledChanged(w.onAIEnabledChanged)
@@ -415,7 +413,6 @@ func NewWorkspace(dataDir string) *Workspace {
 	} else if startupRoot != "" && !available {
 		w.checkNotebookAvailability()
 	}
-	w.syncStartupNotebookRegistry()
 	w.StartNotebookMaintenance()
 	if d := time.Since(processStartedAt); d >= 0 {
 		w.startupNanos.Store(d.Nanoseconds())
@@ -3298,8 +3295,10 @@ func (w *Workspace) SetNotebook(folder string) error {
 
 	w.bindNotebookTracker(clean)
 	w.bgSaveMu.Unlock()
-	regRec, regRenamedFrom, regErr := files.EnsureNotebookIn(w.dataDir, clean)
-	files.MigrateLegacyReplacedDirIn(w.dataDir, clean)
+	regCtx, regCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	regRec, regRenamedFrom, regErr := files.EnsureNotebookContext(regCtx, w.dataDir, clean)
+	regCancel()
+	w.migrateLegacyReplacedAsync(w.dataDir, clean)
 	if regErr == nil && regRenamedFrom != "" {
 		w.handleExternalNotebookReclaim(regRenamedFrom, clean, regRec.ID)
 	}
@@ -3604,8 +3603,10 @@ func (w *Workspace) RegisterNotebook(folder string) error {
 	w.mu.Lock()
 	w.state.Notebooks = next.Notebooks
 	w.mu.Unlock()
-	regRec, regRenamedFrom, regErr := files.EnsureNotebookIn(w.dataDir, clean)
-	files.MigrateLegacyReplacedDirIn(w.dataDir, clean)
+	regCtx, regCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	regRec, regRenamedFrom, regErr := files.EnsureNotebookContext(regCtx, w.dataDir, clean)
+	regCancel()
+	w.migrateLegacyReplacedAsync(w.dataDir, clean)
 	if regErr == nil && regRenamedFrom != "" {
 		w.handleExternalNotebookReclaim(regRenamedFrom, clean, regRec.ID)
 	}
@@ -3613,9 +3614,23 @@ func (w *Workspace) RegisterNotebook(folder string) error {
 	return nil
 }
 
-func (w *Workspace) syncStartupNotebookRegistry() {
+func (w *Workspace) migrateLegacyReplacedAsync(appDataDir, nbRoot string) {
+	if strings.TrimSpace(nbRoot) == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		files.MigrateLegacyReplacedDirContext(ctx, appDataDir, nbRoot)
+	}()
+}
+
+func (w *Workspace) syncStartupNotebookRegistry(ctx context.Context) {
 	for _, nb := range w.Notebooks() {
-		rec, renamedFrom, err := files.EnsureNotebookIn(w.dataDir, nb)
+		if ctx != nil && ctx.Err() != nil {
+			return
+		}
+		rec, renamedFrom, err := files.EnsureNotebookContext(ctx, w.dataDir, nb)
 		if err == nil && renamedFrom != "" {
 			w.handleExternalNotebookReclaim(renamedFrom, nb, rec.ID)
 		}
@@ -3728,7 +3743,6 @@ func (w *Workspace) rescanNotebook() bool {
 	var list []model.FileEntry
 	var err error
 	if folder != "" {
-		files.MigrateLegacyReplacedDirIn(w.dataDir, folder)
 		list, err = files.ScanNotebook(folder, opts)
 		if err == nil {
 			captureWindowsDirIdentities(list, entries)
@@ -3979,12 +3993,7 @@ func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error)
 	w.state.FileOrder = nextState.FileOrder
 	w.mu.Unlock()
 	if isDir {
-		if id := files.NotebookIDForPathIn(w.dataDir, oldPath); id != "" {
-			_, _, _ = files.RenameNotebookIn(w.dataDir, oldPath, newPath)
-			if sup := w.Plugins(); sup != nil {
-				sup.EmitNotebookRenamedEvent(id, oldPath, newPath)
-			}
-		}
+		w.syncRenamedNotebooksAfterFSChange(oldPath, newPath)
 	}
 	if sup := w.Plugins(); sup != nil {
 		if isDir {
@@ -4027,12 +4036,7 @@ func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 	w.state.FileOrder = nextState.FileOrder
 	w.mu.Unlock()
 	if isDir {
-		if id := files.NotebookIDForPathIn(w.dataDir, srcPath); id != "" {
-			_, _, _ = files.RenameNotebookIn(w.dataDir, srcPath, newPath)
-			if sup := w.Plugins(); sup != nil {
-				sup.EmitNotebookRenamedEvent(id, srcPath, newPath)
-			}
-		}
+		w.syncRenamedNotebooksAfterFSChange(srcPath, newPath)
 	}
 	if sup := w.Plugins(); sup != nil {
 		if isDir {
@@ -4049,6 +4053,108 @@ func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 	w.RescanNotebook()
 	w.RequestRedraw()
 	return newPath, nil
+}
+
+func (w *Workspace) syncRenamedNotebooksAfterFSChange(oldPath, newPath string) {
+	oldClean := filepath.Clean(oldPath)
+	newClean := filepath.Clean(newPath)
+	if oldClean == "" || newClean == "" || oldClean == newClean {
+		return
+	}
+
+	// Collect affected notebooks from both state and published registry snapshot
+	// before mutating either.
+	type pathPair struct {
+		oldNb string
+		newNb string
+	}
+	seenOld := make(map[string]bool)
+	var pairs []pathPair
+	collect := func(p string) {
+		if p == "" {
+			return
+		}
+		c := filepath.Clean(p)
+		if seenOld[c] {
+			return
+		}
+		if nextP, ok := rebasePath(c, oldClean, newClean); ok && nextP != c {
+			seenOld[c] = true
+			pairs = append(pairs, pathPair{oldNb: c, newNb: nextP})
+		}
+	}
+	for _, nb := range w.Notebooks() {
+		collect(nb)
+	}
+	collect(w.ActiveNotebook())
+	for _, rec := range files.SnapshotNotebooksIn(w.dataDir) {
+		collect(rec.Path)
+	}
+	if len(pairs) == 0 {
+		return
+	}
+
+	// 1. Update persisted and in-memory state.Notebooks/Folder before registry & event.
+	var stateMoved bool
+	next, stateErr := w.updateStateSync(func(st *model.AppState) {
+		if st.Folder != "" {
+			if nf, ok := rebasePath(st.Folder, oldClean, newClean); ok && nf != st.Folder {
+				st.Folder = nf
+				stateMoved = true
+			}
+		}
+		for i, root := range st.Notebooks {
+			if nr, ok := rebasePath(root, oldClean, newClean); ok && nr != root {
+				st.Notebooks[i] = nr
+				stateMoved = true
+			}
+		}
+		if len(st.NotebookIdentities) > 0 {
+			rebasedIDs := make(map[string]string, len(st.NotebookIdentities))
+			for k, v := range st.NotebookIdentities {
+				if nk, ok := rebasePath(k, oldClean, newClean); ok {
+					rebasedIDs[nk] = v
+					if nk != k {
+						stateMoved = true
+					}
+				} else {
+					rebasedIDs[k] = v
+				}
+			}
+			st.NotebookIdentities = rebasedIDs
+		}
+	})
+	if stateErr == nil && stateMoved {
+		w.mu.Lock()
+		w.state.Folder = next.Folder
+		w.state.Notebooks = next.Notebooks
+		w.state.NotebookIdentities = next.NotebookIdentities
+		w.mu.Unlock()
+	}
+
+	// 2. Update registry records before emitting notebook.renamed.
+	type renamedItem struct {
+		id      string
+		oldPath string
+		newPath string
+	}
+	var events []renamedItem
+	for _, pair := range pairs {
+		if files.NotebookIDForPathIn(w.dataDir, pair.oldNb) == "" {
+			continue
+		}
+		if rec, ok, err := files.RenameNotebookIn(w.dataDir, pair.oldNb, pair.newNb); err == nil && ok && rec.ID != "" {
+			events = append(events, renamedItem{id: rec.ID, oldPath: pair.oldNb, newPath: pair.newNb})
+		}
+	}
+
+	// 3. Notify plugins only after state.Notebooks and registry both reflect new paths.
+	if sup := w.Plugins(); sup != nil {
+		for _, ev := range events {
+			sup.RenameNotebookRoot(ev.oldPath, ev.newPath)
+			sup.EmitNotebookRenamedEvent(ev.id, ev.oldPath, ev.newPath)
+		}
+	}
 }
 
 // TrashWorkspaceItem moves path to Trash and closes any affected tabs.

@@ -370,24 +370,58 @@ func (s *Supervisor) Notebooks() []string {
 	return out
 }
 
-// NotebookInfos returns known notebooks paired with their durable registry IDs.
+// NotebookInfos returns known notebooks paired with their durable registry IDs
+// from the published snapshot without writing to disk or resurrecting cleaning IDs.
 func (s *Supervisor) NotebookInfos() []NotebookInfo {
 	nbs := s.Notebooks()
 	out := make([]NotebookInfo, 0, len(nbs))
 	appDir := strings.TrimSpace(s.cfg.AppDataDir)
 	for _, nb := range nbs {
-		id := ""
-		if appDir != "" {
-			if rec, _, err := files.EnsureNotebookIn(appDir, nb); err == nil && rec.ID != "" {
-				id = rec.ID
-			}
+		if appDir == "" {
+			out = append(out, NotebookInfo{
+				ID:   files.DeterministicFallbackNotebookID(nb),
+				Path: nb,
+			})
+			continue
 		}
-		if id == "" {
-			id = files.DeterministicFallbackNotebookID(nb)
+		if rec, ok := files.LookupSnapshotNotebookIn(appDir, nb); ok && rec.ID != "" {
+			out = append(out, NotebookInfo{
+				ID:            rec.ID,
+				Path:          rec.Path,
+				PreviousPaths: append([]string(nil), rec.PreviousPaths...),
+			})
 		}
-		out = append(out, NotebookInfo{ID: id, Path: nb})
 	}
 	return out
+}
+
+// EnsureNotebookInfo resolves or registers a single known notebook path.
+func (s *Supervisor) EnsureNotebookInfo(rawPath string) (NotebookInfo, bool) {
+	appDir := strings.TrimSpace(s.cfg.AppDataDir)
+	if appDir == "" {
+		return NotebookInfo{
+			ID:   files.DeterministicFallbackNotebookID(rawPath),
+			Path: rawPath,
+		}, true
+	}
+	if rec, ok := files.LookupSnapshotNotebookIn(appDir, rawPath); ok && rec.ID != "" {
+		return NotebookInfo{
+			ID:            rec.ID,
+			Path:          rec.Path,
+			PreviousPaths: append([]string(nil), rec.PreviousPaths...),
+		}, true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	rec, _, err := files.EnsureNotebookContext(ctx, appDir, rawPath)
+	if err != nil || !rec.IsActive() || !files.IsSafeNotebookID(rec.ID) || files.IsNotebookCleaningIn(appDir, rec.ID) {
+		return NotebookInfo{}, false
+	}
+	return NotebookInfo{
+		ID:            rec.ID,
+		Path:          rec.Path,
+		PreviousPaths: append([]string(nil), rec.PreviousPaths...),
+	}, true
 }
 
 func (s *Supervisor) notebooksFingerprint() string {
@@ -2418,8 +2452,9 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		Locale:            rawLocale,
 		Theme:             curTheme,
 		HostVersion:       hostVer,
-		GetNotebooks:      s.Notebooks,
-		GetNotebookInfos:  s.NotebookInfos,
+		GetNotebooks:       s.Notebooks,
+		GetNotebookInfos:   s.NotebookInfos,
+		EnsureNotebookInfo: s.EnsureNotebookInfo,
 		GetPerfSnapshot:   s.cfg.GetPerfSnapshot,
 		ApplyNoteWrite:    s.cfg.ApplyNoteWrite,
 		ApplyNoteTrash:    s.cfg.ApplyNoteTrash,

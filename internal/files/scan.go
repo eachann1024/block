@@ -166,8 +166,12 @@ func isAllowedConfigDotfile(name string) bool {
 	return false
 }
 
+func isBlockTempFileName(name string) bool {
+	return strings.HasPrefix(name, ".block-") && strings.HasSuffix(name, ".tmp")
+}
+
 func isIgnoredFile(name string, opts ScanOptions) bool {
-	if isCommonIgnoredName(name) {
+	if isCommonIgnoredName(name) || isBlockTempFileName(name) {
 		return true
 	}
 	if !strings.HasPrefix(name, ".") {

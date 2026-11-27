@@ -238,7 +238,16 @@ func (w *Workspace) StartNotebookMaintenance() {
 }
 
 func (w *Workspace) runNotebookMaintenance(stop <-chan struct{}) {
-	w.runNotebookMaintenancePass(true)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-stop
+		cancel()
+	}()
+	startupCtx, startupCancel := context.WithTimeout(ctx, 20*time.Second)
+	w.syncStartupNotebookRegistry(startupCtx)
+	startupCancel()
+	w.runNotebookMaintenancePass(ctx, true)
 	ticker := time.NewTicker(notebookMaintenanceInterval)
 	defer ticker.Stop()
 	for {
@@ -246,27 +255,32 @@ func (w *Workspace) runNotebookMaintenance(stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-ticker.C:
-			w.runNotebookMaintenancePass(false)
+			w.runNotebookMaintenancePass(ctx, false)
 		}
 	}
 }
 
-func (w *Workspace) runNotebookMaintenancePass(migrateAll bool) {
+func (w *Workspace) runNotebookMaintenancePass(parentCtx context.Context, migrateAll bool) {
+	ctx, cancel := context.WithTimeout(parentCtx, 20*time.Second)
+	defer cancel()
 	if migrateAll {
 		seen := make(map[string]bool)
 		for _, nb := range w.Notebooks() {
+			if ctx.Err() != nil {
+				break
+			}
 			if nb == "" || seen[nb] {
 				continue
 			}
 			seen[nb] = true
-			files.MigrateLegacyReplacedDirIn(w.dataDir, nb)
+			files.MigrateLegacyReplacedDirContext(ctx, w.dataDir, nb)
 		}
-		if active := w.ActiveNotebook(); active != "" && !seen[active] {
-			files.MigrateLegacyReplacedDirIn(w.dataDir, active)
+		if active := w.ActiveNotebook(); active != "" && !seen[active] && ctx.Err() == nil {
+			files.MigrateLegacyReplacedDirContext(ctx, w.dataDir, active)
 		}
 	}
 	files.CleanupReplacedDirsIn(w.dataDir)
-	if expired, err := files.SweepNotebookRegistryIn(w.dataDir); err == nil && len(expired) > 0 {
+	if expired, err := files.SweepNotebookRegistryContext(ctx, w.dataDir); err == nil && len(expired) > 0 {
 		if sup := w.Plugins(); sup != nil {
 			for _, rem := range expired {
 				sup.EmitNotebookRemovedEvent(rem.ID, rem.Path)
@@ -605,7 +619,7 @@ func (w *Workspace) rebaseNotebookRoot(oldRoot, newRoot string) bool {
 	if !rebased {
 		return false
 	}
-	renamedRec, _, _ := files.RenameNotebookIn(w.dataDir, oldRoot, newRoot)
+	renamedRec, renamedOK, renameErr := files.RenameNotebookIn(w.dataDir, oldRoot, newRoot)
 	files.RebaseFileOrder(oldRoot, newRoot)
 	order := files.LoadState().FileOrder
 	w.mu.Lock()
@@ -621,7 +635,7 @@ func (w *Workspace) rebaseNotebookRoot(oldRoot, newRoot string) bool {
 	w.bindNotebookTracker(newRoot)
 	if sup := w.Plugins(); sup != nil {
 		sup.RenameNotebookRoot(oldRoot, newRoot)
-		if renamedRec.ID != "" {
+		if renameErr == nil && renamedOK && renamedRec.ID != "" {
 			sup.EmitNotebookRenamedEvent(renamedRec.ID, oldRoot, newRoot)
 		}
 	}

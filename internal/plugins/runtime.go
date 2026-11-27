@@ -78,8 +78,9 @@ type HostConfig struct {
 	Locale          string
 	Theme           string
 	HostVersion      string
-	GetNotebooks     func() []string
-	GetNotebookInfos func() []NotebookInfo
+	GetNotebooks       func() []string
+	GetNotebookInfos   func() []NotebookInfo
+	EnsureNotebookInfo func(path string) (NotebookInfo, bool)
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
 	// ApplyNoteTrash runs verify then trash under the editor save lock so an
@@ -98,10 +99,12 @@ type HostConfig struct {
 
 var ErrNoteConflict = errors.New("note changed; read it again before writing")
 
-// NotebookInfo pairs a registered notebook path with its durable registry ID.
+// NotebookInfo pairs a registered notebook path with its durable registry ID
+// and historical paths.
 type NotebookInfo struct {
-	ID   string `json:"id"`
-	Path string `json:"path"`
+	ID            string   `json:"id"`
+	Path          string   `json:"path"`
+	PreviousPaths []string `json:"previous_paths,omitempty"`
 }
 
 type ActionResult struct {
@@ -549,7 +552,8 @@ func (rt *Runtime) knownNotebookInfos() []NotebookInfo {
 			if !files.IsSafeNotebookID(id) {
 				id = files.DeterministicFallbackNotebookID(p)
 			}
-			out = append(out, NotebookInfo{ID: id, Path: p})
+			prev := append([]string(nil), item.PreviousPaths...)
+			out = append(out, NotebookInfo{ID: id, Path: p, PreviousPaths: prev})
 		}
 		return out
 	}
@@ -598,6 +602,29 @@ func (rt *Runtime) resolveNotebookInfo(selector string) (NotebookInfo, error) {
 		}
 		if infoCanon == selCanon {
 			return info, nil
+		}
+	}
+
+	// Single-notebook fallback when a known notebook has not yet been mirrored into the snapshot.
+	rt.cfgMu.RLock()
+	ensureFn := rt.cfg.EnsureNotebookInfo
+	rt.cfgMu.RUnlock()
+	if ensureFn != nil {
+		for _, kn := range rt.knownNotebooks() {
+			knAbs, err := filepath.Abs(kn)
+			if err != nil {
+				knAbs = filepath.Clean(kn)
+			}
+			knCanon := knAbs
+			if resolved, err := filepath.EvalSymlinks(knAbs); err == nil && resolved != "" {
+				knCanon = filepath.Clean(resolved)
+			}
+			if knAbs == selAbs || knCanon == selCanon {
+				if info, ok := ensureFn(knAbs); ok && files.IsSafeNotebookID(info.ID) {
+					return info, nil
+				}
+				break
+			}
 		}
 	}
 	return NotebookInfo{}, fmt.Errorf("notebook %q is not registered in host", selector)
@@ -1310,10 +1337,11 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			}
 		}
 		type notebookEntry struct {
-			ID     string `json:"id"`
-			Path   string `json:"path"`
-			Name   string `json:"name"`
-			Active bool   `json:"active"`
+			ID            string   `json:"id"`
+			Path          string   `json:"path"`
+			Name          string   `json:"name"`
+			Active        bool     `json:"active"`
+			PreviousPaths []string `json:"previous_paths"`
 		}
 		nbs := rt.knownNotebookInfos()
 		entries := make([]notebookEntry, 0, len(nbs))
@@ -1322,11 +1350,16 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			if name == "" || name == "." || name == string(filepath.Separator) {
 				name = nb.Path
 			}
+			prevPaths := append([]string(nil), nb.PreviousPaths...)
+			if prevPaths == nil {
+				prevPaths = []string{}
+			}
 			entries = append(entries, notebookEntry{
-				ID:     nb.ID,
-				Path:   nb.Path,
-				Name:   name,
-				Active: activeRoot != "" && nb.Path == activeRoot,
+				ID:            nb.ID,
+				Path:          nb.Path,
+				Name:          name,
+				Active:        activeRoot != "" && nb.Path == activeRoot,
+				PreviousPaths: prevPaths,
 			})
 		}
 		return map[string]any{"notebooks": entries}, nil
@@ -1378,9 +1411,14 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		if err != nil {
 			canonDataDir = filepath.Clean(rt.cfg.DataDir)
 		}
+		prevPaths := append([]string(nil), nb.PreviousPaths...)
+		if prevPaths == nil {
+			prevPaths = []string{}
+		}
 		return map[string]any{
-			"id":   nb.ID,
-			"path": filepath.Join(canonDataDir, "notebooks", nb.ID),
+			"id":             nb.ID,
+			"path":           filepath.Join(canonDataDir, "notebooks", nb.ID),
+			"previous_paths": prevPaths,
 		}, nil
 
 	case "host.notes.list":

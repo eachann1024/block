@@ -761,10 +761,19 @@ func (s *Supervisor) dispatchSystemEvents(pluginID string, queue *systemEventQue
 	}
 }
 
+func hasNotebookSystemEventPermission(m Manifest) bool {
+	return m.HasPermission(PermNotesRead) || m.HasPermission(PermNotesWrite) || m.HasPermission(PermEventNoteSaved)
+}
+
 func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) {
 	root := s.NotebookRoot()
+	eventName, _ := params["event"].(string)
+	needsNotePerm := eventName == "notebook.renamed" || eventName == "notebook.removed"
 	installed, ok := s.GetInstalled(pluginID)
 	if !ok || !installed.Enabled || !installed.Manifest.HasPermission(PermEventsSystem) {
+		return
+	}
+	if needsNotePerm && !hasNotebookSystemEventPermission(installed.Manifest) {
 		return
 	}
 	startCtx, finishStart := context.WithTimeout(context.Background(), 15*time.Second)
@@ -774,6 +783,9 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 		return
 	}
 	if !rt.manifest.HasPermission(PermEventsSystem) {
+		return
+	}
+	if needsNotePerm && !hasNotebookSystemEventPermission(rt.manifest) {
 		return
 	}
 	s.mu.Lock()

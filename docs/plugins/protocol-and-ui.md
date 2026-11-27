@@ -204,8 +204,8 @@
 3. **`host.notes.active`**（需 `"notes:read"`，忽略参数）
    - `{}` -> `{"path": "welcome.md"}`（返回宿主缓存的活动标签相对路径，可能为空、非 Markdown 或尚未更新）。
 4. **`host.notebooks.list`** / **`host.notebooks.data_dir`**（需 `"notes:read"`）
-   - `host.notebooks.list {}` -> `{"notebooks": [{"id": "nb_0123456789abcdef", "path": "/abs/path/to/notebook", "name": "notebook", "active": true}]}`（`id` 为宿主持久维护的笔记本稳定标识，改名/外移后保留；`active` 反映当前运行时上下文根）。
-   - `host.notebooks.data_dir`：参数可传 `{"path": "/abs/path/to/notebook"}` 或 `{"id": "nb_..."}`（也兼容 `notebook` / `notebook_id` / `notebook_root`，省略或空串时默认取当前激活笔记本），返回 `{"id": "nb_...", "path": "<data_dir>/notebooks/nb_..."}`（宿主自动创建该目录；笔记本改名后路径不变，笔记本被移除或路径消失超过 30 天后由宿主清理）。
+   - `host.notebooks.list {}` -> `{"notebooks": [{"id": "nb_0123456789abcdef", "path": "/abs/path/to/notebook", "name": "notebook", "active": true, "previous_paths": []}]}`（`id` 为宿主持久维护的笔记本稳定标识，改名/外移后保留；`previous_paths` 记录曾迁移过的旧路径；`active` 反映当前运行时上下文根）。
+   - `host.notebooks.data_dir`：参数可传 `{"path": "/abs/path/to/notebook"}` 或 `{"id": "nb_..."}`（也兼容 `notebook` / `notebook_id` / `notebook_root`，省略或空串时默认取当前激活笔记本），返回 `{"id": "nb_...", "path": "<data_dir>/notebooks/nb_...", "previous_paths": []}`（宿主自动创建该目录；笔记本改名后路径不变，笔记本被移除或路径持续缺失超过 30 天后由宿主清理）。
 5. **`host.notes.list`**（需 `"notes:read"`）
    - `{"notebook_root": "/abs/path/to/notebook"}`（可选；解码失败按省略处理；省略且运行时根为空时返回 `{"notes": []}`；传未注册笔记本报 `-32003`）-> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
 6. **`host.notes.read`**（需 `"notes:read"`）
@@ -264,7 +264,7 @@
 
 14. **`host.fs.*`**（需 `"system:fs"`，仅接受宿主机绝对路径；解析符号链接后再经 `os.Root` 校验授权范围并拒绝越界。授权范围含 `data_dir`、`downloads_dir`、`granted-paths.json` 登记路径，以及已注册笔记本——读取笔记本还须持 `"notes:read"`，写入笔记本还须持 `"notes:write"`。`data_dir` 下的宿主受保护文件 `granted-paths.json`、`scheduler.json`、`state.json` 禁止直接改写；`host.system.open_dialog`/`save_dialog` 仅返回路径，表单目录选择器与菜单栏拖放等入口才登记文件授权）
     - `host.fs.list_grants`（`{}`）：返回 `{"grants": [...], "data_dir", "downloads_dir", "notebooks": [{"path", "writable"}]}`。
-    - `host.fs.stat`（`{"path"}`）：返回 `{"exists", "path", "name", "is_dir", "is_regular", "size", "mod_time", "mod_time_ms", "is_icloud_placeholder"}`。
+    - `host.fs.stat`（`{"path", "lstat"?}`）：返回 `{"exists", "path", "name", "is_dir", "is_regular", "is_symlink", "size", "mod_time", "mod_time_ms", "is_icloud_placeholder"}`；传 `"lstat": true` 时不跟随末端符号链接或 Windows junction。
     - `host.fs.list`（`{"path", "recursive"}`，最多 10000 条）：返回 `{"path", "entries": [...], "truncated": bool}`（每项含 `stat` 同名元数据，递归模式另含 `rel_path`；达到上限截断时 `"truncated"` 为 `true`）。
     - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、宿主上限 64 MiB）-> `{"path", "encoding", "size", "content"|"content_base64"}`；`host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`，宿主上限 64 MiB）。
     - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive"}`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents"}`，跨不同授权根时回退为先复制再删除） / `host.fs.copy`（`{"from", "to", "overwrite", "mkdir_parents"}`，宿主流式原子复制普通非符号链接文件，不经过 Wasm 内存；不可同路径，且 `from`/`to` 不可为授权根目录本身；返回 `{"ok": true, "from", "to", "size"}`） / `host.fs.atomic_swap`（`{"path_a", "path_b"}`，同目录两文件交换，平台不支持原子交换时可能成功但返回 `atomic: false`）。
