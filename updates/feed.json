@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T19:31:38.286Z",
-  "latest_version": "1.0.969",
-  "latest_tag": "v1.0.969",
+  "updated_at": "2026-11-27T19:44:24.138Z",
+  "latest_version": "1.0.970",
+  "latest_tag": "v1.0.970",
   "releases": [
+    {
+      "version": "1.0.970",
+      "tag": "v1.0.970",
+      "published_at": "2026-11-27T19:44:23Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.970",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "导入导出：导出的文件现在会直接保存到“下载”文件夹，并在文件管理器中显示。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "思维导图：导出菜单和链接弹出框中的项目现在改为左对齐。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Import & Export: Exported files are now saved directly to Downloads and revealed in the file manager."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Mind Maps: Items in the export menu and link popover are now left aligned."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-macos-arm64.dmg",
+          "size": 19092707,
+          "sha256": "6652df08e8b324ebd18c738e66a0dcc4adb2b1a4042438cdf64aa6eef07da525"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-macos-x64.dmg",
+          "size": 21102224,
+          "sha256": "9abfc5cba2f217ee167841a0e10e1c0ff8f93c06a9688673177343298091b5ba"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-windows-x64-setup.exe",
+          "size": 16546645,
+          "sha256": "66f115b74c964b2387c1692806e5cbda8037a0b9e6b943ee4ebdf7b48573b32c"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-linux-x64.deb",
+          "size": 13433100,
+          "sha256": "71b7724522d8de803393ab352f356aea9cab8218718429a48a258ea9cd0f5be4"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-linux-x64.AppImage",
+          "size": 26741240,
+          "sha256": "a7c74a1b7acee7e65f1cf6a0bc495d08b081817c0f24fa012fb66de331dfbf02"
+        }
+      ]
+    },
     {
       "version": "1.0.969",
       "tag": "v1.0.969",
@@ -80,38 +140,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-macos-arm64.dmg",
-          "size": 19090854,
-          "sha256": "5c10fe2c8fb51f15ee856c308f87777a25bec73767301232bafb8d44d89daa4d"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-macos-x64.dmg",
-          "size": 21072966,
-          "sha256": "17790ee7a6e15b904007c3e7ee7491893849a573013aba1c2185b2a53884c71a"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-windows-x64-setup.exe",
-          "size": 16545369,
-          "sha256": "430a6953b8ec047cf1e3d2f95bad4cda0531618ee35a8bb8a822237f77805ea6"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-linux-x64.deb",
-          "size": 13431888,
-          "sha256": "9288d86d766d3f77d183a9ea82c2a64bb538509a8dd88b8dce076f4e29afef5f"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.969/block-linux-x64.AppImage",
-          "size": 26737144,
-          "sha256": "01c4e53ef21555228eb7f0e852ebed911448fcde9f75e7d375f11c0906ee357b"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.968",
@@ -1718,39 +1747,6 @@
         ],
         "fixes": [
           "Plugin Store: Archive downloads retry with mirror failover, and network errors are reported more clearly."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.917",
-      "tag": "v1.0.917",
-      "published_at": "2026-11-23T18:28:55Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.917",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "插件接口：新增系统菜单栏扩展点和对应的菜单栏权限，插件可以在系统菜单栏中添加自己的条目。"
-        ],
-        "improvements": [
-          "插件菜单栏图标：菜单栏中的插件图标现在可以展开菜单、使用剪贴板，并在 macOS 上支持拖放。"
-        ],
-        "fixes": [
-          "空状态：空面板的侧边留白现在会随面板宽度调整。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Plugin API: Plugins can now add their own items to the system menu bar through a new extension point and a matching menu bar permission."
-        ],
-        "improvements": [
-          "Menu Bar Icons: Plugin icons in the menu bar can now open menus, work with the clipboard, and support drag and drop on macOS."
-        ],
-        "fixes": [
-          "Empty State: The side gutter of an empty pane now sizes itself to the pane's width."
         ],
         "other": []
       },
