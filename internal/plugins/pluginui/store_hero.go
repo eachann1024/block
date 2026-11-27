@@ -3,6 +3,7 @@ package pluginui
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,7 +82,7 @@ func (ctrl *Controller) storeArtSVG(c *ui.Context, entry plugins.StoreAppEntry, 
 	go func() {
 		storeArtSlots <- struct{}{}
 		defer func() { <-storeArtSlots }()
-		data, err := fetchRepositoryMedia(context.Background(), ref, 512<<10)
+		data, err := fetchStoreArt(ref, 512<<10)
 		if err != nil {
 			return
 		}
@@ -95,6 +96,22 @@ func (ctrl *Controller) storeArtSVG(c *ui.Context, entry plugins.StoreAppEntry, 
 		services.Invalidate()
 	}()
 	return nil
+}
+
+// fetchStoreArt tries jsDelivr first because raw.githubusercontent.com is often unreachable,
+// then falls back to GitHub.
+func fetchStoreArt(ref *url.URL, limit int64) ([]byte, error) {
+	if cdn := rawGitHubToJsDelivr(ref); cdn != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		data, err := fetchReadmeMediaURL(ctx, cdn, limit)
+		cancel()
+		if err == nil {
+			return data, nil
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	return fetchReadmeMediaURL(ctx, ref.String(), limit)
 }
 
 func (ctrl *Controller) installedArtSVG(id, filename string) *ui.SVG {
