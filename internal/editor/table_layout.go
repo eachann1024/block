@@ -2,6 +2,7 @@ package editor
 
 import (
 	"math"
+	"slices"
 
 	"block/internal/model"
 	"block/internal/theme"
@@ -17,6 +18,11 @@ type cachedTableCols struct {
 	fontSz float32
 	padX   float32
 	wantW  []float32
+	// Last fitted (non-scrolling) layout; reused while every column's content still fits so
+	// inline style or text edits in one cell don't redistribute every column (width jitter).
+	fitAvail  float32
+	fitPinned []float32
+	fitWidths []float32
 }
 
 func tableContentHash(tbl *model.TableData) uint64 {
@@ -128,14 +134,18 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 				}
 			}
 		}
+		prevFit := cached
 		cached = cachedTableCols{
-			hash:   tblHash,
-			rows:   len(tbl.Rows),
-			cols:   cols,
-			font:   edFont,
-			fontSz: tFontSz,
-			padX:   tPadX,
-			wantW:  wantW,
+			fitAvail:  prevFit.fitAvail,
+			fitPinned: prevFit.fitPinned,
+			fitWidths: prevFit.fitWidths,
+			hash:      tblHash,
+			rows:      len(tbl.Rows),
+			cols:      cols,
+			font:      edFont,
+			fontSz:    tFontSz,
+			padX:      tPadX,
+			wantW:     wantW,
 		}
 		s.tableColCache[id] = cached
 	}
@@ -168,6 +178,26 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 			sumMin += want[c]
 		} else {
 			sumMin += tMinColW
+		}
+	}
+
+	pinnedSig := make([]float32, cols)
+	for c := 0; c < cols; c++ {
+		if pinned[c] {
+			pinnedSig[c] = want[c]
+		}
+	}
+	if sumMin <= innerAvail && len(cached.fitWidths) == cols && cached.fitAvail == innerAvail &&
+		slices.Equal(cached.fitPinned, pinnedSig) {
+		fits := true
+		for c := 0; c < cols; c++ {
+			if !pinned[c] && want[c] > cached.fitWidths[c] {
+				fits = false
+				break
+			}
+		}
+		if fits {
+			return slices.Clone(cached.fitWidths), false
 		}
 	}
 
@@ -243,6 +273,10 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 		colWidths[c] = max(edge-prevEdge, 1)
 		prevEdge = edge
 	}
+	cached.fitAvail = innerAvail
+	cached.fitPinned = pinnedSig
+	cached.fitWidths = slices.Clone(colWidths)
+	s.tableColCache[id] = cached
 	return colWidths, false
 }
 
