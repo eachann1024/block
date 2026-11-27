@@ -361,14 +361,26 @@ func TestOutlineRailHoverJumpAndAutoHide(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected outline-rail visible at 1100px")
 	}
-	if rail.X > 60 {
-		t.Fatalf("expected outline-rail in left margin (x=18), got x=%v", rail.X)
+	if rail.X < 900 {
+		t.Fatalf("expected outline-rail on right margin, got x=%v", rail.X)
+	}
+	if midY := rail.Y + rail.H*0.5; math.Abs(float64(midY-350)) > 20 {
+		t.Fatalf("expected outline-rail vertically centered near 350, got midY=%v", midY)
 	}
 
-	// Hover outline rail -> opens outline-popover
+	// Hover outline rail (<=20 items) -> opens outline-hovercard directly, not outline-popover
 	tt.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
+	if _, ok := appUi.TargetBounds("outline-hovercard"); !ok {
+		t.Fatalf("expected outline-hovercard on hover when <=20 headings")
+	}
+	if s.outlineMode != outlineModeHoverCard {
+		t.Fatalf("expected outlineModeHoverCard, got %v", s.outlineMode)
+	}
+
+	// Explicit expand button -> opens full outline-popover
+	clickProbe(t, tt, "outline-expand-btn")
 	if _, ok := appUi.TargetBounds("outline-popover"); !ok {
-		t.Fatalf("expected outline-popover on hover")
+		t.Fatalf("expected outline-popover after clicking expand button")
 	}
 	caretBefore := s.FocusedBlockIndex()
 	clickProbe(t, tt, "outline-item-3")
@@ -381,16 +393,268 @@ func TestOutlineRailHoverJumpAndAutoHide(t *testing.T) {
 	if _, ok := appUi.TargetBounds("outline-target-highlight"); !ok {
 		t.Fatalf("expected outline-target-highlight probe")
 	}
+	if s.outlineMode != outlineModeClosed {
+		t.Fatalf("expected non-pinned outline closed after jump, got %v", s.outlineMode)
+	}
 
-	// Auto-hide when left margin < 36px (e.g. 800px viewport with 744px column -> 21px margin)
+	// Auto-hide when right margin < 36px (e.g. 800px viewport)
 	appUi.ResetSmoke()
 	tt.SetSize(800, 700)
 	if _, ok := appUi.TargetBounds("outline-rail"); ok {
-		t.Fatalf("expected outline-rail hidden when left margin < 36px")
+		t.Fatalf("expected outline-rail hidden when right margin < 36px")
 	}
 	tt.SetSize(1100, 700)
 	if _, ok := appUi.TargetBounds("outline-rail"); !ok {
 		t.Fatalf("expected outline-rail visible again at width 1100")
+	}
+}
+
+func TestOutlineSamplingAndListMode(t *testing.T) {
+	items35 := make([]model.OutlineItem, 35)
+	for i := range items35 {
+		items35[i] = model.OutlineItem{BlockIndex: i, BlockID: model.BlockID(i + 1), Level: 2, Title: fmt.Sprintf("Heading %d", i+1)}
+	}
+	ticks := sampleOutlineTicks(items35, 13, 27, theme.OutlineMaxTicks)
+	if len(ticks) != theme.OutlineMaxTicks {
+		t.Fatalf("expected %d sampled ticks, got %d", theme.OutlineMaxTicks, len(ticks))
+	}
+	if ticks[0] != 0 || ticks[len(ticks)-1] != 34 {
+		t.Fatalf("expected first=0 and last=34 preserved, got %v", ticks)
+	}
+	hasActive, hasHover := false, false
+	for i, idx := range ticks {
+		if i > 0 && idx <= ticks[i-1] {
+			t.Fatalf("sampled ticks must be strictly sorted/unique: %v", ticks)
+		}
+		if idx == 13 {
+			hasActive = true
+		}
+		if idx == 27 {
+			hasHover = true
+		}
+	}
+	if !hasActive || !hasHover {
+		t.Fatalf("expected active(13) and hover(27) preserved in %v", ticks)
+	}
+
+	appUi.ResetSmoke()
+	blocks := make([]model.Block, 25)
+	for i := range blocks {
+		blocks[i] = model.Block{
+			ID:    model.BlockID(i + 1),
+			Kind:  model.BlockHeading2,
+			Spans: []model.Span{{Text: fmt.Sprintf("Section %02d", i+1)}},
+		}
+	}
+	s := NewSession("", &model.Doc{Blocks: blocks}, nil, nil)
+	s.FocusBlock(0)
+	tt := ui.NewTester(makeSessionView(s, false), 1100, 700)
+
+	rail, ok := appUi.TargetBounds("outline-rail")
+	if !ok {
+		t.Fatalf("expected outline-rail visible for 25 headings")
+	}
+	if _, ok := appUi.TargetBounds("outline-bar-24"); !ok {
+		t.Fatalf("expected last tick outline-bar-24 present after sampling")
+	}
+
+	// >20 items (listMode): hover goes directly to outline-popover without HoverCard
+	appUi.ResetSmoke()
+	tt.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
+	if _, ok := appUi.TargetBounds("outline-popover"); !ok {
+		t.Fatalf("expected outline-popover in listMode")
+	}
+	if _, ok := appUi.TargetBounds("outline-hovercard"); ok {
+		t.Fatalf("did not expect outline-hovercard in listMode")
+	}
+
+	// Focus filter input -> auto-promotes to outlineModePinned; Escape clears filter then closes
+	clickProbe(t, tt, "outline-filter-input")
+	if s.outlineMode != outlineModePinned {
+		t.Fatalf("expected focusing filter input to promote to outlineModePinned, got %v", s.outlineMode)
+	}
+	tt.Type("Section 25")
+	tt.Frame()
+	if s.outlineFilter != "Section 25" {
+		t.Fatalf("expected outlineFilter='Section 25', got %q", s.outlineFilter)
+	}
+	if _, ok := appUi.TargetBounds("outline-item-24"); !ok {
+		t.Fatalf("expected filtered item outline-item-24 visible")
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if s.outlineFilter != "" || s.outlineMode != outlineModePinned {
+		t.Fatalf("first Escape should clear filter while keeping pinned; filter=%q mode=%v", s.outlineFilter, s.outlineMode)
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if s.outlineMode != outlineModeClosed {
+		t.Fatalf("second Escape on empty filter should unpin & close, got %v", s.outlineMode)
+	}
+
+	// Bottom-lock check (<=4px from bottom locks last heading)
+	s.outlineJumpLockID = 0
+	s.outlinePreferScroll = true
+	s.bodyScroll.MaxY = 500
+	s.bodyScroll.Y = 497
+	if got := s.resolveActiveOutlineIndex(s.Outline(), time.Now()); got != 24 {
+		t.Fatalf("expected bottom-lock active index 24, got %d", got)
+	}
+}
+
+func TestOutlineReviewRegressions(t *testing.T) {
+	// 1. Quick hover-in / hover-out must not get stuck open when popup layout is pending on first frame.
+	appUi.ResetSmoke()
+	doc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockHeading1, Spans: []model.Span{{Text: "Alpha Heading"}}},
+			{ID: 2, Kind: model.BlockParagraph, Spans: []model.Span{{Text: "Annotated body text"}}},
+			{ID: 3, Kind: model.BlockHeading2, Spans: []model.Span{{Text: "Beta Heading"}}},
+			{ID: 4, Kind: model.BlockHeading2, Spans: []model.Span{{Text: "Gamma Heading"}}},
+		},
+	}
+	s := NewSession("", doc, nil, nil)
+	s.FocusBlock(0)
+	tt := ui.NewTester(makeSessionView(s, false), 1100, 700)
+
+	rail, ok := appUi.TargetBounds("outline-rail")
+	if !ok {
+		t.Fatalf("expected outline-rail bounds")
+	}
+	tt.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
+	if s.outlineMode != outlineModeHoverCard {
+		t.Fatalf("expected outlineModeHoverCard on quick hover-in, got %v", s.outlineMode)
+	}
+	tt.Move(10, 10)
+	tt.Frame()
+	if s.outlineMode != outlineModeClosed {
+		t.Fatalf("expected outlineModeClosed after quick hover-out, got %v", s.outlineMode)
+	}
+
+	// 2. Focus change during jump lock must clear outlineLastClickedID once the lock expires.
+	s.JumpToBlock(3)
+	tt.Frame()
+	if s.outlineJumpLockID != 4 || s.outlineLastClickedID != 4 {
+		t.Fatalf("expected jump lock & last clicked ID 4, got lock=%d clicked=%d", s.outlineJumpLockID, s.outlineLastClickedID)
+	}
+	s.FocusBlock(2)
+	tt.Frame()
+	if s.outlineLastFocusBlock != 0 {
+		t.Fatalf("expected outlineLastFocusBlock preserved (0) during jump lock, got %d", s.outlineLastFocusBlock)
+	}
+	s.outlineJumpLockUntil = s.outlineJumpLockUntil.Add(-time.Hour)
+	tt.Frame()
+	if s.outlineLastClickedID != 0 {
+		t.Fatalf("expected outlineLastClickedID cleared after jump lock expiry + focus change, got %d", s.outlineLastClickedID)
+	}
+
+	// 3. Outline must remain hoverable & clickable when annotations occupy the right rail.
+	tt.SetSize(1400, 700)
+	s.SelectRange(1, 0, 1, 9)
+	if ann := s.AddAnnotation("Review"); ann == nil {
+		t.Fatalf("expected annotation created")
+	}
+	s.SelectRange(1, 0, 1, 0)
+	tt.Frame()
+	if _, ok := appUi.TargetBounds("annotation-rail"); !ok {
+		t.Fatalf("expected annotation-rail probe")
+	}
+	rail, ok = appUi.TargetBounds("outline-rail")
+	if !ok {
+		t.Fatalf("expected outline-rail probe with annotations")
+	}
+	tt.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
+	if _, ok := appUi.TargetBounds("outline-hovercard"); !ok {
+		t.Fatalf("expected outline-hovercard over annotation-rail")
+	}
+	clickProbe(t, tt, "outline-expand-btn")
+	if _, ok := appUi.TargetBounds("outline-popover"); !ok {
+		t.Fatalf("expected outline-popover after expand")
+	}
+
+	// 4. Unpinning blurs filter input and closing clears outlineFilter & scroll offset.
+	clickProbe(t, tt, "outline-filter-input")
+	tt.Type("Beta")
+	tt.Frame()
+	if s.outlineMode != outlineModePinned || s.outlineFilter != "Beta" {
+		t.Fatalf("expected pinned mode with filter 'Beta', got mode=%v filter=%q", s.outlineMode, s.outlineFilter)
+	}
+	s.outlineListScroll.Y = 12
+	clickProbe(t, tt, "outline-pin-btn")
+	tt.Frame()
+	if s.outlineMode != outlineModePanel {
+		t.Fatalf("expected outlineModePanel after unpin, got %v", s.outlineMode)
+	}
+	tt.Move(10, 10)
+	tt.Frame()
+	if s.outlineMode != outlineModeClosed {
+		t.Fatalf("expected outlineModeClosed after unpin + leave (filter input blurred), got %v", s.outlineMode)
+	}
+	if s.outlineFilter != "" || s.outlineListScroll.Y != 0 {
+		t.Fatalf("expected filter and scroll cleared on close, got filter=%q scrollY=%v", s.outlineFilter, s.outlineListScroll.Y)
+	}
+
+	// Verify clicking outline item jumps properly even with annotation rail active.
+	tt.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
+	clickProbe(t, tt, "outline-expand-btn")
+	clickProbe(t, tt, "outline-item-2")
+	if s.HighlightedBlockID() != 4 {
+		t.Fatalf("expected outline click to jump to block 4 with annotation rail active, got %d", s.HighlightedBlockID())
+	}
+
+	// 5. Horizontal-only resize (height unchanged) must invalidate and shift outline-rail right.
+	tt.Move(10, 10)
+	tt.Frame()
+	beforeRail, ok := appUi.TargetBounds("outline-rail")
+	if !ok {
+		t.Fatalf("expected outline-rail bounds before horizontal resize")
+	}
+	tt.SetSize(1640, 700)
+	tt.Frame()
+	afterRail, ok := appUi.TargetBounds("outline-rail")
+	if !ok {
+		t.Fatalf("expected outline-rail bounds after horizontal resize")
+	}
+	if afterRail.X < beforeRail.X+200 {
+		t.Fatalf("expected outline-rail X to move right on width-only resize: before=%v after=%v", beforeRail.X, afterRail.X)
+	}
+
+	// 6. Esc on empty outline filter restores detached selection focus without leaking focusPending.
+	detachedDoc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockHeading1, Spans: []model.Span{{Text: "Title"}}},
+			{ID: 2, Kind: model.BlockDivider},
+		},
+	}
+	sd := NewSession("", detachedDoc, nil, nil)
+	sd.FocusBlock(1)
+	if !sd.needsDetachedSelectionFocus() {
+		t.Fatalf("expected divider focus to require detached selection focus")
+	}
+	var sawMultiSelPending, detachedFocused bool
+	td := ui.NewTester(func(c *ui.Context) {
+		if sd.multiSelFocusPending {
+			sawMultiSelPending = true
+		}
+		w, _ := c.Size()
+		sd.Render(c, w, false)
+		detachedFocused = sd.detachedFocus.Focused(c)
+	}, 1100, 700)
+	rail, ok = appUi.TargetBounds("outline-rail")
+	if !ok {
+		t.Fatalf("expected outline-rail for detached focus test")
+	}
+	td.Move(rail.X+rail.W*0.5, rail.Y+rail.H*0.5)
+	clickProbe(t, td, "outline-expand-btn")
+	clickProbe(t, td, "outline-filter-input")
+	sawMultiSelPending = false
+	td.Key(0, ui.KeyEscape)
+	td.Frame()
+	if sd.outlineMode != outlineModeClosed {
+		t.Fatalf("expected outline closed on Esc, got %v", sd.outlineMode)
+	}
+	if !sawMultiSelPending || !detachedFocused || sd.focusPending {
+		t.Fatalf("expected multiSelFocusPending triggered and detached focus restored without focusPending leak: sawPending=%v detachedFocused=%v focusPending=%v", sawMultiSelPending, detachedFocused, sd.focusPending)
 	}
 }
 
