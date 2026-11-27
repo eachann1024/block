@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T10:14:47.514Z",
-  "latest_version": "1.0.955",
-  "latest_tag": "v1.0.955",
+  "updated_at": "2026-11-27T10:23:19.658Z",
+  "latest_version": "1.0.956",
+  "latest_tag": "v1.0.956",
   "releases": [
+    {
+      "version": "1.0.956",
+      "tag": "v1.0.956",
+      "published_at": "2026-11-27T10:23:19Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.956",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "表格：列和行手柄菜单更加简洁易用。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Tables: The column and row handle menus are simpler to use."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.956/block-macos-arm64.dmg",
+          "size": 18757181,
+          "sha256": "5945c0c698b2b00b85716cc18e465267357892cba4d033115145fdf720c8cd3f"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.956/block-macos-x64.dmg",
+          "size": 20692936,
+          "sha256": "6faef0ac9268433b6e82c765ca1fc0e4cb9653a8de96bd64f940dc6e412e138d"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.956/block-windows-x64-setup.exe",
+          "size": 16221364,
+          "sha256": "5c3f4f786cb0c91a8f63378cf68bf8806471ffcf3801d5f9d317347021ef7642"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.956/block-linux-x64.deb",
+          "size": 13178290,
+          "sha256": "d71d7a8a9c0fe8a5f5cbf6f5fb86c741b272f6227a522f685c222ed7f3d0afd3"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.956/block-linux-x64.AppImage",
+          "size": 26454520,
+          "sha256": "c288eafe37dc32a3b4e05c53fe28a87a73cfa4bd2befc03f94a3c77c1ceb151b"
+        }
+      ]
+    },
     {
       "version": "1.0.955",
       "tag": "v1.0.955",
@@ -36,38 +92,7 @@
           "Plugin API: Plugin ID checks now run in CI and work in checkouts without Git metadata."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-macos-arm64.dmg",
-          "size": 18763031,
-          "sha256": "489fa8f7f98cee8d44a6e1754b56df621f0de3e5fb03cddf0e474cc8dd17c4c9"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-macos-x64.dmg",
-          "size": 20695198,
-          "sha256": "a88751b17aa273d8ccc8a1ae5b1a303b1e65c047056766ff93cf9ed73c0fc068"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-windows-x64-setup.exe",
-          "size": 16224629,
-          "sha256": "4ae17da43dc67dafc210eb82f0e007cfda3a8799486d57ed0cfaee20c5241026"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-linux-x64.deb",
-          "size": 13183596,
-          "sha256": "5057b662e4391fed3bb9a4c8703bdcfc2adf4e3ea75a07e2614949f0b5bd235b"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.955/block-linux-x64.AppImage",
-          "size": 26462712,
-          "sha256": "2d4a2a5485d2a8888a3ccb1898e8122177b8d606fd7d6b39c266173ec8405125"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.954",
@@ -1680,33 +1705,6 @@
         "improvements": [
           "Block handle menus now provide actions tailored to each block type."
         ],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.904",
-      "tag": "v1.0.904",
-      "published_at": "2026-11-22T08:42:04Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.904",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "插件命令现已支持由应用程序统一管理的快捷键。",
-          "快捷键设置页面现已采用分组展示，并新增了专门的插件快捷键设置区域。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Plugin commands now support keyboard shortcuts managed directly by the application.",
-          "The shortcut settings page now organizes shortcuts into groups and adds a dedicated section for plugin shortcuts."
-        ],
-        "improvements": [],
         "fixes": [],
         "other": []
       },
