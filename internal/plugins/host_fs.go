@@ -416,6 +416,8 @@ func (rt *Runtime) dispatchFSHostMethod(method string, params json.RawMessage) (
 		return rt.fsDelete(params)
 	case "host.fs.rename":
 		return rt.fsRename(params)
+	case "host.fs.copy":
+		return rt.fsCopy(params)
 	case "host.fs.atomic_swap":
 		return rt.fsAtomicSwap(params)
 	default:
@@ -898,54 +900,97 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 	}, nil
 }
 
-func renameCrossRoot(fromTarget, toTarget *resolvedFSTarget, toRoot *os.Root, overwrite, mkdirParents bool) *rpcError {
+func (rt *Runtime) fsCopy(params json.RawMessage) (any, *rpcError) {
+	var p struct {
+		From         string `json:"from"`
+		To           string `json:"to"`
+		Overwrite    bool   `json:"overwrite"`
+		MkdirParents bool   `json:"mkdir_parents"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.From) == "" || strings.TrimSpace(p.To) == "" {
+		return nil, rpcErr(-32602, "host.fs.copy requires non-empty from and to")
+	}
+	fromTarget, rerr := rt.resolveFSScope(p.From, false)
+	if rerr != nil {
+		return nil, rerr
+	}
+	toTarget, rerr := rt.resolveFSScope(p.To, true)
+	if rerr != nil {
+		return nil, rerr
+	}
+	if (fromTarget.isDirRoot && fromTarget.rel == ".") || (toTarget.isDirRoot && toTarget.rel == ".") {
+		return nil, rpcErr(-32001, "cannot copy authorized root directory itself")
+	}
+	if !toTarget.isDirRoot {
+		return nil, rpcErr(-32602, "host.fs.copy requires destination inside a directory grant")
+	}
+	if fromTarget.canonPath == toTarget.canonPath {
+		return nil, rpcErr(-32602, "source and destination cannot be the same path")
+	}
+
+	toRoot, err := os.OpenRoot(toTarget.rootDir)
+	if err != nil {
+		return nil, rpcErr(-32004, err.Error())
+	}
+	defer toRoot.Close()
+
+	written, rerr := copyFileBetweenRoots(fromTarget, toTarget, toRoot, p.Overwrite, p.MkdirParents)
+	if rerr != nil {
+		return nil, rerr
+	}
+	return map[string]any{
+		"ok":   true,
+		"from": fromTarget.canonPath,
+		"to":   toTarget.canonPath,
+		"size": written,
+	}, nil
+}
+
+func copyFileBetweenRoots(fromTarget, toTarget *resolvedFSTarget, toRoot *os.Root, overwrite, mkdirParents bool) (int64, *rpcError) {
 	fromRoot, err := os.OpenRoot(fromTarget.rootDir)
 	if err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
 	defer fromRoot.Close()
 
 	srcInfo, err := fromRoot.Lstat(fromTarget.rel)
 	if err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
 	if srcInfo.Mode()&os.ModeSymlink != 0 || srcInfo.IsDir() || !srcInfo.Mode().IsRegular() {
-		return rpcErr(-32602, "cross-root rename only supports regular non-symlink files")
+		return 0, rpcErr(-32602, "file copy only supports regular non-symlink files")
 	}
 	srcFile, actualInfo, err := openPluginFile(fromRoot, fromTarget.rel)
 	if err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
-	srcClosed := false
 	defer func() {
-		if !srcClosed {
-			_ = srcFile.Close()
-		}
+		_ = srcFile.Close()
 	}()
 
 	if mkdirParents {
 		parentRel := filepath.ToSlash(filepath.Dir(filepath.FromSlash(toTarget.rel)))
 		if parentRel != "." && parentRel != "" {
 			if err := toRoot.MkdirAll(parentRel, 0o755); err != nil {
-				return rpcErr(-32004, err.Error())
+				return 0, rpcErr(-32004, err.Error())
 			}
 		}
 	}
 	if err := checkPluginParents(toRoot, toTarget.rel); err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
 	if dstInfo, err := toRoot.Lstat(toTarget.rel); err == nil {
 		if !overwrite {
-			return rpcErr(-32004, os.ErrExist.Error())
+			return 0, rpcErr(-32004, os.ErrExist.Error())
 		}
 		if dstInfo.Mode()&os.ModeSymlink != 0 || dstInfo.IsDir() || !dstInfo.Mode().IsRegular() {
-			return rpcErr(-32602, "cannot overwrite directory or symlink across roots")
+			return 0, rpcErr(-32602, "cannot overwrite directory or symlink")
 		}
 	}
 
 	tmpFile, tmpRel, err := createTempInRoot(toRoot, toTarget.rel)
 	if err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
 	cleanup := true
 	defer func() {
@@ -955,25 +1000,35 @@ func renameCrossRoot(fromTarget, toTarget *resolvedFSTarget, toRoot *os.Root, ov
 		}
 	}()
 
-	if _, err := io.Copy(tmpFile, srcFile); err != nil {
-		return rpcErr(-32004, err.Error())
+	written, err := io.Copy(tmpFile, srcFile)
+	if err != nil {
+		return 0, rpcErr(-32004, err.Error())
 	}
 	if err := tmpFile.Chmod(actualInfo.Mode().Perm()); err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
 	if err := tmpFile.Sync(); err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
 	if err := tmpFile.Close(); err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
 	if err := toRoot.Rename(tmpRel, toTarget.rel); err != nil {
-		return rpcErr(-32004, err.Error())
+		return 0, rpcErr(-32004, err.Error())
 	}
 	cleanup = false
+	return written, nil
+}
 
-	_ = srcFile.Close()
-	srcClosed = true
+func renameCrossRoot(fromTarget, toTarget *resolvedFSTarget, toRoot *os.Root, overwrite, mkdirParents bool) *rpcError {
+	if _, rerr := copyFileBetweenRoots(fromTarget, toTarget, toRoot, overwrite, mkdirParents); rerr != nil {
+		return rerr
+	}
+	fromRoot, err := os.OpenRoot(fromTarget.rootDir)
+	if err != nil {
+		return rpcErr(-32004, err.Error())
+	}
+	defer fromRoot.Close()
 	if err := fromRoot.Remove(fromTarget.rel); err != nil {
 		return rpcErr(-32004, err.Error())
 	}
