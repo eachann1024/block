@@ -1348,6 +1348,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						if hasLink {
 							textAreaRight -= layoutLinkBadge + layoutLinkGap
 						}
+						// Rich text sizes each line box for the theme's base font size; match it to the
+						// node font so glyphs sit optically centered instead of sinking toward the bottom.
+						th0 := p.Theme()
+						baseSize := th0.FontSize
+						th0.FontSize = fontSize
 						for i, line := range lines {
 							if line == "" {
 								continue
@@ -1371,6 +1376,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 							lineCenterY := textTop + (float32(i)+0.5)*lineH
 							p.RichText(drawX, lineCenterY-th*0.5, 0, sp)
 						}
+						th0.FontSize = baseSize
 					}
 				}
 
