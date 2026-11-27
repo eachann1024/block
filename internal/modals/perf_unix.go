@@ -24,6 +24,10 @@ var unixPerfSampler = struct {
 	lastRSSAt time.Time
 }{}
 
+// platformFootprintFn returns the process memory footprint without spawning a
+// helper process; nil or 0 falls back to `ps`.
+var platformFootprintFn func() uint64
+
 func init() {
 	platformProcessStatsFn = readUnixProcessStats
 }
@@ -60,6 +64,11 @@ func readUnixProcessStats() (cpu float64, rss uint64, ok bool) {
 	rss = unixPerfSampler.lastRSS
 	unixPerfSampler.mu.Unlock()
 
+	if platformFootprintFn != nil {
+		if native := platformFootprintFn(); native > 0 {
+			return cpu, native, true
+		}
+	}
 	if runtime.GOOS == "linux" {
 		if linuxRSS := readLinuxStatmRSS(); linuxRSS > 0 {
 			rss = linuxRSS

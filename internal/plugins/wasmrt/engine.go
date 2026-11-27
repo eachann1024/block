@@ -74,6 +74,7 @@ func (e *Engine) runtimeConfig() wazero.RuntimeConfig {
 	return wazero.NewRuntimeConfig().
 		WithMemoryLimitPages(MemoryLimitPages).
 		WithCloseOnContextDone(true).
+		WithDebugInfoEnabled(false).
 		WithCompilationCache(e.cache)
 }
 

@@ -3,6 +3,7 @@ package modals
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -55,6 +56,13 @@ type fileIdentity struct {
 type perfExtraState struct {
 	refreshing bool
 	refreshGen uint64
+	// shownCPU and shownRSS are the figures last painted (guarded by perfMu).
+	shownCPU float64
+	shownRSS uint64
+	// lastMemRepaint is when memory alone last caused a repaint (guarded by perfMu).
+	lastMemRepaint time.Time
+	// cpuOff records that the previous sample already differed from the painted CPU figure.
+	cpuOff bool
 }
 
 func (m *Manager) perfExtra() *perfExtraState {
@@ -122,19 +130,7 @@ func (m *Manager) OpenPerformance() {
 
 	m.triggerPerformanceRefresh()
 
-	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-cancel:
-				return
-			case <-ticker.C:
-				m.sampleProcessOnce()
-				m.requestRedraw()
-			}
-		}
-	}()
+	go m.runPerformanceSampler(cancel)
 	m.requestRedraw()
 }
 
@@ -771,13 +767,101 @@ func isMarkdownPath(path string) bool {
 	return files.IsMarkdown(path)
 }
 
-func (m *Manager) sampleProcessOnce() {
+const (
+	// perfSampleWindow is the span one CPU sample covers.
+	perfSampleWindow = 1100 * time.Millisecond
+	// perfSettleBusy is the pause after a repaint while the app is busy anyway:
+	// just long enough for the frame the sample triggered to leave the window.
+	perfSettleBusy = 400 * time.Millisecond
+	// perfSettleIdle is the pause after a repaint while the app is otherwise
+	// idle. The renderer gives back its spare drawables (tens of MiB) about two
+	// seconds after the last frame; sampling before that would report the
+	// panel's own repaint and trigger the next one.
+	perfSettleIdle = 2600 * time.Millisecond
+	// perfBusyCPU is the CPU percentage above which the app counts as busy.
+	perfBusyCPU = 1.0
+	// perfMemoryStep and perfCPUStep are the changes that warrant a repaint.
+	// One repaint leaves about 1.4 MiB of garbage for the next GC cycle, so the
+	// memory step must exceed that or every repaint would cause another.
+	perfMemoryStep = 2 << 20
+	perfCPUStep    = 0.1
+	// perfIdleMemoryRepaintGap rate-limits repaints caused by memory alone while idle.
+	perfIdleMemoryRepaintGap = 30 * time.Second
+)
+
+// runPerformanceSampler samples CPU and memory in windows that exclude the
+// panel's own repaint and only invalidates the window when a figure differs
+// from what is on screen, so an idle app stays idle while the modal is open.
+func (m *Manager) runPerformanceSampler(cancel <-chan struct{}) {
+	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
+	wait := func(d time.Duration) bool {
+		timer.Reset(d)
+		select {
+		case <-cancel:
+			return false
+		case <-timer.C:
+			return true
+		}
+	}
+	settle := perfSettleBusy
+	for {
+		if !wait(settle) {
+			return
+		}
+		for {
+			readProcessStats() // open a clean CPU window
+			if !wait(perfSampleWindow) {
+				return
+			}
+			repaint, busy := m.sampleProcessOnce()
+			if !repaint {
+				continue
+			}
+			m.requestRedraw()
+			settle = perfSettleIdle
+			if busy {
+				settle = perfSettleBusy
+			}
+			break
+		}
+	}
+}
+
+// sampleProcessOnce stores a fresh CPU/memory sample and reports whether it
+// differs enough from the painted figures to repaint, and whether the app is busy.
+func (m *Manager) sampleProcessOnce() (repaint, busy bool) {
 	cpu, rss := readProcessStats()
 	m.perfMu.Lock()
+	defer m.perfMu.Unlock()
 	m.perfCPU = cpu
 	m.perfRSS = rss
 	m.perfSamples++
-	m.perfMu.Unlock()
+	ex := &m.perfState
+	busy = cpu >= perfBusyCPU
+	// Idle CPU shows isolated one-sample blips (the renderer releasing memory,
+	// a timer firing); only a change seen in two samples in a row is painted.
+	cpuOff := math.Abs(cpu-ex.shownCPU) >= perfCPUStep
+	repaint = cpuOff && (busy || ex.cpuOff)
+	ex.cpuOff = cpuOff
+	if !repaint && absDiffU64(rss, ex.shownRSS) >= perfMemoryStep {
+		// While idle, a repaint itself moves memory (drawables come back, then
+		// are released again seconds later), so memory alone may only cause one
+		// repaint per perfIdleMemoryRepaintGap; by then it has settled back.
+		now := time.Now()
+		if busy || now.Sub(ex.lastMemRepaint) >= perfIdleMemoryRepaintGap {
+			ex.lastMemRepaint = now
+			repaint = true
+		}
+	}
+	return repaint, busy
+}
+
+func absDiffU64(a, b uint64) uint64 {
+	if a > b {
+		return a - b
+	}
+	return b - a
 }
 
 func readProcessStats() (cpu float64, rss uint64) {
@@ -804,6 +888,7 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 	m.perfMu.Lock()
 	cpu := m.perfCPU
 	rss := m.perfRSS
+	m.perfState.shownCPU, m.perfState.shownRSS = cpu, rss
 	lastScan := m.perfLastScan
 	scanErr := m.perfScanErr
 	m.perfMu.Unlock()
@@ -886,7 +971,7 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 			AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			ui.Row(c).Gap(20).Wrap().AlignItems(ui.Center).Children(func() {
 				perfMetric(c, theme.Tr("磁盘占用", "Storage"), internalui.FormatBytesIEC(totalBytes))
-				perfMetric(c, theme.Tr("物理内存", "Memory RSS"), internalui.FormatBytesIEC(rss))
+				perfMetric(c, theme.Tr("物理内存", "Memory"), internalui.FormatBytesIEC(rss))
 				perfMetric(c, "CPU", fmt.Sprintf("%.1f%%", cpu))
 			})
 			perfMetric(c, theme.Tr("统计时间", "Scanned"), lastScan)
