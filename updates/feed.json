@@ -1,10 +1,82 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T04:32:21.849Z",
-  "latest_version": "1.0.946",
-  "latest_tag": "v1.0.946",
+  "updated_at": "2026-11-27T06:22:46.705Z",
+  "latest_version": "1.0.947",
+  "latest_tag": "v1.0.947",
   "releases": [
+    {
+      "version": "1.0.947",
+      "tag": "v1.0.947",
+      "published_at": "2026-11-27T06:22:46Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.947",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：Block 现在内置沙箱，可运行 JavaScript 和 WebAssembly 插件。",
+          "插件接口：插件可使用 JavaScript 和 WebAssembly 入口，并通过宿主能力访问文件、加密、网络和进程功能。",
+          "插件接口：插件可提供主题外观、使用离线暂存，并访问 AI 功能。"
+        ],
+        "improvements": [
+          "插件接口：插件集成现在支持统一的背景、块装饰和标题栏管理，思维导图也与原生处理逻辑解耦。",
+          "插件接口：插件集成现在支持任务调度、后台错误报告、带标签的操作和同步文件拖放，图片托管不再写死。"
+        ],
+        "fixes": [
+          "自动更新：只有在没有待处理更新时，更新器才会显示当前版本和已是最新版本的标题。",
+          "编辑器：大纲弹窗淡出时会保持原位。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Block now runs JavaScript and WebAssembly plugins in a built-in sandbox.",
+          "Plugin API: Plugins can use JavaScript and WebAssembly entry points, with host access to file, cryptography, network, and process capabilities.",
+          "Plugin API: Plugins can provide theme skins, use offline staging, and access AI features."
+        ],
+        "improvements": [
+          "Plugin API: Plugin integrations now support shared backgrounds, block decorations, and title bar management, while mind maps are decoupled from native handling.",
+          "Plugin API: Plugin integrations now support scheduling, background error reporting, labeled actions, and synchronized file drops without hardcoded image hosting."
+        ],
+        "fixes": [
+          "Updates: The updater shows the current version and an up-to-date title only when no update is pending.",
+          "Editor: The outline popup stays in place during its exit fade."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-macos-arm64.dmg",
+          "size": 17565708,
+          "sha256": "a0ca3822d52f833eb527fffae0e89196ab80133ef2549d51fb937a00b68fbb5d"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-macos-x64.dmg",
+          "size": 19333988,
+          "sha256": "403d66501da68a21707fb67083c8723c1b7b737acffae8a6317beac3c8a788b6"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-windows-x64-setup.exe",
+          "size": 14958376,
+          "sha256": "34da1786a54263c139f60136c3f0d9989bd81df606523067b2003c77a37f565d"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-linux-x64.deb",
+          "size": 12239506,
+          "sha256": "e29a7e0351378928c378f3d3500eee163c1cb3140d06f972682d4fd06fbe4344"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.947/block-linux-x64.AppImage",
+          "size": 25385464,
+          "sha256": "da5ed33bb8b9c9f66d2b41141a0ad3a9690458695e639ffdbb8912bc9e064134"
+        }
+      ]
+    },
     {
       "version": "1.0.946",
       "tag": "v1.0.946",
@@ -48,38 +120,7 @@
           "Icons: Removed unused update icon assets from the application."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-macos-arm64.dmg",
-          "size": 15986966,
-          "sha256": "e245f1376feeb89b49e49d254edbaff9530c0b67ec701fa9c1cf64822b748b5f"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-macos-x64.dmg",
-          "size": 17639707,
-          "sha256": "169a0f751c23281458414488b1fa4e8b6d555ac8a9e0a99fdacbcedc652f4cbd"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-windows-x64-setup.exe",
-          "size": 13400971,
-          "sha256": "f4f5ee879322b875d51cb62792bdb9dc16b5a6c30b7433ea5e994bfe13cbec33"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-linux-x64.deb",
-          "size": 10871386,
-          "sha256": "428c28b82472c9864a7e7a1bec28d776f73f1940e0c9d078832299f489eab34a"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.946/block-linux-x64.AppImage",
-          "size": 23927288,
-          "sha256": "4bfdb11293972168c7a4792add1b361dc27d754c05394840e828582f4b3e03a8"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.945",
@@ -1641,35 +1682,6 @@
         "new": [],
         "improvements": [
           "Plugin title bars now feature a unified, lightweight ghost style for action buttons and hide redundant idle statuses to keep the interface clean."
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.895",
-      "tag": "v1.0.895",
-      "published_at": "2026-11-21T09:16:37Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.895",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "应用和插件通知现在会合并显示在底部提示条中，Chrome 菜单也会显示在编辑器工具栏上方。"
-        ],
-        "improvements": [
-          "现在始终发送原生系统通知，并按插件分别限制通知频率。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "App and plugin notices now appear together in a single bottom toast, and Chrome menus stay above editor toolbars."
-        ],
-        "improvements": [
-          "Native system notifications are now always sent, with rate limits applied separately to each plugin."
         ],
         "fixes": [],
         "other": []
