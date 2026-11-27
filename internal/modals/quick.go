@@ -1759,8 +1759,8 @@ func (q *QuickNoteController) renderViewPaper(c *ui.Context) {
 					badgeFG := pal.TextSecondary
 					badgeBG := pal.Hover
 					if headerDark && !pal.Dark {
-						badgeFG = ui.Hex("#e8dec6")
-						badgeBG = ui.RGBA(255, 255, 255, 0.12)
+						badgeFG = ui.Hex("#e8dec6")            // design:allow dark skin header badge
+						badgeBG = ui.RGBA(255, 255, 255, 0.12) // design:allow dark skin header badge
 					}
 					if qnSkin != nil && strings.TrimSpace(qnSkin.BorderAccent) != "" {
 						if accent, err := theme.ParseHexColor(qnSkin.BorderAccent); err == nil {
