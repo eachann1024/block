@@ -24,6 +24,7 @@ type noteSourceView struct {
 	docRev       uint64
 	focusPending bool
 	scrollbars   blockui.EditorScrollbars
+	tabArrows    blockui.EditorTabWhitespace
 	findOpen     bool
 }
 
@@ -287,6 +288,7 @@ func (w *Workspace) renderNoteSource(c *ui.Context, sess *editor.Session) {
 	}
 
 	right, bottom := w.noteSource.scrollbars.Prepare(c, st, findOpen)
+	w.noteSource.tabArrows.Prepare(c, st)
 	c.Key("note-source:" + tab)
 	outer := ui.Column(c).Fill().Background(pal.Paper).Padding(0, right, bottom, 0)
 	blockui.Probe(outer, "note-source")

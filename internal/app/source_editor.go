@@ -510,6 +510,7 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	}
 
 	right, bottom := s.scrollbars.Prepare(c, st, s.findOpen)
+	s.tabArrows.Prepare(c, st)
 	c.Key("source-surface:" + s.Path)
 	outer := ui.Column(c).Fill().Background(pal.Paper).Padding(0, right, bottom, 0)
 	blockui.Probe(outer, "source-surface")

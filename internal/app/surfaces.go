@@ -72,6 +72,7 @@ type TabSurface struct {
 	codeVersion uint64
 	codeLangGen uint64
 	scrollbars  blockui.EditorScrollbars
+	tabArrows   blockui.EditorTabWhitespace
 	findOpen    bool
 }
 
