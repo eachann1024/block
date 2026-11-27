@@ -12,6 +12,7 @@ function stripHandNav(block) {
       if (/^>\s*\[/.test(text)) return false;
       if (/^-{3,}$/.test(text)) return false;
       if (/^下一步[:：]/.test(text)) return false;
+      if (/^(Next|Previous)[:：]/i.test(text)) return false;
       return true;
     })
     .join("\n");

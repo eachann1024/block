@@ -12,7 +12,7 @@
 
 <a href="https://block.cooool.top/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/features.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/features.svg"><img alt="Block Highlights" src="docs/readme/en/light/features.svg"></picture></a>
 
-<a href="https://docs.block.cooool.top/plugins/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/ecosystem.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/ecosystem.svg"><img alt="Block App Store Extensions" src="docs/readme/en/light/ecosystem.svg"></picture></a>
+<a href="https://docs.block.cooool.top/en/plugins/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/ecosystem.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/ecosystem.svg"><img alt="Block App Store Extensions" src="docs/readme/en/light/ecosystem.svg"></picture></a>
 
 <a href="https://block.cooool.top/#compare"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/compare.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/compare.svg"><img alt="Block Advantages & Comparison" src="docs/readme/en/light/compare.svg"></picture></a>
 
@@ -20,8 +20,8 @@
   <a href="https://block.cooool.top/">Website & Download</a> ·
   <a href="https://github.com/eachann1024/block/releases/latest">Latest Release</a> ·
   <a href="https://block.cooool.top/#compare">Comparison</a> ·
-  <a href="https://docs.block.cooool.top/">Documentation</a> ·
-  <a href="https://docs.block.cooool.top/plugins/">Plugin Guide</a> ·
+  <a href="https://docs.block.cooool.top/en/">Documentation</a> ·
+  <a href="https://docs.block.cooool.top/en/plugins/">Plugin Guide</a> ·
   <a href="https://block.cooool.top/privacy/">Privacy Policy</a>
 </p>
 
@@ -78,7 +78,7 @@ Developing and publishing community plugins **requires no PR to this main reposi
 
 Documentation & AI agent resources:
 
-- **Documentation Center**: [https://docs.block.cooool.top/](https://docs.block.cooool.top/)
-- **Plugin Developer Guide (6 chapters)**: [https://docs.block.cooool.top/plugins/](https://docs.block.cooool.top/plugins/)
-- **Self-Contained AI Spec**: [https://docs.block.cooool.top/plugin-dev-for-ai.md](https://docs.block.cooool.top/plugin-dev-for-ai.md)
-- **Agent Indexes (llms.txt)**: [docs.block.cooool.top/llms.txt](https://docs.block.cooool.top/llms.txt) · [block.cooool.top/llms.txt](https://block.cooool.top/llms.txt) · [block.cooool.top/llms-full.txt](https://block.cooool.top/llms-full.txt)
+- **Documentation Center**: [https://docs.block.cooool.top/en/](https://docs.block.cooool.top/en/)
+- **Plugin Developer Guide (6 chapters)**: [https://docs.block.cooool.top/en/plugins/](https://docs.block.cooool.top/en/plugins/)
+- **Self-Contained AI Spec**: [https://docs.block.cooool.top/en/plugin-dev-for-ai.md](https://docs.block.cooool.top/en/plugin-dev-for-ai.md)
+- **Agent Indexes (llms.txt)**: [docs.block.cooool.top/en/llms.txt](https://docs.block.cooool.top/en/llms.txt) · [block.cooool.top/llms.txt](https://block.cooool.top/llms.txt) · [block.cooool.top/llms-full.txt](https://block.cooool.top/llms-full.txt)

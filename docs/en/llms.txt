@@ -1,0 +1,31 @@
+# Block Documentation
+
+> Block (https://block.cooool.top) is a free, open-source (Apache 2.0), local-first Markdown block note-taking desktop app for macOS, Windows, and Linux. External plugins live in standalone public GitHub repositories (with the `blockmd-plugin` topic; standard GitHub Releases are preferred, with commit-pinned default-branch tarball fallback when no suitable Release exists) and require no PR to the main repository to join automatic App Store crawling (top 100 repos by stars; desktop users can also install directly by local folder or repository slug). This site provides the bilingual plugin specification, manifest and permission model, JSON-RPC 2.0 protocol, host UI contributions, declarative language extensions, and self-contained AI single-file guides.
+
+## Documentation Home
+
+- [Documentation Center (English)](https://docs.block.cooool.top/en/): Main English entry point and plugin developer chapters
+- [文档中心首页（中文）](https://docs.block.cooool.top/): Chinese documentation home
+- [Chinese llms.txt](https://docs.block.cooool.top/llms.txt): Chinese index for LLMs and coding agents
+
+## Plugin Developer Chapters (English)
+
+- [1. Overview & AI Guide](https://docs.block.cooool.top/en/plugins/): No-PR store boundary, 3 development paths, 8 hard rules, validation workflow, sandbox hard boundaries, and runtime migration from `entry.command`
+- [2. Manifest & Permissions](https://docs.block.cooool.top/en/plugins/manifest): Directory layout, `manifest.json` required and allowlist fields, 30 valid permissions (15 sensitive in 5 groups + 3 silent events + 12 default-allowed), and `permission_reasons`
+- [3. Protocol, UI & SDK](https://docs.block.cooool.top/en/plugins/protocol-and-ui): Bidirectional JSON-RPC 2.0, `host.*` methods, 16 `UIItem` controls, locale-aware `block-sdk.js` starter skeleton, and platform implementation details
+- [4. Host UI Contributions](https://docs.block.cooool.top/en/plugins/ui-contributions): Multi-surface model, `manifest.contributes` fields, `plugin.command` / workspace events, and host UI RPC methods
+- [5. Language Extensions](https://docs.block.cooool.top/en/plugins/languages): Zero-process, zero-permission declarative syntax highlighting (`contributes.languages` + `grammars/*.json`) and file association reference
+- [6. Check & Store](https://docs.block.cooool.top/en/plugins/check-and-store): `block-plugin-check` usage and coverage limits, bilingual gate, `blockmd-plugin` store crawling rules (top 100 cap), and offline fallback catalog
+
+## Self-Contained AI Specifications
+
+- [en/plugin-dev-for-ai.md (English)](https://docs.block.cooool.top/en/plugin-dev-for-ai.md): Complete self-contained English plugin specification composed from `docs/en/plugins/*.md`
+- [plugin-dev-for-ai.md (Chinese)](https://docs.block.cooool.top/plugin-dev-for-ai.md): Complete self-contained Chinese plugin specification composed from `docs/plugins/*.md`
+
+## Website & Agent Resources
+
+- [Block Website](https://block.cooool.top/): Product overview, comparison matrix, extension ecosystem, and downloads
+- [Website llms.txt](https://block.cooool.top/llms.txt): Product overview summary
+- [Website llms-full.txt](https://block.cooool.top/llms-full.txt): Full product context and FAQ
+- [Latest Release Metadata (latest.json)](https://block.cooool.top/api/latest.json): Latest version and download metadata per platform
+- [GitHub Repository](https://github.com/eachann1024/block): Desktop source code, documentation source, and Releases

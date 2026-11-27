@@ -26,6 +26,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
+      - name: Check synced AI specs
+        run: bun scripts/sync_plugin_docs.mjs --check
       - name: Install
         working-directory: docs
         run: bun install --frozen-lockfile
