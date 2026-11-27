@@ -3783,10 +3783,6 @@ func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Nod
 			}
 		})
 
-		// Quick add child button.
-		renderPillBtn("mm-qb-add-"+id, icons.Plus, theme.Tr("子节点", "Child"), false, false, func() {
-			st.opAddChild(cb)
-		})
 	})
 }
 
