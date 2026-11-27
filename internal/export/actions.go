@@ -293,16 +293,7 @@ func (c *Controller) triggerSave() {
 
 	go func() {
 		defer c.finishAction()
-		ext := exportExtension(req.format)
-		chosen, err := files.SaveDialog(nil, mygo.SaveDialogOptions{
-			Title:             saveButtonLabel(req.format),
-			DefaultPath:       filepath.Join(dir, name),
-			CreateDirectories: true,
-			Filters:           []mygo.FileFilter{{Name: strings.ToUpper(ext), Extensions: []string{ext}}},
-		})
-		if err != nil || strings.TrimSpace(chosen) == "" {
-			return
-		}
+		chosen := uniqueExportPath(filepath.Join(downloadsDir(dir), name))
 		c.mu.Lock()
 		if c.isCurrentRequestLocked(req) {
 			c.notice = theme.Tr("正在保存…", "Saving…")
@@ -310,8 +301,37 @@ func (c *Controller) triggerSave() {
 		}
 		c.mu.Unlock()
 		c.notifyRedraw()
-		_ = c.saveRequest(req, chosen)
+		if err := c.saveRequest(req, chosen); err == nil {
+			mygo.Shell.ShowItemInFolder(chosen)
+		}
 	}()
+}
+
+// downloadsDir returns the user's Downloads folder, falling back to fallback.
+func downloadsDir(fallback string) string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		d := filepath.Join(home, "Downloads")
+		if os.MkdirAll(d, 0o755) == nil {
+			return d
+		}
+	}
+	return fallback
+}
+
+// uniqueExportPath appends " 2", " 3"… before the extension when p already exists.
+func uniqueExportPath(p string) string {
+	if _, err := os.Stat(p); err != nil {
+		return p
+	}
+	ext := filepath.Ext(p)
+	base := strings.TrimSuffix(p, ext)
+	for i := 2; i < 10000; i++ {
+		cand := fmt.Sprintf("%s %d%s", base, i, ext)
+		if _, err := os.Stat(cand); err != nil {
+			return cand
+		}
+	}
+	return p
 }
 
 func (c *Controller) finishAction() {
