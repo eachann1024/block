@@ -362,23 +362,30 @@ func TestServiceCancelDownloadAndChecksumMismatch(t *testing.T) {
 		origClient := sharedHTTPClient
 		t.Cleanup(func() { sharedHTTPClient = origClient })
 		sharedHTTPClient = &http.Client{Transport: metadataTransport(func(req *http.Request) (*http.Response, error) {
-			if req.URL.Host == "raw.githubusercontent.com" {
+			switch {
+			case req.URL.Host == "raw.githubusercontent.com":
 				return &http.Response{
 					StatusCode:    http.StatusOK,
 					ContentLength: int64(len(feedRaw)),
 					Body:          io.NopCloser(bytes.NewReader(feedRaw)),
 				}, nil
+			case strings.HasSuffix(req.URL.Path, "/"+asset.Name):
+				return &http.Response{
+					StatusCode:    http.StatusOK,
+					ContentLength: asset.Size,
+					Body: &blockingStream{
+						firstChunk: []byte("partial-chunk"),
+						started:    streamStarted,
+						ctx:        req.Context(),
+						errFn:      req.Context().Err,
+					},
+				}, nil
+			default:
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("not found")),
+				}, nil
 			}
-			return &http.Response{
-				StatusCode:    http.StatusOK,
-				ContentLength: asset.Size,
-				Body: &blockingStream{
-					firstChunk: []byte("partial-chunk"),
-					started:    streamStarted,
-					ctx:        req.Context(),
-					errFn:      req.Context().Err,
-				},
-			}, nil
 		})}
 
 		dataDir := t.TempDir()
@@ -431,18 +438,25 @@ func TestServiceCancelDownloadAndChecksumMismatch(t *testing.T) {
 		origClient := sharedHTTPClient
 		t.Cleanup(func() { sharedHTTPClient = origClient })
 		sharedHTTPClient = &http.Client{Transport: metadataTransport(func(req *http.Request) (*http.Response, error) {
-			if req.URL.Host == "raw.githubusercontent.com" {
+			switch {
+			case req.URL.Host == "raw.githubusercontent.com":
 				return &http.Response{
 					StatusCode:    http.StatusOK,
 					ContentLength: int64(len(feedRaw)),
 					Body:          io.NopCloser(bytes.NewReader(feedRaw)),
 				}, nil
+			case strings.HasSuffix(req.URL.Path, "/"+asset.Name):
+				return &http.Response{
+					StatusCode:    http.StatusOK,
+					ContentLength: int64(len(corruptedPayload)),
+					Body:          io.NopCloser(bytes.NewReader(corruptedPayload)),
+				}, nil
+			default:
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("not found")),
+				}, nil
 			}
-			return &http.Response{
-				StatusCode:    http.StatusOK,
-				ContentLength: int64(len(corruptedPayload)),
-				Body:          io.NopCloser(bytes.NewReader(corruptedPayload)),
-			}, nil
 		})}
 
 		dataDir := t.TempDir()

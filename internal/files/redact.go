@@ -76,12 +76,14 @@ var (
 	reBearer = regexp.MustCompile(`(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}`)
 	reSecret = regexp.MustCompile(`\b(?:sk-[A-Za-z0-9_-]{8,}|(?:pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|gh[posu]_[A-Za-z0-9]{12,}|github_pat_[A-Za-z0-9_]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?:\.[A-Za-z0-9_-]*)?|xai-[A-Za-z0-9_-]{12,}|gsk_[A-Za-z0-9]{12,}|pplx-[A-Za-z0-9]{12,}|hf_[A-Za-z0-9]{12,}|glpat-[A-Za-z0-9_-]{12,}|npm_[A-Za-z0-9]{12,}|pypi-[A-Za-z0-9_-]{12,}|sntryu_[A-Za-z0-9]{12,})`)
 	reBlob   = regexp.MustCompile(`[A-Za-z0-9+/_=-]{32,}`)
-	reIPv4   = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
-	reIPv6C  = regexp.MustCompile(`(?:\b[0-9a-fA-F]{1,4}:|::)[0-9a-fA-F:.]*(?:%[A-Za-z0-9._-]+)?`)
-	rePath   = regexp.MustCompile(`(?:~[/\\][^/\\\n\r\t:"'<>|*?]+(?:[/\\][^/\\\n\r\t:"'<>|*?]+)*|(?:[A-Za-z]:)?(?:[/\\][^/\\\n\r\t:"'<>|*?]+){2,})`)
-	reFile   = regexp.MustCompile(`(?i)[^\s/\\:"'<>|()\[\]{},;=]+\.(?:` + fileExtAlternation + `)\b`)
-	reQuoted = regexp.MustCompile(`"[^"\n]+"`)
-	reExtEnd = regexp.MustCompile(`\.[A-Za-z0-9]{1,5}$`)
+	reIPv4        = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	reIPv6C       = regexp.MustCompile(`(?:\b[0-9a-fA-F]{1,4}:|::)[0-9a-fA-F:.]*(?:%[A-Za-z0-9._-]+)?`)
+	rePath        = regexp.MustCompile(`(?:~[/\\][^/\\\n\r\t:"'<>|*?]+(?:[/\\][^/\\\n\r\t:"'<>|*?]+)*|(?:[A-Za-z]:)?(?:[/\\][^/\\\n\r\t:"'<>|*?]+){2,})`)
+	reSingleDrive = regexp.MustCompile(`\b[A-Za-z]:[/\\][^/\\\s:"'<>|*?]+`)
+	reSingleRoot  = regexp.MustCompile(`(?i)\b(open|stat|lstat|read|write|mkdir|remove|rename|chmod|chown|symlink|readlink|create)\s+(/[A-Za-z0-9._-]+)`)
+	reFile        = regexp.MustCompile(`(?i)[^\s/\\:"'<>|()\[\]{},;=]+\.(?:` + fileExtAlternation + `)\b`)
+	reQuoted      = regexp.MustCompile(`"[^"\n]+"`)
+	reExtEnd      = regexp.MustCompile(`\.[A-Za-z0-9]{1,5}$`)
 )
 
 // outsideTags applies fn to the stretches of s that are not already tags, so
@@ -257,6 +259,27 @@ func redactIPv6(s string) string {
 // Redact masks everything on a log line that could identify the user or
 // their notes. It is idempotent: its own tags pass through unchanged.
 func Redact(s string) string {
+	return redactInternal(s, true)
+}
+
+// RedactDiagnostics applies the same path, host, IP, secret, user, and
+// non-ASCII masking as Redact, plus explicit home-directory scrubbing, while
+// preserving safe ASCII quoted error phrases in diagnostic reports.
+func RedactDiagnostics(s string) string {
+	if s == "" {
+		return s
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, cand := range []string{home, filepath.Clean(home), filepath.ToSlash(home)} {
+			if len(cand) > 1 {
+				s = strings.ReplaceAll(s, cand, "<home>")
+			}
+		}
+	}
+	return redactInternal(s, false)
+}
+
+func redactInternal(s string, maskQuoted bool) string {
 	if s == "" {
 		return s
 	}
@@ -267,13 +290,27 @@ func Redact(s string) string {
 		func(p string) string { return reKV.ReplaceAllString(p, "$1$2<key>") },
 		func(p string) string { return reSecret.ReplaceAllString(p, "<key>") },
 		redactPaths,
-		nil, // quoted text: runs on the whole line, see redactQuoted
+		func(p string) string { return reSingleDrive.ReplaceAllStringFunc(p, pathTag) },
+		func(p string) string {
+			return reSingleRoot.ReplaceAllStringFunc(p, func(m string) string {
+				sub := reSingleRoot.FindStringSubmatch(m)
+				if len(sub) != 3 {
+					return m
+				}
+				return sub[1] + " " + pathTag(sub[2])
+			})
+		},
+	}
+	if maskQuoted {
+		stages = append(stages, nil) // quoted text: runs on the whole line, see redactQuoted
+	}
+	stages = append(stages,
 		func(p string) string { return reBlob.ReplaceAllString(p, "<key>") },
 		redactIPv6,
 		func(p string) string { return reIPv4.ReplaceAllString(p, "<ip>") },
 		func(p string) string { return reFile.ReplaceAllStringFunc(p, fileTag) },
 		redactNonASCII,
-	}
+	)
 	if reUserName != nil {
 		stages = append(stages, func(p string) string { return reUserName.ReplaceAllString(p, "<user>") })
 	}

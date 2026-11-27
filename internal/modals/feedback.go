@@ -60,6 +60,15 @@ type feedbackUI struct {
 	lastRequestID string // reused when resending identical content after cancel
 	lastSubmitKey string
 
+	// Isolated state when opened from the updater diagnostics feedback flow so
+	// ordinary user feedback drafts and personal attachments are never clobbered
+	// or accidentally attached.
+	updaterMode         bool
+	updaterDraftMsg     string
+	stashedAttachments  []feedback.Attachment
+	stashedIncludeLog   bool
+	stashedIncludeSaved bool
+
 	mu    sync.Mutex
 	inbox []func() // worker results, applied on the UI thread by pumpFeedback
 }
@@ -110,6 +119,9 @@ func (m *Manager) pumpFeedback() {
 // An upload still running in the background is shown again instead.
 func (m *Manager) OpenFeedback() {
 	if m.fb.sender == nil {
+		if m.fb.updaterMode {
+			m.leaveUpdaterFeedbackModeLocked()
+		}
 		st := m.currentState()
 		if st.FeedbackDraft != nil {
 			m.feedbackCategory = normalizeFeedbackCat(st.FeedbackDraft.Category)
@@ -134,6 +146,19 @@ func (m *Manager) OpenFeedback() {
 	m.requestRedraw()
 }
 
+func (m *Manager) leaveUpdaterFeedbackModeLocked() {
+	for _, a := range m.fb.attachments {
+		a.Discard()
+	}
+	m.fb.attachments = m.fb.stashedAttachments
+	m.fb.stashedAttachments = nil
+	if m.fb.stashedIncludeSaved {
+		m.fb.includeLog = m.fb.stashedIncludeLog
+		m.fb.stashedIncludeSaved = false
+	}
+	m.fb.updaterMode = false
+}
+
 // OpenFeedbackWithCategory opens the Feedback modal pre-selecting category
 // ("bug", "idea", or "other") when no non-empty draft is currently in progress.
 func (m *Manager) OpenFeedbackWithCategory(category string) {
@@ -141,6 +166,84 @@ func (m *Manager) OpenFeedbackWithCategory(category string) {
 	if m.fb.sender == nil && strings.TrimSpace(m.feedbackMessage) == "" {
 		m.feedbackCategory = normalizeFeedbackCat(category)
 	}
+}
+
+const updaterDiagMarker = "--- Updater Diagnostics ---"
+
+func mergeUpdaterFeedbackMessage(existingDraft, freshDiagnostics string) string {
+	existing := strings.TrimSpace(existingDraft)
+	if existing == "" {
+		return freshDiagnostics
+	}
+	userPrefix := ""
+	if idx := strings.Index(existing, updaterDiagMarker); idx >= 0 {
+		rawPrefix := strings.TrimSpace(existing[:idx])
+		if rawPrefix != "" && rawPrefix != "（可在上方补充问题描述）" && rawPrefix != "(Optional: add details above)" {
+			userPrefix = rawPrefix
+		}
+	} else {
+		userPrefix = existing
+	}
+	if userPrefix == "" {
+		return freshDiagnostics
+	}
+	diagBody := freshDiagnostics
+	if idx := strings.Index(freshDiagnostics, updaterDiagMarker); idx >= 0 {
+		diagBody = freshDiagnostics[idx:]
+	}
+	const maxTotalRunes = 3900
+	const maxPrefixRunes = 1000
+	if utf8.RuneCountInString(userPrefix) > maxPrefixRunes {
+		userPrefix = string([]rune(userPrefix)[:maxPrefixRunes])
+	}
+	combined := userPrefix + "\n\n" + diagBody
+	if utf8.RuneCountInString(combined) <= maxTotalRunes {
+		return combined
+	}
+	budget := maxTotalRunes - utf8.RuneCountInString(userPrefix) - 5
+	if budget < 200 {
+		return userPrefix + "\n\n" + updaterDiagMarker
+	}
+	runes := []rune(diagBody)
+	if len(runes) > budget {
+		diagBody = string(runes[:budget]) + "..."
+	}
+	return userPrefix + "\n\n" + diagBody
+}
+
+// OpenFeedbackForUpdater opens the Feedback modal in an isolated updater-diagnostics
+// session: selects "bug", stashes unrelated drafts/attachments without overwriting
+// AppState.FeedbackDraft, defaults includeLog off (the scrubbed updater report and
+// updater.log tail are already embedded), and preserves user text above the marker.
+func (m *Manager) OpenFeedbackForUpdater(diagnostics string) {
+	if m.fb.sender == nil {
+		if !m.fb.updaterMode {
+			m.fb.stashedAttachments = m.fb.attachments
+			m.fb.attachments = nil
+			m.fb.stashedIncludeLog = m.fb.includeLog
+			m.fb.stashedIncludeSaved = true
+			m.fb.updaterMode = true
+		}
+		st := m.currentState()
+		if st.FeedbackDraft != nil && strings.TrimSpace(m.feedbackContact) == "" {
+			m.feedbackContact = st.FeedbackDraft.Contact
+		}
+		m.feedbackCategory = "bug"
+		m.fb.includeLog = false
+		m.feedbackMessage = mergeUpdaterFeedbackMessage(m.fb.updaterDraftMsg, diagnostics)
+		m.fb.updaterDraftMsg = m.feedbackMessage
+	}
+	m.feedbackDone = false
+	m.feedbackErr = ""
+	m.feedbackSentContact = ""
+	m.fb.view = feedbackViewForm
+	m.fb.notice = ""
+	m.feedbackOpen = true
+	go func() {
+		log := files.ReadDiagnosticLog(feedbackLogLines)
+		m.postFeedback(func() { m.fb.log = log })
+	}()
+	m.requestRedraw()
 }
 
 // CloseFeedback closes the Feedback modal, persisting any non-done draft.
@@ -151,6 +254,9 @@ func (m *Manager) CloseFeedback() {
 	}
 	if !m.feedbackDone {
 		m.persistFeedbackDraft()
+	}
+	if m.fb.updaterMode && m.fb.sender == nil {
+		m.leaveUpdaterFeedbackModeLocked()
 	}
 	m.feedbackOpen = false
 	m.requestRedraw()
@@ -171,6 +277,10 @@ func normalizeFeedbackCat(raw string) string {
 }
 
 func (m *Manager) persistFeedbackDraft() {
+	if m.fb.updaterMode {
+		m.fb.updaterDraftMsg = m.feedbackMessage
+		return
+	}
 	msg := m.feedbackMessage
 	contact := m.feedbackContact
 	cat := normalizeFeedbackCat(m.feedbackCategory)
@@ -428,6 +538,11 @@ func (m *Manager) finishFeedbackSent(contact string) {
 	m.feedbackDone = true
 	m.feedbackMessage = ""
 	m.feedbackCategory = "bug"
+	if m.fb.updaterMode {
+		m.fb.updaterDraftMsg = ""
+		m.leaveUpdaterFeedbackModeLocked()
+		return
+	}
 	m.mutateState(func(s *model.AppState) {
 		s.FeedbackDraft = nil
 	})
@@ -687,12 +802,16 @@ func (m *Manager) renderFeedbackForm(c *ui.Context, title string) {
 
 			ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
 				feedbackFieldLabel(c, theme.Tr("内容", "Message"))
+				msgH := float32(72)
+				if strings.Contains(m.feedbackMessage, updaterDiagMarker) {
+					msgH = 136
+				}
 				msgIn := ui.TextArea(c.Key("feedback-message"), &m.feedbackMessage).
 					Placeholder(activePH).PlaceholderColor(pal.Placeholder).
 					Label(theme.Tr("反馈内容", "Feedback message")).
 					FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 					Padding(theme.Space8, theme.Space10).Radius(theme.RadiusMD).TextColor(pal.Text).
-					FillWidth().MinWidth(0).Height(72)
+					FillWidth().MinWidth(0).Height(msgH)
 				feedbackInputChrome(msgIn)
 				internalui.AutoHideScrollbars(c, msgIn)
 				internalui.Probe(msgIn, "feedback-message")

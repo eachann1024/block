@@ -267,29 +267,97 @@ func DownloadAndStage(
 	onProgress DownloadProgressCallback,
 	commitGuard ...func(commit func() error) error,
 ) (*VerifiedRecord, error) {
+	return DownloadAndStageRouted(ctx, dataDir, entry, asset, inPlace, mode, ChannelProbe{}, ChannelProbe{}, onProgress, commitGuard...)
+}
+
+// DownloadAndStageRouted downloads and stages an update using live channel probe hints
+// to route SourceAuto to the fastest available route with automatic failover.
+func DownloadAndStageRouted(
+	ctx context.Context,
+	dataDir string,
+	entry ReleaseEntry,
+	asset ReleaseAsset,
+	inPlace bool,
+	mode SourceMode,
+	mirrorHint, githubHint ChannelProbe,
+	onProgress DownloadProgressCallback,
+	commitGuard ...func(commit func() error) error,
+) (*VerifiedRecord, error) {
+	rec, _, err := downloadAndStageInternal(ctx, dataDir, entry, asset, inPlace, mode, mirrorHint, githubHint, onProgress, commitGuard...)
+	return rec, err
+}
+
+func verifyAssetDigestAgainstOfficialGitHub(ctx context.Context, entry ReleaseEntry, asset ReleaseAsset) error {
+	lookupTags := []string{entry.Tag}
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(entry.Tag)), "v") {
+		lookupTags = append(lookupTags, "v"+entry.Version)
+	}
+	expectedSHA := asset.EffectiveSHA256()
+	for _, tag := range lookupTags {
+		verifyCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		rel, err := FetchReleaseByTag(verifyCtx, tag)
+		cancel()
+		if err != nil {
+			if errors.Is(err, errReleaseNotFound) {
+				continue
+			}
+			// Network-level failure reaching GitHub API: log and allow mirror fallback so
+			// users without direct GitHub connectivity are not hard-blocked.
+			logWarn("download.official_digest_check_unreachable", "version", entry.Version, "tag", tag, "err", SanitizeNetworkError(err))
+			return nil
+		}
+		if rel == nil {
+			continue
+		}
+		for _, a := range rel.Assets {
+			if a.Name == asset.Name {
+				if a.DownloadURL != asset.DownloadURL || !strings.EqualFold(a.EffectiveSHA256(), expectedSHA) {
+					logError("download.official_digest_mismatch", "version", entry.Version, "asset", asset.Name)
+					return fmt.Errorf("%w: installer digest does not match official GitHub release", errStagedIntegrity)
+				}
+				return nil
+			}
+		}
+		logError("download.official_asset_missing", "version", entry.Version, "asset", asset.Name)
+		return fmt.Errorf("%w: installer asset not listed in official GitHub release", errStagedIntegrity)
+	}
+	return nil
+}
+
+func downloadAndStageInternal(
+	ctx context.Context,
+	dataDir string,
+	entry ReleaseEntry,
+	asset ReleaseAsset,
+	inPlace bool,
+	mode SourceMode,
+	mirrorHint, githubHint ChannelProbe,
+	onProgress DownloadProgressCallback,
+	commitGuard ...func(commit func() error) error,
+) (*VerifiedRecord, []NodeProbe, error) {
 	expectedSHA := asset.EffectiveSHA256()
 	version, _, _, validVersion := ParseReleaseTag(entry.Tag)
 	if !validVersion || version != entry.Version || !IsTrustedReleaseAsset(asset, entry.Tag) || asset.Size > maxUpdateBytes {
 		logError("download.untrusted_metadata", "version", entry.Version, "asset", asset.Name)
-		return nil, errors.New("release asset metadata is invalid")
+		return nil, nil, errors.New("release asset metadata is invalid")
 	}
-	cands := CandidateAssetURLs(asset.DownloadURL, mode)
+	cands := CandidateAssetURLsRouted(asset.DownloadURL, mode, mirrorHint, githubHint)
 	if len(cands) == 0 {
 		logError("download.untrusted_url", "version", entry.Version, "url", asset.DownloadURL)
-		return nil, errors.New("untrusted release download URL")
+		return nil, nil, errors.New("untrusted release download URL")
 	}
 
 	verDir := filepath.Join(updatesRoot(dataDir), entry.Version)
 	if err := os.MkdirAll(verDir, 0o700); err != nil {
 		logError("download.mkdir_failed", "dir", verDir, "err", err)
-		return nil, err
+		return nil, nil, err
 	}
 	markMacNeverIndex(updatesRoot(dataDir))
 	markMacNeverIndex(verDir)
 	finalPath := filepath.Join(verDir, asset.Name)
 	tempDir, err := os.MkdirTemp(verDir, ".download-")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer os.RemoveAll(tempDir)
 	partPath := filepath.Join(tempDir, asset.Name)
@@ -298,11 +366,12 @@ func DownloadAndStage(
 
 	var usedChannel string
 	var lastErr error
+	attempts := make([]NodeProbe, 0, len(cands))
 	for idx, cand := range cands {
 		if ctx.Err() != nil {
 			_ = os.Remove(partPath)
 			logInfo("download.cancelled", "version", entry.Version, "err", ctx.Err())
-			return nil, ctx.Err()
+			return nil, attempts, ctx.Err()
 		}
 		_ = os.Remove(partPath)
 		started := time.Now()
@@ -317,15 +386,35 @@ func DownloadAndStage(
 		if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 			_ = os.Remove(partPath)
 			logInfo("download.cancelled", "version", entry.Version)
-			return nil, ctx.Err()
+			return nil, attempts, ctx.Err()
 		}
-		logWarn("download.source_failover", "attempt", idx+1, "channel", cand.Channel, "url", cand.URL, "elapsed_ms", elapsedMs, "err", err)
+		errKind, sanErr := classifyNetworkError(err, 0)
+		attempts = append(attempts, NodeProbe{
+			Channel:   cand.Channel,
+			Host:      candidateHost(cand),
+			Kind:      "asset",
+			Status:    ProbeFailed,
+			LatencyMs: elapsedMs,
+			ErrorKind: errKind,
+			Error:     sanErr,
+			ProbedAt:  time.Now(),
+		})
+		logWarn("download.source_failover", "attempt", idx+1, "channel", cand.Channel, "url", cand.URL, "elapsed_ms", elapsedMs, "err", sanErr)
 		lastErr = err
 	}
 	if lastErr != nil {
 		_ = os.Remove(partPath)
-		logError("download.all_sources_failed", "version", entry.Version, "asset", asset.Name, "err", lastErr)
-		return nil, lastErr
+		logError("download.all_sources_failed", "version", entry.Version, "asset", asset.Name, "err", SanitizeNetworkError(lastErr))
+		return nil, attempts, lastErr
+	}
+
+	// Independently corroborate asset digest against official GitHub when downloading
+	// through a mirror or when handing a non-in-place installer (e.g. .deb) to the user.
+	if usedChannel == ChannelMirror || !inPlace {
+		if verifyErr := verifyAssetDigestAgainstOfficialGitHub(ctx, entry, asset); verifyErr != nil {
+			_ = os.Remove(partPath)
+			return nil, attempts, verifyErr
+		}
 	}
 
 	rec := &VerifiedRecord{
@@ -367,12 +456,12 @@ func DownloadAndStage(
 	}
 	if len(commitGuard) > 0 && commitGuard[0] != nil {
 		if err := commitGuard[0](doCommit); err != nil {
-			return nil, err
+			return nil, attempts, err
 		}
 	} else if err := doCommit(); err != nil {
-		return nil, err
+		return nil, attempts, err
 	}
-	return rec, nil
+	return rec, attempts, nil
 }
 
 func downloadOneSource(

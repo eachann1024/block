@@ -35,26 +35,88 @@ const (
 
 // Snapshot is an immutable, UI-ready view of the updater state.
 type Snapshot struct {
-	Status          Status
-	CurrentVersion  string
-	LatestVersion   string
-	PublishedAt     string
-	ReleaseURL      string
-	SourceMode      SourceMode
-	ActiveChannel   string // "mirror" | "github" | ""
-	FetchLatencyMs  int64
-	SpeedMBps       float64
-	ViewMode        ViewMode
-	DownloadedBytes int64
-	TotalBytes      int64
-	Percent         int
-	Preparing       bool
-	DownloadPath    string
-	LogPath         string
-	InPlace         bool
-	PackageManaged  bool
-	ErrorMessage    string
-	Notes           AggregatedNotes
+	Status             Status
+	CurrentVersion     string
+	LatestVersion      string
+	PublishedAt        string
+	ReleaseURL         string
+	SourceMode         SourceMode
+	ActiveChannel      string // "mirror" | "github" | ""
+	FetchLatencyMs     int64
+	MirrorProbe        ChannelProbe
+	GitHubProbe        ChannelProbe
+	ProbingChannels    bool
+	RetestingTarget    bool
+	LastPhase          string
+	LastErrorSanitized string
+	SpeedMBps          float64
+	ViewMode           ViewMode
+	DownloadedBytes    int64
+	TotalBytes         int64
+	Percent            int
+	Preparing          bool
+	DownloadPath       string
+	LogPath            string
+	InPlace            bool
+	PackageManaged     bool
+	ErrorMessage       string
+	Notes              AggregatedNotes
+}
+
+// ProbeFor returns the latest probe snapshot for channel ("mirror" or "github").
+func (s Snapshot) ProbeFor(channel string) ChannelProbe {
+	var cp ChannelProbe
+	switch channel {
+	case ChannelMirror:
+		cp = s.MirrorProbe
+	case ChannelGitHub:
+		cp = s.GitHubProbe
+	}
+	if cp.Channel == "" {
+		cp.Channel = channel
+	}
+	if cp.Status == "" {
+		cp.Status = ProbeIdle
+	}
+	return cp
+}
+
+// EffectiveChannel returns the currently resolved delivery channel for s.SourceMode.
+func (s Snapshot) EffectiveChannel() string {
+	switch s.SourceMode {
+	case SourceMirror:
+		return ChannelMirror
+	case SourceGitHub:
+		return ChannelGitHub
+	default:
+		mOK := s.MirrorProbe.Status == ProbeOK && s.MirrorProbe.LatencyMs > 0
+		gOK := s.GitHubProbe.Status == ProbeOK && s.GitHubProbe.LatencyMs > 0
+		switch {
+		case mOK && gOK:
+			if s.GitHubProbe.LatencyMs < s.MirrorProbe.LatencyMs {
+				return ChannelGitHub
+			}
+			return ChannelMirror
+		case mOK:
+			return ChannelMirror
+		case gOK:
+			return ChannelGitHub
+		case s.ActiveChannel == ChannelMirror || s.ActiveChannel == ChannelGitHub:
+			if s.ProbeFor(s.ActiveChannel).Status != ProbeFailed {
+				return s.ActiveChannel
+			}
+		}
+		return ""
+	}
+}
+
+// AllRoutesUnavailable reports whether both physical routes (Mirror and GitHub) have
+// been probed/checked and failed, leaving all three options (Auto, Mirror, GitHub) unavailable.
+func (s Snapshot) AllRoutesUnavailable() bool {
+	return s.MirrorProbe.Status == ProbeFailed &&
+		s.GitHubProbe.Status == ProbeFailed &&
+		!s.ProbingChannels &&
+		!s.RetestingTarget
 }
 
 // HasActionableUpdate reports whether the sidebar badge should appear.
@@ -83,36 +145,51 @@ type Config struct {
 type Service struct {
 	cfg Config
 
-	mu              sync.Mutex
-	status          Status
-	sourceMode      SourceMode
-	activeChannel   string
-	fetchLatencyMs  int64
-	speedMBps       float64
-	viewMode        ViewMode
-	lastUpdatedFrom string
-	releases        []ReleaseEntry
-	notes           AggregatedNotes
-	latestEntry     *ReleaseEntry
-	targetAsset     *ReleaseAsset
-	readyRecord     *VerifiedRecord
-	inPlace         bool
-	pkgManaged      bool
-	downloadedBytes int64
-	totalBytes      int64
-	percent         int
-	preparing       bool
-	downloadPath    string
-	errorMsg        string
-	checkGen        uint64
-	checkRunning    bool
-	downloadGen     uint64
-	downloadRunning bool
-	downloadCancel  context.CancelFunc
-	downloadDone    chan struct{}
-	installRunning  bool
-	autoStarted     bool
-	stopCh          chan struct{}
+	mu                 sync.Mutex
+	status             Status
+	sourceMode         SourceMode
+	activeChannel      string
+	fetchLatencyMs     int64
+	mirrorProbe           ChannelProbe
+	githubProbe           ChannelProbe
+	lastStableMirrorProbe ChannelProbe
+	lastStableGitHubProbe ChannelProbe
+	mirrorSeq             uint64
+	githubSeq             uint64
+	mirrorProbing         bool
+	githubProbing         bool
+	mirrorProbeCancel     context.CancelFunc
+	githubProbeCancel     context.CancelFunc
+	retestingTarget       bool
+	retestGen             uint64
+	highestKnownVersion   string
+	lastPhase             string
+	lastErrorSanitized    string
+	speedMBps          float64
+	viewMode           ViewMode
+	lastUpdatedFrom    string
+	releases           []ReleaseEntry
+	notes              AggregatedNotes
+	latestEntry        *ReleaseEntry
+	targetAsset        *ReleaseAsset
+	readyRecord        *VerifiedRecord
+	inPlace            bool
+	pkgManaged         bool
+	downloadedBytes    int64
+	totalBytes         int64
+	percent            int
+	preparing          bool
+	downloadPath       string
+	errorMsg           string
+	checkGen           uint64
+	checkRunning       bool
+	downloadGen        uint64
+	downloadRunning    bool
+	downloadCancel     context.CancelFunc
+	downloadDone       chan struct{}
+	installRunning     bool
+	autoStarted        bool
+	stopCh             chan struct{}
 }
 
 // NewService constructs a Service and immediately loads bundled/cached feeds and staged ready.json.
@@ -124,6 +201,9 @@ func NewService(cfg Config) *Service {
 		cfg:             cfg,
 		status:          StatusIdle,
 		sourceMode:      NormalizeSourceMode(string(cfg.InitialSourceMode)),
+		mirrorProbe:     DefaultChannelProbe(ChannelMirror),
+		githubProbe:     DefaultChannelProbe(ChannelGitHub),
+		lastPhase:       "idle",
 		viewMode:        ViewMerged,
 		lastUpdatedFrom: cfg.LastUpdatedFrom,
 		stopCh:          make(chan struct{}),
@@ -138,13 +218,19 @@ func NewService(cfg Config) *Service {
 		if entries, pErr := ParseFeedBytes(updates.BundledFeed); pErr == nil {
 			s.releases = entries
 			s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
+			if len(entries) > 0 {
+				s.highestKnownVersion = entries[0].Version
+			}
 		}
 	}
 	if cfg.DataDir != "" {
 		if raw, err := os.ReadFile(feedCachePath(cfg.DataDir)); err == nil {
 			if entries, pErr := ParseFeedBytes(raw); pErr == nil {
-				s.releases = entries
-				s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
+				if len(entries) > 0 && (s.highestKnownVersion == "" || CompareVersion(entries[0].Version, s.highestKnownVersion) >= 0) {
+					s.releases = entries
+					s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
+					s.highestKnownVersion = entries[0].Version
+				}
 			}
 		}
 	}
@@ -154,6 +240,8 @@ func NewService(cfg Config) *Service {
 	if lastErr := consumeLastUpdateError(); lastErr != "" {
 		s.status = StatusError
 		s.errorMsg = lastErr
+		s.lastPhase = "previous_install"
+		s.lastErrorSanitized = sanitizeDiagString(lastErr, cfg.DataDir)
 		logError("update.previous_install_failed", "reason", lastErr)
 	}
 	return s
@@ -162,6 +250,49 @@ func NewService(cfg Config) *Service {
 func (s *Service) notify() {
 	if s.cfg.OnChange != nil {
 		s.cfg.OnChange()
+	}
+}
+
+func (s *Service) syncActiveChannelFromProbesLocked() {
+	switch s.sourceMode {
+	case SourceMirror:
+		s.activeChannel = ChannelMirror
+		switch s.mirrorProbe.Status {
+		case ProbeOK:
+			s.fetchLatencyMs = s.mirrorProbe.LatencyMs
+		case ProbeFailed:
+			s.fetchLatencyMs = 0
+		}
+	case SourceGitHub:
+		s.activeChannel = ChannelGitHub
+		switch s.githubProbe.Status {
+		case ProbeOK:
+			s.fetchLatencyMs = s.githubProbe.LatencyMs
+		case ProbeFailed:
+			s.fetchLatencyMs = 0
+		}
+	default: // SourceAuto
+		mOK := s.mirrorProbe.Status == ProbeOK && s.mirrorProbe.LatencyMs > 0
+		gOK := s.githubProbe.Status == ProbeOK && s.githubProbe.LatencyMs > 0
+		switch {
+		case mOK && gOK:
+			if s.githubProbe.LatencyMs < s.mirrorProbe.LatencyMs {
+				s.activeChannel = ChannelGitHub
+				s.fetchLatencyMs = s.githubProbe.LatencyMs
+			} else {
+				s.activeChannel = ChannelMirror
+				s.fetchLatencyMs = s.mirrorProbe.LatencyMs
+			}
+		case mOK:
+			s.activeChannel = ChannelMirror
+			s.fetchLatencyMs = s.mirrorProbe.LatencyMs
+		case gOK:
+			s.activeChannel = ChannelGitHub
+			s.fetchLatencyMs = s.githubProbe.LatencyMs
+		case s.mirrorProbe.Status == ProbeFailed && s.githubProbe.Status == ProbeFailed:
+			s.activeChannel = ""
+			s.fetchLatencyMs = 0
+		}
 	}
 }
 
@@ -196,26 +327,32 @@ func (s *Service) Snapshot() Snapshot {
 	}
 
 	return Snapshot{
-		Status:          s.status,
-		CurrentVersion:  cur,
-		LatestVersion:   latest,
-		PublishedAt:     pubAt,
-		ReleaseURL:      relURL,
-		SourceMode:      s.sourceMode,
-		ActiveChannel:   s.activeChannel,
-		FetchLatencyMs:  s.fetchLatencyMs,
-		SpeedMBps:       s.speedMBps,
-		ViewMode:        s.viewMode,
-		DownloadedBytes: s.downloadedBytes,
-		TotalBytes:      s.totalBytes,
-		Percent:         s.percent,
-		Preparing:       s.preparing,
-		DownloadPath:    s.downloadPath,
-		LogPath:         LogFilePath(s.cfg.DataDir),
-		InPlace:         s.inPlace,
-		PackageManaged:  s.pkgManaged,
-		ErrorMessage:    s.errorMsg,
-		Notes:           s.notes,
+		Status:             s.status,
+		CurrentVersion:     cur,
+		LatestVersion:      latest,
+		PublishedAt:        pubAt,
+		ReleaseURL:         relURL,
+		SourceMode:         s.sourceMode,
+		ActiveChannel:      s.activeChannel,
+		FetchLatencyMs:     s.fetchLatencyMs,
+		MirrorProbe:        s.mirrorProbe.Clone(),
+		GitHubProbe:        s.githubProbe.Clone(),
+		ProbingChannels:    s.mirrorProbing || s.githubProbing,
+		RetestingTarget:    s.retestingTarget,
+		LastPhase:          s.lastPhase,
+		LastErrorSanitized: s.lastErrorSanitized,
+		SpeedMBps:          s.speedMBps,
+		ViewMode:           s.viewMode,
+		DownloadedBytes:    s.downloadedBytes,
+		TotalBytes:         s.totalBytes,
+		Percent:            s.percent,
+		Preparing:          s.preparing,
+		DownloadPath:       s.downloadPath,
+		LogPath:            LogFilePath(s.cfg.DataDir),
+		InPlace:            s.inPlace,
+		PackageManaged:     s.pkgManaged,
+		ErrorMessage:       s.errorMsg,
+		Notes:              s.notes,
 	}
 }
 
@@ -242,6 +379,7 @@ func (s *Service) SetSourceMode(mode SourceMode) {
 	s.mu.Lock()
 	changed := s.sourceMode != norm
 	s.sourceMode = norm
+	s.syncActiveChannelFromProbesLocked()
 	s.mu.Unlock()
 	if changed {
 		logInfo("config.source_mode_changed", "mode", norm)
@@ -250,6 +388,251 @@ func (s *Service) SetSourceMode(mode SourceMode) {
 		}
 		s.notify()
 	}
+}
+
+func setChannelProbing(cp *ChannelProbe) {
+	cp.Status = ProbeProbing
+	cp.LatencyMs = 0
+	cp.HTTPStatus = 0
+	cp.ErrorKind = ""
+	cp.Error = ""
+	cp.BestHost = ""
+	for i := range cp.Nodes {
+		cp.Nodes[i].Status = ProbeProbing
+		cp.Nodes[i].LatencyMs = 0
+		cp.Nodes[i].HTTPStatus = 0
+		cp.Nodes[i].ErrorKind = ""
+		cp.Nodes[i].Error = ""
+	}
+}
+
+func (s *Service) stableProbeHintLocked(channel string) ChannelProbe {
+	if channel == ChannelMirror {
+		if s.mirrorProbe.Status == ProbeOK || s.mirrorProbe.Status == ProbeFailed {
+			return s.mirrorProbe.Clone()
+		}
+		if s.lastStableMirrorProbe.Status == ProbeOK || s.lastStableMirrorProbe.Status == ProbeFailed {
+			return s.lastStableMirrorProbe.Clone()
+		}
+		return s.mirrorProbe.Clone()
+	}
+	if s.githubProbe.Status == ProbeOK || s.githubProbe.Status == ProbeFailed {
+		return s.githubProbe.Clone()
+	}
+	if s.lastStableGitHubProbe.Status == ProbeOK || s.lastStableGitHubProbe.Status == ProbeFailed {
+		return s.lastStableGitHubProbe.Clone()
+	}
+	return s.githubProbe.Clone()
+}
+
+func (s *Service) setChannelProbeLocked(channel string, cp ChannelProbe) {
+	if channel == ChannelMirror {
+		s.mirrorProbe = cp.Clone()
+		if cp.Status == ProbeOK || cp.Status == ProbeFailed {
+			s.lastStableMirrorProbe = cp.Clone()
+		}
+	} else if channel == ChannelGitHub {
+		s.githubProbe = cp.Clone()
+		if cp.Status == ProbeOK || cp.Status == ProbeFailed {
+			s.lastStableGitHubProbe = cp.Clone()
+		}
+	}
+}
+
+// ProbeAllAsync concurrently probes both Mirror and GitHub channels and streams live updates.
+func (s *Service) ProbeAllAsync() {
+	s.startProbeChannelsAsync([]string{ChannelMirror, ChannelGitHub}, 0)
+}
+
+// SelectSourceAndRetest switches to mode, immediately updates the active channel readout,
+// retests the target route(s), and refreshes update availability when idle, up-to-date, or errored.
+func (s *Service) SelectSourceAndRetest(mode SourceMode) {
+	norm := NormalizeSourceMode(string(mode))
+	s.mu.Lock()
+	changed := s.sourceMode != norm
+	s.sourceMode = norm
+	s.syncActiveChannelFromProbesLocked()
+	s.retestingTarget = true
+	s.retestGen++
+	rGen := s.retestGen
+	needsCheck := s.status == StatusError || s.status == StatusIdle || s.status == StatusUpToDate || s.latestEntry == nil
+	s.mu.Unlock()
+
+	if changed {
+		logInfo("config.source_mode_changed", "mode", norm)
+		if s.cfg.OnSourceModeChanged != nil {
+			s.cfg.OnSourceModeChanged(norm)
+		}
+	}
+	s.notify()
+
+	if needsCheck {
+		s.checkAsyncInternal(true, nil, rGen)
+		return
+	}
+	channels := []string{ChannelMirror, ChannelGitHub}
+	switch norm {
+	case SourceMirror:
+		channels = []string{ChannelMirror}
+	case SourceGitHub:
+		channels = []string{ChannelGitHub}
+	}
+	s.startProbeChannelsAsync(channels, rGen)
+}
+
+func (s *Service) startProbeChannelsAsync(channels []string, retestGen uint64) {
+	if os.Getenv("BLOCK_MOCK_UPDATE") == "1" {
+		s.mu.Lock()
+		s.installMockProbesLocked()
+		s.mirrorProbing = false
+		s.githubProbing = false
+		if retestGen == 0 || retestGen == s.retestGen {
+			s.retestingTarget = false
+		}
+		s.syncActiveChannelFromProbesLocked()
+		s.mu.Unlock()
+		s.notify()
+		return
+	}
+
+	type channelRun struct {
+		channel string
+		seq     uint64
+		ctx     context.Context
+		cancel  context.CancelFunc
+		hint    ChannelProbe
+	}
+
+	var prevCancels []context.CancelFunc
+	runs := make([]channelRun, 0, len(channels))
+
+	s.mu.Lock()
+	// If a full reprobe (retestGen == 0) starts while a target retest is in flight,
+	// adopt ownership of retestingTarget so canceling the older probe never leaves it stuck.
+	effectiveRetestGen := retestGen
+	if effectiveRetestGen == 0 && s.retestingTarget {
+		s.retestGen++
+		effectiveRetestGen = s.retestGen
+	}
+	for _, ch := range channels {
+		if ch != ChannelMirror && ch != ChannelGitHub {
+			continue
+		}
+		hint := s.stableProbeHintLocked(ch)
+		ctx, cancel := context.WithTimeout(context.Background(), probeTimeout+2*time.Second)
+		if ch == ChannelMirror {
+			if s.mirrorProbeCancel != nil {
+				prevCancels = append(prevCancels, s.mirrorProbeCancel)
+			}
+			s.mirrorSeq++
+			s.mirrorProbeCancel = cancel
+			s.mirrorProbing = true
+			if len(s.mirrorProbe.Nodes) == 0 {
+				s.mirrorProbe = DefaultChannelProbe(ChannelMirror)
+			}
+			setChannelProbing(&s.mirrorProbe)
+			runs = append(runs, channelRun{channel: ch, seq: s.mirrorSeq, ctx: ctx, cancel: cancel, hint: hint})
+		} else {
+			if s.githubProbeCancel != nil {
+				prevCancels = append(prevCancels, s.githubProbeCancel)
+			}
+			s.githubSeq++
+			s.githubProbeCancel = cancel
+			s.githubProbing = true
+			if len(s.githubProbe.Nodes) == 0 {
+				s.githubProbe = DefaultChannelProbe(ChannelGitHub)
+			}
+			setChannelProbing(&s.githubProbe)
+			runs = append(runs, channelRun{channel: ch, seq: s.githubSeq, ctx: ctx, cancel: cancel, hint: hint})
+		}
+	}
+	s.mu.Unlock()
+
+	for _, pc := range prevCancels {
+		pc()
+	}
+	s.notify()
+
+	go func() {
+		var wg sync.WaitGroup
+		for _, r := range runs {
+			wg.Add(1)
+			go func(run channelRun) {
+				defer wg.Done()
+				defer run.cancel()
+				finalCP, _, _ := ProbeChannel(run.ctx, run.channel, run.hint, true, func(upd ChannelProbe) {
+					s.mu.Lock()
+					if (run.channel == ChannelMirror && run.seq != s.mirrorSeq) ||
+						(run.channel == ChannelGitHub && run.seq != s.githubSeq) {
+						s.mu.Unlock()
+						return
+					}
+					s.setChannelProbeLocked(run.channel, upd)
+					s.syncActiveChannelFromProbesLocked()
+					s.mu.Unlock()
+					s.notify()
+				})
+
+				s.mu.Lock()
+				if run.channel == ChannelMirror {
+					if run.seq == s.mirrorSeq {
+						s.mirrorProbing = false
+						s.mirrorProbeCancel = nil
+						if finalCP.Status == ProbeProbing {
+							if s.lastStableMirrorProbe.Status != "" && s.lastStableMirrorProbe.Status != ProbeProbing {
+								s.mirrorProbe = s.lastStableMirrorProbe.Clone()
+							} else {
+								s.mirrorProbe = DefaultChannelProbe(ChannelMirror)
+							}
+						} else {
+							s.setChannelProbeLocked(ChannelMirror, finalCP)
+						}
+					}
+				} else if run.channel == ChannelGitHub {
+					if run.seq == s.githubSeq {
+						s.githubProbing = false
+						s.githubProbeCancel = nil
+						if finalCP.Status == ProbeProbing {
+							if s.lastStableGitHubProbe.Status != "" && s.lastStableGitHubProbe.Status != ProbeProbing {
+								s.githubProbe = s.lastStableGitHubProbe.Clone()
+							} else {
+								s.githubProbe = DefaultChannelProbe(ChannelGitHub)
+							}
+						} else {
+							s.setChannelProbeLocked(ChannelGitHub, finalCP)
+						}
+					}
+				}
+				s.syncActiveChannelFromProbesLocked()
+				s.mu.Unlock()
+				s.notify()
+			}(r)
+		}
+		wg.Wait()
+
+		shouldRecoverCheck := false
+		s.mu.Lock()
+		if effectiveRetestGen > 0 && effectiveRetestGen == s.retestGen {
+			s.retestingTarget = false
+		}
+		s.syncActiveChannelFromProbesLocked()
+		if s.status == StatusError && s.latestEntry == nil && !s.checkRunning {
+			switch s.sourceMode {
+			case SourceMirror:
+				shouldRecoverCheck = s.mirrorProbe.Status == ProbeOK
+			case SourceGitHub:
+				shouldRecoverCheck = s.githubProbe.Status == ProbeOK
+			default:
+				shouldRecoverCheck = s.mirrorProbe.Status == ProbeOK || s.githubProbe.Status == ProbeOK
+			}
+		}
+		s.mu.Unlock()
+		s.notify()
+
+		if shouldRecoverCheck {
+			s.CheckAsync(true)
+		}
+	}()
 }
 
 // CancelDownload cancels an in-progress download and returns to StatusAvailable.
@@ -361,8 +744,19 @@ func (s *Service) CheckAsync(manual bool) {
 
 // CheckAsyncWithAfter checks for updates and invokes onDone when finished.
 func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
+	s.checkAsyncInternal(manual, onDone, 0)
+}
+
+func (s *Service) checkAsyncInternal(manual bool, onDone func(), retestGen uint64) {
 	if os.Getenv("BLOCK_MOCK_UPDATE") == "1" {
 		s.installMockUpdate()
+		if retestGen > 0 {
+			s.mu.Lock()
+			if retestGen == s.retestGen {
+				s.retestingTarget = false
+			}
+			s.mu.Unlock()
+		}
 		s.notify()
 		if onDone != nil {
 			onDone()
@@ -372,6 +766,9 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 
 	s.mu.Lock()
 	if s.downloadRunning || s.installRunning {
+		if retestGen > 0 && retestGen == s.retestGen {
+			s.retestingTarget = false
+		}
 		s.mu.Unlock()
 		return
 	}
@@ -381,8 +778,13 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 	}
 	s.checkGen++
 	gen := s.checkGen
+	mSeq := s.mirrorSeq
+	gSeq := s.githubSeq
 	s.checkRunning = true
+	s.lastPhase = "check"
 	mode := s.sourceMode
+	mirrorHint := s.stableProbeHintLocked(ChannelMirror)
+	githubHint := s.stableProbeHintLocked(ChannelGitHub)
 	wasReady := s.status == StatusReady && s.readyRecord != nil
 	if !wasReady {
 		s.status = StatusChecking
@@ -401,20 +803,68 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 		ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
 		defer cancel()
 
-		entries, channel, latencyMs, rawFeed, err := FetchReleases(ctx, mode)
+		res, err := FetchReleasesRouted(ctx, mode, mirrorHint, githubHint, func(ch string, cp ChannelProbe) {
+			s.mu.Lock()
+			if ch == ChannelMirror {
+				if s.mirrorSeq != mSeq || s.mirrorProbing {
+					s.mu.Unlock()
+					return
+				}
+				s.setChannelProbeLocked(ChannelMirror, cp)
+			} else if ch == ChannelGitHub {
+				if s.githubSeq != gSeq || s.githubProbing {
+					s.mu.Unlock()
+					return
+				}
+				s.setChannelProbeLocked(ChannelGitHub, cp)
+			}
+			s.syncActiveChannelFromProbesLocked()
+			s.mu.Unlock()
+			s.notify()
+		})
 
+		var probeOtherChannel string
 		s.mu.Lock()
 		if gen != s.checkGen {
+			if retestGen > 0 && retestGen == s.retestGen {
+				s.retestingTarget = false
+			}
 			s.mu.Unlock()
 			return
 		}
 		s.checkRunning = false
+		if retestGen > 0 && retestGen == s.retestGen {
+			s.retestingTarget = false
+		}
+		if res.MirrorProbe != nil && s.mirrorSeq == mSeq && !s.mirrorProbing {
+			s.setChannelProbeLocked(ChannelMirror, *res.MirrorProbe)
+		}
+		if res.GitHubProbe != nil && s.githubSeq == gSeq && !s.githubProbing {
+			s.setChannelProbeLocked(ChannelGitHub, *res.GitHubProbe)
+		}
 		if s.downloadRunning || s.installRunning {
 			s.mu.Unlock()
 			return
 		}
 
 		if err != nil {
+			s.lastErrorSanitized = SanitizeNetworkError(err)
+			if s.lastErrorSanitized == "" {
+				s.lastErrorSanitized = sanitizeDiagString(err.Error(), s.cfg.DataDir)
+			}
+			s.syncActiveChannelFromProbesLocked()
+			// When a pinned source fails while the sibling channel has never been probed,
+			// probe the sibling in the background so a total outage accurately enables feedback.
+			switch mode {
+			case SourceMirror:
+				if s.githubProbe.Status == ProbeIdle && !s.githubProbing {
+					probeOtherChannel = ChannelGitHub
+				}
+			case SourceGitHub:
+				if s.mirrorProbe.Status == ProbeIdle && !s.mirrorProbing {
+					probeOtherChannel = ChannelMirror
+				}
+			}
 			if !wasReady {
 				if len(s.releases) > 0 && !manual {
 					s.status = StatusIdle
@@ -425,22 +875,60 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 			}
 			s.mu.Unlock()
 			s.notify()
+			if probeOtherChannel != "" {
+				s.startProbeChannelsAsync([]string{probeOtherChannel}, 0)
+			}
 			return
 		}
 
-		if s.cfg.DataDir != "" && len(rawFeed) > 0 {
+		// Anti-rollback guard: do not let a stale mirror feed downgrade a higher already-known release.
+		fetchedLatest := ""
+		if len(res.Entries) > 0 {
+			fetchedLatest = res.Entries[0].Version
+		}
+		knownFloor := s.highestKnownVersion
+		if s.readyRecord != nil && (knownFloor == "" || CompareVersion(s.readyRecord.Version, knownFloor) > 0) {
+			knownFloor = s.readyRecord.Version
+		}
+		isMirrorRollback := res.Channel == ChannelMirror && knownFloor != "" && fetchedLatest != "" &&
+			CompareVersion(fetchedLatest, knownFloor) < 0
+		if isMirrorRollback {
+			logWarn("check.mirror_rollback_ignored", "channel", res.Channel, "latest", fetchedLatest, "known", knownFloor)
+			s.activeChannel = res.Channel
+			s.fetchLatencyMs = res.LatencyMs
+			s.errorMsg = ""
+			s.lastErrorSanitized = ""
+			if s.status == StatusChecking || s.status == StatusError {
+				if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, CurrentVersion()) > 0 {
+					s.status = StatusReady
+				} else if s.latestEntry != nil && CompareVersion(s.latestEntry.Version, CurrentVersion()) > 0 {
+					s.status = StatusAvailable
+				} else {
+					s.status = StatusUpToDate
+				}
+			}
+			s.mu.Unlock()
+			s.notify()
+			return
+		}
+
+		if fetchedLatest != "" && (s.highestKnownVersion == "" || CompareVersion(fetchedLatest, s.highestKnownVersion) > 0) {
+			s.highestKnownVersion = fetchedLatest
+		}
+		if s.cfg.DataDir != "" && len(res.RawFeed) > 0 {
 			_ = os.MkdirAll(updatesRoot(s.cfg.DataDir), 0o700)
-			_ = os.WriteFile(feedCachePath(s.cfg.DataDir), rawFeed, 0o600)
+			_ = os.WriteFile(feedCachePath(s.cfg.DataDir), res.RawFeed, 0o600)
 		}
 
 		cur := CurrentVersion()
-		s.releases = entries
-		s.activeChannel = channel
-		s.fetchLatencyMs = latencyMs
-		s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
+		s.releases = res.Entries
+		s.activeChannel = res.Channel
+		s.fetchLatencyMs = res.LatencyMs
+		s.notes = AggregateReleases(res.Entries, cur, s.lastUpdatedFrom)
 		s.errorMsg = ""
+		s.lastErrorSanitized = ""
 
-		logInfo("check.summary", "manual", manual, "current", cur, "latest", s.notes.ToVersion, "has_newer", s.notes.HasNewer, "aggregated_versions", s.notes.VersionCount, "channel", channel, "latency_ms", latencyMs)
+		logInfo("check.summary", "manual", manual, "current", cur, "latest", s.notes.ToVersion, "has_newer", s.notes.HasNewer, "aggregated_versions", s.notes.VersionCount, "channel", res.Channel, "latency_ms", res.LatencyMs)
 
 		if !s.notes.HasNewer || len(s.notes.Versions) == 0 {
 			if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, cur) > 0 {
@@ -522,6 +1010,8 @@ func (s *Service) StartDownload() {
 	if s.targetAsset == nil {
 		ver := s.latestEntry.Version
 		s.status = StatusError
+		s.lastPhase = "download"
+		s.lastErrorSanitized = "missing compatible platform installer"
 		if s.cfg.IsEn != nil && s.cfg.IsEn() {
 			s.errorMsg = "No compatible installer found for this platform; open Releases to update manually"
 		} else {
@@ -537,6 +1027,8 @@ func (s *Service) StartDownload() {
 	inPlace := s.inPlace
 	mode := s.sourceMode
 	dataDir := s.cfg.DataDir
+	mirrorHint := s.stableProbeHintLocked(ChannelMirror)
+	githubHint := s.stableProbeHintLocked(ChannelGitHub)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	s.downloadGen++
@@ -546,6 +1038,7 @@ func (s *Service) StartDownload() {
 	s.downloadRunning = true
 	s.downloadCancel = cancel
 	s.status = StatusDownloading
+	s.lastPhase = "download"
 	s.downloadedBytes = 0
 	s.totalBytes = asset.Size
 	s.speedMBps = 0
@@ -559,7 +1052,7 @@ func (s *Service) StartDownload() {
 		defer cancel()
 		defer close(done)
 
-		rec, err := DownloadAndStage(ctx, dataDir, entry, asset, inPlace, mode, func(dl, tot int64, speed float64, ch string, prep bool) {
+		rec, failedAttempts, err := downloadAndStageInternal(ctx, dataDir, entry, asset, inPlace, mode, mirrorHint, githubHint, func(dl, tot int64, speed float64, ch string, prep bool) {
 			s.mu.Lock()
 			if !s.downloadRunning || dlGen != s.downloadGen {
 				s.mu.Unlock()
@@ -573,6 +1066,7 @@ func (s *Service) StartDownload() {
 			if prep {
 				s.percent = 100
 				s.preparing = true
+				s.lastPhase = "prepare"
 			} else if s.totalBytes > 0 {
 				pct := int(dl * 100 / s.totalBytes)
 				if pct > 99 {
@@ -601,6 +1095,7 @@ func (s *Service) StartDownload() {
 			_ = PrepareInstall(dataDir, rec, false)
 		}
 
+		var probeOtherChannel string
 		s.mu.Lock()
 		if dlGen != s.downloadGen {
 			s.mu.Unlock()
@@ -620,14 +1115,31 @@ func (s *Service) StartDownload() {
 			} else {
 				s.status = StatusError
 				s.errorMsg = err.Error()
+				s.lastErrorSanitized = SanitizeNetworkError(err)
+				s.recordDownloadFailuresLocked(failedAttempts)
+				s.syncActiveChannelFromProbesLocked()
+				switch mode {
+				case SourceMirror:
+					if s.githubProbe.Status == ProbeIdle && !s.githubProbing {
+						probeOtherChannel = ChannelGitHub
+					}
+				case SourceGitHub:
+					if s.mirrorProbe.Status == ProbeIdle && !s.mirrorProbing {
+						probeOtherChannel = ChannelMirror
+					}
+				}
 			}
 			s.mu.Unlock()
 			s.notify()
+			if probeOtherChannel != "" {
+				s.startProbeChannelsAsync([]string{probeOtherChannel}, 0)
+			}
 			return
 		}
 		s.downloadPath = rec.ArchivePath
 		s.activeChannel = rec.Channel
 		s.percent = 100
+		s.lastErrorSanitized = ""
 		if rec.Size > 0 {
 			s.downloadedBytes = rec.Size
 			s.totalBytes = rec.Size
@@ -654,6 +1166,7 @@ func (s *Service) InstallNow() {
 	dataDir := s.cfg.DataDir
 	s.installRunning = true
 	s.status = StatusInstalling
+	s.lastPhase = "install"
 	s.errorMsg = ""
 	s.mu.Unlock()
 	s.notify()
@@ -686,10 +1199,61 @@ func (s *Service) InstallNow() {
 				s.status = StatusError
 			}
 			s.errorMsg = err.Error()
+			s.lastErrorSanitized = sanitizeDiagString(err.Error(), dataDir)
 			s.mu.Unlock()
 			s.notify()
 		}
 	}()
+}
+
+func (s *Service) recordDownloadFailuresLocked(attempts []NodeProbe) {
+	if len(attempts) == 0 {
+		return
+	}
+	var mirrorFails, githubFails []NodeProbe
+	for _, a := range attempts {
+		if a.Channel == ChannelMirror {
+			mirrorFails = append(mirrorFails, a)
+		} else if a.Channel == ChannelGitHub {
+			githubFails = append(githubFails, a)
+		}
+	}
+	if len(mirrorFails) > 0 && !s.mirrorProbing {
+		s.mirrorSeq++
+		s.setChannelProbeLocked(ChannelMirror, summarizeChannelProbe(ChannelMirror, mirrorFails))
+	}
+	if len(githubFails) > 0 && !s.githubProbing {
+		s.githubSeq++
+		s.setChannelProbeLocked(ChannelGitHub, summarizeChannelProbe(ChannelGitHub, githubFails))
+	}
+}
+
+func (s *Service) installMockProbesLocked() {
+	now := time.Now()
+	s.mirrorProbe = ChannelProbe{
+		Channel:    ChannelMirror,
+		Status:     ProbeOK,
+		LatencyMs:  38,
+		HTTPStatus: 200,
+		BestHost:   "gh-proxy.com",
+		ProbedAt:   now,
+		Nodes: []NodeProbe{
+			{Channel: ChannelMirror, Host: "gh-proxy.com", Kind: "feed", Status: ProbeOK, LatencyMs: 38, HTTPStatus: 200, ProbedAt: now},
+			{Channel: ChannelMirror, Host: "ghproxy.net", Kind: "feed", Status: ProbeOK, LatencyMs: 64, HTTPStatus: 200, ProbedAt: now},
+		},
+	}
+	s.githubProbe = ChannelProbe{
+		Channel:    ChannelGitHub,
+		Status:     ProbeOK,
+		LatencyMs:  412,
+		HTTPStatus: 200,
+		BestHost:   "raw.githubusercontent.com",
+		ProbedAt:   now,
+		Nodes: []NodeProbe{
+			{Channel: ChannelGitHub, Host: "raw.githubusercontent.com", Kind: "feed", Status: ProbeOK, LatencyMs: 412, HTTPStatus: 200, ProbedAt: now},
+			{Channel: ChannelGitHub, Host: "api.github.com", Kind: "github-api", Status: ProbeOK, LatencyMs: 468, HTTPStatus: 200, ProbedAt: now},
+		},
+	}
 }
 
 func (s *Service) installMockUpdate() {
@@ -744,8 +1308,8 @@ func (s *Service) installMockUpdate() {
 	s.latestEntry = &r1
 	s.targetAsset = &asset
 	s.inPlace = true
-	s.activeChannel = "mirror"
-	s.fetchLatencyMs = 38
+	s.installMockProbesLocked()
+	s.syncActiveChannelFromProbesLocked()
 	s.totalBytes = asset.Size
 	s.status = StatusAvailable
 	s.mu.Unlock()

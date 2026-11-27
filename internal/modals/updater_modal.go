@@ -98,14 +98,90 @@ func updaterVersionLabel(snap updater.Snapshot) string {
 	return fmt.Sprintf("v%s", snap.CurrentVersion)
 }
 
-func updaterSourceLabel(mode updater.SourceMode, showEn bool) string {
-	switch mode {
+func updaterSourceDisplayName(snap updater.Snapshot, showEn bool) string {
+	switch snap.SourceMode {
 	case updater.SourceMirror:
 		return updaterTr(showEn, "国内镜像", "CN Mirror")
 	case updater.SourceGitHub:
 		return "GitHub"
 	default:
-		return updaterTr(showEn, "自动", "Auto")
+		switch snap.EffectiveChannel() {
+		case updater.ChannelMirror:
+			return updaterTr(showEn, "自动 · 镜像", "Auto · Mirror")
+		case updater.ChannelGitHub:
+			return updaterTr(showEn, "自动 · GitHub", "Auto · GitHub")
+		default:
+			return updaterTr(showEn, "智能自动", "Smart Auto")
+		}
+	}
+}
+
+func updaterChannelHealth(snap updater.Snapshot, ch string) (ms int64, st updater.ProbeStatus, errKind string) {
+	cp := snap.ProbeFor(ch)
+	if cp.Status == updater.ProbeIdle && snap.ActiveChannel == ch && snap.FetchLatencyMs > 0 {
+		return snap.FetchLatencyMs, updater.ProbeOK, ""
+	}
+	return cp.LatencyMs, cp.Status, cp.ErrorKind
+}
+
+func updaterEffectiveHealth(snap updater.Snapshot) (ms int64, st updater.ProbeStatus, errKind string) {
+	if snap.RetestingTarget {
+		return 0, updater.ProbeProbing, ""
+	}
+	switch snap.SourceMode {
+	case updater.SourceMirror:
+		return updaterChannelHealth(snap, updater.ChannelMirror)
+	case updater.SourceGitHub:
+		return updaterChannelHealth(snap, updater.ChannelGitHub)
+	default:
+		if eff := snap.EffectiveChannel(); eff != "" {
+			effMs, effSt, effKind := updaterChannelHealth(snap, eff)
+			if effSt == updater.ProbeOK && effMs > 0 {
+				return effMs, effSt, effKind
+			}
+		}
+		if snap.AllRoutesUnavailable() {
+			kind := ""
+			if snap.MirrorProbe.ErrorKind == "timeout" && snap.GitHubProbe.ErrorKind == "timeout" {
+				kind = "timeout"
+			}
+			return 0, updater.ProbeFailed, kind
+		}
+		if snap.ProbingChannels || snap.Status == updater.StatusChecking {
+			return 0, updater.ProbeProbing, ""
+		}
+		if snap.FetchLatencyMs > 0 {
+			return snap.FetchLatencyMs, updater.ProbeOK, ""
+		}
+		if snap.Status == updater.StatusError {
+			return 0, updater.ProbeFailed, ""
+		}
+		return 0, updater.ProbeIdle, ""
+	}
+}
+
+func updaterSignalStyle(
+	ms int64,
+	st updater.ProbeStatus,
+	pal theme.Palette,
+	uPal theme.UpdaterPalette,
+) (bars int, dot, fg, bg ui.Color) {
+	switch st {
+	case updater.ProbeProbing:
+		return 0, pal.Accent, uPal.BadgeAccentFG, uPal.BadgeAccentBG
+	case updater.ProbeFailed:
+		return 0, pal.Danger, uPal.BadgeDangerFG, uPal.BadgeDangerBG
+	case updater.ProbeOK:
+		switch {
+		case ms <= 300:
+			return 3, pal.Success, uPal.BadgeGoodFG, uPal.BadgeGoodBG
+		case ms <= 1000:
+			return 2, pal.Warning, uPal.BadgeWarnFG, uPal.BadgeWarnBG
+		default:
+			return 1, pal.Danger, uPal.BadgeDangerFG, uPal.BadgeDangerBG
+		}
+	default:
+		return 0, pal.Placeholder, pal.TextSecondary, ui.Transparent
 	}
 }
 
@@ -214,13 +290,19 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 			internalui.Probe(notesScroll, "updater-notes-scroll")
 			notesScroll.Children(func() {
 				if snap.Status == updater.StatusError {
-					errMsg := strings.TrimSpace(snap.ErrorMessage)
-					if errMsg == "" {
-						errMsg = updaterTr(showEn, "更新请求失败，请检查网络或切换更新源", "Update failed; check network or switch update source")
+					if snap.AllRoutesUnavailable() {
+						errMsg := updaterTr(showEn, "更新源均不可用", "All update sources offline")
+						ui.Text(c, errMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+							TextColor(uPal.BadgeDangerFG).FillWidth()
+					} else {
+						errMsg := strings.TrimSpace(snap.ErrorMessage)
+						if errMsg == "" {
+							errMsg = updaterTr(showEn, "更新请求失败，请检查网络或切换更新源", "Update failed; check network or switch update source")
+						}
+						errEl := ui.Text(c, errMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+							TextColor(pal.Danger).FillWidth().SingleLine().Ellipsis("…")
+						internalui.WrappedTooltip(c, errEl, errMsg)
 					}
-					errEl := ui.Text(c, errMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-						TextColor(pal.Danger).FillWidth().SingleLine().Ellipsis("…")
-					internalui.WrappedTooltip(c, errEl, errMsg)
 				}
 
 				if snap.ViewMode == updater.ViewByVersion && len(snap.Notes.Versions) > 0 {
@@ -462,17 +544,30 @@ func (m *Manager) renderUpdaterFooter(
 
 	case updater.StatusReady:
 		ui.Row(c.Key("updater-footer-ready")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
-			m.renderUpdaterSourcePicker(c, snap, showEn, pal)
+			m.renderUpdaterSourcePicker(c, snap, showEn, pal, uPal)
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
-				laterBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-					ID:       "updater-cancel",
-					Label:    updaterTr(showEn, "稍后", "Later"),
-					Style:    internalui.ButtonGhost,
-					Height:   theme.HeightLarge,
-					PaddingX: theme.Space10,
-				})
-				if laterBtn.Clicked() {
-					m.CloseUpdater()
+				if snap.AllRoutesUnavailable() {
+					fbBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "updater-feedback",
+						Label:    updaterTr(showEn, "反馈", "Feedback"),
+						Style:    internalui.ButtonSecondary,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space10,
+					})
+					if fbBtn.Clicked() {
+						m.openUpdaterDiagnosticsFeedback(snap, showEn)
+					}
+				} else {
+					laterBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "updater-cancel",
+						Label:    updaterTr(showEn, "稍后", "Later"),
+						Style:    internalui.ButtonGhost,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space10,
+					})
+					if laterBtn.Clicked() {
+						m.CloseUpdater()
+					}
 				}
 				submitBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
 					ID:       "updater-submit",
@@ -489,17 +584,30 @@ func (m *Manager) renderUpdaterFooter(
 
 	case updater.StatusAvailable:
 		ui.Row(c.Key("updater-footer-available")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
-			m.renderUpdaterSourcePicker(c, snap, showEn, pal)
+			m.renderUpdaterSourcePicker(c, snap, showEn, pal, uPal)
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
-				laterBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-					ID:       "updater-cancel",
-					Label:    updaterTr(showEn, "稍后", "Later"),
-					Style:    internalui.ButtonGhost,
-					Height:   theme.HeightLarge,
-					PaddingX: theme.Space10,
-				})
-				if laterBtn.Clicked() {
-					m.CloseUpdater()
+				if snap.AllRoutesUnavailable() {
+					fbBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "updater-feedback",
+						Label:    updaterTr(showEn, "反馈", "Feedback"),
+						Style:    internalui.ButtonSecondary,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space10,
+					})
+					if fbBtn.Clicked() {
+						m.openUpdaterDiagnosticsFeedback(snap, showEn)
+					}
+				} else {
+					laterBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "updater-cancel",
+						Label:    updaterTr(showEn, "稍后", "Later"),
+						Style:    internalui.ButtonGhost,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space10,
+					})
+					if laterBtn.Clicked() {
+						m.CloseUpdater()
+					}
 				}
 				renderUpdaterAvailablePrimaryButton(c, m, snap, showEn)
 			})
@@ -507,8 +615,31 @@ func (m *Manager) renderUpdaterFooter(
 
 	case updater.StatusError:
 		ui.Row(c.Key("updater-footer-error")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
-			m.renderUpdaterSourcePicker(c, snap, showEn, pal)
+			m.renderUpdaterSourcePicker(c, snap, showEn, pal, uPal)
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
+				if snap.AllRoutesUnavailable() {
+					fbBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "updater-feedback",
+						Label:    updaterTr(showEn, "反馈问题", "Feedback"),
+						Style:    internalui.ButtonSecondary,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space12,
+					})
+					if fbBtn.Clicked() {
+						m.openUpdaterDiagnosticsFeedback(snap, showEn)
+					}
+					retryBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "updater-submit",
+						Label:    updaterTr(showEn, "重试", "Retry"),
+						Style:    internalui.ButtonPrimary,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space12,
+					})
+					if retryBtn.Clicked() && m.Updater != nil {
+						m.Updater.CheckAsync(true)
+					}
+					return
+				}
 				if snap.LogPath != "" && (mygo.App.IsReady() || m.updaterPreview != nil) {
 					logBtn := internalui.IconButton(c, icons.FileLog, internalui.IconButtonOptions{
 						ID:           "updater-open-log",
@@ -550,7 +681,32 @@ func (m *Manager) renderUpdaterFooter(
 
 	default:
 		ui.Row(c.Key("updater-footer-idle")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
-			m.renderUpdaterSourcePicker(c, snap, showEn, pal)
+			m.renderUpdaterSourcePicker(c, snap, showEn, pal, uPal)
+			if snap.AllRoutesUnavailable() {
+				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
+					fbBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "updater-feedback",
+						Label:    updaterTr(showEn, "反馈问题", "Feedback"),
+						Style:    internalui.ButtonSecondary,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space12,
+					})
+					if fbBtn.Clicked() {
+						m.openUpdaterDiagnosticsFeedback(snap, showEn)
+					}
+					retryBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+						ID:       "updater-submit",
+						Label:    updaterTr(showEn, "重试", "Retry"),
+						Style:    internalui.ButtonPrimary,
+						Height:   theme.HeightLarge,
+						PaddingX: theme.Space12,
+					})
+					if retryBtn.Clicked() && m.Updater != nil {
+						m.Updater.CheckAsync(true)
+					}
+				})
+				return
+			}
 			checking := snap.Status == updater.StatusChecking
 			label := updaterTr(showEn, "检查更新", "Check Now")
 			if checking {
@@ -658,38 +814,69 @@ func renderUpdaterProgressButton(
 	internalui.Probe(track, "updater-progress-track")
 }
 
+func (m *Manager) openUpdaterDiagnosticsFeedback(snap updater.Snapshot, showEn bool) {
+	diag := updater.BuildDiagnosticsReport(snap, m.dataDir, showEn)
+	m.CloseUpdater()
+	m.OpenFeedbackForUpdater(diag)
+}
+
+func renderSignalBars(c *ui.Context, litBars int, litColor, offColor ui.Color) {
+	ui.Box(c).Size(theme.UpdaterSignalBoxW, theme.UpdaterSignalBoxH).Shrink(0).
+		Draw(func(p *ui.Painter, r ui.Rect) {
+			heights := [3]float32{theme.UpdaterSignalBarH1, theme.UpdaterSignalBarH2, theme.UpdaterSignalBarH3}
+			for i := 0; i < 3; i++ {
+				col := offColor
+				if i < litBars {
+					col = litColor
+				}
+				bh := heights[i]
+				bx := r.X + float32(i)*(theme.UpdaterSignalBarW+theme.UpdaterSignalBarGap)
+				by := r.Y + r.H - bh
+				p.Fill(ui.Rect{X: bx, Y: by, W: theme.UpdaterSignalBarW, H: bh}, col, 1)
+			}
+		})
+}
+
 func (m *Manager) renderUpdaterSourcePicker(
 	c *ui.Context,
 	snap updater.Snapshot,
 	showEn bool,
 	pal theme.Palette,
+	uPal theme.UpdaterPalette,
 ) {
-	srcLabel := updaterSourceLabel(snap.SourceMode, showEn)
-	dotCol := pal.Placeholder
+	srcLabel := updaterSourceDisplayName(snap, showEn)
+	effMs, effSt, effKind := updaterEffectiveHealth(snap)
+	_, dotCol, badgeFG, badgeBG := updaterSignalStyle(effMs, effSt, pal, uPal)
+
+	var badgeText string
 	switch {
-	case snap.Status == updater.StatusError:
-		dotCol = pal.Danger
-	case snap.FetchLatencyMs > 1000:
-		dotCol = pal.Warning
-	case snap.FetchLatencyMs > 0 || snap.ActiveChannel != "":
-		dotCol = pal.Success
+	case snap.RetestingTarget:
+		badgeText = updaterTr(showEn, "复测…", "Retest…")
+	case effSt == updater.ProbeProbing:
+		badgeText = updaterTr(showEn, "测速…", "Probe…")
+	case effSt == updater.ProbeFailed:
+		if effKind == "timeout" {
+			badgeText = updaterTr(showEn, "超时", "Timeout")
+		} else {
+			badgeText = updaterTr(showEn, "不可用", "Offline")
+		}
+	case effMs > 0:
+		badgeText = fmt.Sprintf("%d ms", effMs)
 	}
 
 	open := m.updaterSourceMenu.Open
 	btn := ui.ButtonBase(c.Key("updater-source-btn")).
-		Height(theme.HeightLarge).PaddingX(theme.Space8).Gap(theme.Space6).
+		Height(theme.HeightLarge).Padding(0, theme.Space8, 0, theme.Space10).Gap(theme.Space6).
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 		MinWidth(0).Shrink(1).Label(srcLabel)
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
-	fg := pal.TextSecondary
+	fg := pal.Text
 	bg := ui.Transparent
 	switch {
 	case pressed:
-		fg = pal.Text
 		bg = pal.Selected
 	case hovered || open:
-		fg = pal.Text
 		bg = pal.Hover
 	}
 	internalui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
@@ -704,41 +891,375 @@ func (m *Manager) renderUpdaterSourcePicker(
 		ui.Box(c).Size(theme.UpdaterBadgeDotSize, theme.UpdaterBadgeDotSize).
 			Radius(theme.RadiusPill).Background(dotCol).Shrink(0)
 		ui.Text(c, srcLabel).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-			FontWeight(theme.WeightControl).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0)
-		if snap.FetchLatencyMs > 0 {
-			ui.Text(c, fmt.Sprintf("%d ms", snap.FetchLatencyMs)).Font("monospace").
-				FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-				TextColor(pal.Placeholder).SingleLine().Shrink(0)
+			FontWeight(theme.WeightControl).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+		if badgeText != "" {
+			ui.Box(c).Padding(theme.Space2, theme.Space6).Radius(theme.RadiusBadge).
+				Background(badgeBG).Shrink(0).Children(func() {
+				ui.Text(c, badgeText).Font("monospace").
+					FontSize(theme.FontMicro).FixedLineHeight(theme.LineMeta).
+					FontWeight(theme.WeightMono).TextColor(badgeFG).SingleLine()
+			})
 		}
 		chev := icons.ChevronUp
 		if open {
 			chev = icons.ChevronDown
 		}
-		icons.DrawAnimated(c, chev, theme.IconMicro, pal.DuoIconColors(fg), open || hovered || pressed)
+		icons.Draw(c, chev, theme.IconMicro, pal.MinimalIconColors(pal.Accent))
 	})
 	if btn.Clicked() {
-		m.updaterSourceMenu.Open = !m.updaterSourceMenu.Open
+		nextOpen := !m.updaterSourceMenu.Open
+		m.updaterSourceMenu.Open = nextOpen
 		m.updaterSourceMenu.Cursor = -1
-	}
-
-	options := []internalui.SelectOption{
-		{ID: "updater-src-auto", Value: string(updater.SourceAuto), Label: updaterTr(showEn, "自动", "Auto")},
-		{ID: "updater-src-mirror", Value: string(updater.SourceMirror), Label: updaterTr(showEn, "国内镜像", "CN Mirror")},
-		{ID: "updater-src-github", Value: string(updater.SourceGitHub), Label: "GitHub"},
-	}
-	if picked := internalui.SelectMenu(c, "updater-source-menu", options, &m.updaterSourceMenu, string(snap.SourceMode)); picked >= 0 {
-		mode := updater.SourceMode(options[picked].Value)
-		if m.updaterPreview != nil {
-			m.updaterPreview.SourceMode = mode
-		} else if m.Updater != nil {
-			m.Updater.SetSourceMode(mode)
-			if snap.Status == updater.StatusError || snap.Status == updater.StatusIdle || snap.Status == updater.StatusUpToDate {
-				m.Updater.CheckAsync(true)
-			}
-		} else {
-			m.mutateState(func(s *model.AppState) {
-				s.UpdateSource = string(mode)
-			})
+		if nextOpen && m.updaterPreview == nil && m.Updater != nil {
+			m.Updater.ProbeAllAsync()
 		}
 	}
+
+	m.renderUpdaterSourcePopover(c, snap, showEn, pal, uPal)
+}
+
+func (m *Manager) renderUpdaterSourcePopover(
+	c *ui.Context,
+	snap updater.Snapshot,
+	showEn bool,
+	pal theme.Palette,
+	uPal theme.UpdaterPalette,
+) {
+	st := &m.updaterSourceMenu
+	if !st.Open || st.TriggerRect.W <= 0 || st.TriggerRect.H <= 0 {
+		return
+	}
+	winW, winH := c.Size()
+	if winW <= 0 {
+		winW = 1100
+	}
+	if winH <= 0 {
+		winH = 760
+	}
+	popW := min(theme.UpdaterSourceMenuWidth, max(winW-theme.Space16, 160))
+	allUnavailable := snap.AllRoutesUnavailable()
+
+	// Exact deterministic height keeps bottom edge cleanly anchored above TriggerRect.
+	estH := 2 + theme.Space6*2 + theme.UpdaterSourcePopoverHeader + theme.UpdaterSourceAutoCardH +
+		1 + theme.UpdaterSourceChannelRowH*2 + theme.Space4*4
+	if allUnavailable {
+		estH += theme.UpdaterSourceErrorCardH + theme.Space4
+	}
+
+	spec := internalui.PlaceAbove(st.TriggerRect).
+		WithAlignX(internalui.AlignX{Kind: internalui.AlignLeft}).
+		WithGap(theme.Space6).
+		WithMargin(theme.Space8).
+		WithReserveHeight(estH)
+	maxH := internalui.MaxHeightForSpec(spec, winW, winH, estH+theme.Space16)
+	x, y := internalui.ResolveOrigin(spec, popW, min(estH, maxH), winW, winH)
+
+	mirrorMs, mirrorSt, mirrorKind := updaterChannelHealth(snap, updater.ChannelMirror)
+	githubMs, githubSt, githubKind := updaterChannelHealth(snap, updater.ChannelGitHub)
+	anyProbing := snap.ProbingChannels || mirrorSt == updater.ProbeProbing || githubSt == updater.ProbeProbing
+
+	bestCh := ""
+	switch {
+	case mirrorSt == updater.ProbeOK && githubSt == updater.ProbeOK:
+		if githubMs < mirrorMs {
+			bestCh = updater.ChannelGitHub
+		} else {
+			bestCh = updater.ChannelMirror
+		}
+	case mirrorSt == updater.ProbeOK:
+		bestCh = updater.ChannelMirror
+	case githubSt == updater.ProbeOK:
+		bestCh = updater.ChannelGitHub
+	}
+
+	var pickedMode *updater.SourceMode
+	clickedReprobe := false
+	clickedFeedback := false
+
+	ui.Overlay(c, func() {
+		backdrop := ui.Box(c.Key("updater-source-menu-select-backdrop")).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+
+		panel := internalui.MenuSurface(
+			ui.Column(c.Key("updater-source-menu-menu")).
+				Absolute().Left(x).Top(y).Width(popW).MaxHeight(maxH),
+		).Padding(theme.Space6).Gap(theme.Space4)
+		internalui.Probe(panel, "updater-source-menu-menu")
+
+		panel.Children(func() {
+			// 1. Popover Header: "下载线路" + "重测" button (stays open).
+			ui.Row(c.Key("updater-source-popover-header")).FillWidth().
+				Height(theme.UpdaterSourcePopoverHeader).Padding(0, theme.Space6, 0, theme.Space8).
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(c, updaterTr(showEn, "下载线路", "Route")).
+					FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+					FontWeight(theme.WeightTitle).TextColor(pal.TextSecondary).SingleLine()
+
+				reprobeBtn := ui.ButtonBase(c.Key("updater-source-reprobe")).
+					Height(theme.UpdaterSourcePopoverHeader).PaddingX(theme.Space6).
+					Gap(theme.Space4).AlignItems(ui.Center).Radius(theme.RadiusSM).
+					Cursor(ui.CursorPointer).Label(updaterTr(showEn, "重新测速", "Retest"))
+				rHover := reprobeBtn.Hovered()
+				rPress := reprobeBtn.Pressed()
+				rBG := ui.Transparent
+				rFG := pal.TextSecondary
+				if rPress {
+					rBG = pal.Selected
+					rFG = pal.Text
+				} else if rHover {
+					rBG = pal.Hover
+					rFG = pal.Text
+				}
+				internalui.AnimateSurfaceColors(reprobeBtn, rBG, ui.Transparent, false)
+				reprobeBtn.Children(func() {
+					if anyProbing {
+						ui.Spinner(c).FontSize(theme.IconMicro).TextColor(pal.Accent)
+					} else {
+						icons.DrawAnimated(c, icons.Refresh, theme.IconMicro, pal.MinimalIconColors(rFG), rHover || rPress)
+					}
+					ui.Text(c, updaterTr(showEn, "重测", "Retest")).
+						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(rFG).SingleLine()
+				})
+				internalui.Probe(reprobeBtn, "updater-source-reprobe")
+				if reprobeBtn.Clicked() {
+					clickedReprobe = true
+				}
+			})
+
+			// 2. Smart Auto 2-line Card.
+			isAuto := snap.SourceMode == updater.SourceAuto
+			autoSub := updaterTr(showEn, "自动择优", "Fastest route")
+			autoSubCol := pal.TextSecondary
+			switch {
+			case anyProbing:
+				autoSub = updaterTr(showEn, "择优中…", "Probing…")
+			case allUnavailable:
+				if mirrorKind == "timeout" && githubKind == "timeout" {
+					autoSub = updaterTr(showEn, "全部超时", "All timed out")
+				} else {
+					autoSub = updaterTr(showEn, "全部不可用", "All offline")
+				}
+				autoSubCol = uPal.BadgeDangerFG
+			case bestCh == updater.ChannelMirror:
+				autoSub = updaterTr(showEn, "优选 国内镜像", "Using CN Mirror")
+			case bestCh == updater.ChannelGitHub:
+				autoSub = updaterTr(showEn, "优选 GitHub", "Using GitHub")
+			}
+
+			autoBtn := ui.ButtonBase(c.Key("updater-src-auto")).
+				FillWidth().Height(theme.UpdaterSourceAutoCardH).
+				Padding(theme.Space8, theme.Space10).Gap(theme.Space8).
+				AlignItems(ui.Start).Radius(theme.RadiusLG).Cursor(ui.CursorPointer).
+				Label(updaterTr(showEn, "智能自动", "Smart Auto"))
+			aHover := autoBtn.Hovered()
+			aPress := autoBtn.Pressed()
+			aBG := ui.Transparent
+			aBD := ui.Transparent
+			hasABD := false
+			switch {
+			case isAuto:
+				aBG = pal.Selected
+				if !allUnavailable {
+					aBD = pal.Accent
+					hasABD = true
+				}
+			case aPress:
+				aBG = pal.Selected
+			case aHover:
+				aBG = pal.Hover
+			}
+			internalui.AnimateSurfaceColors(autoBtn, aBG, aBD, hasABD)
+			internalui.Probe(autoBtn, "updater-src-auto")
+			autoBtn.Children(func() {
+				zapColors := pal.LitDuoIconColors(pal.Accent)
+				if allUnavailable {
+					zapColors = pal.TintedIconColors(uPal.BadgeDangerFG)
+				}
+				ui.Box(c).Size(theme.IconAction, theme.LineBody).Center().Shrink(0).Children(func() {
+					icons.Draw(c, icons.Zap, theme.IconInline, zapColors)
+				})
+				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
+					ui.Text(c, updaterTr(showEn, "智能自动", "Smart Auto")).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+					ui.Text(c, autoSub).
+						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(autoSubCol).SingleLine().Ellipsis("…")
+				})
+				ui.Box(c).Size(theme.IconAction, theme.LineBody).Center().Shrink(0).Children(func() {
+					if isAuto {
+						icons.Draw(c, icons.Check, theme.IconInline, pal.MinimalIconColors(pal.Accent))
+					}
+				})
+			})
+			if autoBtn.Clicked() {
+				mode := updater.SourceAuto
+				pickedMode = &mode
+			}
+
+			// 3. Divider.
+			ui.Box(c).FillWidth().Height(1).Shrink(0).Background(pal.Hairline)
+
+			// 4. Physical route rows: CN Mirror & GitHub.
+			routes := []struct {
+				id      string
+				mode    updater.SourceMode
+				channel string
+				label   string
+				ms      int64
+				st      updater.ProbeStatus
+				errKind string
+			}{
+				{
+					id:      "updater-src-mirror",
+					mode:    updater.SourceMirror,
+					channel: updater.ChannelMirror,
+					label:   updaterTr(showEn, "国内镜像", "CN Mirror"),
+					ms:      mirrorMs,
+					st:      mirrorSt,
+					errKind: mirrorKind,
+				},
+				{
+					id:      "updater-src-github",
+					mode:    updater.SourceGitHub,
+					channel: updater.ChannelGitHub,
+					label:   "GitHub",
+					ms:      githubMs,
+					st:      githubSt,
+					errKind: githubKind,
+				},
+			}
+
+			for _, r := range routes {
+				route := r
+				checked := snap.SourceMode == route.mode
+				bars, barCol, rowFG, _ := updaterSignalStyle(route.ms, route.st, pal, uPal)
+				if route.st == updater.ProbeProbing || route.st == updater.ProbeIdle {
+					rowFG = pal.Placeholder
+				}
+				var msText string
+				switch route.st {
+				case updater.ProbeProbing:
+					msText = updaterTr(showEn, "测速中…", "Probing…")
+				case updater.ProbeOK:
+					if route.ms > 0 {
+						msText = fmt.Sprintf("%d ms", route.ms)
+					} else {
+						msText = "--"
+					}
+				case updater.ProbeFailed:
+					if route.errKind == "timeout" {
+						msText = updaterTr(showEn, "超时", "Timeout")
+					} else {
+						msText = updaterTr(showEn, "不可用", "Offline")
+					}
+				default:
+					msText = "--"
+				}
+
+				rowBtn := ui.ButtonBase(c.Key(route.id)).
+					FillWidth().Height(theme.UpdaterSourceChannelRowH).
+					PaddingX(theme.Space10).Gap(theme.Space8).
+					AlignItems(ui.Center).Radius(theme.RadiusMD).
+					Cursor(ui.CursorPointer).Label(route.label)
+				rHover := rowBtn.Hovered()
+				rPress := rowBtn.Pressed()
+				rBG := ui.Transparent
+				if rPress {
+					rBG = pal.Selected
+				} else if rHover {
+					rBG = pal.Hover
+				}
+				internalui.AnimateSurfaceColors(rowBtn, rBG, ui.Transparent, false)
+				internalui.Probe(rowBtn, route.id)
+				rowBtn.Children(func() {
+					renderSignalBars(c, bars, barCol, uPal.SignalBarOff)
+					ui.Text(c, route.label).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightControl).TextColor(pal.Text).
+						SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+					if !anyProbing && bestCh == route.channel && route.st == updater.ProbeOK {
+						ui.Box(c).Padding(0, theme.Space6).Radius(theme.RadiusXS).
+							Background(uPal.BadgeGoodBG).Shrink(0).Children(func() {
+							ui.Text(c, updaterTr(showEn, "最快", "Fastest")).
+								FontSize(theme.FontMicro).FixedLineHeight(theme.LineMeta).
+								FontWeight(theme.WeightTitle).TextColor(uPal.BadgeGoodFG).SingleLine()
+						})
+					}
+					ui.Box(c).Grow(1).MinWidth(0)
+					ui.Text(c, msText).Font("monospace").
+						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(rowFG).SingleLine().Shrink(0)
+					ui.Box(c).Size(theme.IconAction, theme.IconAction).Center().Shrink(0).Children(func() {
+						if checked {
+							icons.Draw(c, icons.Check, theme.IconInline, pal.MinimalIconColors(pal.Accent))
+						}
+					})
+				})
+				if rowBtn.Clicked() {
+					mMode := route.mode
+					pickedMode = &mMode
+				}
+			}
+
+			// 5. All 3 routes unavailable inline banner inside popover.
+			if allUnavailable {
+				ui.Row(c.Key("updater-popover-error-card")).
+					FillWidth().Height(theme.UpdaterSourceErrorCardH).
+					PaddingX(theme.Space10).Gap(theme.Space8).
+					AlignItems(ui.Center).Justify(ui.SpaceBetween).
+					Radius(theme.RadiusLG).Background(uPal.BadgeDangerBG).
+					Border(1, uPal.BadgeDangerBorder).Children(func() {
+					ui.Text(c, updaterTr(showEn, "线路均不可用", "All routes offline")).
+						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						FontWeight(theme.WeightTitle).TextColor(uPal.BadgeDangerFG).
+						Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+
+					fbBtn := ui.ButtonBase(c.Key("updater-popover-feedback")).
+						Height(theme.HeightCompact).PaddingX(theme.Space10).
+						Center().Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
+						Background(pal.Paper).Border(1, uPal.BadgeDangerBorder).
+						Shrink(0).Label(updaterTr(showEn, "反馈", "Feedback"))
+					if fbBtn.Pressed() {
+						fbBtn.Background(pal.Selected)
+					} else if fbBtn.Hovered() {
+						fbBtn.Background(pal.Hover)
+					}
+					fbBtn.Children(func() {
+						ui.Text(c, updaterTr(showEn, "反馈", "Feedback")).
+							FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							FontWeight(theme.WeightTitle).TextColor(uPal.BadgeDangerFG).SingleLine()
+					})
+					internalui.Probe(fbBtn, "updater-popover-feedback")
+					if fbBtn.Clicked() {
+						clickedFeedback = true
+					}
+				})
+			}
+		})
+
+		switch {
+		case clickedReprobe:
+			if m.updaterPreview == nil && m.Updater != nil {
+				m.Updater.ProbeAllAsync()
+			}
+		case clickedFeedback:
+			st.Open = false
+			m.openUpdaterDiagnosticsFeedback(snap, showEn)
+		case pickedMode != nil:
+			mode := *pickedMode
+			st.Open = false
+			if m.updaterPreview != nil {
+				m.updaterPreview.SourceMode = mode
+			} else if m.Updater != nil {
+				m.Updater.SelectSourceAndRetest(mode)
+			} else {
+				m.mutateState(func(s *model.AppState) {
+					s.UpdateSource = string(mode)
+				})
+			}
+		case backdrop.Clicked() || backdrop.OverlayShortcut(0, ui.KeyEscape):
+			st.Open = false
+		}
+	})
 }

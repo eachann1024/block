@@ -324,17 +324,29 @@ const (
 	TreeMoreBtnSize         = HeightMicro
 
 	// Updater modal & titlebar brand-mark update dot metrics.
-	UpdaterModalWidth     float32 = 420
-	UpdaterModalMaxHeight float32 = 650
-	UpdaterNotesMaxHeight float32 = 350
-	UpdaterHeaderIconBox  float32 = 36
-	UpdaterHeaderMarkSize float32 = 30
-	UpdaterBadgeDotSize   float32 = 6
-	UpdaterBulletDotSize  float32 = 5
-	UpdaterBulletBoxWidth float32 = 12
-	UpdaterCatColWidthZH  float32 = 54
-	UpdaterCatColWidthEN  float32 = 82
-	UpdaterVerColWidth    float32 = 82
+	UpdaterModalWidth          float32 = 420
+	UpdaterModalMaxHeight      float32 = 650
+	UpdaterNotesMaxHeight      float32 = 350
+	UpdaterHeaderIconBox       float32 = 36
+	UpdaterHeaderMarkSize      float32 = 30
+	UpdaterBadgeDotSize        float32 = 6
+	UpdaterBulletDotSize       float32 = 5
+	UpdaterBulletBoxWidth      float32 = 12
+	UpdaterCatColWidthZH       float32 = 54
+	UpdaterCatColWidthEN       float32 = 82
+	UpdaterVerColWidth         float32 = 82
+	UpdaterSourceMenuWidth     float32 = 288
+	UpdaterSourcePopoverHeader float32 = 24
+	UpdaterSourceAutoCardH     float32 = 54
+	UpdaterSourceChannelRowH   float32 = 36
+	UpdaterSourceErrorCardH    float32 = 44
+	UpdaterSignalBoxW          float32 = 14
+	UpdaterSignalBoxH          float32 = 12
+	UpdaterSignalBarW          float32 = 3
+	UpdaterSignalBarGap        float32 = 2
+	UpdaterSignalBarH1         float32 = 5
+	UpdaterSignalBarH2         float32 = 8
+	UpdaterSignalBarH3         float32 = 12
 
 	// Export theme picker tile metrics (designs/export-themes/project/Main.dc.html).
 	ExportThemeTileHeight  float32 = 90
