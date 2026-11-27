@@ -286,13 +286,23 @@ func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz Sho
 			tt.Frame()
 			tt.Advance(20 * time.Millisecond)
 		}
-	case "updater-ready", "updater-downloading", "updater-installing", "updater-error", "updater-versions", "updater-ready-en":
+	case "updater-ready", "updater-downloading", "updater-installing", "updater-error", "updater-versions", "updater-ready-en", "updater-source-menu":
 		if scene == "updater-ready-en" {
 			theme.SetLanguage(model.LangEn)
 		}
 		ws.Modals().OpenUpdaterPreview(updaterShotSnapshot(scene, filepath.Join(dataDir, "logs", "updater-install.log")))
+		if scene == "updater-source-menu" {
+			tt.Frame()
+			tt.Advance(100 * time.Millisecond)
+			tt.Frame()
+			pt, ok := blockui.TargetCenter("updater-source-btn")
+			if !ok {
+				return SceneShotResult{}, fmt.Errorf("missing updater-source-btn target for scene %q", scene)
+			}
+			tt.ClickAt(pt.X, pt.Y)
+		}
 	default:
-		return SceneShotResult{}, fmt.Errorf("unknown scene %q (supported: workspace, settings, store, export, find, ai, ai-stream, updater-ready, updater-downloading, updater-installing, updater-error, updater-versions, updater-ready-en)", scene)
+		return SceneShotResult{}, fmt.Errorf("unknown scene %q (supported: workspace, settings, store, export, find, ai, ai-stream, updater-ready, updater-downloading, updater-installing, updater-error, updater-versions, updater-ready-en, updater-source-menu)", scene)
 	}
 
 	tt.Frame()

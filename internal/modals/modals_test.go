@@ -13,6 +13,7 @@ import (
 	"block/internal/model"
 	"block/internal/theme"
 	internalui "block/internal/ui"
+	"block/internal/updater"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -954,5 +955,532 @@ func TestSearchTabTogglesCurrentAndAllWithShortcutPlaceholder(t *testing.T) {
 	}
 	if got := st.searchPlaceholderParts(""); got != (searchPlaceholderSpec{prefix: "Search titles and content"}) {
 		t.Fatalf("unexpected en fallback placeholder without active notebook: %+v", got)
+	}
+}
+
+func updaterTestReleases() []updater.ReleaseEntry {
+	return []updater.ReleaseEntry{
+		{
+			Version:     "1.0.942",
+			Tag:         "v1.0.942",
+			PublishedAt: "2026-11-18T12:00:00Z",
+			HTMLURL:     updater.PublicReleasesWebURL,
+			Zh: updater.LocalizedNotes{
+				Highlights:   "本次更新带来更轻盈的更新弹窗体验与更稳健的后台校验。",
+				New:          []string{"图标：新增 GitHub 品牌图标"},
+				Improvements: []string{"关于：简化关于对话框中的操作和仓库按钮"},
+				Fixes:        []string{"编辑器：修复只读映像下更新提示缺失的问题"},
+			},
+			En: updater.LocalizedNotes{
+				Highlights:   "A lighter update sheet with steadier background verification and resilient fallback mirrors.",
+				New:          []string{"Icons: Added GitHub brand icon to the releases button"},
+				Improvements: []string{"About: Simplified repository action buttons across narrow modal widths"},
+				Fixes:        []string{"Editor: Fixed missing update prompt on read-only disk image mounts"},
+			},
+		},
+		{
+			Version:     "1.0.941",
+			Tag:         "v1.0.941",
+			PublishedAt: "2026-11-16T09:30:00Z",
+			HTMLURL:     updater.PublicReleasesWebURL,
+			Zh: updater.LocalizedNotes{
+				New:   []string{"商店：新增瀑布流卡片与一键安装"},
+				Fixes: []string{"批注：修复窄窗口下批注栏宽度计算偏差"},
+			},
+			En: updater.LocalizedNotes{
+				New:   []string{"Store: Added masonry cards and one-click install"},
+				Fixes: []string{"Annotations: Fixed rail width calculation in narrow windows"},
+			},
+		},
+	}
+}
+
+func updaterTestSnapshot() updater.Snapshot {
+	releases := updaterTestReleases()
+	notes := updater.AggregateReleases(releases, "1.0.940", "")
+	return updater.Snapshot{
+		Status:         updater.StatusReady,
+		CurrentVersion: "1.0.940",
+		LatestVersion:  "1.0.942",
+		PublishedAt:    "2026-11-18T12:00:00Z",
+		ReleaseURL:     updater.PublicReleasesWebURL,
+		SourceMode:     updater.SourceAuto,
+		ActiveChannel:  "mirror",
+		FetchLatencyMs: 38,
+		ViewMode:       updater.ViewMerged,
+		InPlace:        true,
+		LogPath:        "/tmp/block-updater-install.log",
+		Notes:          notes,
+	}
+}
+
+func TestUpdaterSourceMenuPlacementAndSwitch(t *testing.T) {
+	internalui.ResetSmoke()
+	internalui.EnableSmokeMode()
+	defer internalui.DisableSmokeMode()
+
+	prevLang := theme.Language()
+	defer theme.SetLanguage(prevLang)
+
+	// 1. Placement geometry across viewports & languages.
+	cases := []struct {
+		name string
+		lang model.LanguageMode
+		w, h int
+	}{
+		{"zh_1280x800", model.LangZh, 1280, 800},
+		{"zh_760x560", model.LangZh, 760, 560},
+		{"en_460x680", model.LangEn, 460, 680},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			theme.SetLanguage(tc.lang)
+			m, _, _ := setupManager(t)
+			theme.SetLanguage(tc.lang)
+
+			snap := updaterTestSnapshot()
+			m.OpenUpdaterPreview(snap)
+
+			tt := ui.NewTester(func(c *ui.Context) {
+				ui.Box(c).Fill().Children(func() {
+					m.RenderModals(c)
+				})
+			}, tc.w, tc.h)
+
+			internalui.ClearTargets()
+			tt.Frame()
+			tt.Advance(250 * time.Millisecond)
+			tt.Frame()
+
+			btn, ok := internalui.TargetBounds("updater-source-btn")
+			if !ok {
+				t.Fatal("missing updater-source-btn probe")
+			}
+
+			internalui.ClearTargets()
+			tt.ClickAt(btn.X+btn.W*0.5, btn.Y+btn.H*0.5)
+			tt.Advance(250 * time.Millisecond)
+			tt.Frame()
+
+			if !m.updaterSourceMenu.Open {
+				t.Fatal("expected updater source menu to open after clicking trigger")
+			}
+			menu, ok := internalui.TargetBounds("updater-source-menu-menu")
+			if !ok {
+				t.Fatal("missing updater-source-menu-menu probe")
+			}
+			if menu.Y+menu.H > btn.Y {
+				t.Fatalf("expected menu above trigger (menu.Y+menu.H <= btn.Y): menu=%+v btn=%+v", menu, btn)
+			}
+			if math.Abs(float64(menu.X-btn.X)) > 1.0 {
+				t.Fatalf("expected menu left-aligned with trigger: menu.X=%.1f btn.X=%.1f", menu.X, btn.X)
+			}
+			if menu.X < 0 || menu.Y < 0 || menu.X+menu.W > float32(tc.w) || menu.Y+menu.H > float32(tc.h) {
+				t.Fatalf("menu exceeds viewport %dx%d: %+v", tc.w, tc.h, menu)
+			}
+
+			mirrorOpt, ok := internalui.TargetBounds("updater-src-mirror")
+			if !ok {
+				t.Fatal("missing updater-src-mirror option probe")
+			}
+			tt.ClickAt(mirrorOpt.X+mirrorOpt.W*0.5, mirrorOpt.Y+mirrorOpt.H*0.5)
+			tt.Frame()
+			if m.updaterSourceMenu.Open {
+				t.Fatal("expected source menu to close after picking option")
+			}
+			if m.updaterPreview.SourceMode != updater.SourceMirror {
+				t.Fatalf("expected preview SourceMode=%q, got %q", updater.SourceMirror, m.updaterPreview.SourceMode)
+			}
+
+			// Re-open source menu, press Escape: only the dropdown closes; modal stays open.
+			internalui.ClearTargets()
+			tt.Frame()
+			btn2, ok := internalui.TargetBounds("updater-source-btn")
+			if !ok {
+				t.Fatal("missing updater-source-btn probe on reopen")
+			}
+			tt.ClickAt(btn2.X+btn2.W*0.5, btn2.Y+btn2.H*0.5)
+			tt.Advance(250 * time.Millisecond)
+			tt.Frame()
+			if !m.updaterSourceMenu.Open {
+				t.Fatal("expected source menu to reopen")
+			}
+			tt.Key(0, ui.KeyEscape)
+			tt.Frame()
+			if m.updaterSourceMenu.Open {
+				t.Fatal("expected Escape to close source menu")
+			}
+			if !m.IsUpdaterOpen() {
+				t.Fatal("expected Escape on open source menu to keep updater modal open")
+			}
+			tt.Key(0, ui.KeyEscape)
+			tt.Frame()
+			if m.IsUpdaterOpen() {
+				t.Fatal("expected second Escape to close updater modal")
+			}
+		})
+	}
+
+	// 2. Switching source on a real Service in StatusIdle updates SourceMode and triggers CheckAsync(true).
+	theme.SetLanguage(model.LangZh)
+	m, _, _ := setupManager(t)
+	t.Setenv("BLOCK_MOCK_UPDATE", "")
+	var modeChanges []updater.SourceMode
+	svc := updater.NewService(updater.Config{
+		DataDir: t.TempDir(),
+		OnSourceModeChanged: func(mode updater.SourceMode) {
+			modeChanges = append(modeChanges, mode)
+		},
+		OnChange: m.requestRedraw,
+	})
+	if svc.Snapshot().Status != updater.StatusIdle {
+		t.Fatalf("expected initial service status Idle, got %q", svc.Snapshot().Status)
+	}
+	m.Updater = svc
+	m.updaterOpen = true
+	m.updaterPreview = nil
+	m.updaterSourceMenu = internalui.DropdownSelectState{
+		PreferAbove: true,
+		AlignLeft:   true,
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Fill().Children(func() {
+			m.RenderModals(c)
+		})
+	}, 900, 680)
+	internalui.ClearTargets()
+	tt.Frame()
+
+	btn, ok := internalui.TargetBounds("updater-source-btn")
+	if !ok {
+		t.Fatal("missing updater-source-btn probe for live service")
+	}
+	tt.ClickAt(btn.X+btn.W*0.5, btn.Y+btn.H*0.5)
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+
+	// Enable deterministic in-process mock before triggering CheckAsync from source switch.
+	t.Setenv("BLOCK_MOCK_UPDATE", "1")
+	ghOpt, ok := internalui.TargetBounds("updater-src-github")
+	if !ok {
+		t.Fatal("missing updater-src-github probe")
+	}
+	tt.ClickAt(ghOpt.X+ghOpt.W*0.5, ghOpt.Y+ghOpt.H*0.5)
+	tt.Frame()
+
+	if !slices.Equal(modeChanges, []updater.SourceMode{updater.SourceGitHub}) {
+		t.Fatalf("expected OnSourceModeChanged([github]), got %v", modeChanges)
+	}
+	gotSnap := svc.Snapshot()
+	if gotSnap.SourceMode != updater.SourceGitHub {
+		t.Fatalf("expected service SourceMode=github, got %q", gotSnap.SourceMode)
+	}
+	if gotSnap.Status != updater.StatusAvailable {
+		t.Fatalf("expected switching source from Idle to trigger CheckAsync -> Available, got %q", gotSnap.Status)
+	}
+}
+
+func TestUpdaterModalAllStatesAndEnglishWidth(t *testing.T) {
+	internalui.ResetSmoke()
+	internalui.EnableSmokeMode()
+	defer internalui.DisableSmokeMode()
+
+	prevLang := theme.Language()
+	defer theme.SetLanguage(prevLang)
+
+	m, _, _ := setupManager(t)
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Fill().Children(func() {
+			m.RenderModals(c)
+		})
+	}, 900, 680)
+
+	renderSnap := func(snap updater.Snapshot) {
+		t.Helper()
+		m.OpenUpdaterPreview(snap)
+		internalui.ClearTargets()
+		tt.Frame()
+		tt.Advance(250 * time.Millisecond)
+		tt.Frame()
+	}
+	assertNoDates := func(label string) {
+		t.Helper()
+		for _, txt := range tt.Texts() {
+			if strings.Contains(txt, "2026-11-18") || strings.Contains(txt, "2026-11-16") || strings.Contains(txt, "2026") {
+				t.Fatalf("%s unexpectedly rendered release date text %q", label, txt)
+			}
+		}
+	}
+
+	// 1. Idle / Checking / UpToDate: no footer cancel/close button, only check action.
+	idleSnap := updater.Snapshot{
+		Status:         updater.StatusIdle,
+		CurrentVersion: "1.0.940",
+		LatestVersion:  "1.0.940",
+		SourceMode:     updater.SourceAuto,
+		ViewMode:       updater.ViewMerged,
+	}
+	renderSnap(idleSnap)
+	if !tt.HasText("检查更新") {
+		t.Fatalf("expected Idle check button text, texts=%v", tt.Texts())
+	}
+	if tt.HasText("稍后") {
+		t.Fatalf("did not expect footer '稍后' button in Idle, texts=%v", tt.Texts())
+	}
+	if _, ok := internalui.TargetBounds("updater-cancel"); ok {
+		t.Fatal("did not expect updater-cancel probe in Idle")
+	}
+	if _, ok := internalui.TargetBounds("updater-submit"); !ok {
+		t.Fatal("expected updater-submit probe in Idle")
+	}
+
+	checkingSnap := idleSnap
+	checkingSnap.Status = updater.StatusChecking
+	renderSnap(checkingSnap)
+	if !tt.HasText("正在检查…") || !tt.HasText("正在获取更新日志…") {
+		t.Fatalf("expected Checking texts, texts=%v", tt.Texts())
+	}
+	if _, ok := internalui.TargetBounds("updater-cancel"); ok {
+		t.Fatal("did not expect updater-cancel probe in Checking")
+	}
+
+	upToDateSnap := updaterTestSnapshot()
+	upToDateSnap.Status = updater.StatusUpToDate
+	upToDateSnap.LatestVersion = "1.0.940"
+	upToDateSnap.Notes = updater.AggregateReleases(updaterTestReleases(), "1.0.942", "")
+	renderSnap(upToDateSnap)
+	if !tt.HasText("检查更新") || tt.HasText("稍后") {
+		t.Fatalf("expected UpToDate check-only footer, texts=%v", tt.Texts())
+	}
+	if _, ok := internalui.TargetBounds("updater-cancel"); ok {
+		t.Fatal("did not expect updater-cancel probe in UpToDate")
+	}
+
+	// 2. Available variants: normal InPlace, PackageManaged, DownloadPath && !InPlace.
+	availSnap := updaterTestSnapshot()
+	availSnap.Status = updater.StatusAvailable
+	renderSnap(availSnap)
+	if !tt.HasText("发现新版本") || !tt.HasText("稍后") || !tt.HasText("立即更新") {
+		t.Fatalf("expected Available InPlace actions, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("稍后"); err != nil {
+		t.Fatal(err)
+	}
+	if m.IsUpdaterOpen() {
+		t.Fatal("expected clicking '稍后' in Available to close updater modal")
+	}
+
+	pkgSnap := availSnap
+	pkgSnap.PackageManaged = true
+	pkgSnap.InPlace = false
+	renderSnap(pkgSnap)
+	if !tt.HasText("前往下载页") || !tt.HasText("稍后") {
+		t.Fatalf("expected PackageManaged '前往下载页', texts=%v", tt.Texts())
+	}
+
+	manualPkgSnap := availSnap
+	manualPkgSnap.PackageManaged = false
+	manualPkgSnap.InPlace = false
+	manualPkgSnap.DownloadPath = "/tmp/block-linux-x64.deb"
+	renderSnap(manualPkgSnap)
+	if !tt.HasText("查看安装包") || !tt.HasText("稍后") {
+		t.Fatalf("expected DownloadPath && !InPlace '查看安装包', texts=%v", tt.Texts())
+	}
+
+	// 3. Downloading (progress + Preparing + CancelDownload on live Service).
+	dlSnap := updaterTestSnapshot()
+	dlSnap.Status = updater.StatusDownloading
+	dlSnap.Percent = 42
+	dlSnap.SpeedMBps = 3.1
+	renderSnap(dlSnap)
+	if !tt.HasText("下载中 42% · 3.1 MB/s") || !tt.HasText("取消") {
+		t.Fatalf("expected Downloading progress and cancel, texts=%v", tt.Texts())
+	}
+	if _, ok := internalui.TargetBounds("updater-source-btn"); ok {
+		t.Fatal("expected source picker hidden while Downloading")
+	}
+	if _, ok := internalui.TargetBounds("updater-progress-track"); !ok {
+		t.Fatal("missing updater-progress-track probe in Downloading")
+	}
+
+	prepSnap := dlSnap
+	prepSnap.Percent = 100
+	prepSnap.Preparing = true
+	renderSnap(prepSnap)
+	if !tt.HasText("正在准备更新…") {
+		t.Fatalf("expected Preparing text, texts=%v", tt.Texts())
+	}
+
+	// Live Service: StartDownload -> CancelDownload falls back to Available.
+	t.Setenv("BLOCK_MOCK_UPDATE", "1")
+	svc := updater.NewService(updater.Config{
+		DataDir:  t.TempDir(),
+		OnChange: m.requestRedraw,
+	})
+	m.Updater = svc
+	m.OpenUpdater()
+	internalui.ClearTargets()
+	tt.Frame()
+	if err := tt.Click("立即更新"); err != nil {
+		t.Fatal(err)
+	}
+	if svc.Snapshot().Status != updater.StatusDownloading {
+		t.Fatalf("expected StatusDownloading after clicking '立即更新', got %q", svc.Snapshot().Status)
+	}
+	internalui.ClearTargets()
+	tt.Frame()
+	if err := tt.Click("取消"); err != nil {
+		t.Fatal(err)
+	}
+	if svc.Snapshot().Status != updater.StatusAvailable {
+		t.Fatalf("expected StatusAvailable after clicking '取消', got %q", svc.Snapshot().Status)
+	}
+	m.Updater = nil
+
+	// 4. Ready (Later / Restart & Update) and ViewMode toggle (ByCategory <-> ByVersion) without dates.
+	readySnap := updaterTestSnapshot()
+	renderSnap(readySnap)
+	assertNoDates("ViewMerged")
+	if !tt.HasText("新版本已就绪") || !tt.HasText("稍后") || !tt.HasText("重启并更新") {
+		t.Fatalf("expected Ready actions, texts=%v", tt.Texts())
+	}
+	toggleBtn, ok := internalui.TargetBounds("updater-view-toggle")
+	if !ok {
+		t.Fatal("missing updater-view-toggle probe for multi-version notes")
+	}
+	tt.ClickAt(toggleBtn.X+toggleBtn.W*0.5, toggleBtn.Y+toggleBtn.H*0.5)
+	tt.Frame()
+	if m.updaterPreview.ViewMode != updater.ViewByVersion {
+		t.Fatalf("expected ViewByVersion after first toggle, got %q", m.updaterPreview.ViewMode)
+	}
+	assertNoDates("ViewByVersion")
+	if !tt.HasText("v1.0.942") || !tt.HasText("v1.0.941") {
+		t.Fatalf("expected per-version headers in ViewByVersion, texts=%v", tt.Texts())
+	}
+	toggleBtn2, ok := internalui.TargetBounds("updater-view-toggle")
+	if !ok {
+		t.Fatal("missing updater-view-toggle probe after first toggle")
+	}
+	tt.ClickAt(toggleBtn2.X+toggleBtn2.W*0.5, toggleBtn2.Y+toggleBtn2.H*0.5)
+	tt.Frame()
+	if m.updaterPreview.ViewMode != updater.ViewMerged {
+		t.Fatalf("expected ViewMerged after second toggle, got %q", m.updaterPreview.ViewMode)
+	}
+	if err := tt.Click("稍后"); err != nil {
+		t.Fatal(err)
+	}
+	if m.IsUpdaterOpen() {
+		t.Fatal("expected clicking '稍后' in Ready to close updater modal")
+	}
+
+	// 5. Installing.
+	instSnap := updaterTestSnapshot()
+	instSnap.Status = updater.StatusInstalling
+	renderSnap(instSnap)
+	if !tt.HasText("正在保存笔记并重启…") {
+		t.Fatalf("expected Installing text, texts=%v", tt.Texts())
+	}
+	if _, ok := internalui.TargetBounds("updater-source-btn"); ok {
+		t.Fatal("expected source picker hidden while Installing")
+	}
+	if _, ok := internalui.TargetBounds("updater-submit"); ok {
+		t.Fatal("did not expect updater-submit in Installing")
+	}
+
+	// 6. Error (log icon, web icon, retry button).
+	errSnap := updaterTestSnapshot()
+	errSnap.Status = updater.StatusError
+	errSnap.SourceMode = updater.SourceMirror
+	errSnap.FetchLatencyMs = 1240
+	errSnap.ErrorMessage = "校验安装包失败：SHA-256 摘要不匹配"
+	renderSnap(errSnap)
+	if !tt.HasText("校验安装包失败：SHA-256 摘要不匹配") || !tt.HasText("重试") {
+		t.Fatalf("expected Error message and retry button, texts=%v", tt.Texts())
+	}
+	for _, id := range []string{"updater-open-log", "updater-open-web", "updater-submit", "updater-source-btn"} {
+		if _, ok := internalui.TargetBounds(id); !ok {
+			t.Fatalf("missing %s probe in Error state", id)
+		}
+	}
+
+	// 7. 420px English no-overflow verification across all states (both 460px viewport -> exact 420px modal, and 420px viewport).
+	theme.SetLanguage(model.LangEn)
+	enSnaps := []struct {
+		name string
+		snap updater.Snapshot
+	}{
+		{"en_uptodate", upToDateSnap},
+		{"en_available", availSnap},
+		{"en_pkg_managed", pkgSnap},
+		{"en_manual_pkg", manualPkgSnap},
+		{"en_downloading", dlSnap},
+		{"en_preparing", prepSnap},
+		{"en_ready", readySnap},
+		{"en_by_version", func() updater.Snapshot { s := readySnap; s.ViewMode = updater.ViewByVersion; return s }()},
+		{"en_installing", instSnap},
+		{"en_error", func() updater.Snapshot {
+			s := errSnap
+			s.ErrorMessage = "Installer SHA-256 verification failed across mirrors; please retry or open Releases"
+			return s
+		}()},
+	}
+
+	for _, vpW := range []int{460, 420} {
+		narrowTT := ui.NewTester(func(c *ui.Context) {
+			ui.Box(c).Fill().Children(func() {
+				m.RenderModals(c)
+			})
+		}, vpW, 680)
+		for _, sc := range enSnaps {
+			m.OpenUpdaterPreview(sc.snap)
+			internalui.ClearTargets()
+			narrowTT.Frame()
+			narrowTT.Advance(250 * time.Millisecond)
+			narrowTT.Frame()
+
+			targets := internalui.AllTargets()
+			modalRect, ok := targets["updater-modal"]
+			if !ok {
+				t.Fatalf("%s (vpW=%d): missing updater-modal probe", sc.name, vpW)
+			}
+			if vpW == 460 && math.Abs(float64(modalRect.W-theme.UpdaterModalWidth)) > 1.0 {
+				t.Fatalf("%s (vpW=%d): expected modal width %.0f, got %.1f", sc.name, vpW, theme.UpdaterModalWidth, modalRect.W)
+			}
+			const eps = float32(0.5)
+			for id, r := range targets {
+				if r.W <= 0 || r.H <= 0 {
+					t.Fatalf("%s (vpW=%d): probe %q has non-positive size %+v", sc.name, vpW, id, r)
+				}
+				if r.X < -eps || r.Y < -eps || r.X+r.W > float32(vpW)+eps || r.Y+r.H > 680+eps {
+					t.Fatalf("%s (vpW=%d): probe %q exceeds viewport bounds: %+v", sc.name, vpW, id, r)
+				}
+				if id != "updater-modal" {
+					if r.X < modalRect.X-eps || r.X+r.W > modalRect.X+modalRect.W+eps {
+						t.Fatalf("%s (vpW=%d): probe %q overflows modal horizontally: probe=%+v modal=%+v", sc.name, vpW, id, r, modalRect)
+					}
+				}
+			}
+			// Check footer controls do not overlap horizontally.
+			if srcRect, hasSrc := targets["updater-source-btn"]; hasSrc {
+				for _, rightID := range []string{"updater-cancel", "updater-open-log", "updater-open-web", "updater-submit"} {
+					if rr, ok := targets[rightID]; ok {
+						if srcRect.X+srcRect.W > rr.X+eps {
+							t.Fatalf("%s (vpW=%d): source picker %+v overlaps %s %+v", sc.name, vpW, srcRect, rightID, rr)
+						}
+					}
+				}
+			}
+			if cancelRect, hasCancel := targets["updater-cancel"]; hasCancel {
+				if subRect, hasSub := targets["updater-submit"]; hasSub && cancelRect.X+cancelRect.W > subRect.X+eps {
+					t.Fatalf("%s (vpW=%d): updater-cancel %+v overlaps updater-submit %+v", sc.name, vpW, cancelRect, subRect)
+				}
+			}
+			if abortRect, hasAbort := targets["updater-abort-download"]; hasAbort {
+				if progRect, hasProg := targets["updater-progress-track"]; hasProg && abortRect.X+abortRect.W > progRect.X+eps {
+					t.Fatalf("%s (vpW=%d): updater-abort-download %+v overlaps updater-progress-track %+v", sc.name, vpW, abortRect, progRect)
+				}
+			}
+		}
 	}
 }
