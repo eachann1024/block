@@ -161,6 +161,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		}
 	}
 	applyThemeFromState(st)
+	theme.EnsureBuiltinCodeFonts()
 
 	codec := markdown.NewCodec()
 	w := &Workspace{

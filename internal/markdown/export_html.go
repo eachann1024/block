@@ -162,22 +162,21 @@ func isASCII(s string) bool {
 
 func htmlFontStack(fam string) string {
 	switch fam {
-	case fontSong:
-		return `"Songti SC","Noto Serif SC",serif`
+	case fontSerif:
+		return `'Noto Serif SC','Source Han Serif SC',Georgia,'Songti SC','SimSun','Noto Serif CJK SC',serif`
 	case fontKai:
-		return `"Kaiti SC","STKaiti",cursive,serif`
+		return `'LXGW WenKai','LXGW WenKai Screen','Kaiti SC','STKaiti','KaiTi','FZKai-Z03',cursive,serif`
 	case fontMono:
-		return `"Menlo","JetBrains Mono",monospace`
-	case fontGeorgiaSong:
-		return `Georgia,"Songti SC","Noto Serif SC",serif`
-	case fontAvenir:
-		return `"Avenir Next",Avenir,"PingFang SC",sans-serif`
-	case fontDidot:
-		return `Didot,"Bodoni 72","Songti SC",serif`
+		return `'JetBrains Mono',Menlo,Monaco,'Cascadia Mono',Consolas,'DejaVu Sans Mono','HarmonyOS Sans SC','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',monospace`
 	case fontMonoCJK:
-		return `"Menlo","JetBrains Mono","PingFang SC",monospace`
+		return `'JetBrains Mono','HarmonyOS Sans SC',Menlo,'PingFang SC',Consolas,'Microsoft YaHei','Noto Sans CJK SC',monospace`
+	case fontSans:
+		return `'HarmonyOS Sans SC',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif`
 	default:
-		return `-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif`
+		if trimmed := strings.TrimSpace(fam); trimmed != "" {
+			return strings.ReplaceAll(trimmed, `"`, `'`)
+		}
+		return `'HarmonyOS Sans SC',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei','Hiragino Sans GB','Noto Sans CJK SC','Noto Sans SC',sans-serif`
 	}
 }
 
@@ -553,7 +552,7 @@ func renderHTMLOrnaments(pal PaperThemeSpec, legacy bool, vars templateVars, sho
 				it = "font-style:italic;"
 			}
 			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;right:%.0fpx;top:%.0fpx;font-family:%s;font-size:%.0fpx;%scolor:%s;transform:rotate(%.1fdeg);pointer-events:none;z-index:3">%s</div>`,
-				o.X, o.Y, htmlFontStack(orS(o.Family, fontGeorgiaSong)), orF(o.Size, 20), it, uiColorCSS(o.Color), o.Angle, txt))
+				o.X, o.Y, htmlFontStack(orS(o.Family, pal.BodyFamily)), orF(o.Size, 20), it, uiColorCSS(o.Color), o.Angle, txt))
 		case OrnamentSeal:
 			inset := float32(0)
 			if pal.Card != nil {
@@ -565,7 +564,7 @@ func renderHTMLOrnaments(pal PaperThemeSpec, legacy bool, vars templateVars, sho
 			t1 := escapeHTMLText(vars.expand(o.Text))
 			t2 := escapeHTMLText(vars.expand(o.Text2))
 			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;right:%.0fpx;top:%.0fpx;width:%.0fpx;height:%.0fpx;border:1.5px solid %s;border-radius:50%%;display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(%.1fdeg);color:%s;pointer-events:none;z-index:3"><div style="position:absolute;inset:4px;border:0.5px solid %s;border-radius:50%%"></div><span style="font-family:%s;font-size:%.0fpx;font-weight:600;line-height:1.1">%s</span><span style="font-family:%s;font-size:9px;letter-spacing:.12em;margin-top:3px">%s</span></div>`,
-				inset+o.X, inset+o.X+o.Y, d, d, c, o.Angle, c, c, htmlFontStack(orS(o.Family, fontGeorgiaSong)), sz, t1, htmlFontStack(fontMono), t2))
+				inset+o.X, inset+o.X+o.Y, d, d, c, o.Angle, c, c, htmlFontStack(orS(o.Family, pal.BodyFamily)), sz, t1, htmlFontStack(fontMono), t2))
 		}
 	}
 	return out.String()
@@ -589,7 +588,7 @@ func renderHTMLRelocatedOrnaments(pal PaperThemeSpec, legacy bool, vars template
 			}
 			sz := maxFloat32(orF(o.Size, 20)-2, 16)
 			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="display:flex;justify-content:flex-end;margin-top:8px"><span style="display:inline-block;font-family:%s;font-size:%.0fpx;%scolor:%s;opacity:.82;transform:rotate(-5deg)">%s</span></div>`,
-				htmlFontStack(orS(o.Family, fontGeorgiaSong)), sz, it, uiColorCSS(o.Color), txt))
+				htmlFontStack(orS(o.Family, pal.BodyFamily)), sz, it, uiColorCSS(o.Color), txt))
 		case OrnamentSeal:
 			d := minFloat32(orF(o.W, 88), 76)
 			sz := maxFloat32(orF(o.Size, 16)-2, 14)
@@ -597,7 +596,7 @@ func renderHTMLRelocatedOrnaments(pal PaperThemeSpec, legacy bool, vars template
 			t1 := escapeHTMLText(vars.expand(o.Text))
 			t2 := escapeHTMLText(vars.expand(o.Text2))
 			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="display:flex;justify-content:flex-end;margin-top:10px"><div style="position:relative;width:%.0fpx;height:%.0fpx;border:1.5px solid %s;border-radius:50%%;display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(%.1fdeg);color:%s;opacity:.84"><div style="position:absolute;inset:4px;border:0.5px solid %s;border-radius:50%%"></div><span style="font-family:%s;font-size:%.0fpx;font-weight:600;line-height:1.1">%s</span><span style="font-family:%s;font-size:9px;letter-spacing:.12em;margin-top:3px">%s</span></div></div>`,
-				d, d, c, o.Angle, c, c, htmlFontStack(orS(o.Family, fontGeorgiaSong)), sz, t1, htmlFontStack(fontMono), t2))
+				d, d, c, o.Angle, c, c, htmlFontStack(orS(o.Family, pal.BodyFamily)), sz, t1, htmlFontStack(fontMono), t2))
 		}
 	}
 	return out.String()
@@ -1379,8 +1378,8 @@ func renderHTMLQuote(out *strings.Builder, b *model.Block, ord int, pal PaperThe
 		if qs.Card {
 			cardCSS = fmt.Sprintf("background:%s;border:1px solid %s;border-radius:14px;", uiColorCSS(pal.QuoteBG), uiColorCSS(pal.CodeBorder))
 		}
-		out.WriteString(fmt.Sprintf(`<blockquote style="position:relative;%s%spadding:%.0fpx %.0fpx"><div aria-hidden="true" style="font-family:Georgia,serif;font-size:48px;line-height:.7;color:%s;margin-bottom:6px">“</div>`,
-			cardCSS, fontCSS, orF(qs.PadY, 16), orF(qs.PadX, 24), accent))
+		out.WriteString(fmt.Sprintf(`<blockquote style="position:relative;%s%spadding:%.0fpx %.0fpx"><div aria-hidden="true" style="font-family:%s;font-size:48px;line-height:.7;color:%s;margin-bottom:6px">“</div>`,
+			cardCSS, fontCSS, orF(qs.PadY, 16), orF(qs.PadX, 24), htmlFontStack(fontSerif), accent))
 		renderHTMLSpans(out, b.Spans, pal, legacy)
 		out.WriteString("</blockquote>\n")
 	case QuoteFramed:

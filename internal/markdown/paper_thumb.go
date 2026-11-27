@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"block/internal/model"
+	"block/internal/theme"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -13,6 +14,7 @@ type themeThumbCacheKey struct {
 	theme model.ExportTheme
 	w     int
 	h     int
+	epoch uint64
 }
 
 type themeThumbCacheEntry struct {
@@ -30,11 +32,13 @@ func PaintThemeThumb(p *ui.Painter, r ui.Rect, t model.ExportTheme, radius float
 	if r.W <= 0 || r.H <= 0 {
 		return
 	}
+	theme.EnsureBuiltinCodeFonts()
 	const thumbScale = float32(2)
 	key := themeThumbCacheKey{
 		theme: t,
 		w:     int(math.Round(float64(r.W * thumbScale))),
 		h:     int(math.Round(float64(r.H * thumbScale))),
+		epoch: theme.FontEpoch(),
 	}
 	themeThumbCacheMu.RLock()
 	entry, ok := themeThumbCache[key]
@@ -91,11 +95,11 @@ func paintThemeThumbUncached(p *ui.Painter, r ui.Rect, t model.ExportTheme, radi
 
 		case model.ExportThemeRiso:
 			p.Fill(ui.Rect{X: r.X + 12, Y: r.Y + 15, W: minFloat32(76, r.W-24), H: 24}, spec.Accent2, 0)
-			paintThumbText(p, "孔版", fontPing, 17, 900, r.X+15, r.Y+12, spec.Accent)
+			paintThumbText(p, "孔版", fontSans, 17, 900, r.X+15, r.Y+12, spec.Accent)
 			paintThumbText(p, "01", fontMono, 9, 600, r.X+r.W-22, r.Y+r.H-15, spec.Accent)
 
 		case model.ExportThemePress:
-			paintThumbCentered(p, "块 报", fontDidot, 14, 700, r.X, r.Y+6, r.W, spec.Title)
+			paintThumbCentered(p, "块 报", fontSerif, 14, 900, r.X, r.Y+6, r.W, spec.Title)
 			ry := r.Y + 25
 			p.Fill(ui.Rect{X: r.X + 10, Y: ry, W: r.W - 20, H: 2}, spec.Title, 0)
 			p.Line(r.X+10, ry+4, r.X+r.W-10, ry+4, 0.7, spec.Title)
@@ -112,10 +116,10 @@ func paintThemeThumbUncached(p *ui.Painter, r ui.Rect, t model.ExportTheme, radi
 			}
 
 		case model.ExportThemePoster:
-			f := ui.Font{Family: fontPing, Size: 24, Weight: 900, LineHeight: 1.05}
+			f := ui.Font{Family: fontSans, Size: 24, Weight: 900, LineHeight: 1.05}
 			lay := ui.ShapeRichTextWith([]ui.Span{
-				{Text: "大", Font: fontPing, Size: 24, Weight: 900, Color: spec.Title},
-				{Text: "字", Font: fontPing, Size: 24, Weight: 900, Color: spec.Canvas, Background: spec.Accent, PaddingX: 3, PaddingY: 1},
+				{Text: "大", Font: fontSans, Size: 24, Weight: 900, Color: spec.Title},
+				{Text: "字", Font: fontSans, Size: 24, Weight: 900, Color: spec.Canvas, Background: spec.Accent, PaddingX: 3, PaddingY: 1},
 			}, f, ui.TextShape{Width: r.W - 16})
 			p.TextLayout(lay, r.X+10, r.Y+10, spec.Title)
 			ox, oy := r.X+r.W-8, r.Y+10
@@ -136,13 +140,13 @@ func paintThemeThumbUncached(p *ui.Painter, r ui.Rect, t model.ExportTheme, radi
 				p.Fill(cr, spec.InnerCanvas, 6)
 				p.Stroke(cr, rgbHex(0xe4e1dc), 6, 1)
 			}
-			paintThumbText(p, "Mist", fontGeorgiaSong, 11, 500, c1.X+8, c1.Y+5, spec.Title)
+			paintThumbText(p, "Mist", fontSerif, 11, 500, c1.X+8, c1.Y+5, spec.Title)
 
 		case model.ExportThemeInk:
-			paintThumbText(p, "“", fontGeorgiaSong, 30, 400, r.X+10, r.Y+2, rgbHex(0x3a3833))
-			f := ui.Font{Family: fontSong, Size: 13, Weight: 400, LineHeight: 1.2}
+			paintThumbText(p, "“", fontSerif, 30, 400, r.X+10, r.Y+2, rgbHex(0x3a3833))
+			f := ui.Font{Family: fontSerif, Size: 13, Weight: 400, LineHeight: 1.2}
 			lay := ui.ShapeRichTextWith([]ui.Span{{
-				Text: "墨 黑", Font: fontSong, Size: 13, LetterSpacing: 2,
+				Text: "墨 黑", Font: fontSerif, Size: 13, LetterSpacing: 2,
 			}}, f, ui.TextShape{Width: r.W - 24})
 			p.TextLayout(lay, r.X+14, r.Y+20, spec.Title)
 			p.Line(r.X+14, r.Y+40, r.X+14+(r.W-28)*0.36, r.Y+40, 1, spec.Accent)
@@ -172,10 +176,10 @@ func paintThemeThumbUncached(p *ui.Painter, r ui.Rect, t model.ExportTheme, radi
 					{Color: spec.Canvas.Alpha(0), At: 1},
 				},
 			}, 0)
-			f := ui.Font{Family: fontPing, Size: 15, Weight: 800, LineHeight: 1.2}
+			f := ui.Font{Family: fontSans, Size: 15, Weight: 800, LineHeight: 1.2}
 			lay := ui.ShapeRichTextWith([]ui.Span{
-				{Text: "夜 ", Font: fontPing, Size: 15, Weight: 800, Color: spec.Title},
-				{Text: "NEON", Font: fontPing, Size: 15, Weight: 800, Color: spec.Accent, Shadow: ui.NewTextShadow(0, 0, 8, spec.Accent.Alpha(0.75))},
+				{Text: "夜 ", Font: fontSans, Size: 15, Weight: 800, Color: spec.Title},
+				{Text: "NEON", Font: fontSans, Size: 15, Weight: 800, Color: spec.Accent, Shadow: ui.NewTextShadow(0, 0, 8, spec.Accent.Alpha(0.75))},
 			}, f, ui.TextShape{Width: r.W - 20})
 			p.TextLayout(lay, r.X+10, r.Y+11, spec.Title)
 			paintThumbText(p, "— SIGNAL —", fontMono, 7.5, 500, r.X+10, r.Y+r.H-16, spec.Secondary)
@@ -187,16 +191,16 @@ func paintThemeThumbUncached(p *ui.Painter, r ui.Rect, t model.ExportTheme, radi
 				p.Fill(ui.Rect{X: x, Y: r.Y + r.H - 9, W: 6, H: 5}, hole, 1)
 			}
 			paintThumbText(p, "FRAME", fontMono, 7.5, 500, r.X+10, r.Y+14, spec.Accent)
-			paintThumbText(p, "暗房", fontSong, 14, 600, r.X+10, r.Y+25, spec.Title)
+			paintThumbText(p, "暗房", fontSerif, 14, 600, r.X+10, r.Y+25, spec.Title)
 
 		case model.ExportThemeNight:
 			card := ui.Rect{X: r.X + 8, Y: r.Y + 7, W: r.W - 16, H: r.H - 14}
 			p.Shadow(card, 8, 0, 3, 8, 0, rgbaHex(0x000000, 0.4))
 			p.Fill(card, spec.InnerCanvas, 8)
-			paintThumbText(p, "夜读", fontSong, 13, 600, card.X+9, card.Y+6, spec.Title)
-			f := ui.Font{Family: fontGeorgiaSong, Size: 8.5, Italic: true, LineHeight: 1.2}
+			paintThumbText(p, "夜读", fontSerif, 13, 600, card.X+9, card.Y+6, spec.Title)
+			f := ui.Font{Family: fontSerif, Size: 8.5, Italic: true, LineHeight: 1.2}
 			lay := ui.ShapeRichTextWith([]ui.Span{{
-				Text: "quiet page", Font: fontGeorgiaSong, Size: 8.5, Italic: true,
+				Text: "quiet page", Font: fontSerif, Size: 8.5, Italic: true,
 				Color: rgbHex(0xf6e3bf), Background: rgbaHex(0xe8a642, 0.28), Radius: 2, PaddingX: 3,
 			}}, f, ui.TextShape{Width: card.W - 14})
 			p.TextLayout(lay, card.X+9, card.Y+24, spec.Text)
@@ -220,9 +224,9 @@ func paintThemeThumbUncached(p *ui.Painter, r ui.Rect, t model.ExportTheme, radi
 
 		default: // Mono
 			p.Line(r.X+10, r.Y+8, r.X+10, r.Y+r.H-8, 0.8, spec.Title)
-			paintThumbText(p, "书页 Aa", fontGeorgiaSong, 14, 600, r.X+16, r.Y+9, spec.Title)
+			paintThumbText(p, "书页 Aa", fontSerif, 14, 600, r.X+16, r.Y+9, spec.Title)
 			p.Line(r.X+16, r.Y+30, r.X+r.W-12, r.Y+30, 0.6, spec.Title)
-			paintThumbCentered(p, "— 12 —", fontGeorgiaSong, 8.5, 400, r.X+12, r.Y+r.H-16, r.W-20, spec.Secondary)
+			paintThumbCentered(p, "— 12 —", fontSerif, 8.5, 400, r.X+12, r.Y+r.H-16, r.W-20, spec.Secondary)
 		}
 	})
 }

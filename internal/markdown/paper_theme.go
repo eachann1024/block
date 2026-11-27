@@ -85,15 +85,11 @@ type PaperThemeSpec struct {
 }
 
 const (
-	fontPing = "PingFang SC"
-	fontSong = "Songti SC"
-	fontKai  = "Kaiti SC"
-	fontMono = "Menlo, monospace"
-	// Latin in the first family, CJK falling back to the second.
-	fontGeorgiaSong = "Georgia, Songti SC"
-	fontAvenir      = "Avenir Next, PingFang SC"
-	fontDidot       = "Didot, Songti SC"
-	fontMonoCJK     = "Menlo, PingFang SC"
+	fontSans    = "HarmonyOS Sans SC, PingFang SC, Microsoft YaHei, Hiragino Sans GB, Noto Sans CJK SC, Noto Sans SC, sans-serif"
+	fontSerif   = "Noto Serif SC, Georgia, Songti SC, Source Han Serif SC, Noto Serif CJK SC, SimSun, serif"
+	fontKai     = "LXGW WenKai, Kaiti SC, STKaiti, KaiTi, FZKai-Z03, serif"
+	fontMono    = "JetBrains Mono, Menlo, Monaco, Cascadia Mono, Consolas, DejaVu Sans Mono, HarmonyOS Sans SC, PingFang SC, Microsoft YaHei, Noto Sans CJK SC, monospace"
+	fontMonoCJK = "JetBrains Mono, HarmonyOS Sans SC, Menlo, PingFang SC, Consolas, Microsoft YaHei, Noto Sans CJK SC, monospace"
 )
 
 func rgbHex(v uint32) ui.Color {
@@ -129,6 +125,29 @@ func NormalizeExportTheme(t model.ExportTheme) model.ExportTheme {
 		return t
 	default:
 		return model.ExportThemeMono
+	}
+}
+
+// ThemeWebFontFamilies returns the downloadable CJK/Latin webfont family names
+// required to render theme t natively.
+func ThemeWebFontFamilies(t model.ExportTheme) []string {
+	switch NormalizeExportTheme(t) {
+	case model.ExportThemeJournal, model.ExportThemeKraft:
+		return []string{"LXGW WenKai", "HarmonyOS Sans SC"}
+	case model.ExportThemeMono,
+		model.ExportThemePress,
+		model.ExportThemeMist,
+		model.ExportThemeInk,
+		model.ExportThemeFilm,
+		model.ExportThemeNight:
+		return []string{"Noto Serif SC", "HarmonyOS Sans SC"}
+	case model.ExportThemeRiso,
+		model.ExportThemePoster,
+		model.ExportThemeNeon,
+		model.ExportThemeTerminal:
+		return []string{"HarmonyOS Sans SC"}
+	default:
+		return []string{"Noto Serif SC", "HarmonyOS Sans SC"}
 	}
 }
 
@@ -315,9 +334,9 @@ func legacyOceanPaperSpec(pal theme.Palette) PaperThemeSpec {
 		TitleSize:     32,
 		HeadSizes:     [3]float32{28, 22, 19},
 		Mark:          TitleMarkRule,
-		TitleFamily:   fontPing,
-		HeadingFamily: fontPing,
-		BodyFamily:    fontPing,
+		TitleFamily:   fontSans,
+		HeadingFamily: fontSans,
+		BodyFamily:    fontSans,
 		TitleBold:     true,
 		Radius:        6,
 	}

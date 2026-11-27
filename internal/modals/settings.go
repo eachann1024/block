@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"block/internal/files"
 	"block/internal/fuzzy"
 	"block/internal/icons"
 	"block/internal/model"
@@ -1212,7 +1213,7 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 		}
 		curEpoch := theme.FontEpoch()
 		if len(m.fontFamilies) == 0 || m.fontFamiliesEpoch != curEpoch {
-			m.fontFamilies = ui.FontFamilies()
+			m.fontFamilies = filterEditorFontFamilies(ui.FontFamilies(), edFont, cdFont)
 			m.fontFamiliesEpoch = curEpoch
 		}
 		isDefaultBody := strings.TrimSpace(edFont) == ""
@@ -1621,7 +1622,8 @@ func (m *Manager) openFontPicker(role string) {
 	m.fontScroll = ui.ScrollState{}
 	base := m.fontFamilies
 	if len(base) == 0 {
-		base = ui.FontFamilies()
+		edFont, cdFont, _ := theme.Typography()
+		base = filterEditorFontFamilies(ui.FontFamilies(), edFont, cdFont)
 	}
 	if m.dataDir != "" {
 		if entries, err := os.ReadDir(filepath.Join(m.dataDir, "fonts")); err == nil {
@@ -1632,7 +1634,7 @@ func (m *Manager) openFontPicker(role string) {
 				}
 			}
 			for _, ent := range entries {
-				if ent.IsDir() {
+				if ent.IsDir() || isManagedWebFontFile(ent.Name()) {
 					continue
 				}
 				ext := strings.ToLower(filepath.Ext(ent.Name()))
@@ -1660,6 +1662,28 @@ type fontCandidateItem struct {
 	mono      bool
 	words     []string
 	subwords  []string
+}
+
+func filterEditorFontFamilies(families []ui.FontFamily, keep ...string) []ui.FontFamily {
+	keepSet := make(map[string]bool, len(keep))
+	for _, k := range keep {
+		if trimmed := strings.ToLower(strings.TrimSpace(k)); trimmed != "" {
+			keepSet[trimmed] = true
+		}
+	}
+	out := make([]ui.FontFamily, 0, len(families))
+	for _, f := range families {
+		key := strings.ToLower(strings.TrimSpace(f.Name))
+		if key != "" && !keepSet[key] && files.IsAppRegisteredExportFontFamily(f.Name) {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+func isManagedWebFontFile(name string) bool {
+	return files.IsManagedWebFontFile(name)
 }
 
 func isMonospaceFontName(name string) bool {

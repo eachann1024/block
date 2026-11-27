@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"block/internal/model"
+	"block/internal/theme"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -359,7 +360,11 @@ func toUISpansWith(spans []model.Span, pal PaperThemeSpec, legacy bool, o spanSt
 }
 
 func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, prefs model.ExportPreferences) exportScene {
+	theme.EnsureBuiltinCodeFonts()
 	pal, legacy := resolveExportPaper(prefs)
+	if !legacy {
+		theme.EnsureExportFontsForFamilies(ThemeWebFontFamilies(pal.Theme))
+	}
 	pageW := float32(resolveExportWidth(prefs))
 	showTitle := resolveShowTitle(prefs)
 	showFooter := resolveWatermark(prefs)
@@ -1686,8 +1691,8 @@ func buildPaintedQuote(b *model.Block, bx, y, avail float32, pal PaperThemeSpec,
 			markSz = 56
 			topExtra = 20
 		}
-		mf := ui.Font{Family: fontGeorgiaSong, Size: markSz, LineHeight: 0.9}
-		markLay := ui.ShapeRichTextWith([]ui.Span{{Text: "“", Font: fontGeorgiaSong, Size: markSz, Color: accent}}, mf, ui.TextShape{Width: 120})
+		mf := ui.Font{Family: fontSerif, Size: markSz, LineHeight: 0.9}
+		markLay := ui.ShapeRichTextWith([]ui.Span{{Text: "“", Font: fontSerif, Size: markSz, Color: accent}}, mf, ui.TextShape{Width: 120})
 		spans := toUISpansWith(b.Spans, pal, legacy, opts)
 		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
 		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: maxFloat32(avail-2*padX, 80)})

@@ -152,6 +152,9 @@ func main() {
 			}
 			files.EnsureHarmonyFontsAsync(files.AppDataDir(), ws.InvalidateAllWindows)
 		})
+		theme.SetExportFontEnsurer(func(families []string) {
+			files.EnsureExportFontsAsync(files.AppDataDir(), families, ws.InvalidateAllWindows)
+		})
 		if runtime.GOOS != "darwin" || theme.NeedsHarmonyFont() {
 			files.EnsureHarmonyFontsAsync(files.AppDataDir(), ws.InvalidateAllWindows)
 		}

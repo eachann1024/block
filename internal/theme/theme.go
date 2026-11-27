@@ -981,6 +981,9 @@ func CurrentThemeMode() model.ThemeMode {
 var (
 	harmonyEnsurerMu sync.RWMutex
 	harmonyEnsurer   func()
+
+	exportEnsurerMu sync.RWMutex
+	exportEnsurer   func(families []string)
 )
 
 // SetHarmonyFontEnsurer registers a callback invoked when typography or an
@@ -989,6 +992,28 @@ func SetHarmonyFontEnsurer(fn func()) {
 	harmonyEnsurerMu.Lock()
 	harmonyEnsurer = fn
 	harmonyEnsurerMu.Unlock()
+}
+
+// SetExportFontEnsurer registers a callback invoked by export preview/rendering
+// to ensure the requested export theme font families are cached and registered.
+func SetExportFontEnsurer(fn func(families []string)) {
+	exportEnsurerMu.Lock()
+	exportEnsurer = fn
+	exportEnsurerMu.Unlock()
+}
+
+// EnsureExportFontsForFamilies ensures any needed webfont families for export
+// themes are loaded or scheduled for silent background download.
+func EnsureExportFontsForFamilies(families []string) {
+	if len(families) == 0 {
+		return
+	}
+	exportEnsurerMu.RLock()
+	fn := exportEnsurer
+	exportEnsurerMu.RUnlock()
+	if fn != nil {
+		fn(families)
+	}
 }
 
 func containsHarmonyFont(raw string) bool {

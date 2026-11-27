@@ -50,7 +50,7 @@ func monoTheme() PaperThemeSpec {
 		BodySize: 17, Leading: 1.95, TitleSize: 40,
 		HeadSizes:   [3]float32{28, 22, 19},
 		Mark:        TitleMarkRule,
-		TitleFamily: fontGeorgiaSong, HeadingFamily: fontGeorgiaSong, BodyFamily: fontGeorgiaSong,
+		TitleFamily: fontSerif, HeadingFamily: fontSerif, BodyFamily: fontSerif,
 		Radius: 2,
 		Style: PaperStyle{
 			Ornaments:  []Ornament{{Kind: OrnamentEdgeRule, X: 72, W: 0.7, Color: rgbHex(0xc9c4b8)}},
@@ -59,12 +59,12 @@ func monoTheme() PaperThemeSpec {
 			Lead:       LeadStyle{Color: ink, Weight: 600},
 			Heading:    HeadingStyle{Weight: 600},
 			Inline:     InlineStyle{Highlight: &HighlightStyle{Rule: ink, RuleW: 1.5}},
-			Table:      TableStyle{Rules: true, Top: 1, HeadSep: 0.5, RowSep: 0.5, Bottom: 1, RuleColor: rule, StrongColor: ink, HeaderFont: fontAvenir, HeaderSize: 12, HeaderUpper: true, HeaderTrack: 0.12, HeaderWt: 500, HeaderFG: rgbHex(0x7a776f), PadX: 4},
+			Table:      TableStyle{Rules: true, Top: 1, HeadSep: 0.5, RowSep: 0.5, Bottom: 1, RuleColor: rule, StrongColor: ink, HeaderFont: fontSans, HeaderSize: 12, HeaderUpper: true, HeaderTrack: 0.12, HeaderWt: 500, HeaderFG: rgbHex(0x7a776f), PadX: 4},
 			List:       ListStyle{Bullet: BulletMiddot},
 			Quote:      QuoteStyle{Kind: QuoteIndent, Indent: 32, Italic: true},
 			Code:       CodeStyle{Kind: CodePlain, Size: 13, Leading: 1.8},
 			Divider:    DividerStyle{Kind: DividerText, Text: "·   ·   ·"},
-			Footer:     FooterStyle{Left: "cooool.top", Right: "{date}", Rule: FooterNone, Family: fontGeorgiaSong, Size: 12, Color: rgbHex(0x9a968c)},
+			Footer:     FooterStyle{Left: "cooool.top", Right: "{date}", Rule: FooterNone, Family: fontSerif, Size: 12, Color: rgbHex(0x9a968c)},
 		},
 	})
 }
@@ -94,13 +94,13 @@ func journalTheme() PaperThemeSpec {
 		BodySize: 17, Leading: 1.95, TitleSize: 38,
 		HeadSizes:   [3]float32{30, 26, 21},
 		Mark:        TitleMarkWavy,
-		TitleFamily: fontKai, HeadingFamily: fontKai, BodyFamily: fontPing,
+		TitleFamily: fontKai, HeadingFamily: fontKai, BodyFamily: fontKai,
 		Radius: 8,
 		Style: PaperStyle{
 			Substrate: []SubstrateLayer{{Kind: SubstrateGrid, Color: rgbHex(0xd3e2f1), Gap: 16, Size: 1}},
 			Ornaments: []Ornament{
 				{Kind: OrnamentTape, Color: rgbaHex(0xf2ba60, 0.55), Y: 49, W: 120, H: 30, Angle: -3},
-				{Kind: OrnamentStamp, Text: "{date}", Family: fontGeorgiaSong, Size: 22, Italic: true, Color: orange, X: 100, Y: 84, Angle: 6, BottomWhenNoTitle: true},
+				{Kind: OrnamentStamp, Text: "{date}", Family: fontKai, Size: 22, Italic: true, Color: orange, X: 100, Y: 84, Angle: 6, BottomWhenNoTitle: true},
 			},
 			Title:   TitleStyle{Weight: 400, RuleWidth: 0.5, RuleColor: rgbHex(0xe08a1e)},
 			Lead:    LeadStyle{Color: brown, Family: fontKai, Weight: 600},
@@ -140,7 +140,7 @@ func risoTheme() PaperThemeSpec {
 		BodySize: 17, Leading: 1.85, TitleSize: 50,
 		HeadSizes:   [3]float32{30, 24, 20},
 		Mark:        TitleMarkOffset,
-		TitleFamily: fontPing, HeadingFamily: fontPing, BodyFamily: fontPing,
+		TitleFamily: fontSans, HeadingFamily: fontSans, BodyFamily: fontSans,
 		TitleBold: true,
 		Radius:    0,
 		Style: PaperStyle{
@@ -185,7 +185,7 @@ func pressTheme() PaperThemeSpec {
 		BodySize: 18, Leading: 1.9, TitleSize: 46,
 		HeadSizes:   [3]float32{26, 20, 18},
 		Mark:        TitleMarkDoubleRule,
-		TitleFamily: fontSong, HeadingFamily: fontSong, BodyFamily: fontSong,
+		TitleFamily: fontSerif, HeadingFamily: fontSerif, BodyFamily: fontSerif,
 		TitleBold: true,
 		Radius:    0,
 		Style: PaperStyle{
@@ -200,12 +200,12 @@ func pressTheme() PaperThemeSpec {
 			Inline: InlineStyle{Highlight: &HighlightStyle{BG: rgbaHex(0x9c2b1f, 0.12), Rule: red, RuleW: 2},
 				LinkColor: red, LinkThick: 1},
 			Table: TableStyle{Rules: true, Top: 2, HeadSep: 1, RowSep: 1, RowSepLine: LineDotted, Bottom: 2, RuleColor: rule, StrongColor: ink,
-				HeaderSize: 12, HeaderWt: 700, HeaderTrack: 0.1, NumFamily: fontGeorgiaSong},
-			List:    ListStyle{Number: NumberCJK, NumberFont: fontGeorgiaSong, NumberColor: red, BulletColor: red, Bullet: BulletSquare, BulletSize: 5},
-			Quote:   QuoteStyle{Kind: QuotePull, Family: fontSong, Weight: 900, Size: 30, Leading: 1.45, Accent: red, PadY: 22},
+				HeaderSize: 12, HeaderWt: 700, HeaderTrack: 0.1, NumFamily: fontSerif},
+			List:    ListStyle{Number: NumberCJK, NumberFont: fontSerif, NumberColor: red, BulletColor: red, Bullet: BulletSquare, BulletSize: 5},
+			Quote:   QuoteStyle{Kind: QuotePull, Family: fontSerif, Weight: 900, Size: 30, Leading: 1.45, Accent: red, PadY: 22},
 			Code:    CodeStyle{BorderW: 0.5, Size: 12, Leading: 1.6},
 			Divider: DividerStyle{Kind: DividerText, Text: "＊　＊　＊", Color: red},
-			Footer:  FooterStyle{Left: "cooool.top 编辑部 出品", Right: "{date}", Rule: FooterLine, RuleColor: ink, Family: fontSong, Size: 12, Track: 0.1, Color: rgbHex(0x5a5244)},
+			Footer:  FooterStyle{Left: "cooool.top 编辑部 出品", Right: "{date}", Rule: FooterLine, RuleColor: ink, Family: fontSerif, Size: 12, Track: 0.1, Color: rgbHex(0x5a5244)},
 			Justify: true,
 		},
 	})
@@ -233,7 +233,7 @@ func posterTheme() PaperThemeSpec {
 		BodySize: 17, Leading: 1.85, TitleSize: 132,
 		HeadSizes:   [3]float32{36, 28, 22},
 		Mark:        TitleMarkRule,
-		TitleFamily: fontPing, HeadingFamily: fontPing, BodyFamily: fontPing,
+		TitleFamily: fontSans, HeadingFamily: fontSans, BodyFamily: fontSans,
 		TitleBold: true,
 		Radius:    0,
 		Style: PaperStyle{
@@ -278,7 +278,7 @@ func mistTheme() PaperThemeSpec {
 		BodySize: 16, Leading: 1.9, TitleSize: 38,
 		HeadSizes:   [3]float32{28, 22, 18},
 		Mark:        TitleMarkBar,
-		TitleFamily: fontGeorgiaSong, HeadingFamily: fontGeorgiaSong, BodyFamily: fontPing,
+		TitleFamily: fontSerif, HeadingFamily: fontSerif, BodyFamily: fontSans,
 		Radius: 10,
 		Style: PaperStyle{
 			Substrate: []SubstrateLayer{{Kind: SubstrateGradient, Color: rgbHex(0xeef1f5), Color2: rgbHex(0xe3e8ef), Color3: rgbHex(0xdde2ea), Angle: 165}},
@@ -288,12 +288,12 @@ func mistTheme() PaperThemeSpec {
 			Heading:   HeadingStyle{Weight: 400, TopGap: 4},
 			Inline:    InlineStyle{Highlight: &HighlightStyle{BG: rgbaHex(0x7896c8, 0.18)}, LinkColor: accent, LinkDeco: soft, LinkThick: 1.5, LinkOffset: 3},
 			Table: TableStyle{Rules: true, HeadSep: 1, RowSep: 1, RuleColor: rgbHex(0xeef0f3), StrongColor: rgbHex(0xe3e6eb),
-				HeaderSize: 12, HeaderWt: 500, HeaderFG: secondary, HeaderUpper: true, HeaderTrack: 0.1, HeaderFont: fontAvenir, PadX: 12, PadY: 10, Secondary: rgbHex(0x5a6476)},
+				HeaderSize: 12, HeaderWt: 500, HeaderFG: secondary, HeaderUpper: true, HeaderTrack: 0.1, HeaderFont: fontSans, PadX: 12, PadY: 10, Secondary: rgbHex(0x5a6476)},
 			List:    ListStyle{BulletSize: 6, BulletColor: rgbHex(0x9fb3cf), NumberColor: rgbHex(0x9fb3cf), TodoBorder: rgbHex(0x9fb3cf), TodoCheck: accent},
 			Quote:   QuoteStyle{Kind: QuoteBigMark, Card: true, Accent: soft, PadX: 28, PadY: 20},
 			Code:    CodeStyle{BorderW: -1, Size: 13.5},
 			Divider: DividerStyle{Kind: DividerText, Text: "·  ·  ·", Color: soft},
-			Footer:  FooterStyle{Center: "cooool.top · {date}", Rule: FooterNone, Family: fontAvenir, Size: 11, Track: 0.2, Color: rgbHex(0x9aa3b2), Gap: 24},
+			Footer:  FooterStyle{Center: "cooool.top · {date}", Rule: FooterNone, Family: fontSans, Size: 11, Track: 0.2, Color: rgbHex(0x9aa3b2), Gap: 24},
 		},
 	})
 }
@@ -319,7 +319,7 @@ func inkTheme() PaperThemeSpec {
 		BodySize: 17, Leading: 2.05, TitleSize: 40,
 		HeadSizes:   [3]float32{26, 20, 18},
 		Mark:        TitleMarkRule,
-		TitleFamily: fontSong, HeadingFamily: fontSong, BodyFamily: fontSong,
+		TitleFamily: fontSerif, HeadingFamily: fontSerif, BodyFamily: fontSerif,
 		Radius: 2,
 		Style: PaperStyle{
 			Substrate:  []SubstrateLayer{{Kind: SubstrateDots, Color: rgbaHex(0xfffaeb, 0.025), Gap: 5, Size: 0.8}},
@@ -329,11 +329,11 @@ func inkTheme() PaperThemeSpec {
 			Heading:    HeadingStyle{Weight: 400, Track: 0.16, TopGap: 24},
 			Inline:     InlineStyle{BoldColor: rgbHex(0xf2efe8), BoldWeight: 600, Highlight: &HighlightStyle{Rule: gold, RuleW: 1, FG: rgbHex(0xf2efe8)}, LinkColor: rgbHex(0xe6e1d6), LinkDeco: rgbHex(0x6a665d)},
 			Table:      TableStyle{Rules: true, HeadSep: 0.5, RowSep: 0.5, RuleColor: rgbHex(0x3a3732), StrongColor: rgbHex(0x5a564e), HeaderWt: 400, HeaderFG: rgbHex(0x8f8a7f), HeaderTrack: 0.12, Secondary: rgbHex(0x8f8a7f), PadX: 6},
-			List:       ListStyle{Bullet: BulletSquare, BulletSize: 4, BulletColor: gold, NumberColor: gold, NumberFont: fontGeorgiaSong, TodoBorder: rgbHex(0x5a564e), TodoCheck: gold},
+			List:       ListStyle{Bullet: BulletSquare, BulletSize: 4, BulletColor: gold, NumberColor: gold, NumberFont: fontSerif, TodoBorder: rgbHex(0x5a564e), TodoCheck: gold},
 			Quote:      QuoteStyle{Kind: QuoteBigMark, Accent: rgbHex(0x2a2824), Size: 22, Leading: 1.8, PadX: 36, PadY: 10},
 			Code:       CodeStyle{Kind: CodePlain, FG: rgbHex(0x8f8a7f), Size: 13.5, Leading: 1.8},
 			Divider:    DividerStyle{Kind: DividerText, Text: "—", Color: rgbHex(0x5a564e)},
-			Footer:     FooterStyle{Center: "·  cooool.top  ·", Rule: FooterNone, Family: fontGeorgiaSong, Size: 12, Track: 0.3, Color: rgbHex(0x5a564e)},
+			Footer:     FooterStyle{Center: "·  cooool.top  ·", Rule: FooterNone, Family: fontSerif, Size: 12, Track: 0.3, Color: rgbHex(0x5a564e)},
 		},
 	})
 }
@@ -367,15 +367,15 @@ func kraftTheme() PaperThemeSpec {
 		Radius: 6,
 		Style: PaperStyle{
 			Substrate:  []SubstrateLayer{{Kind: SubstrateGrid, Color: rgbaHex(0xd6b05c, 0.08), Gap: 20, Size: 1}},
-			Ornaments:  []Ornament{{Kind: OrnamentSeal, Text: "✦", Text2: "{date}", W: 92, X: 40, Y: 4, Angle: -12, Color: gold, Color2: rgbHex(0x1d1b18), Family: fontGeorgiaSong, Size: 22, BottomWhenNoTitle: true}},
+			Ornaments:  []Ornament{{Kind: OrnamentSeal, Text: "✦", Text2: "{date}", W: 92, X: 40, Y: 4, Angle: -12, Color: gold, Color2: rgbHex(0x1d1b18), Family: fontSans, Size: 22, BottomWhenNoTitle: true}},
 			Title:      TitleStyle{Weight: 400, RuleColor: gold, Gap: 36},
 			NoTitleBar: NoTitleBarStyle{Kind: NoTitleBarRing, Color: gold},
 			Lead:       LeadStyle{Color: rgbHex(0xf2e9d2), Weight: 600},
 			Heading:    HeadingStyle{Weight: 400, Color: bright, TopGap: 18},
 			Inline:     InlineStyle{BoldColor: rgbHex(0xf2e9d2), Highlight: &HighlightStyle{BG: rgbaHex(0xd6b05c, 0.22)}, LinkColor: bright, LinkDotted: true},
 			Table: TableStyle{Rules: true, HeadSep: 1, RowSep: 0.5, RuleColor: rgbaHex(0xc9a352, 0.35), StrongColor: gold,
-				HeaderSize: 15, HeaderWt: 400, HeaderFG: muted, NumColor: bright, NumFamily: fontGeorgiaSong, Size: 15},
-			List:    ListStyle{Bullet: BulletRing, BulletSize: 9, BulletColor: gold, NumberColor: bright, NumberFont: fontGeorgiaSong, Todo: TodoRing, TodoBorder: gold, TodoCheck: bright, DoneFG: muted},
+				HeaderSize: 15, HeaderWt: 400, HeaderFG: muted, NumColor: bright, NumFamily: fontKai, Size: 15},
+			List:    ListStyle{Bullet: BulletRing, BulletSize: 9, BulletColor: gold, NumberColor: bright, NumberFont: fontKai, Todo: TodoRing, TodoBorder: gold, TodoCheck: bright, DoneFG: muted},
 			Quote:   QuoteStyle{Kind: QuoteBar, BarW: 2, Size: 22, Leading: 1.75, Accent: gold, PadX: 22, PadY: 4},
 			Code:    CodeStyle{BorderW: 0.5, Size: 13.5, Label: gold},
 			Divider: DividerStyle{Kind: DividerText, Text: "◆", Color: gold},
@@ -410,7 +410,7 @@ func neonTheme() PaperThemeSpec {
 		BodySize: 16, Leading: 1.9, TitleSize: 44,
 		HeadSizes:   [3]float32{28, 22, 18},
 		Mark:        TitleMarkNone,
-		TitleFamily: fontPing, HeadingFamily: fontPing, BodyFamily: fontPing,
+		TitleFamily: fontSans, HeadingFamily: fontSans, BodyFamily: fontSans,
 		TitleBold: true,
 		Radius:    8,
 		Style: PaperStyle{
@@ -455,7 +455,7 @@ func filmTheme() PaperThemeSpec {
 		BodySize: 17, Leading: 1.95, TitleSize: 40,
 		HeadSizes:   [3]float32{28, 22, 19},
 		Mark:        TitleMarkRule,
-		TitleFamily: fontGeorgiaSong, HeadingFamily: fontSong, BodyFamily: fontGeorgiaSong,
+		TitleFamily: fontSerif, HeadingFamily: fontSerif, BodyFamily: fontSerif,
 		Radius: 4,
 		Style: PaperStyle{
 			Ornaments: []Ornament{
@@ -473,7 +473,7 @@ func filmTheme() PaperThemeSpec {
 				HeaderFont: fontMono, HeaderSize: 10, HeaderUpper: true, HeaderTrack: 0.16, HeaderWt: 500, HeaderFG: rgbHex(0x7d7264),
 				FirstColor: rgbHex(0xefe4cf), NumFamily: fontMono, NumColor: rgbHex(0xe8a25a), Size: 14},
 			List:    ListStyle{Bullet: BulletDash, BulletColor: rgbHex(0x7d7264), Number: NumberPadded, NumberFont: fontMono, NumberColor: red, TodoBorder: rgbHex(0x7d7264), TodoCheck: red},
-			Quote:   QuoteStyle{Kind: QuoteFramed, Accent: red, Label: "SCENE {n}", Family: fontSong, Italic: true, Size: 20, Leading: 1.75, PadX: 26, PadY: 22},
+			Quote:   QuoteStyle{Kind: QuoteFramed, Accent: red, Label: "SCENE {n}", Family: fontSerif, Italic: true, Size: 20, Leading: 1.75, PadX: 26, PadY: 22},
 			Code:    CodeStyle{BorderW: 0.5, Size: 13.5, FG: rgbHex(0xe8a25a), Label: rgbHex(0x7d7264)},
 			Divider: DividerStyle{Kind: DividerRepeat, Text: "▪ ", Color: frame},
 			Footer:  FooterStyle{Left: "cooool.top FILM", Right: "{date}", Rule: FooterLine, RuleColor: frame, Family: fontMono, Size: 11, Track: 0.2, Color: rgbHex(0x7d7264), RightColor: red},
@@ -505,7 +505,7 @@ func nightTheme() PaperThemeSpec {
 		BodySize: 17, Leading: 1.95, TitleSize: 38,
 		HeadSizes:   [3]float32{28, 22, 19},
 		Mark:        TitleMarkNone,
-		TitleFamily: fontSong, HeadingFamily: fontSong, BodyFamily: fontPing,
+		TitleFamily: fontSerif, HeadingFamily: fontSerif, BodyFamily: fontSans,
 		Radius: 10,
 		Style: PaperStyle{
 			Title:      TitleStyle{Weight: 600, Leading: 1.35, Moon: true, Gap: 32},
@@ -515,10 +515,10 @@ func nightTheme() PaperThemeSpec {
 			Inline:     InlineStyle{BoldColor: rgbHex(0xf1e6d2), Highlight: &HighlightStyle{BG: rgbaHex(0xe8a642, 0.24), FG: rgbHex(0xf6e3bf)}, LinkColor: amber, LinkDeco: rgbaHex(0xe8a642, 0.5)},
 			Table:      TableStyle{Rules: true, HeadSep: 1, RowSep: 0.5, RuleColor: rgbHex(0x4a3b31), StrongColor: rgbHex(0x6a5545), HeaderWt: 600, HeaderFG: rgbHex(0xa8977c), HeaderSize: 13},
 			List:       ListStyle{BulletSize: 6, BulletColor: rgbHex(0xb88a3e), NumberColor: amber, TodoBorder: rgbHex(0xb88a3e), TodoCheck: amber},
-			Quote:      QuoteStyle{Kind: QuoteBar, BarW: 2, Family: fontGeorgiaSong, Italic: true, Size: 20, Accent: amber, PadX: 22, PadY: 4},
+			Quote:      QuoteStyle{Kind: QuoteBar, BarW: 2, Family: fontSerif, Italic: true, Size: 20, Accent: amber, PadX: 22, PadY: 4},
 			Code:       CodeStyle{BorderW: -1, Size: 13.5, FG: rgbHex(0xe8d8bc)},
 			Divider:    DividerStyle{Kind: DividerText, Text: "☾", Color: rgbHex(0x8a7a62)},
-			Footer:     FooterStyle{Center: "cooool.top · {date}", Rule: FooterNone, Family: fontSong, Size: 14, Color: rgbHex(0x8a7a62)},
+			Footer:     FooterStyle{Center: "cooool.top · {date}", Rule: FooterNone, Family: fontSerif, Size: 14, Color: rgbHex(0x8a7a62)},
 		},
 	})
 }

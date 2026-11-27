@@ -19,8 +19,9 @@ import (
 )
 
 type cachedExportPayload struct {
-	rev  uint64
-	data []byte
+	rev       uint64
+	fontEpoch uint64
+	data      []byte
 }
 
 type exportRequest struct {
@@ -47,10 +48,13 @@ func (c *Controller) requestLocked() exportRequest {
 func (c *Controller) exportBytes(req exportRequest, format model.ExportFormat) ([]byte, error) {
 	// Media permissions and file identity can change while the export panel is open.
 	cacheable := format == model.ExportMarkdown || !hasExportMedia(req.doc)
+	startEpoch := theme.FontEpoch()
 	if cacheable {
 		c.mu.Lock()
 		entry, ok := c.cachedExports[format]
-		current := c.exportDataRev == req.exportDataRev && entry.rev == req.exportDataRev
+		current := c.exportDataRev == req.exportDataRev &&
+			entry.rev == req.exportDataRev &&
+			entry.fontEpoch == startEpoch
 		c.mu.Unlock()
 		if ok && current {
 			return entry.data, nil
@@ -68,12 +72,17 @@ func (c *Controller) exportBytes(req exportRequest, format model.ExportFormat) (
 		return nil, err
 	}
 
+	endEpoch := theme.FontEpoch()
 	c.mu.Lock()
-	if cacheable && c.open && c.exportDataRev == req.exportDataRev {
+	if cacheable && c.open && c.exportDataRev == req.exportDataRev && endEpoch == startEpoch {
 		if c.cachedExports == nil {
 			c.cachedExports = make(map[model.ExportFormat]cachedExportPayload)
 		}
-		c.cachedExports[format] = cachedExportPayload{rev: req.exportDataRev, data: raw}
+		c.cachedExports[format] = cachedExportPayload{
+			rev:       req.exportDataRev,
+			fontEpoch: startEpoch,
+			data:      raw,
+		}
 	}
 	c.mu.Unlock()
 	return raw, nil
@@ -236,7 +245,7 @@ func (c *Controller) saveRequest(req exportRequest, outPath string) error {
 }
 
 func (c *Controller) isCurrentRequestLocked(req exportRequest) bool {
-	return c.open && c.previewRev == req.previewRev && c.format == req.format
+	return c.open && c.exportDataRev == req.exportDataRev && c.format == req.format
 }
 
 func (c *Controller) triggerCopy() {

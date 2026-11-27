@@ -225,25 +225,45 @@ func isNumericCellText(s string) bool {
 	return hasDigit
 }
 
-// splitFontPair splits a composite font stack like "Georgia, Songti SC" into
-// its primary Latin family and East-Asian fallback family.
+func isGenericFontKeyword(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui":
+		return true
+	default:
+		return false
+	}
+}
+
+// splitFontPair splits a composite font stack into its primary Latin family and
+// East-Asian fallback family for DOCX <w:rFonts>.
 func splitFontPair(fam string) (primary, eastAsia string) {
-	parts := strings.Split(fam, ",")
-	if len(parts) == 0 {
-		return fontPing, fontPing
+	switch fam {
+	case fontKai:
+		return "LXGW WenKai", "LXGW WenKai"
+	case fontSerif:
+		return "Noto Serif SC", "Noto Serif SC"
+	case fontSans, "":
+		return "HarmonyOS Sans SC", "HarmonyOS Sans SC"
+	case fontMono, fontMonoCJK:
+		return "JetBrains Mono", "HarmonyOS Sans SC"
 	}
-	p0 := strings.TrimSpace(parts[0])
-	if p0 == "" {
-		p0 = fontPing
-	}
-	if len(parts) >= 2 {
-		p1 := strings.TrimSpace(parts[1])
-		if p1 != "" && !strings.EqualFold(p1, "monospace") && !strings.EqualFold(p1, "serif") && !strings.EqualFold(p1, "sans-serif") {
-			return p0, p1
+	var clean []string
+	for _, part := range strings.Split(fam, ",") {
+		p := strings.TrimSpace(strings.Trim(part, `"'`))
+		if p == "" || isGenericFontKeyword(p) {
+			continue
 		}
+		clean = append(clean, p)
 	}
-	if strings.EqualFold(p0, "Menlo") || strings.EqualFold(p0, "monospace") {
-		return "Menlo", fontPing
+	if len(clean) == 0 {
+		return "HarmonyOS Sans SC", "HarmonyOS Sans SC"
+	}
+	p0 := clean[0]
+	if len(clean) >= 2 && (strings.EqualFold(p0, "JetBrains Mono") || strings.EqualFold(p0, "Menlo") || strings.EqualFold(p0, "Georgia") || strings.EqualFold(p0, "Didot") || strings.EqualFold(p0, "Avenir Next")) {
+		return p0, clean[1]
+	}
+	if strings.EqualFold(p0, "JetBrains Mono") || strings.EqualFold(p0, "Menlo") {
+		return p0, "HarmonyOS Sans SC"
 	}
 	return p0, p0
 }

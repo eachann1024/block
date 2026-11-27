@@ -501,7 +501,36 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to fl
 					inner := (&ui.Path{}).Circle(cx, cy, d*0.5-5)
 					p.StrokePath(outer, 1.5, col)
 					p.StrokePath(inner, 0.6, col)
-					if os.textLay != nil {
+					if o.Text == "✦" {
+						starSize := orF(o.Size, 16)
+						if os.relocated {
+							starSize = maxFloat32(starSize-2, 14)
+						}
+						h1 := starSize * 0.9
+						h2 := float32(0)
+						if os.text2Lay != nil {
+							_, h2 = os.text2Lay.Size()
+						}
+						totalH := h1
+						if h2 > 0 {
+							totalH += 4 + h2
+						}
+						ty := cy - totalH*0.5
+						r := h1 * 0.5
+						scx, scy := cx, ty+r
+						k := r * 0.22
+						star := (&ui.Path{}).
+							MoveTo(scx, scy-r).
+							QuadTo(scx+k, scy-k, scx+r, scy).
+							QuadTo(scx+k, scy+k, scx, scy+r).
+							QuadTo(scx-k, scy+k, scx-r, scy).
+							QuadTo(scx-k, scy-k, scx, scy-r).
+							Close()
+						p.FillPath(star, col)
+						if os.text2Lay != nil {
+							p.TextLayout(os.text2Lay, sx, ty+h1+4, col)
+						}
+					} else if os.textLay != nil {
 						_, h1 := os.textLay.Size()
 						h2 := float32(0)
 						if os.text2Lay != nil {

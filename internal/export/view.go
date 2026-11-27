@@ -67,8 +67,9 @@ type Controller struct {
 	previewCancel  context.CancelFunc
 	previewRunning bool
 
-	exportDataRev uint64
-	cachedExports map[model.ExportFormat]cachedExportPayload
+	previewFontEpoch uint64
+	exportDataRev    uint64
+	cachedExports    map[model.ExportFormat]cachedExportPayload
 
 	notice        string
 	savedPath     string
@@ -234,13 +235,17 @@ func (c *Controller) openPreview(title, notePath string, wholeDoc, selectionDoc 
 		c.selectionDoc = nil
 	}
 	c.useSelection = preferSelection && c.selectionDoc != nil
+	theme.EnsureBuiltinCodeFonts()
+	c.previewFontEpoch = theme.FontEpoch()
 	c.exportDataRev++
 	clear(c.cachedExports)
 	c.notice = ""
 	c.savedPath = ""
 	c.copied = false
+	style := c.style
 	c.queuePreviewLocked()
 	c.mu.Unlock()
+	theme.EnsureExportFontsForFamilies(markdown.ThemeWebFontFamilies(style))
 	c.notifyRedraw()
 }
 
@@ -330,6 +335,7 @@ func (c *Controller) SetStyle(s model.ExportTheme) {
 	c.savePreferencesLocked()
 	c.queuePreviewLocked()
 	c.mu.Unlock()
+	theme.EnsureExportFontsForFamilies(markdown.ThemeWebFontFamilies(s))
 	c.notifyRedraw()
 }
 
@@ -356,6 +362,7 @@ func (c *Controller) setDarkGroup(dark bool) {
 	c.savePreferencesLocked()
 	c.queuePreviewLocked()
 	c.mu.Unlock()
+	theme.EnsureExportFontsForFamilies(markdown.ThemeWebFontFamilies(next))
 	c.notifyRedraw()
 }
 
@@ -463,6 +470,11 @@ func (c *Controller) Render(ctx *ui.Context) {
 		return
 	}
 	c.services = ctx.Services()
+	if epoch := theme.FontEpoch(); epoch != c.previewFontEpoch {
+		c.previewFontEpoch = epoch
+		clear(c.cachedExports)
+		c.queuePreviewLocked()
+	}
 	c.mu.Unlock()
 
 	// Keyboard shortcuts: Esc close, Cmd+C copy, Cmd+S save.

@@ -16,10 +16,10 @@ func applyBlockStyles(s *PaperThemeSpec) {
 	case model.ExportThemeMono:
 		ink, grey := rgbHex(0x111111), rgbHex(0x7a776f)
 		paper := rgbHex(0xfaf8f3)
-		st.Sub = SubHeadStyle{Prefix: "§  ", PrefixColor: grey, PrefixFont: fontGeorgiaSong, Size: 18, Weight: 600}
+		st.Sub = SubHeadStyle{Prefix: "§  ", PrefixColor: grey, PrefixFont: fontSerif, Size: 18, Weight: 600}
 		st.Callout = CalloutStyle{Custom: true,
 			Labels:   [5]string{"○ 提示", "◐ 技巧", "● 重要", "警告", "当心"},
-			LabelPos: CalloutLabelColumn, LabelW: 84, LabelFamily: fontAvenir, LabelSize: 12, LabelTrack: 0.14, LabelWeight: 500,
+			LabelPos: CalloutLabelColumn, LabelW: 84, LabelFamily: fontSans, LabelSize: 12, LabelTrack: 0.14, LabelWeight: 500,
 			Bar: -1, Rule: rgbHex(0xc9c5bb), PadY: 10, Gap: 0.01,
 			Tones: [5]CalloutTone{
 				{Label: grey, TopRule: ink, TopRuleW: 1},
@@ -28,13 +28,13 @@ func applyBlockStyles(s *PaperThemeSpec) {
 				{Label: paper, LabelBG: ink},
 				{Label: paper, LabelBG: ink, TopRule: ink, TopRuleW: 2, Bold: true},
 			}}
-		ls.NumberColor, ls.NumberFont = grey, fontGeorgiaSong
+		ls.NumberColor, ls.NumberFont = grey, fontSerif
 		ls.Bullet2Glyph, ls.Bullet2Color = "–", grey
 		ls.TodoBorder, ls.TodoCheck, ls.TodoRadius, ls.DoneFG, ls.DoneStrike = rgbHex(0x1c1b19), rgbHex(0x1c1b19), 0.01, grey, true
 		in.StrikeColor, in.UnderColor, in.UnderThick = grey, ink, 0.5
 		in.CodeBG, in.CodeFG, in.CodeRadius = rgbaHex(0x111111, 0.06), ink, -1
 		st.Image = ImageStyle{Frame: ImageFrameBorder, Border: rgbHex(0x1c1b19), BorderW: 0.5, Radius: 0.01,
-			Caption: true, CaptionPrefix: "图 {n} · ", CaptionFamily: fontGeorgiaSong, CaptionItalic: true, CaptionColor: grey, CaptionCenter: true}
+			Caption: true, CaptionPrefix: "图 {n} · ", CaptionFamily: fontSerif, CaptionItalic: true, CaptionColor: grey, CaptionCenter: true}
 
 	case model.ExportThemeJournal:
 		brown := rgbHex(0x6b5b44)
@@ -83,10 +83,10 @@ func applyBlockStyles(s *PaperThemeSpec) {
 
 	case model.ExportThemePress:
 		red, ink := rgbHex(0x9c2b1f), rgbHex(0x1a1814)
-		st.Sub = SubHeadStyle{Prefix: "▍", PrefixColor: red, Family: fontPing, Color: red, Size: 14, Weight: 600, Track: 0.2}
+		st.Sub = SubHeadStyle{Prefix: "▍", PrefixColor: red, Family: fontSans, Color: red, Size: 14, Weight: 600, Track: 0.2}
 		st.Callout = CalloutStyle{Custom: true,
 			Labels:   [5]string{"【提示】", "【技巧】", "【重要】", "【警告】", "【当心】"},
-			LabelPos: CalloutLabelInline, LabelFamily: fontPing,
+			LabelPos: CalloutLabelInline, LabelFamily: fontSans,
 			Bar: -1, Rule: rgbHex(0x8c826e), PadX: 10, PadY: 7, Gap: 4,
 			Tones: [5]CalloutTone{
 				{Label: ink}, {Label: ink}, {Label: red},
@@ -99,7 +99,7 @@ func applyBlockStyles(s *PaperThemeSpec) {
 		in.CodeBG, in.CodeRadius = rgbaHex(0xffffff, 0.35), -1
 		st.Divider = DividerStyle{Kind: DividerText, Text: "❦", Track: 1, Color: rgbHex(0x5a5244)}
 		st.Image = ImageStyle{Frame: ImageFrameBorder, Border: rgbHex(0x23201b), BorderW: 0.5, Radius: 0.01,
-			Caption: true, CaptionPrefix: "图 · ", CaptionFamily: fontGeorgiaSong, CaptionColor: rgbHex(0x5a5244)}
+			Caption: true, CaptionPrefix: "图 · ", CaptionFamily: fontSerif, CaptionColor: rgbHex(0x5a5244)}
 
 	case model.ExportThemePoster:
 		ink, orange, paper := rgbHex(0x141414), rgbHex(0xe2471b), rgbHex(0xf2efe9)
@@ -126,7 +126,7 @@ func applyBlockStyles(s *PaperThemeSpec) {
 
 	case model.ExportThemeMist:
 		accent := rgbHex(0x3b5b8c)
-		st.Sub = SubHeadStyle{Family: fontPing, Color: accent, Size: 15, Weight: 600}
+		st.Sub = SubHeadStyle{Family: fontSans, Color: accent, Size: 15, Weight: 600}
 		st.Callout = CalloutStyle{Custom: true,
 			Labels:   [5]string{"提示 ·", "技巧 ·", "重要 ·", "警告 ·", "当心 ·"},
 			LabelPos: CalloutLabelInline, LabelWeight: 600,
@@ -158,13 +158,13 @@ func applyBlockStyles(s *PaperThemeSpec) {
 				{Border: gold, Label: rgbHex(0xe0b46a), FG: light},
 				{BG: light, Label: rgbHex(0x8a2e22), FG: rgbHex(0x141311)},
 			}}
-		ls.Number, ls.NumberColor, ls.NumberFont = NumberRoman, gold, fontGeorgiaSong
+		ls.Number, ls.NumberColor, ls.NumberFont = NumberRoman, gold, fontSerif
 		ls.Bullet2, ls.Bullet2Size, ls.Bullet2Color = BulletDash, 1, rgbHex(0x6a665d)
 		ls.TodoBorder, ls.TodoCheck, ls.TodoRadius, ls.DoneFG, ls.DoneStrike = rgbHex(0x8f8a7f), gold, 0.01, rgbHex(0x6a665d), true
 		in.StrikeColor, in.UnderColor = rgbHex(0x6a665d), gold
 		in.CodeBG, in.CodeFG = rgbaHex(0xc8a66a, 0.1), gold
 		st.Image = ImageStyle{Frame: ImageFrameBorder, Border: rgbHex(0x3a3732), BorderW: 0.5, Radius: 0.01,
-			Caption: true, CaptionPrefix: "— ", CaptionFamily: fontGeorgiaSong, CaptionItalic: true, CaptionTrack: 0.1, CaptionColor: rgbHex(0x7d786e)}
+			Caption: true, CaptionPrefix: "— ", CaptionFamily: fontSerif, CaptionItalic: true, CaptionTrack: 0.1, CaptionColor: rgbHex(0x7d786e)}
 
 	case model.ExportThemeKraft:
 		gold, bright, muted := rgbHex(0xc9a352), rgbHex(0xd6b05c), rgbHex(0xa89b80)
@@ -233,7 +233,7 @@ func applyBlockStyles(s *PaperThemeSpec) {
 		st.Sub = SubHeadStyle{Color: amber, Size: 18, Weight: 600}
 		st.Callout = CalloutStyle{Custom: true,
 			Labels:   [5]string{"提示", "技巧", "重要", "警告", "当心"},
-			LabelPos: CalloutLabelInline, LabelFamily: fontSong, LabelWeight: 600,
+			LabelPos: CalloutLabelInline, LabelFamily: fontSerif, LabelWeight: 600,
 			Bar: -1, Radius: 12, PadX: 16, PadY: 12, Gap: 8,
 			Tones: [5]CalloutTone{
 				{BG: rgbHex(0x33302c), Label: rgbHex(0xc9bca6)},
@@ -242,12 +242,12 @@ func applyBlockStyles(s *PaperThemeSpec) {
 				{BG: rgbHex(0x45311c), Border: rgbaHex(0xe8a642, 0.35), Label: rgbHex(0xf5c26b), FG: light},
 				{BG: rgbHex(0x4a2620), Border: rgbaHex(0xe87860, 0.45), Label: rgbHex(0xf09a84), FG: light},
 			}}
-		ls.Number, ls.NumberShape, ls.NumberFill, ls.NumberColor, ls.NumberFont, ls.NumberSize = NumberBare, NumberShapeCircle, rgbHex(0x3a2d24), amber, fontGeorgiaSong, 12
+		ls.Number, ls.NumberShape, ls.NumberFill, ls.NumberColor, ls.NumberFont, ls.NumberSize = NumberBare, NumberShapeCircle, rgbHex(0x3a2d24), amber, fontSerif, 12
 		ls.Bullet2, ls.Bullet2Size, ls.Bullet2Color = BulletRing, 5, rgbHex(0xb88a3e)
 		ls.TodoFill, ls.TodoCheck, ls.TodoBorder, ls.TodoRadius, ls.DoneFG, ls.DoneStrike = true, amber, rgbHex(0x6a5848), 8, rgbHex(0x8a7a62), true
 		in.StrikeColor, in.UnderColor = rgbHex(0x8a7a62), amber
 		in.CodeBG, in.CodeFG, in.CodeRadius = rgbHex(0x221a15), rgbHex(0xf5c26b), 6
-		st.Image = ImageStyle{Radius: 14, Caption: true, CaptionFamily: fontGeorgiaSong, CaptionSize: 13, CaptionItalic: true, CaptionColor: rgbHex(0xa8977c), CaptionCenter: true}
+		st.Image = ImageStyle{Radius: 14, Caption: true, CaptionFamily: fontSerif, CaptionSize: 13, CaptionItalic: true, CaptionColor: rgbHex(0xa8977c), CaptionCenter: true}
 
 	case model.ExportThemeTerminal:
 		green, bright, dim := rgbHex(0x7ee787), rgbHex(0xb5f5bb), rgbHex(0x3f8a47)
