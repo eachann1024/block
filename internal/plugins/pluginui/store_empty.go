@@ -11,7 +11,14 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const pluginDevGuideURL = "https://docs.block.cooool.top/plugins/"
+const (
+	pluginDevGuideURLZh = "https://docs.block.cooool.top/"
+	pluginDevGuideURLEn = "https://docs.block.cooool.top/en/"
+)
+
+func pluginDevGuideURL() string {
+	return theme.Tr(pluginDevGuideURLZh, pluginDevGuideURLEn)
+}
 
 // storeCategoryIcon returns the Duo icon representing an App Store category
 // in empty states. Unknown categories fall back to the generic package glyph.
@@ -207,7 +214,7 @@ func renderStoreEmptyState(
 					})
 					bui.Probe(link, "app-store-empty-guide")
 					if link.Clicked() {
-						c.OpenURL(pluginDevGuideURL)
+						c.OpenURL(pluginDevGuideURL())
 					}
 				}
 			})

@@ -6,7 +6,10 @@ const { localeIndex, isDark } = useData();
 const isEn = computed(() => localeIndex.value === "en");
 
 const copyState = ref<"idle" | "copied" | "failed">("idle");
+const cardCopyState = ref<"idle" | "copied" | "failed">("idle");
 const cmdCopyState = ref<"idle" | "copied" | "failed">("idle");
+const heroTipId = "bp-hero-ai-tip";
+const cardTipId = "bp-card-ai-tip";
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const heroRef = ref<HTMLElement | null>(null);
 
@@ -23,6 +26,16 @@ const content = computed(() => {
       ctaSecondary: "Copy AI Spec URL",
       ctaSecondaryCopied: "Copied Spec URL",
       ctaSecondaryFailed: "Copy Failed",
+      heroAiHint: "Click once to copy the link, paste it with your prompt, and AI can generate a plugin.",
+      aiCardHint: "Just click once to copy the link, paste it with your prompt, and generate a complete plugin.",
+      aiCopySuccess: "Link copied — paste with your prompt to any AI",
+      aiCopyFailed: "Clipboard unavailable — copy the spec URL below:",
+      aiCardBadgeIdle: "Click to copy",
+      aiCardBadgeCopied: "✓ Copied",
+      aiCardBadgeFailed: "Copy failed",
+      aiCardRaw: "View raw",
+      aiCardAria:
+        "Copy AI-Ready Full Spec URL. Just click once to copy the link, paste it with your prompt, and generate a complete plugin.",
       aiSpecUrl: "https://docs.block.cooool.top/en/plugin-dev-for-ai.md",
       aiSpecRel: withBase("/en/plugin-dev-for-ai.md"),
       llmsRel: withBase("/en/llms.txt"),
@@ -137,6 +150,16 @@ const content = computed(() => {
     ctaSecondary: "复制 AI 规范链接",
     ctaSecondaryCopied: "已复制规范链接",
     ctaSecondaryFailed: "复制失败",
+    heroAiHint: "点一下复制链接，带上内容发给 AI 就能生成插件",
+    aiCardHint: "只需要点一下复制链接，带上你的内容发给 AI，就能直接生成一个插件。",
+    aiCopySuccess: "已复制链接，带上内容发给 AI 即可生成",
+    aiCopyFailed: "剪贴板不可用，请手动复制下方链接：",
+    aiCardBadgeIdle: "点击复制",
+    aiCardBadgeCopied: "✓ 已复制",
+    aiCardBadgeFailed: "复制失败",
+    aiCardRaw: "查看原文",
+    aiCardAria:
+      "复制 AI 自包含全量规范链接：只需要点一下复制链接，带上你的内容发给 AI，就能直接生成一个插件。",
     aiSpecUrl: "https://docs.block.cooool.top/plugin-dev-for-ai.md",
     aiSpecRel: withBase("/plugin-dev-for-ai.md"),
     llmsRel: withBase("/llms.txt"),
@@ -242,23 +265,66 @@ const content = computed(() => {
   };
 });
 
-async function copyText(text: string, target: typeof copyState) {
-  if (typeof navigator === "undefined" || !navigator.clipboard || !window.isSecureContext) {
-    target.value = "failed";
-    window.setTimeout(() => {
+type CopyTargetKey = "hero" | "card" | "cmd";
+
+const copyTargets: Record<CopyTargetKey, typeof copyState> = {
+  hero: copyState,
+  card: cardCopyState,
+  cmd: cmdCopyState,
+};
+const copyTimers = new Map<CopyTargetKey, number>();
+let isUnmounted = false;
+
+function scheduleCopyReset(key: CopyTargetKey, delayMs: number) {
+  if (typeof window === "undefined" || isUnmounted) return;
+  const prev = copyTimers.get(key);
+  if (prev !== undefined) {
+    window.clearTimeout(prev);
+  }
+  const target = copyTargets[key];
+  const timerId = window.setTimeout(() => {
+    if (!isUnmounted) {
       target.value = "idle";
-    }, 2200);
+    }
+    copyTimers.delete(key);
+  }, delayMs);
+  copyTimers.set(key, timerId);
+}
+
+async function copyText(text: string, key: CopyTargetKey) {
+  const target = copyTargets[key];
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.clipboard ||
+    typeof window === "undefined" ||
+    !window.isSecureContext
+  ) {
+    target.value = "failed";
+    scheduleCopyReset(key, 6000);
     return;
   }
   try {
     await navigator.clipboard.writeText(text);
+    if (isUnmounted) return;
     target.value = "copied";
+    scheduleCopyReset(key, 2400);
   } catch {
+    if (isUnmounted) return;
     target.value = "failed";
+    scheduleCopyReset(key, 6000);
   }
-  window.setTimeout(() => {
-    target.value = "idle";
-  }, 2000);
+}
+
+function selectCodeElement(event: Event) {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  const el = event.currentTarget as HTMLElement | null;
+  if (!el) return;
+  const sel = window.getSelection?.();
+  if (!sel) return;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 // Subtle Base.org-inspired living pixel-block field in Ocean Paper tones (SSR-safe)
@@ -397,9 +463,16 @@ watch(isDark, () => {
 });
 
 onBeforeUnmount(() => {
-  if (typeof window !== "undefined" && rafId) {
-    window.cancelAnimationFrame(rafId);
-    rafId = 0;
+  isUnmounted = true;
+  if (typeof window !== "undefined") {
+    if (rafId) {
+      window.cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    for (const timerId of copyTimers.values()) {
+      window.clearTimeout(timerId);
+    }
+    copyTimers.clear();
   }
   resizeObserver?.disconnect();
   resizeObserver = null;
@@ -427,20 +500,49 @@ onBeforeUnmount(() => {
             <span class="bp-pill-mark" aria-hidden="true" />
             <span>{{ content.ctaPrimary }}</span>
           </a>
-          <button
-            type="button"
-            class="bp-pill bp-pill-secondary"
-            :class="{ 'is-copied': copyState === 'copied' }"
-            @click="copyText(content.aiSpecUrl, copyState)"
+          <div
+            class="bp-hero-action-wrap"
+            :class="{
+              'is-copied': copyState === 'copied',
+              'is-failed': copyState === 'failed',
+            }"
           >
-            <span v-if="copyState === 'copied'">{{ content.ctaSecondaryCopied }}</span>
-            <span v-else-if="copyState === 'failed'">{{ content.ctaSecondaryFailed }}</span>
-            <span v-else>{{ content.ctaSecondary }}</span>
-          </button>
+            <button
+              type="button"
+              class="bp-pill bp-pill-secondary"
+              :class="{ 'is-copied': copyState === 'copied' }"
+              :aria-describedby="heroTipId"
+              @click="copyText(content.aiSpecUrl, 'hero')"
+            >
+              <span v-if="copyState === 'copied'">{{ content.ctaSecondaryCopied }}</span>
+              <span v-else-if="copyState === 'failed'">{{ content.ctaSecondaryFailed }}</span>
+              <span v-else>{{ content.ctaSecondary }}</span>
+            </button>
+            <div
+              :id="heroTipId"
+              class="bp-hero-tip"
+              :class="{
+                'is-copied': copyState === 'copied',
+                'is-failed': copyState === 'failed',
+              }"
+              aria-live="polite"
+            >
+              <span class="bp-tip-dot" aria-hidden="true" />
+              <div class="bp-tip-body">
+                <span v-if="copyState === 'copied'">{{ content.aiCopySuccess }}</span>
+                <span v-else-if="copyState === 'failed'">{{ content.aiCopyFailed }}</span>
+                <span v-else>{{ content.heroAiHint }}</span>
+                <code
+                  v-if="copyState === 'failed'"
+                  class="bp-tip-code"
+                  tabindex="0"
+                  @click.stop="selectCodeElement"
+                  @focus="selectCodeElement"
+                >{{ content.aiSpecUrl }}</code>
+              </div>
+            </div>
+          </div>
         </div>
-        <p v-if="copyState === 'failed'" class="bp-copy-fallback">
-          <code>{{ content.aiSpecUrl }}</code>
-        </p>
       </div>
     </section>
 
@@ -448,40 +550,119 @@ onBeforeUnmount(() => {
     <section class="bp-section">
       <div class="bp-container">
         <div class="bp-triad">
-          <a
-            v-for="item in content.paths"
-            :key="item.id"
-            :href="item.link"
-            :target="item.external ? '_blank' : undefined"
-            :rel="item.external ? 'noopener noreferrer' : undefined"
-            class="bp-card"
-          >
-            <div class="bp-card-top">
-              <span class="bp-duo-icon" aria-hidden="true">
-                <!-- Scheme A two-tone 24x24 icons -->
-                <svg v-if="item.icon === 'sandbox'" viewBox="0 0 24 24" width="22" height="22" fill="none">
-                  <rect x="4" y="4" width="16" height="16" rx="3.5" class="bp-svg-fill" />
-                  <rect x="4" y="4" width="16" height="16" rx="3.5" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M9 12L11.2 14.2L15.5 9.8" class="bp-svg-accent" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                <svg v-else-if="item.icon === 'language'" viewBox="0 0 24 24" width="22" height="22" fill="none">
-                  <path d="M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z" class="bp-svg-fill" />
-                  <path d="M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-                  <path d="M14 3.5V8h4.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-                  <path d="M9 13h6M9 16.5h4" class="bp-svg-accent" stroke-width="1.6" stroke-linecap="round" />
-                </svg>
-                <svg v-else viewBox="0 0 24 24" width="22" height="22" fill="none">
-                  <rect x="4" y="5" width="16" height="14" rx="3" class="bp-svg-fill" />
-                  <rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M8.5 10l2.5 2-2.5 2M12.5 14h3" class="bp-svg-accent" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </span>
-              <span class="bp-card-arrow" aria-hidden="true">↗</span>
+          <template v-for="item in content.paths" :key="item.id">
+            <div
+              v-if="item.id === 'ai-spec'"
+              class="bp-card-ai-wrap"
+              :class="{
+                'is-copied': cardCopyState === 'copied',
+                'is-failed': cardCopyState === 'failed',
+              }"
+            >
+              <article
+                class="bp-card bp-card-ai"
+                :class="{
+                  'is-copied': cardCopyState === 'copied',
+                  'is-failed': cardCopyState === 'failed',
+                }"
+              >
+                <button
+                  type="button"
+                  class="bp-card-trigger"
+                  :aria-label="content.aiCardAria"
+                  :aria-describedby="cardTipId"
+                  @click="copyText(content.aiSpecUrl, 'card')"
+                />
+                <div class="bp-card-top">
+                  <span class="bp-duo-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                      <rect x="4" y="5" width="16" height="14" rx="3" class="bp-svg-fill" />
+                      <rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" stroke-width="1.5" />
+                      <path d="M8.5 10l2.5 2-2.5 2M12.5 14h3" class="bp-svg-accent" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
+                  <span
+                    class="bp-card-status"
+                    :class="{ 'is-copied': cardCopyState === 'copied', 'is-failed': cardCopyState === 'failed' }"
+                    aria-hidden="true"
+                  >
+                    <span v-if="cardCopyState === 'copied'">{{ content.aiCardBadgeCopied }}</span>
+                    <span v-else-if="cardCopyState === 'failed'">{{ content.aiCardBadgeFailed }}</span>
+                    <span v-else>{{ content.aiCardBadgeIdle }}</span>
+                  </span>
+                </div>
+                <h2 class="bp-card-title">{{ item.title }}</h2>
+                <p class="bp-card-desc">{{ item.desc }}</p>
+                <div class="bp-card-meta bp-card-meta-split">
+                  <span class="bp-card-tag">{{ item.tag }}</span>
+                  <a
+                    :href="item.link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="bp-card-raw-link"
+                    @click.stop
+                  >
+                    <span>{{ content.aiCardRaw }}</span>
+                    <span class="bp-raw-arrow" aria-hidden="true">↗</span>
+                  </a>
+                </div>
+              </article>
+
+              <div
+                :id="cardTipId"
+                class="bp-card-drawer"
+                :class="{
+                  'is-copied': cardCopyState === 'copied',
+                  'is-failed': cardCopyState === 'failed',
+                }"
+                aria-live="polite"
+                @click="cardCopyState !== 'failed' && copyText(content.aiSpecUrl, 'card')"
+              >
+                <span class="bp-tip-dot" aria-hidden="true" />
+                <div class="bp-tip-body">
+                  <span v-if="cardCopyState === 'copied'">{{ content.aiCopySuccess }}</span>
+                  <span v-else-if="cardCopyState === 'failed'">{{ content.aiCopyFailed }}</span>
+                  <span v-else>{{ content.aiCardHint }}</span>
+                  <code
+                    v-if="cardCopyState === 'failed'"
+                    class="bp-tip-code"
+                    tabindex="0"
+                    @click.stop="selectCodeElement"
+                    @focus="selectCodeElement"
+                  >{{ content.aiSpecUrl }}</code>
+                </div>
+              </div>
             </div>
-            <h2 class="bp-card-title">{{ item.title }}</h2>
-            <p class="bp-card-desc">{{ item.desc }}</p>
-            <div class="bp-card-meta">{{ item.tag }}</div>
-          </a>
+
+            <a
+              v-else
+              :href="item.link"
+              :target="item.external ? '_blank' : undefined"
+              :rel="item.external ? 'noopener noreferrer' : undefined"
+              class="bp-card"
+            >
+              <div class="bp-card-top">
+                <span class="bp-duo-icon" aria-hidden="true">
+                  <!-- Scheme A two-tone 24x24 icons -->
+                  <svg v-if="item.icon === 'sandbox'" viewBox="0 0 24 24" width="22" height="22" fill="none">
+                    <rect x="4" y="4" width="16" height="16" rx="3.5" class="bp-svg-fill" />
+                    <rect x="4" y="4" width="16" height="16" rx="3.5" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M9 12L11.2 14.2L15.5 9.8" class="bp-svg-accent" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" width="22" height="22" fill="none">
+                    <path d="M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z" class="bp-svg-fill" />
+                    <path d="M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                    <path d="M14 3.5V8h4.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                    <path d="M9 13h6M9 16.5h4" class="bp-svg-accent" stroke-width="1.6" stroke-linecap="round" />
+                  </svg>
+                </span>
+                <span class="bp-card-arrow" aria-hidden="true">↗</span>
+              </div>
+              <h2 class="bp-card-title">{{ item.title }}</h2>
+              <p class="bp-card-desc">{{ item.desc }}</p>
+              <div class="bp-card-meta">{{ item.tag }}</div>
+            </a>
+          </template>
         </div>
       </div>
     </section>
@@ -553,7 +734,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="bp-cmd-btn"
                 :class="{ 'is-copied': cmdCopyState === 'copied' }"
-                @click="copyText(content.cliCmd, cmdCopyState)"
+                @click="copyText(content.cliCmd, 'cmd')"
               >
                 {{ cmdCopyState === "copied" ? content.cliCopied : content.cliCopy }}
               </button>
@@ -608,11 +789,13 @@ onBeforeUnmount(() => {
 /* Hero */
 .bp-hero {
   position: relative;
+  z-index: 2;
   min-height: 520px;
   display: flex;
   align-items: center;
   padding: 88px 0 80px;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .bp-hero-canvas {
@@ -662,6 +845,109 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
+}
+
+.bp-hero-action-wrap {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.bp-hero-tip {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  width: max-content;
+  max-width: min(360px, calc(100vw - 36px));
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--bp-btn-border);
+  background: var(--vp-c-bg-elv);
+  color: var(--bp-text-2);
+  font-size: 13px;
+  line-height: 1.48;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 20;
+  transition:
+    opacity 0.16s ease,
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.bp-hero-tip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12px;
+  height: 12px;
+}
+
+.bp-hero-action-wrap:hover .bp-hero-tip,
+.bp-hero-action-wrap:focus-within .bp-hero-tip,
+.bp-hero-action-wrap.is-copied .bp-hero-tip,
+.bp-hero-action-wrap.is-failed .bp-hero-tip {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.bp-hero-tip.is-copied {
+  border-color: var(--bp-accent);
+  background: var(--vp-c-bg-elv);
+  background: color-mix(in srgb, var(--bp-accent) 10%, var(--vp-c-bg-elv));
+  color: var(--bp-accent-strong);
+}
+
+.dark .bp-hero-tip.is-copied {
+  color: var(--bp-accent);
+}
+
+.bp-hero-tip.is-failed {
+  border-color: var(--bp-accent);
+  color: var(--bp-text-1);
+}
+
+.bp-tip-dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--bp-accent);
+  flex-shrink: 0;
+}
+
+.bp-tip-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.bp-tip-code {
+  display: block;
+  margin-top: 5px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: var(--bp-code-bg);
+  border: 1px solid var(--bp-border);
+  font-family: var(--bp-font-mono);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--bp-text-1);
+  word-break: break-all;
+  user-select: all;
+  cursor: text;
 }
 
 .bp-pill {
@@ -732,12 +1018,6 @@ onBeforeUnmount(() => {
   padding: 0 18px;
 }
 
-.bp-copy-fallback {
-  margin-top: 14px;
-  font-size: 13px;
-  color: var(--bp-text-2);
-}
-
 /* Sections & Flat Cards */
 .bp-section {
   padding: 20px 0 72px;
@@ -764,6 +1044,212 @@ onBeforeUnmount(() => {
 .bp-card:hover {
   border-color: var(--bp-accent);
   background: var(--bp-bg-alt);
+}
+
+.bp-card-ai-wrap {
+  position: relative;
+  display: flex;
+  z-index: 1;
+}
+
+.bp-card-ai-wrap:hover,
+.bp-card-ai-wrap:focus-within,
+.bp-card-ai-wrap.is-copied,
+.bp-card-ai-wrap.is-failed {
+  z-index: 10;
+}
+
+.bp-card-ai {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+}
+
+.bp-card-ai-wrap:hover .bp-card-ai,
+.bp-card-ai-wrap:focus-within .bp-card-ai,
+.bp-card-ai.is-copied,
+.bp-card-ai.is-failed {
+  border-color: var(--bp-accent);
+  background: var(--bp-bg-alt);
+}
+
+.bp-card-ai > :not(.bp-card-trigger) {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.bp-card-trigger {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.bp-card-trigger:focus-visible {
+  outline: 2px solid var(--bp-accent);
+  outline-offset: -2px;
+}
+
+.bp-card-status {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--bp-border);
+  background: var(--bp-bg-alt);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--bp-text-2);
+  white-space: nowrap;
+  transition: border-color 0.16s ease, background-color 0.16s ease, color 0.16s ease;
+}
+
+.bp-card-ai-wrap:hover .bp-card-status:not(.is-copied),
+.bp-card-ai-wrap:focus-within .bp-card-status:not(.is-copied) {
+  border-color: var(--bp-btn-border);
+  color: var(--bp-text-1);
+}
+
+.bp-card-status.is-copied {
+  border-color: var(--bp-accent);
+  background: var(--vp-c-brand-soft);
+  color: var(--bp-accent-strong);
+}
+
+.dark .bp-card-status.is-copied {
+  color: var(--bp-accent);
+}
+
+.bp-card-status.is-failed {
+  border-color: var(--bp-accent);
+  color: var(--bp-text-1);
+}
+
+.bp-card-meta-split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.bp-card-tag {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bp-card-raw-link {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 6px;
+  font-family: var(--bp-font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bp-text-2);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.14s ease, background-color 0.14s ease;
+}
+
+.bp-card-raw-link:hover {
+  color: var(--bp-accent-strong);
+  background: var(--bp-hover);
+}
+
+.dark .bp-card-raw-link:hover {
+  color: var(--bp-accent);
+}
+
+.bp-card-raw-link:focus-visible {
+  outline: 2px solid var(--bp-accent);
+  outline-offset: 2px;
+}
+
+.bp-raw-arrow {
+  font-size: 11px;
+  transition: transform 0.14s ease;
+}
+
+.bp-card-raw-link:hover .bp-raw-arrow {
+  transform: translate(1px, -1px);
+}
+
+.bp-card-drawer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% - 16px);
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 26px 22px 14px;
+  border: 1px solid var(--bp-accent);
+  border-top: 0;
+  border-radius: 0 0 16px 16px;
+  background: var(--bp-canvas);
+  color: var(--bp-text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-12px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.bp-card-drawer:not(.is-failed) {
+  cursor: pointer;
+}
+
+.bp-card-ai-wrap:hover .bp-card-drawer,
+.bp-card-ai-wrap:focus-within .bp-card-drawer,
+.bp-card-ai-wrap.is-copied .bp-card-drawer,
+.bp-card-ai-wrap.is-failed .bp-card-drawer {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.bp-card-drawer.is-copied {
+  border-color: var(--bp-accent);
+  background: var(--bp-bg-alt);
+  background: color-mix(in srgb, var(--bp-accent) 10%, var(--bp-bg-alt));
+  color: var(--bp-accent-strong);
+}
+
+.dark .bp-card-drawer.is-copied {
+  color: var(--bp-accent);
+}
+
+.bp-card-drawer.is-failed {
+  border-color: var(--bp-accent);
+  color: var(--bp-text-1);
 }
 
 .bp-card-top {
@@ -1116,6 +1602,31 @@ onBeforeUnmount(() => {
     padding: 64px 0 56px;
   }
 
+  .bp-hero-actions {
+    position: relative;
+  }
+
+  .bp-hero-action-wrap {
+    position: static;
+  }
+
+  .bp-hero-tip {
+    max-width: 100%;
+  }
+
+  .bp-hero-action-wrap.is-failed {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .bp-hero-action-wrap.is-failed .bp-hero-tip {
+    position: static;
+    transform: none;
+    margin-top: 10px;
+    width: 100%;
+  }
+
   .bp-triad,
   .bp-chapters-grid,
   .bp-refs-grid {
@@ -1129,6 +1640,68 @@ onBeforeUnmount(() => {
 
   .bp-metrics-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (hover: none) {
+  .bp-card-ai-wrap {
+    flex-direction: column;
+  }
+
+  .bp-card-ai {
+    flex: 1;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .bp-card-drawer {
+    position: static;
+    padding: 12px 22px 15px;
+    border-color: var(--bp-border);
+    border-radius: 0 0 16px 16px;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    pointer-events: auto;
+    transition: border-color 0.16s ease, background-color 0.16s ease, color 0.16s ease;
+  }
+
+  .bp-card-ai-wrap:hover .bp-card-drawer,
+  .bp-card-ai-wrap:focus-within .bp-card-drawer,
+  .bp-card-ai-wrap.is-copied .bp-card-drawer,
+  .bp-card-ai-wrap.is-failed .bp-card-drawer {
+    border-color: var(--bp-accent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-pill,
+  .bp-hero-tip,
+  .bp-card,
+  .bp-card-arrow,
+  .bp-card-status,
+  .bp-card-raw-link,
+  .bp-raw-arrow,
+  .bp-card-drawer,
+  .bp-cmd-btn,
+  .bp-ref-link {
+    transition: none !important;
+  }
+
+  .bp-hero-tip,
+  .bp-hero-action-wrap:hover .bp-hero-tip,
+  .bp-hero-action-wrap:focus-within .bp-hero-tip,
+  .bp-hero-action-wrap.is-copied .bp-hero-tip,
+  .bp-hero-action-wrap.is-failed .bp-hero-tip {
+    transform: translateX(-50%);
+  }
+
+  .bp-card-drawer,
+  .bp-card-ai-wrap:hover .bp-card-drawer,
+  .bp-card-ai-wrap:focus-within .bp-card-drawer,
+  .bp-card-ai-wrap.is-copied .bp-card-drawer,
+  .bp-card-ai-wrap.is-failed .bp-card-drawer {
+    transform: none;
   }
 }
 </style>
