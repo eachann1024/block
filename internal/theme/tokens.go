@@ -144,6 +144,8 @@ const (
 	ScrollGutter          float32 = 14
 	ScrollThumbWidth      float32 = 2
 	ScrollThumbHoverWidth float32 = 7
+	// ScrollEdgeInset is the gap between the thumb and the window edge, rest or hovered.
+	ScrollEdgeInset float32 = 1
 
 	ResizeHitWidth  float32 = 8
 	ResizeLineWidth float32 = 2

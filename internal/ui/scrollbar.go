@@ -222,10 +222,9 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 }
 
 func resolveTrackWidth(c *ui.Context) float32 {
-	if th := c.Theme(); th != nil && th.ScrollbarStyle.TrackWidth > 0 {
-		return th.ScrollbarStyle.TrackWidth
-	}
-	return theme.ScrollGutter
+	// Hover wake and drag hit-testing share the hot TrackWidth so the widened
+	// thumb can be grabbed immediately anywhere inside the wake zone.
+	return resolveHotScrollbarStyle(c).TrackWidth
 }
 
 func resolveHotScrollbarStyle(c *ui.Context) ui.ScrollbarStyle {
