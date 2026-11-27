@@ -1,6 +1,7 @@
 package pluginui
 
 import (
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -17,9 +18,9 @@ import (
 const storeHeroAutoAdvance = 5 * time.Second
 
 type storeHeroSpec struct {
-	pluginID string
-	heroFile string
-	tone     theme.StoreHeroTone
+	PluginID string              `json:"id"`
+	HeroFile string              `json:"art"`
+	Tone     theme.StoreHeroTone `json:"tone"`
 }
 
 type storeHeroSlide struct {
@@ -27,12 +28,18 @@ type storeHeroSlide struct {
 	card storeCard
 }
 
-// storeHeroCatalog defines the curated App Store featured carousel order.
-// block-file-icons stays pinned first as the primary showcase.
-var storeHeroCatalog = []storeHeroSpec{
-	{pluginID: "block-file-icons", heroFile: "hero-block-file-icons.svg", tone: theme.StoreHeroToneFileIcons},
-	{pluginID: "block-sync", heroFile: "hero-block-sync.svg", tone: theme.StoreHeroToneSync},
-	{pluginID: "block-titlebar", heroFile: "hero-block-titlebar.svg", tone: theme.StoreHeroToneTitlebar},
+var storeHeroCatalog = loadStoreHeroCatalog()
+
+func loadStoreHeroCatalog() []storeHeroSpec {
+	raw, err := assets.ReadStore("featured.json")
+	if err != nil {
+		return nil
+	}
+	var specs []storeHeroSpec
+	if err := json.Unmarshal(raw, &specs); err != nil {
+		return nil
+	}
+	return specs
 }
 
 var (
@@ -104,7 +111,7 @@ func resolveStoreHeroSlides(ctrl *Controller) []storeHeroSlide {
 	}
 	slides := make([]storeHeroSlide, 0, len(storeHeroCatalog))
 	for _, spec := range storeHeroCatalog {
-		it, ok := byID[spec.pluginID]
+		it, ok := byID[spec.PluginID]
 		if !ok {
 			continue
 		}
@@ -149,7 +156,7 @@ func renderStoreHero(
 	}
 	entry := slide.card.entry
 	pal := theme.Ocean()
-	hc := pal.StoreHero(slide.spec.tone)
+	hc := pal.StoreHero(slide.spec.Tone)
 	name := entry.Name.Resolve(locale)
 	summary := strings.TrimSpace(entry.Summary.Resolve(locale))
 	busy := installingID == entry.ID
@@ -221,7 +228,7 @@ func renderStoreHero(
 
 		cardW := card.Bounds().W
 		showArt := cardW <= 0 || cardW >= theme.StoreHeroMinArtWidth
-		heroArt := loadStoreArtSVG(slide.spec.heroFile)
+		heroArt := loadStoreArtSVG(slide.spec.HeroFile)
 		if heroArt == nil {
 			showArt = false
 		}
