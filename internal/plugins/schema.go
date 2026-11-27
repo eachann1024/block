@@ -36,6 +36,7 @@ const (
 	VariantPrimary   ButtonVariant = "primary"
 	VariantSecondary ButtonVariant = "secondary"
 	VariantDanger    ButtonVariant = "danger"
+	VariantLink      ButtonVariant = "link"
 )
 
 type UIOption struct {
@@ -222,6 +223,7 @@ type UIItem struct {
 	Layout           string            `json:"layout,omitempty"`  // "" | "full" | "stacked"
 	Variant          string            `json:"variant,omitempty"` // log_list: "" | "list" | "timeline"
 	Value            any               `json:"value,omitempty"`
+	Autosave         string            `json:"autosave,omitempty"`
 	Placeholder      string            `json:"placeholder,omitempty"`
 	AcceptExtensions []string          `json:"accept_extensions,omitempty"`
 	AddFolder        bool              `json:"add_folder,omitempty"`
@@ -259,7 +261,7 @@ type UICard struct {
 // ActionProgress captures live progress reported by a plugin during an active
 // action via host.action.progress or declaratively on UIPage.Progress.
 type ActionProgress struct {
-	Channel     string  // optional channel ID for independent per-page/target progress
+	Channel     string // optional channel ID for independent per-page/target progress
 	HasProgress bool
 	Progress    float64 // 0..1 ratio when HasProgress is true
 	Done        int     // completed items when Total > 0
@@ -481,6 +483,16 @@ func (p *UIPage) CollectActionIDs() []string {
 }
 
 func validateItem(prefix string, item UIItem, seenControls, seenActions map[string]bool) error {
+	if item.Autosave != "" {
+		switch item.Kind {
+		case KindInput, KindSecret, KindSelect, KindSegmented, KindSwitch, KindChecklist, KindFolder:
+		default:
+			return fmt.Errorf("%s.autosave is only allowed on form controls", prefix)
+		}
+		if err := validateActionID(prefix+".autosave", item.Autosave); err != nil {
+			return err
+		}
+	}
 	if item.AddFolder && item.Kind != KindChecklist {
 		return fmt.Errorf("%s.add_folder is only allowed on checklist", prefix)
 	}
@@ -899,9 +911,16 @@ func registerControlOptionalLabel(prefix, id, label string, seen map[string]bool
 	return checkText(prefix+".label", label, false)
 }
 
+func validateActionID(field, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("%s is required", field)
+	}
+	return nil
+}
+
 func validateButton(prefix string, b UIButton, seen map[string]bool) error {
-	if strings.TrimSpace(b.ID) == "" {
-		return fmt.Errorf("%s.id is required", prefix)
+	if err := validateActionID(prefix+".id", b.ID); err != nil {
+		return err
 	}
 	if seen[b.ID] {
 		return fmt.Errorf("%s.id %q is duplicated", prefix, b.ID)
@@ -928,10 +947,10 @@ func validateButton(prefix string, b UIButton, seen map[string]bool) error {
 		}
 	}
 	switch b.Variant {
-	case VariantPrimary, VariantSecondary, VariantDanger:
+	case VariantPrimary, VariantSecondary, VariantDanger, VariantLink:
 		return nil
 	default:
-		return fmt.Errorf("%s.variant %q must be primary, secondary, or danger", prefix, b.Variant)
+		return fmt.Errorf("%s.variant %q must be primary, secondary, danger, or link", prefix, b.Variant)
 	}
 }
 

@@ -540,7 +540,7 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"sidebar_sections", "file_badges", "sidebar_menu", "backdrops", "status_icon", "toast_icon",
 		"notes_open", "log_actions", "action_progress", "panel_toggle", "editor_insert_mode", "dialog_token",
 		"checklist_add_folder", "item_icons", "tab_menu", "file_path", "log_timeline",
-		"progress_bar", "segmented_status", "toast_banner", "open_settings",
+		"progress_bar", "segmented_status", "toast_banner", "open_settings", "form_autosave", "button_link",
 	}
 	if rt.cfg.SystemIntegration {
 		capabilities = append(capabilities, "system_integration")
@@ -614,6 +614,10 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 }
 
 func (rt *Runtime) ActionWithDialogToken(ctx context.Context, surface Surface, actionID string, values map[string]any, dialogToken string) (*ActionResult, error) {
+	return rt.actionWithTrigger(ctx, surface, actionID, values, dialogToken, "")
+}
+
+func (rt *Runtime) actionWithTrigger(ctx context.Context, surface Surface, actionID string, values map[string]any, dialogToken, trigger string) (*ActionResult, error) {
 	if values == nil {
 		values = map[string]any{}
 	}
@@ -639,6 +643,9 @@ func (rt *Runtime) ActionWithDialogToken(ctx context.Context, surface Surface, a
 	}
 	if strings.TrimSpace(dialogToken) != "" {
 		params["dialog_token"] = strings.TrimSpace(dialogToken)
+	}
+	if trigger != "" {
+		params["trigger"] = trigger
 	}
 	if err := rt.call(ctx, "plugin.action", params, &rawRes); err != nil {
 		return nil, err

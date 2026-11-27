@@ -21,6 +21,7 @@ type InputBindings struct {
 	OnTreemapSelect     func()
 	ResolveDraft        func(controlID, fallback string) string
 	OnDraftChanged      func(controlID, next string)
+	SetInputFocus       func(controlID string)
 	IsSecretShown       func(controlID string) bool
 	ToggleSecret        func(controlID string)
 	PickDirectory       func(controlID, title string)
@@ -45,6 +46,8 @@ type ActionFeedback struct {
 	LastActionIcon         *plugins.UIIcon
 	LastActionButtonActive bool
 	FailedActionID         string
+	AutosaveTone           string
+	AutosaveMessage        string
 	Error                  string
 	CompactLayout          bool
 	SidebarLayout          bool
@@ -65,6 +68,8 @@ func actionFeedbackFromView(vs plugins.PluginViewState) ActionFeedback {
 		LastActionIcon:         vs.LastActionIcon,
 		LastActionButtonActive: vs.LastActionButtonActive,
 		FailedActionID:         vs.FailedActionID,
+		AutosaveTone:           vs.AutosaveTone,
+		AutosaveMessage:        vs.AutosaveMessage,
 		Error:                  vs.Error,
 	}
 }
@@ -203,6 +208,9 @@ func pluginItemKey(pluginID, cardID string, idx int, item plugins.UIItem) string
 	if item.Kind == plugins.KindActions && len(item.Buttons) > 0 {
 		return fmt.Sprintf("plugin-item-%s-%s-act-%s", pluginID, cardID, item.Buttons[0].ID)
 	}
+	if item.Kind == plugins.KindGroup && len(item.Fields) > 0 {
+		return fmt.Sprintf("plugin-group-%s-%s-%s", pluginID, cardID, item.Fields[0].ID)
+	}
 	return fmt.Sprintf("plugin-item-%s-%s-%s-%d", pluginID, cardID, item.Kind, idx)
 }
 
@@ -241,7 +249,16 @@ func renderPageCardsWithScope(
 		cardGap = theme.SettingsSectionGap
 	}
 
-	ui.Column(c.Key("plugin-cards-" + pluginID)).FillWidth().MinWidth(0).Gap(cardGap).Children(func() {
+	cards := ui.Column(c.Key("plugin-cards-" + pluginID)).FillWidth().MinWidth(0).Gap(cardGap)
+	var focusedInput string
+	var reportFocus func(string)
+	if bindings != nil && bindings.SetInputFocus != nil {
+		reportFocus = bindings.SetInputFocus
+		bound := *bindings
+		bound.SetInputFocus = func(controlID string) { focusedInput = controlID }
+		bindings = &bound
+	}
+	cards.Children(func() {
 		for _, card := range page.Cards {
 			cd := card
 			visibleItems := make([]plugins.UIItem, 0, len(cd.Items))
@@ -341,7 +358,18 @@ func renderPageCardsWithScope(
 				}
 			})
 		}
+		if fb.AutosaveMessage != "" {
+			renderActionCallout(c, "plugin-autosave-callout-"+pluginID, fb.AutosaveMessage, fb.AutosaveTone)
+		}
 	})
+	if reportFocus != nil {
+		reportFocus(focusedInput)
+		if focusedInput != "" {
+			cards.OnUnmount(func() { reportFocus("") })
+		} else {
+			cards.OnUnmount(nil)
+		}
+	}
 }
 
 func isStackedOrGroupItem(item plugins.UIItem) bool {
@@ -792,6 +820,9 @@ func renderItem(
 				MinWidth(0)
 			if in.Focused() {
 				in.Background(pal.Card).Border(1, pal.Accent)
+				if bindings != nil && bindings.SetInputFocus != nil {
+					bindings.SetInputFocus(item.ID)
+				}
 			} else if in.Hovered() {
 				in.Background(pal.Shell).Border(1, pal.BtnBorder)
 			} else {
@@ -1881,6 +1912,8 @@ func mapButtonStyle(v plugins.ButtonVariant) bui.ActionButtonStyle {
 		return bui.ButtonPrimary
 	case plugins.VariantDanger:
 		return bui.ButtonDanger
+	case plugins.VariantLink:
+		return bui.ButtonLink
 	default:
 		return bui.ButtonSecondary
 	}
@@ -1966,7 +1999,9 @@ func renderPluginActionButton(
 	var leading *icons.Icon
 	var leadingCustom func(size float32, colors theme.IconColors, active bool)
 	if isSuccess {
-		style = bui.ButtonSuccess
+		if btn.Variant != plugins.VariantLink {
+			style = bui.ButtonSuccess
+		}
 		if fb.LastActionIcon != nil {
 			leading, leadingCustom = resolveButtonIcon(c, fb.LastActionIcon)
 		} else {
@@ -2081,22 +2116,7 @@ func renderActionsItem(
 	}
 	ui.Column(c).FillWidth().MinWidth(0).Gap(colGap).Children(func() {
 		if showCallout {
-			bgCol := pal.DangerSurface
-			bdCol := pal.Danger.Alpha(0.35)
-			fgCol := pal.Danger
-			if resTone == "warning" {
-				bgCol = pal.WarningSurface
-				bdCol = pal.Warning.Alpha(0.40)
-				fgCol = pal.Warning
-			}
-			firstID := item.Buttons[0].ID
-			ui.Row(c.Key("plugin-act-callout-"+pluginID+"-"+firstID)).FillWidth().MinWidth(0).
-				Padding(theme.Space8, theme.Space12).Gap(theme.Space8).Radius(theme.RadiusMD).
-				Background(bgCol).Border(1, bdCol).AlignItems(ui.Center).
-				Transition(bui.CascadeRowTransition(0)).Children(func() {
-				ui.Text(c, resMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					TextColor(fgCol).Grow(1).MinWidth(0)
-			})
+			renderActionCallout(c, "plugin-act-callout-"+pluginID+"-"+item.Buttons[0].ID, resMsg, resTone)
 		}
 
 		if fb.CompactLayout {
@@ -2138,6 +2158,21 @@ func renderActionsItem(
 				}
 			})
 		})
+	})
+}
+
+func renderActionCallout(c *ui.Context, id, message, tone string) {
+	pal := theme.Ocean()
+	bg, border, fg := pal.DangerSurface, pal.Danger.Alpha(0.35), pal.Danger
+	if tone == "warning" {
+		bg, border, fg = pal.WarningSurface, pal.Warning.Alpha(0.40), pal.Warning
+	}
+	ui.Row(c.Key(id)).FillWidth().MinWidth(0).
+		Padding(theme.Space8, theme.Space12).Gap(theme.Space8).Radius(theme.RadiusMD).
+		Background(bg).Border(1, border).AlignItems(ui.Center).
+		Transition(bui.CascadeRowTransition(0)).Children(func() {
+		ui.Text(c, message).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+			TextColor(fg).Grow(1).MinWidth(0)
 	})
 }
 

@@ -637,6 +637,7 @@ func (c *Controller) inputBindingsForSurface(pluginID string, surface plugins.Su
 		PickDirectory:       pickDirectory,
 		PickFile:            pickFile,
 		PickChecklistFolder: pickChecklistFolder,
+		SetInputFocus:       c.sup.SurfaceInputFocus(pluginID, surface),
 		IsCardExpanded: func(cardID string, defaultCollapsed bool) bool {
 			c.mu.Lock()
 			defer c.mu.Unlock()

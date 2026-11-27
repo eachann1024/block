@@ -76,6 +76,8 @@ type PluginViewState struct {
 	LastActionIcon         *UIIcon
 	LastActionButtonActive bool
 	LastActionWasHeader    bool
+	AutosaveTone           string
+	AutosaveMessage        string
 	BackgroundError        *BackgroundError
 
 	RetryKind         RetryKind
@@ -104,6 +106,7 @@ type PluginViewState struct {
 	actionCancel       context.CancelFunc
 	editedControls     map[string]bool
 	editedSeq          map[string]uint64
+	autosave           formAutosave
 
 	cachedSnapValid bool
 	cachedSnapAt    time.Time
@@ -2091,7 +2094,7 @@ func mergePageValuesUpToSeq(view *PluginViewState, page *UIPage, returned map[st
 		if _, ok := returned[k]; ok {
 			continue
 		}
-		if checkSeq && view.editedControls[k] && view.editedSeq[k] > maxSeq {
+		if view.protectAutosaveValue(k) || (checkSeq && view.editedControls[k] && view.editedSeq[k] > maxSeq) {
 			continue
 		}
 		delete(view.Values, k)
@@ -2099,12 +2102,12 @@ func mergePageValuesUpToSeq(view *PluginViewState, page *UIPage, returned map[st
 		delete(view.editedSeq, k)
 	}
 	for k, v := range defaults {
-		if !view.editedControls[k] {
+		if !view.editedControls[k] && !view.protectAutosaveValue(k) {
 			view.Values[k] = v
 		}
 	}
 	for k, v := range returned {
-		if checkSeq && view.editedControls[k] && view.editedSeq[k] > maxSeq {
+		if view.protectAutosaveValue(k) || (checkSeq && view.editedControls[k] && view.editedSeq[k] > maxSeq) {
 			continue
 		}
 		view.Values[k] = v
@@ -2327,6 +2330,7 @@ func (s *Supervisor) updateSurfaceControlValue(pluginID, nbRoot string, surface 
 	if vs.Values == nil {
 		vs.Values = map[string]any{}
 	}
+	previous := vs.Values[controlID]
 	vs.Values[controlID] = val
 	if vs.editedControls == nil {
 		vs.editedControls = make(map[string]bool)
@@ -2355,6 +2359,9 @@ func (s *Supervisor) updateSurfaceControlValue(pluginID, nbRoot string, surface 
 	s.stopFeedbackTimerLocked(key)
 	vs.editSeq++
 	vs.editedSeq[controlID] = vs.editSeq
+	if item, ok := vs.Page.autosaveControl(controlID); ok {
+		s.recordAutosaveEditLocked(key, vs, item, previous, val)
+	}
 	vs.cachedSnapValid = false
 	s.viewEpoch.Add(1)
 	seq := vs.editSeq
@@ -2481,7 +2488,6 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 		return
 	}
 	cur.Refreshing = false
-	cur.Page = page
 	cur.lastNotebookRoot = nbRoot
 	cur.lastActiveNote = activeNote
 	cur.lastLocale = rt.locale()
@@ -2489,16 +2495,16 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 		cur.Error = ""
 		cur.RetryKind = RetryKindNone
 	}
-	for k, v := range page.ExtractDefaultValues() {
-		if _, exists := cur.Values[k]; !exists {
-			cur.Values[k] = v
+	updates := page.ExtractDefaultValues()
+	for k := range updates {
+		if _, exists := cur.Values[k]; exists {
+			delete(updates, k)
 		}
 	}
 	for k, v := range returnedVals {
-		cur.Values[k] = v
-		delete(cur.editedControls, k)
-		delete(cur.editedSeq, k)
+		updates[k] = v
 	}
+	cur.mergeAutosavePage(page, updates, seq)
 	if len(returnedVals) > 0 {
 		s.formVersions[sKey]++
 		cur.formVersion = s.formVersions[sKey]
@@ -2776,11 +2782,12 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				keepDrafts := isStickyActionButton(actionID) && len(res.Values) == 0
 				if res.Page != nil {
 					cur.Page = res.Page
+					cur.autosave.deferred = nil
 					if cur.Page.Status == "" && statusMsg != "" {
 						cur.Page.Status = statusMsg
 					}
 					for k, v := range res.Page.ExtractDefaultValues() {
-						if cur.editedControls[k] && (keepDrafts || cur.editedSeq[k] > actionSeq) {
+						if cur.autosave.edits[k] != nil || (cur.editedControls[k] && (keepDrafts || cur.editedSeq[k] > actionSeq)) {
 							continue
 						}
 						cur.Values[k] = v
@@ -2789,7 +2796,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 					}
 				}
 				for k, v := range res.Values {
-					if cur.editedControls[k] && cur.editedSeq[k] > actionSeq {
+					if cur.autosave.edits[k] != nil || (cur.editedControls[k] && cur.editedSeq[k] > actionSeq) {
 						continue
 					}
 					cur.Values[k] = v
@@ -3390,6 +3397,8 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 		LastActionIcon:         iconCopy,
 		LastActionButtonActive: in.LastActionButtonActive,
 		LastActionWasHeader:    in.LastActionWasHeader,
+		AutosaveTone:           in.AutosaveTone,
+		AutosaveMessage:        in.AutosaveMessage,
 		RetryKind:              in.RetryKind,
 		FailedActionID:         in.FailedActionID,
 		FailedNotePath:         in.FailedNotePath,

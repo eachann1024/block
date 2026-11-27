@@ -196,6 +196,7 @@ const (
 	ButtonGhost
 	ButtonDanger
 	ButtonSuccess
+	ButtonLink
 )
 
 // ActionButtonOptions configures optional sizing and layout overrides for ActionButtonWithOptions.
@@ -247,6 +248,9 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 	h := opts.Height
 	if h <= 0 {
 		h = theme.HeightControl
+	}
+	if opts.Style == ButtonLink {
+		h = max(h, theme.HeightCompact)
 	}
 	padX := opts.PaddingX
 	if padX <= 0 && opts.Width <= 0 {
@@ -316,6 +320,14 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		}
 		bd = pal.Success.Alpha(0.38)
 		hasBorder = true
+	case ButtonLink:
+		fg = pal.Accent
+		if pressed {
+			fg = pal.AccentPressed
+		} else if hovered {
+			fg = pal.AccentHover
+		}
+		btn.FocusRing(true).FocusRingColor(pal.Accent)
 	case ButtonGhost:
 		fg = pal.TextSecondary
 		if pressed {
