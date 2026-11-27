@@ -109,6 +109,7 @@ type Service struct {
 	downloadGen     uint64
 	downloadRunning bool
 	downloadCancel  context.CancelFunc
+	downloadDone    chan struct{}
 	installRunning  bool
 	autoStarted     bool
 	stopCh          chan struct{}
@@ -255,6 +256,7 @@ func (s *Service) SetSourceMode(mode SourceMode) {
 func (s *Service) CancelDownload() {
 	s.mu.Lock()
 	cancel := s.downloadCancel
+	done := s.downloadDone
 	s.downloadCancel = nil
 	if !s.downloadRunning {
 		s.mu.Unlock()
@@ -274,6 +276,9 @@ func (s *Service) CancelDownload() {
 	s.mu.Unlock()
 	if cancel != nil {
 		cancel()
+	}
+	if done != nil {
+		<-done
 	}
 	s.notify()
 }
@@ -535,6 +540,8 @@ func (s *Service) StartDownload() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	s.downloadGen++
 	dlGen := s.downloadGen
+	done := make(chan struct{})
+	s.downloadDone = done
 	s.downloadRunning = true
 	s.downloadCancel = cancel
 	s.status = StatusDownloading
@@ -549,6 +556,7 @@ func (s *Service) StartDownload() {
 
 	go func() {
 		defer cancel()
+		defer close(done)
 
 		rec, err := DownloadAndStage(ctx, dataDir, entry, asset, inPlace, mode, func(dl, tot int64, speed float64, ch string, prep bool) {
 			s.mu.Lock()
