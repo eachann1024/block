@@ -454,4 +454,5 @@ type OutlineItem struct {
 	BlockID    BlockID
 	Level      int // 1..4
 	Title      string
+	Preview    string
 }

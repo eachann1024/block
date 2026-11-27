@@ -6034,12 +6034,39 @@ func (s *Session) Outline() []model.OutlineItem {
 			BlockID:    b.ID,
 			Level:      lvl,
 			Title:      title,
+			Preview:    s.outlinePreviewAfter(i),
 		})
 	}
 	s.outlineRev = s.docRev
 	s.outlineLen = len(s.doc.Blocks)
 	s.outlineCache = items
 	return items
+}
+
+func (s *Session) outlinePreviewAfter(headingIdx int) string {
+	if s.doc == nil {
+		return ""
+	}
+	for j := headingIdx + 1; j < len(s.doc.Blocks); j++ {
+		nb := &s.doc.Blocks[j]
+		if nb.Kind.IsHeading() {
+			break
+		}
+		if nb.Kind == model.BlockDivider {
+			continue
+		}
+		summary := strings.Join(strings.Fields(nb.PlainText()), " ")
+		if summary == "" {
+			continue
+		}
+		const maxPreviewRunes = 180
+		runes := []rune(summary)
+		if len(runes) > maxPreviewRunes {
+			return string(runes[:maxPreviewRunes]) + "…"
+		}
+		return summary
+	}
+	return ""
 }
 
 func (s *Session) ensureBlockUnfolded(idx int) {

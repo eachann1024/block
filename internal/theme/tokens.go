@@ -206,9 +206,33 @@ const (
 	AIHistoryDrawerWidth     float32 = 300
 	AIHistoryDrawerRowHeight float32 = 36
 
-	// Top-left outline rail hover-intent & leave grace timing.
-	OutlineHoverDelayMs = 220
-	OutlineHoverLeaveMs = 90
+	// Right-side Orca outline rail, hover card, and directory panel metrics.
+	OutlineIdleOpacity        float32 = 0.40
+	OutlineMaxTicks                   = 20
+	OutlineTickHeight         float32 = 3
+	OutlineTickWidthIdle      float32 = 12
+	OutlineTickWidthLit       float32 = 20
+	OutlineTickHitHeight      float32 = 12
+	OutlineTickHitPadX        float32 = 4
+	OutlineRailWidth          float32 = OutlineTickWidthLit + OutlineTickHitPadX*2
+	OutlineRailRightOffset            = ScrollGutter + Space4
+	OutlineRailRightReserve           = OutlineRailRightOffset + OutlineRailWidth + Space4
+	OutlineRailMinRightMargin float32 = 36
+	OutlineBridgeWidth        float32 = 12
+	OutlineHoverCardWidth     float32 = 272
+	OutlinePanelWidth         float32 = 288
+	OutlinePanelMaxHeight     float32 = 460
+	OutlinePanelMinHeight     float32 = 160
+	OutlinePanelViewportRatio float32 = 0.60
+	OutlineActiveBarWidth     float32 = 3
+	OutlineActiveBarHeight    float32 = 14
+	OutlineJumpLockMs                 = 350
+	OutlineScrollWakeMs               = 450
+	OutlineIdleFadeDelayMs            = 700
+	OutlineCardLeaveCloseMs           = 100
+	OutlineListDwellOpenMs            = 200
+	OutlineListLeaveCloseMs           = 150
+	OutlineFadeDurationMs             = 180
 
 	// App Store card & header toolbar metrics.
 	StoreIconBoxSize       float32 = 42  // leading app icon box inside a store card header

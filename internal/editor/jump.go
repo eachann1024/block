@@ -160,10 +160,16 @@ func textLineColRuneRange(text string, line0, col1 int) (startRune, endRune int,
 // JumpToBlock is used by the outline. Jumping preserves the editing caret.
 func (s *Session) JumpToBlock(idx int) {
 	if s.jumpTo(idx, -1, -1) {
-		s.outlineHovered = false
-		s.outlinePinnedClosed = true
-		s.outlineHoverEnterAt = time.Time{}
-		s.outlineHoverLeaveAt = time.Time{}
+		blockID := s.doc.Blocks[idx].ID
+		s.outlineJumpLockID = blockID
+		s.outlineJumpLockUntil = time.Time{}
+		s.outlineLastClickedID = blockID
+		s.outlinePreferScroll = false
+		s.outlineWakeUntil = time.Time{}
+		s.outlineIdleFadeAt = time.Time{}
+		if s.outlineMode != outlineModePinned {
+			s.closeOutline(true)
+		}
 	}
 }
 

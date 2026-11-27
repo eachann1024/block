@@ -86,6 +86,15 @@ type blockMenuState struct {
 	TriggerRect   ui.Rect
 }
 
+type outlineOverlayMode uint8
+
+const (
+	outlineModeClosed outlineOverlayMode = iota
+	outlineModeHoverCard
+	outlineModePanel
+	outlineModePinned
+)
+
 type findMatch struct {
 	BlockIdx  int
 	StartRune int
@@ -231,14 +240,33 @@ type Session struct {
 	findReplaceHandle       ui.Handle
 	findReplaceFocusPending bool
 
-	// Outline rail
-	outlineHovered      bool
-	outlinePinnedClosed bool
-	outlineHoverEnterAt time.Time
-	outlineHoverLeaveAt time.Time
-	jump                editorJump
-	jumpAlpha           float32
-	outlineForceNarrow  bool
+	// Outline rail (Scheme B: right-side vertical-centered dual-threshold rail)
+	outlineMode           outlineOverlayMode
+	outlineHoverBlockID   model.BlockID
+	outlineCardBlockID    model.BlockID
+	outlineListDwellID    model.BlockID
+	outlineListDwellAt    time.Time
+	outlineLeaveAt        time.Time
+	outlineListScroll     ui.ScrollState
+	outlineFilter         string
+	outlineInputHandle    ui.Handle
+	outlineFocusPending   bool
+	outlineJumpLockID     model.BlockID
+	outlineJumpLockUntil  time.Time
+	outlineLastClickedID  model.BlockID
+	outlineSuppressReopen bool
+	outlineWakeUntil      time.Time
+	outlineIdleFadeAt     time.Time
+	outlineLastScrollY    float32
+	outlineScrollInit     bool
+	outlineLastFocusBlock int
+	outlineLastDocRev     uint64
+	outlinePreferScroll   bool
+	outlineRailHovered    bool
+	outlineWasAwake       bool
+	jump                  editorJump
+	jumpAlpha             float32
+	outlineForceNarrow    bool
 
 	// Edge-float safe insets & scroll suppression
 	edgeInsetLeft      float32
@@ -554,10 +582,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.tableMenuBlock = 0
 	s.tableMenuKind = ""
 	s.jump = editorJump{}
-	s.outlineHovered = false
-	s.outlinePinnedClosed = false
-	s.outlineHoverEnterAt = time.Time{}
-	s.outlineHoverLeaveAt = time.Time{}
+	s.resetOutlineState(true)
 	s.annotations = nil
 	s.annotLoadedPath = ""
 	s.activeAnnotID = ""
@@ -1312,7 +1337,8 @@ func (s *Session) hasBlockingOverlay() bool {
 		s.editingAnnotID != "" ||
 		s.reactionPickerAnnotID != "" ||
 		s.activePlan != nil ||
-		s.outlineHovered ||
+		s.outlineMode == outlineModeHoverCard ||
+		s.outlineMode == outlineModePanel ||
 		s.lightbox.Open
 }
 
@@ -1337,9 +1363,7 @@ func (s *Session) closeTransientOverlays() {
 	s.annotFlashAlpha = 0
 	s.reactionPickerAnnotID = ""
 	s.trailingPlus = false
-	s.outlineHovered = false
-	s.outlineHoverEnterAt = time.Time{}
-	s.outlineHoverLeaveAt = time.Time{}
+	s.closeOutline(false)
 }
 
 // closeNonAnnotationOverlays dismisses geometric popups without committing or
@@ -1359,9 +1383,7 @@ func (s *Session) closeNonAnnotationOverlays() {
 	s.tableMenuKind = ""
 	s.reactionPickerAnnotID = ""
 	s.trailingPlus = false
-	s.outlineHovered = false
-	s.outlineHoverEnterAt = time.Time{}
-	s.outlineHoverLeaveAt = time.Time{}
+	s.closeOutline(false)
 }
 
 func (s *Session) blockIndexByID(id model.BlockID) int {

@@ -370,17 +370,15 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			if sb := scroll.Bounds(); sb.W > 0 && sb.H > 0 {
 				s.scrollRect = sb
 			}
+			renderedScrollRect := s.scrollRect
 			scroll.Draw(func(p *ui.Painter, r ui.Rect) {
 				s.scrollRect = r
 				s.paintBackground(p, r, pal, animEdgeL, animEdgeR)
 			})
 			scroll.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-				if s.scrollRect != r {
-					prevH := s.scrollRect.H
-					s.scrollRect = r
-					if prevH != r.H {
-						c.Invalidate()
-					}
+				s.scrollRect = r
+				if !nearDocRect(r, renderedScrollRect) {
+					c.Invalidate()
 				}
 			})
 			scroll.Children(renderCanvas)
@@ -414,9 +412,6 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			s.detachedCompose = ""
 		}
 
-		// The outline floats above the document inside the editor, below window popups.
-		s.renderOutlineRail(c)
-
 		// Render floating overlays
 		s.renderTrailingAddOverlay(c, readOnly)
 		s.renderBoxSelectMarquee(c)
@@ -429,6 +424,8 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderInlineAIPanel(c)
 		s.pollAnnotationGeneration()
 		s.renderAnnotationRail(c)
+		// The outline floats above the document and annotation rail, below window popups.
+		s.renderOutlineRail(c)
 		s.renderAnnotationReactionPicker(c)
 		if s.frameAnnotations.hovered != s.hoveredAnnotID {
 			s.hoveredAnnotID = s.frameAnnotations.hovered
@@ -522,7 +519,8 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 			}
 		}
 	}
-	if !annotInputFocused && c.Shortcut(0, ui.KeyEscape) {
+	outlineInputFocused := s.outlineInputHandle.Focused(c)
+	if !annotInputFocused && !outlineInputFocused && c.Shortcut(0, ui.KeyEscape) {
 		if s.dragBlockID != 0 {
 			s.cancelBlockDrag()
 		} else if s.isTableExtending() {

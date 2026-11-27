@@ -6,8 +6,6 @@ import (
 	"math"
 	"slices"
 	"strings"
-	"testing"
-	"time"
 	"unicode/utf16"
 
 	"block/internal/codepreview"
@@ -1943,236 +1941,6 @@ func (s *Session) renderImageSubPopover(c *ui.Context, idx int, b *model.Block) 
 	_ = idx
 }
 
-// --- 5. Left-Margin 4-Level Outline Rail (visible when left margin >= 36px) ---
-
-const (
-	outlineMinLeftMargin   float32 = 36
-	outlineHoverOpenDelay          = theme.OutlineHoverDelayMs * time.Millisecond
-	outlineHoverCloseDelay         = theme.OutlineHoverLeaveMs * time.Millisecond
-)
-
-func (s *Session) outlineLeftMargin() float32 {
-	if s.outlineForceNarrow {
-		return 0
-	}
-	editorW := s.viewportWidth
-	if editorW <= 0 {
-		editorW = s.editorRect.W
-	}
-	return max((editorW-theme.ScrollGutter-s.outerFlowWidth())*0.5, 0)
-}
-
-func (s *Session) renderOutlineRail(c *ui.Context) {
-	if s.minimal || s.outlineLeftMargin() < outlineMinLeftMargin {
-		s.outlineHovered = false
-		s.outlineHoverEnterAt = time.Time{}
-		s.outlineHoverLeaveAt = time.Time{}
-		return
-	}
-	items := s.Outline()
-	if len(items) == 0 {
-		s.outlineHovered = false
-		s.outlineHoverEnterAt = time.Time{}
-		s.outlineHoverLeaveAt = time.Time{}
-		return
-	}
-	pal := theme.Ocean()
-
-	// Determine active heading and lit section range (matching src/editor/outline.rs).
-	anchorIdx := s.focusedBlock
-	if s.jump.block != 0 {
-		if hi := s.blockIndexByID(s.jump.block); hi >= 0 {
-			anchorIdx = hi
-		}
-	}
-	activeItemIdx := 0
-	for i, it := range items {
-		if it.BlockIndex <= anchorIdx {
-			activeItemIdx = i
-		}
-	}
-	activeBlockIdx := items[activeItemIdx].BlockIndex
-	activeLevel := s.doc.Blocks[activeBlockIdx].Kind.HeadingLevel()
-	sectionEnd := len(s.doc.Blocks)
-	for j := activeBlockIdx + 1; j < len(s.doc.Blocks); j++ {
-		if s.doc.Blocks[j].Kind.IsHeading() && s.doc.Blocks[j].Kind.HeadingLevel() <= activeLevel {
-			sectionEnd = j
-			break
-		}
-	}
-
-	const top float32 = 36
-	vp, _, _ := s.overlayViewport(c)
-	maxH := min(float32(360), max(vp.H-top-12, 120))
-	wrap := ui.Column(c.Key("outline-rail-wrap")).Absolute().Left(18).Top(top).AlignItems(ui.Start).
-		Transition(appUi.DockedPanelTransition(false))
-	appUi.Probe(wrap, "outline-rail")
-	hovered := wrap.Hovered()
-	busy := s.isMouseDragging() || s.dragBlockID != 0
-	if s.outlineHovered {
-		s.outlineHoverEnterAt = time.Time{}
-		if hovered && !busy {
-			s.outlineHoverLeaveAt = time.Time{}
-		} else if testing.Testing() || busy {
-			s.outlineHovered = false
-			s.outlineHoverLeaveAt = time.Time{}
-			c.Invalidate()
-		} else {
-			now := c.Now()
-			if s.outlineHoverLeaveAt.IsZero() {
-				s.outlineHoverLeaveAt = now
-			}
-			if elapsed := now.Sub(s.outlineHoverLeaveAt); elapsed >= outlineHoverCloseDelay {
-				s.outlineHovered = false
-				s.outlineHoverLeaveAt = time.Time{}
-				c.Invalidate()
-			} else {
-				c.After(outlineHoverCloseDelay - elapsed + 5*time.Millisecond)
-			}
-		}
-	} else {
-		s.outlineHoverLeaveAt = time.Time{}
-		if !hovered {
-			s.outlinePinnedClosed = false
-			s.outlineHoverEnterAt = time.Time{}
-		} else if s.outlinePinnedClosed || busy {
-			s.outlineHoverEnterAt = time.Time{}
-		} else if testing.Testing() {
-			s.outlineHovered = true
-			c.Invalidate()
-		} else {
-			now := c.Now()
-			if s.outlineHoverEnterAt.IsZero() {
-				s.outlineHoverEnterAt = now
-			}
-			if elapsed := now.Sub(s.outlineHoverEnterAt); elapsed >= outlineHoverOpenDelay {
-				s.outlineHovered = true
-				s.outlineHoverEnterAt = time.Time{}
-				c.Invalidate()
-			} else {
-				c.After(outlineHoverOpenDelay - elapsed + 5*time.Millisecond)
-			}
-		}
-	}
-
-	wrap.Children(func() {
-		if s.outlineHovered {
-			card := appUi.Elevate(ui.Column(c.Key("outline-popover")).Width(236).MaxHeight(maxH).
-				Radius(theme.RadiusXL).Background(pal.Menu).
-				Border(1, pal.MenuBorder).Clip().
-				TransformOrigin(0, 0).
-				Transition(appUi.OutlinePopoverTransition()), theme.ElevationPopover)
-			appUi.Probe(card, "outline-popover")
-
-			card.Children(func() {
-				appUi.Scroll(c.Key("outline-scroll")).FillWidth().MaxHeight(maxH - 2).Children(func() {
-					ui.Column(c.Key("outline-list")).FillWidth().Padding(theme.Space6).Gap(theme.Space2).Children(func() {
-						for idx, it := range items {
-							item := it
-							isActive := idx == activeItemIdx
-							barLit := isActive || (item.BlockIndex > activeBlockIdx && item.BlockIndex < sectionEnd)
-							indent := outlinePopoverIndent(item.Level)
-							row := ui.ButtonBase(c.Key(idx)).
-								FillWidth().Height(theme.HeightCompact).Padding(0, theme.Space8, 0, indent).Gap(theme.Space8).
-								AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-								KeepFocus().FocusRing(false).Label(item.Title)
-							rowHovered := row.Hovered()
-							rowPressed := row.Pressed()
-							rowBG, rowBD := ui.Transparent, ui.Transparent
-							textCol := pal.TextSecondary
-							fontW := theme.WeightRegular
-							if isActive {
-								rowBG, rowBD = pal.Selected, pal.SelectedBorder
-								textCol = pal.Text
-								fontW = theme.WeightControl
-							} else {
-								if barLit {
-									textCol = pal.Text
-								}
-								if rowPressed {
-									rowBG = pal.Selected
-									textCol = pal.Text
-								} else if rowHovered {
-									rowBG = pal.Hover
-									textCol = pal.Text
-								}
-							}
-							appUi.AnimateSurfaceColors(row, rowBG, rowBD, true)
-							row.Children(func() {
-								barW := outlineBarWidth(item.Level)
-								barCol := pal.OutlineBarDim
-								if barLit {
-									barCol = pal.OutlineBarLit
-								}
-								barBox := ui.Box(c).Width(barW).Height(2).Radius(theme.RadiusXS).Background(barCol).Shrink(0)
-								if appUi.IsProbeEnabled() {
-									appUi.Probe(barBox, fmt.Sprintf("outline-bar-%d", idx))
-								}
-								ui.Text(c, item.Title).FontSize(theme.FontSmall).FontWeight(fontW).TextColor(textCol).Grow(1).SingleLine()
-							})
-							if appUi.IsProbeEnabled() {
-								appUi.Probe(row, fmt.Sprintf("outline-item-%d", idx))
-							}
-							if row.Clicked() {
-								s.JumpToBlock(item.BlockIndex)
-								c.Invalidate()
-							}
-						}
-					})
-				})
-			})
-		} else {
-			rail := ui.Column(c.Key("outline-rail")).Padding(theme.Space4, theme.Space8, theme.Space4, 0).Gap(theme.Space6).AlignItems(ui.Start)
-			rail.Children(func() {
-				for idx, it := range items {
-					item := it
-					isActive := idx == activeItemIdx
-					barLit := isActive || (item.BlockIndex > activeBlockIdx && item.BlockIndex < sectionEnd)
-					barBtn := ui.ButtonBase(c.Key(idx)).
-						Height(theme.Space6).Padding(0, theme.Space6, 0, 0).AlignItems(ui.Center).Justify(ui.Start).
-						Cursor(ui.CursorPointer).KeepFocus().FocusRing(false).Label(item.Title)
-					barBtn.Children(func() {
-						barCol := pal.OutlineBarDim
-						if barLit {
-							barCol = pal.OutlineBarLit
-						}
-						ui.Box(c).Width(outlineBarWidth(item.Level)).Height(2).Radius(theme.RadiusXS).Background(barCol)
-					})
-					if appUi.IsProbeEnabled() {
-						appUi.Probe(barBtn, fmt.Sprintf("outline-bar-%d", idx))
-					}
-					if barBtn.Clicked() {
-						s.JumpToBlock(item.BlockIndex)
-						c.Invalidate()
-					}
-				}
-			})
-		}
-	})
-}
-
-func outlinePopoverIndent(level int) float32 {
-	switch {
-	case level <= 1:
-		return theme.Space8
-	case level == 2:
-		return theme.Space16
-	default:
-		return theme.Space24
-	}
-}
-
-func outlineBarWidth(level int) float32 {
-	switch {
-	case level <= 1:
-		return 20
-	case level == 2:
-		return 14
-	default:
-		return 10
-	}
-}
-
 // --- 6. Right-side annotations & block-foot fallback ---
 
 const (
@@ -2225,11 +1993,15 @@ func (s *Session) placeAnnotations(c *ui.Context, canvasLeft, canvasWidth float3
 		return frame
 	}
 	// Match the centered document flow. Leave room for the widest block's
-	// bleed, the gap next to it, and the scrollbar at the right edge.
+	// bleed, the gap next to it, and the scrollbar (plus outline rail when visible) at the right edge.
 	flowWidth := min(canvasWidth, s.outerFlowWidth())
 	bodyRight := canvasLeft + (canvasWidth+flowWidth)*0.5 - s.rightContentInset()
 	frame.railLeft = bodyRight + s.bandBleed() + theme.Space8
-	frame.railWidth = max(canvasLeft+canvasWidth-theme.ScrollGutter-frame.railLeft, 0)
+	rightReserve := theme.ScrollGutter
+	if s.outlineVisible() {
+		rightReserve = theme.OutlineRailRightReserve
+	}
+	frame.railWidth = max(canvasLeft+canvasWidth-rightReserve-frame.railLeft, 0)
 
 	countW, _ := c.MeasureText(0, ui.Span{Text: "1", Size: theme.FontBody, Weight: theme.WeightControl})
 	for _, ann := range s.annotations {
