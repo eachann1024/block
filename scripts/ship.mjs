@@ -98,9 +98,10 @@ function validateFiles(rawFiles) {
     if (isDesignFile(rel)) {
       fail(`Design file blocked from commit/push: "${rel}"`);
     }
-    const ign = run("git", ["check-ignore", "-v", "--", rel], { capture: true, allowFail: true });
+    const ign = run("git", ["check-ignore", "-q", "--", rel], { capture: true, allowFail: true });
     if (ign.status === 0) {
-      fail(`Path is ignored by .gitignore (${ign.stdout.trim()}): "${rel}"`);
+      const detail = run("git", ["check-ignore", "-v", "--", rel], { capture: true, allowFail: true });
+      fail(`Path is ignored by .gitignore (${detail.stdout.trim()}): "${rel}"`);
     }
     const tracked = run("git", ["ls-files", "--error-unmatch", "--", rel], {
       capture: true,
