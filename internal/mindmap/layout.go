@@ -1346,12 +1346,8 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					paintCanvasCircleAction(p, wxToScreen(addBtn.cx), wyToScreen(addBtn.cy), addBtn.r*scale, scale, pal, pal.Accent, true, hot)
 				}
 			}
-			if opt.SelectedID != 0 {
-				paintActionsFor(opt.SelectedID)
-			}
-			if opt.HoveredID != 0 && opt.HoveredID != opt.SelectedID {
-				paintActionsFor(opt.HoveredID)
-			}
+			// Only show on hover; a selected node alone keeps the canvas clean.
+			paintActionsFor(opt.HoveredID)
 		}
 
 		// Pass 3: Drag-and-drop insertion indicator and semantic floating ghost card.

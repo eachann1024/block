@@ -2823,7 +2823,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				return true
 			}
 			wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
-			hit := HitTestWithActions(st.Root, [2]int{st.HoveredID, st.SelectedID}, cb.ReadOnly, wx, wy, st.Camera.Scale)
+			hit := HitTestWithActions(st.Root, [2]int{st.HoveredID, 0}, cb.ReadOnly, wx, wy, st.Camera.Scale)
 			if hit.Node != nil {
 				st.HoveredID = hit.Node.ID
 				st.HoveredHit = hit.Kind
@@ -2847,7 +2847,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				st.finishEdit(true, cb)
 			}
 			wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
-			hit := HitTestWithActions(st.Root, [2]int{st.HoveredID, st.SelectedID}, cb.ReadOnly, wx, wy, st.Camera.Scale)
+			hit := HitTestWithActions(st.Root, [2]int{st.HoveredID, 0}, cb.ReadOnly, wx, wy, st.Camera.Scale)
 
 			if ev.Button == 1 {
 				// Right-click selects hit node before ContextMenu opens.
