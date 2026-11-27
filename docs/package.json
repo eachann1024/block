@@ -9,5 +9,9 @@
   },
   "devDependencies": {
     "vitepress": "1.6.4"
+  },
+  "dependencies": {
+    "@motion-canvas/2d": "^3.17.2",
+    "@motion-canvas/core": "^3.17.2"
   }
 }

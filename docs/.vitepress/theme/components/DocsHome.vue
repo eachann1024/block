@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useData, withBase } from "vitepress";
+import AiWorkflowStage from "./AiWorkflowStage.vue";
 
 const { localeIndex, isDark } = useData();
 const isEn = computed(() => localeIndex.value === "en");
@@ -8,7 +9,8 @@ const isEn = computed(() => localeIndex.value === "en");
 const copyState = ref<"idle" | "copied" | "failed">("idle");
 const cardCopyState = ref<"idle" | "copied" | "failed">("idle");
 const cmdCopyState = ref<"idle" | "copied" | "failed">("idle");
-const heroTipId = "bp-hero-ai-tip";
+const stageOpen = ref(false);
+const hubRef = ref<HTMLElement | null>(null);
 const cardTipId = "bp-card-ai-tip";
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const heroRef = ref<HTMLElement | null>(null);
@@ -21,12 +23,11 @@ const content = computed(() => {
       heroLeadStrong: "Built-in wazero & quickjs-ng sandbox,",
       heroLeadMuted:
         " bidirectional JSON-RPC 2.0, and 16 native Ocean Paper controls — publish from your own GitHub repo without PRs.",
-      ctaPrimary: "Start Building",
-      ctaPrimaryLink: withBase("/en/plugins/"),
-      ctaSecondary: "Copy AI Spec URL",
-      ctaSecondaryCopied: "Copied Spec URL",
-      ctaSecondaryFailed: "Copy Failed",
-      heroAiHint: "Click once to copy the link, paste it with your prompt, and AI can generate a plugin.",
+      ctaMerged: "Copy for AI & Start Building",
+      ctaMergedCopied: "Spec URL Copied · Paste to AI",
+      ctaMergedFailed: "Copy Failed",
+      ctaDemoToggle: "Watch Flow",
+      ctaDemoClose: "Hide Flow",
       aiCardHint: "Just click once to copy the link, paste it with your prompt, and generate a complete plugin.",
       aiCopySuccess: "Link copied — paste with your prompt to any AI",
       aiCopyFailed: "Clipboard unavailable — copy the spec URL below:",
@@ -145,12 +146,11 @@ const content = computed(() => {
     heroLine2: "原生级沙盒扩展。",
     heroLeadStrong: "内置 wazero 与 quickjs-ng 沙盒，",
     heroLeadMuted: "双向 JSON-RPC 2.0、16 种 Ocean Paper 原生控件，独立建仓无需提 PR 即可上架。",
-    ctaPrimary: "开始开发",
-    ctaPrimaryLink: withBase("/plugins/"),
-    ctaSecondary: "复制 AI 规范链接",
-    ctaSecondaryCopied: "已复制规范链接",
-    ctaSecondaryFailed: "复制失败",
-    heroAiHint: "点一下复制链接，带上内容发给 AI 就能生成插件",
+    ctaMerged: "复制给 AI 开始开发",
+    ctaMergedCopied: "已复制规范链接 · 发给 AI 即可",
+    ctaMergedFailed: "复制失败",
+    ctaDemoToggle: "查看流程动效",
+    ctaDemoClose: "收起动效",
     aiCardHint: "只需要点一下复制链接，带上你的内容发给 AI，就能直接生成一个插件。",
     aiCopySuccess: "已复制链接，带上内容发给 AI 即可生成",
     aiCopyFailed: "剪贴板不可用，请手动复制下方链接：",
@@ -315,6 +315,60 @@ async function copyText(text: string, key: CopyTargetKey) {
   }
 }
 
+let openStageTimer: number | null = null;
+let closeStageTimer: number | null = null;
+
+function clearStageTimers() {
+  if (typeof window === "undefined") return;
+  if (openStageTimer !== null) {
+    window.clearTimeout(openStageTimer);
+    openStageTimer = null;
+  }
+  if (closeStageTimer !== null) {
+    window.clearTimeout(closeStageTimer);
+    closeStageTimer = null;
+  }
+}
+
+function openStage(immediate = false) {
+  if (typeof window === "undefined" || isUnmounted) return;
+  clearStageTimers();
+  if (immediate || stageOpen.value) {
+    stageOpen.value = true;
+    return;
+  }
+  openStageTimer = window.setTimeout(() => {
+    openStageTimer = null;
+    if (!isUnmounted) stageOpen.value = true;
+  }, 85);
+}
+
+function closeStage(immediate = false) {
+  if (typeof window === "undefined" || isUnmounted) return;
+  clearStageTimers();
+  if (immediate) {
+    stageOpen.value = false;
+    return;
+  }
+  closeStageTimer = window.setTimeout(() => {
+    closeStageTimer = null;
+    if (!isUnmounted) stageOpen.value = false;
+  }, 160);
+}
+
+function toggleStage() {
+  clearStageTimers();
+  stageOpen.value = !stageOpen.value;
+}
+
+function handleHubFocusOut(event: FocusEvent) {
+  const hub = hubRef.value;
+  const next = event.relatedTarget as Node | null;
+  if (!hub || !next || !hub.contains(next)) {
+    closeStage(true);
+  }
+}
+
 function selectCodeElement(event: Event) {
   if (typeof window === "undefined" || typeof document === "undefined") return;
   const el = event.currentTarget as HTMLElement | null;
@@ -464,6 +518,7 @@ watch(isDark, () => {
 
 onBeforeUnmount(() => {
   isUnmounted = true;
+  clearStageTimers();
   if (typeof window !== "undefined") {
     if (rafId) {
       window.cancelAnimationFrame(rafId);
@@ -485,7 +540,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="bp-home">
     <!-- Hero: airy canvas with floating Ocean Paper pixel ribbons -->
-    <section ref="heroRef" class="bp-hero">
+    <section ref="heroRef" class="bp-hero" :class="{ 'is-stage-open': stageOpen }">
       <canvas ref="canvasRef" class="bp-hero-canvas" aria-hidden="true" />
       <div class="bp-container bp-hero-inner">
         <h1 class="bp-hero-title">
@@ -496,44 +551,68 @@ onBeforeUnmount(() => {
           <span class="bp-lead-muted">{{ content.heroLeadMuted }}</span>
         </p>
         <div class="bp-hero-actions">
-          <a :href="content.ctaPrimaryLink" class="bp-pill bp-pill-primary">
-            <span class="bp-pill-mark" aria-hidden="true" />
-            <span>{{ content.ctaPrimary }}</span>
-          </a>
           <div
-            class="bp-hero-action-wrap"
+            ref="hubRef"
+            class="bp-hero-ai-hub"
             :class="{
+              'is-open': stageOpen,
               'is-copied': copyState === 'copied',
               'is-failed': copyState === 'failed',
             }"
+            @mouseenter="openStage(false)"
+            @mouseleave="closeStage(false)"
+            @focusin="openStage(true)"
+            @focusout="handleHubFocusOut"
+            @keydown.escape="closeStage(true)"
           >
-            <button
-              type="button"
-              class="bp-pill bp-pill-secondary"
-              :class="{ 'is-copied': copyState === 'copied' }"
-              :aria-describedby="heroTipId"
-              @click="copyText(content.aiSpecUrl, 'hero')"
-            >
-              <span v-if="copyState === 'copied'">{{ content.ctaSecondaryCopied }}</span>
-              <span v-else-if="copyState === 'failed'">{{ content.ctaSecondaryFailed }}</span>
-              <span v-else>{{ content.ctaSecondary }}</span>
-            </button>
+            <div class="bp-hero-btn-row">
+              <button
+                type="button"
+                class="bp-pill bp-pill-primary bp-pill-merged"
+                :class="{
+                  'is-copied': copyState === 'copied',
+                  'is-failed': copyState === 'failed',
+                  'is-open': stageOpen,
+                }"
+                :aria-expanded="stageOpen"
+                @click="copyText(content.aiSpecUrl, 'hero')"
+              >
+                <span class="bp-pill-mark" aria-hidden="true" />
+                <span v-if="copyState === 'copied'">{{ content.ctaMergedCopied }}</span>
+                <span v-else-if="copyState === 'failed'">{{ content.ctaMergedFailed }}</span>
+                <span v-else>{{ content.ctaMerged }}</span>
+                <span class="bp-pill-chevron" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="none">
+                    <path
+                      d="M4.5 6.5L8 10l3.5-3.5"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                class="bp-pill bp-pill-secondary bp-pill-touch-toggle"
+                :aria-expanded="stageOpen"
+                @click="toggleStage"
+              >
+                {{ stageOpen ? content.ctaDemoClose : content.ctaDemoToggle }}
+              </button>
+            </div>
+
             <div
-              :id="heroTipId"
-              class="bp-hero-tip"
-              :class="{
-                'is-copied': copyState === 'copied',
-                'is-failed': copyState === 'failed',
-              }"
+              v-if="copyState === 'failed'"
+              class="bp-hero-fallback"
               aria-live="polite"
             >
               <span class="bp-tip-dot" aria-hidden="true" />
               <div class="bp-tip-body">
-                <span v-if="copyState === 'copied'">{{ content.aiCopySuccess }}</span>
-                <span v-else-if="copyState === 'failed'">{{ content.aiCopyFailed }}</span>
-                <span v-else>{{ content.heroAiHint }}</span>
+                <span>{{ content.aiCopyFailed }}</span>
                 <code
-                  v-if="copyState === 'failed'"
                   class="bp-tip-code"
                   tabindex="0"
                   @click.stop="selectCodeElement"
@@ -541,6 +620,15 @@ onBeforeUnmount(() => {
                 >{{ content.aiSpecUrl }}</code>
               </div>
             </div>
+
+            <AiWorkflowStage
+              :open="stageOpen"
+              :is-dark="isDark"
+              :is-en="isEn"
+              :copy-state="copyState"
+              :ai-spec-url="content.aiSpecUrl"
+              @copy="copyText(content.aiSpecUrl, 'hero')"
+            />
           </div>
         </div>
       </div>
@@ -798,6 +886,10 @@ onBeforeUnmount(() => {
   overflow-y: visible;
 }
 
+.bp-hero.is-stage-open {
+  z-index: 25;
+}
+
 .bp-hero-canvas {
   position: absolute;
   inset: 0;
@@ -842,82 +934,94 @@ onBeforeUnmount(() => {
 .bp-hero-actions {
   margin-top: 34px;
   display: flex;
-  flex-wrap: wrap;
   justify-content: center;
-  gap: 12px;
 }
 
-.bp-hero-action-wrap {
+.bp-hero-ai-hub {
   position: relative;
   display: inline-flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
 }
 
-.bp-hero-tip {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%) translateY(-4px);
-  width: max-content;
-  max-width: min(360px, calc(100vw - 36px));
+.bp-hero-btn-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.bp-pill-merged {
+  height: 48px;
+  padding: 0 24px 0 22px;
+  font-size: 14.5px;
+  box-shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.35);
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.22s ease;
+}
+
+.bp-pill-merged:hover,
+.bp-pill-merged.is-open {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 28px -10px rgba(61, 99, 176, 0.42),
+    0 0 0 3px var(--vp-c-brand-soft);
+}
+
+.bp-pill-merged:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.bp-pill-merged.is-copied {
+  background: var(--bp-accent-strong);
+  border-color: var(--bp-accent-strong);
+  color: #ffffff;
+}
+
+.dark .bp-pill-merged.is-copied {
+  background: var(--bp-accent);
+  border-color: var(--bp-accent);
+  color: #14171f;
+}
+
+.bp-pill-chevron {
+  display: inline-flex;
+  align-items: center;
+  margin-left: -2px;
+  opacity: 0.72;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
+}
+
+.bp-pill-merged.is-open .bp-pill-chevron {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+.bp-pill.bp-pill-touch-toggle {
+  display: none;
+  height: 48px;
+  padding: 0 18px;
+}
+
+.bp-hero-fallback {
+  margin-top: 12px;
+  width: min(420px, calc(100vw - 36px));
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 9px 13px;
+  padding: 10px 13px;
   border-radius: 10px;
-  border: 1px solid var(--bp-btn-border);
+  border: 1px solid var(--bp-accent);
   background: var(--vp-c-bg-elv);
-  color: var(--bp-text-2);
+  color: var(--bp-text-1);
   font-size: 13px;
   line-height: 1.48;
   text-align: left;
-  white-space: normal;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  z-index: 20;
-  transition:
-    opacity 0.16s ease,
-    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
-    visibility 0.16s ease,
-    border-color 0.16s ease,
-    background-color 0.16s ease,
-    color 0.16s ease;
-}
-
-.bp-hero-tip::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -12px;
-  height: 12px;
-}
-
-.bp-hero-action-wrap:hover .bp-hero-tip,
-.bp-hero-action-wrap:focus-within .bp-hero-tip,
-.bp-hero-action-wrap.is-copied .bp-hero-tip,
-.bp-hero-action-wrap.is-failed .bp-hero-tip {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: translateX(-50%) translateY(0);
-}
-
-.bp-hero-tip.is-copied {
-  border-color: var(--bp-accent);
-  background: var(--vp-c-bg-elv);
-  background: color-mix(in srgb, var(--bp-accent) 10%, var(--vp-c-bg-elv));
-  color: var(--bp-accent-strong);
-}
-
-.dark .bp-hero-tip.is-copied {
-  color: var(--bp-accent);
-}
-
-.bp-hero-tip.is-failed {
-  border-color: var(--bp-accent);
-  color: var(--bp-text-1);
 }
 
 .bp-tip-dot {
@@ -1606,24 +1710,7 @@ onBeforeUnmount(() => {
     position: relative;
   }
 
-  .bp-hero-action-wrap {
-    position: static;
-  }
-
-  .bp-hero-tip {
-    max-width: 100%;
-  }
-
-  .bp-hero-action-wrap.is-failed {
-    width: 100%;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .bp-hero-action-wrap.is-failed .bp-hero-tip {
-    position: static;
-    transform: none;
-    margin-top: 10px;
+  .bp-hero-ai-hub {
     width: 100%;
   }
 
@@ -1640,6 +1727,12 @@ onBeforeUnmount(() => {
 
   .bp-metrics-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .bp-pill.bp-pill-touch-toggle {
+    display: inline-flex;
   }
 }
 
@@ -1676,7 +1769,8 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .bp-pill,
-  .bp-hero-tip,
+  .bp-pill-merged,
+  .bp-pill-chevron,
   .bp-card,
   .bp-card-arrow,
   .bp-card-status,
@@ -1686,14 +1780,6 @@ onBeforeUnmount(() => {
   .bp-cmd-btn,
   .bp-ref-link {
     transition: none !important;
-  }
-
-  .bp-hero-tip,
-  .bp-hero-action-wrap:hover .bp-hero-tip,
-  .bp-hero-action-wrap:focus-within .bp-hero-tip,
-  .bp-hero-action-wrap.is-copied .bp-hero-tip,
-  .bp-hero-action-wrap.is-failed .bp-hero-tip {
-    transform: translateX(-50%);
   }
 
   .bp-card-drawer,
