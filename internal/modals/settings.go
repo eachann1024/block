@@ -2490,7 +2490,7 @@ func (m *Manager) renderSearchIgnoreMenu(c *ui.Context, st model.AppState, noteb
 					HasSubmenu: entry.HasChildren && !done,
 					Disabled:   done,
 					OnClick: func() {
-						if entry.HasChildren {
+						if dir != "" && entry.HasChildren {
 							drill = entry.Path
 						} else {
 							exclude = entry.Path
