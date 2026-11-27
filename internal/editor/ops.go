@@ -3362,6 +3362,10 @@ func fallbackParsePaste(src string) *model.Doc {
 			blocks = append(blocks, model.Block{ID: model.NewBlockID(), Kind: model.BlockDivider, Dirty: true})
 			continue
 		}
+		leadingSpaces := 0
+		for leadingSpaces < len(raw) && raw[leadingSpaces] == ' ' {
+			leadingSpaces++
+		}
 		b := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
 		switch {
 		case strings.HasPrefix(trimmed, "### "):
@@ -3375,19 +3379,35 @@ func fallbackParsePaste(src string) *model.Doc {
 			b.SetText(strings.TrimPrefix(trimmed, "# "))
 		case strings.HasPrefix(trimmed, "- [x] ") || strings.HasPrefix(trimmed, "- [X] "):
 			b.Kind = model.BlockTodo
+			b.Indent = leadingSpaces
 			b.Checked = true
 			b.SetText(trimmed[6:])
 		case strings.HasPrefix(trimmed, "- [ ] "):
 			b.Kind = model.BlockTodo
+			b.Indent = leadingSpaces
 			b.SetText(trimmed[6:])
 		case strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* "):
 			b.Kind = model.BlockBullet
+			b.Indent = leadingSpaces
 			b.SetText(trimmed[2:])
 		case strings.HasPrefix(trimmed, "> "):
 			b.Kind = model.BlockQuote
 			b.SetText(strings.TrimPrefix(trimmed, "> "))
 		default:
-			b.SetText(raw)
+			digits := 0
+			for digits < len(trimmed) && digits < 9 && trimmed[digits] >= '0' && trimmed[digits] <= '9' {
+				digits++
+			}
+			if digits > 0 && digits+1 < len(trimmed) && (trimmed[digits] == '.' || trimmed[digits] == ')') && (trimmed[digits+1] == ' ' || trimmed[digits+1] == '\t') {
+				b.Kind = model.BlockNumbered
+				b.Indent = leadingSpaces
+				if n, err := strconv.Atoi(trimmed[:digits]); err == nil && n > 1 {
+					b.ListIndex = n
+				}
+				b.SetText(strings.TrimLeft(trimmed[digits+1:], " \t"))
+			} else {
+				b.SetText(raw)
+			}
 		}
 		blocks = append(blocks, b)
 	}
@@ -6600,13 +6620,18 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 	prefixSpans := sliceSpans(startBlk.Spans, 0, lo)
 	suffixSpans := sliceSpans(endBlk.Spans, hi, len(endRunes))
 
-	repLines := strings.Split(strings.ReplaceAll(replacement, "\r\n", "\n"), "\n")
+	norm := strings.ReplaceAll(strings.ReplaceAll(replacement, "\r\n", "\n"), "\r", "\n")
 	var newBlocks []model.Block
-	if len(repLines) <= 1 {
+	annStartIdx := 0
+	startOffset := lo
+	annEndIdx := 0
+	hasTrailingSuffixBlock := false
+
+	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) {
 		var merged []model.Span
 		merged = append(merged, prefixSpans...)
-		if replacement != "" {
-			merged = append(merged, model.Span{Text: replacement})
+		if norm != "" {
+			merged = append(merged, model.Span{Text: norm})
 		}
 		merged = append(merged, suffixSpans...)
 		b := startBlk.Clone()
@@ -6615,46 +6640,130 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 		b.CleanSource = ""
 		newBlocks = []model.Block{b}
 	} else {
-		for i, line := range repLines {
-			var b model.Block
-			if i == 0 {
-				b = startBlk.Clone()
-				var sp []model.Span
-				sp = append(sp, prefixSpans...)
-				if line != "" {
-					sp = append(sp, model.Span{Text: line})
+		var parsed *model.Doc
+		if s.codec != nil {
+			parsed = s.codec.Parse(norm)
+		} else {
+			parsed = fallbackParsePaste(norm)
+		}
+		var filtered []model.Block
+		if parsed != nil {
+			filtered = make([]model.Block, 0, len(parsed.Blocks))
+			for _, pb := range parsed.Blocks {
+				if pb.Kind == model.BlockParagraph && pb.Indent == 0 && len(pb.Spans) == 0 {
+					continue
 				}
-				b.Spans = normalizeSpans(sp)
-			} else if i == len(repLines)-1 {
-				b = endBlk.Clone()
-				if i > 0 {
-					b.ID = model.NewBlockID()
+				if pb.ID == 0 {
+					pb.ID = model.NewBlockID()
 				}
-				var sp []model.Span
-				if line != "" {
-					sp = append(sp, model.Span{Text: line})
-				}
-				sp = append(sp, suffixSpans...)
-				b.Spans = normalizeSpans(sp)
-			} else {
-				b = model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph}
-				if line != "" {
-					b.Spans = []model.Span{{Text: line}}
-				}
+				pb.Dirty = true
+				pb.CleanSource = ""
+				filtered = append(filtered, pb)
 			}
+		}
+		if len(filtered) == 0 {
+			b := startBlk.Clone()
+			b.Spans = normalizeSpans(append(append([]model.Span(nil), prefixSpans...), suffixSpans...))
 			b.Dirty = true
 			b.CleanSource = ""
-			newBlocks = append(newBlocks, b)
+			newBlocks = []model.Block{b}
+		} else {
+			applyRelIndent := func(pb *model.Block, listChild bool) {
+				base := startBlk.Indent
+				if listChild {
+					base = startBlk.Indent + 1
+				}
+				switch {
+				case pb.Kind.IsList():
+					pb.Indent = clampInt(base+pb.Indent, 0, 8)
+				case pb.Kind == model.BlockParagraph || pb.Kind == model.BlockQuote || pb.Kind == model.BlockCallout ||
+					pb.Kind == model.BlockCode || pb.Kind == model.BlockTable || pb.Kind == model.BlockImage || pb.Kind == model.BlockDivider:
+					maxInd := 12
+					if listChild {
+						maxInd = 8
+					}
+					pb.Indent = clampInt(base+pb.Indent, 0, maxInd)
+				}
+				if pb.QuoteDepth == 0 && startBlk.QuoteDepth > 0 && pb.Kind == model.BlockParagraph {
+					pb.QuoteDepth = startBlk.QuoteDepth
+				}
+			}
+
+			listChildBase := startBlk.Kind.IsList()
+			if filtered[0].Kind == model.BlockParagraph {
+				first := startBlk.Clone()
+				var sp []model.Span
+				sp = append(sp, prefixSpans...)
+				sp = append(sp, filtered[0].Spans...)
+				first.Spans = normalizeSpans(sp)
+				first.Dirty = true
+				first.CleanSource = ""
+				newBlocks = append(newBlocks, first)
+				for i := 1; i < len(filtered); i++ {
+					pb := filtered[i]
+					applyRelIndent(&pb, listChildBase)
+					newBlocks = append(newBlocks, pb)
+				}
+			} else if len(prefixSpans) > 0 {
+				pb := startBlk.Clone()
+				pb.Spans = normalizeSpans(prefixSpans)
+				pb.Dirty = true
+				pb.CleanSource = ""
+				newBlocks = append(newBlocks, pb)
+				annStartIdx = 1
+				startOffset = 0
+				for i := range filtered {
+					item := filtered[i]
+					applyRelIndent(&item, listChildBase)
+					newBlocks = append(newBlocks, item)
+				}
+			} else {
+				startOffset = 0
+				for i := range filtered {
+					item := filtered[i]
+					applyRelIndent(&item, false)
+					newBlocks = append(newBlocks, item)
+				}
+			}
+
+			annEndIdx = len(newBlocks) - 1
+			if len(suffixSpans) > 0 {
+				last := &newBlocks[annEndIdx]
+				if blockAcceptsInlineSuffix(last.Kind) {
+					sp := append(append([]model.Span(nil), last.Spans...), suffixSpans...)
+					last.Spans = normalizeSpans(sp)
+					last.Dirty = true
+					last.CleanSource = ""
+				} else {
+					tail := model.Block{
+						ID:     model.NewBlockID(),
+						Kind:   model.BlockParagraph,
+						Indent: startBlk.Indent,
+						Spans:  normalizeSpans(suffixSpans),
+						Dirty:  true,
+					}
+					newBlocks = append(newBlocks, tail)
+					hasTrailingSuffixBlock = true
+				}
+			}
 		}
 	}
 
+	if newBlocks[0].ID != startBlk.ID || newBlocks[0].Kind != startBlk.Kind {
+		s.detachRichInput(startBlk.ID)
+	}
 	s.spliceBlocks(startIdx, endIdx+1, newBlocks)
-	ann.StartBlockID = newBlocks[0].ID
-	ann.StartOffset = lo
-	ann.EndBlockID = newBlocks[len(newBlocks)-1].ID
-	lastRunes := len([]rune(newBlocks[len(newBlocks)-1].PlainText()))
-	suffixLen := len(endRunes) - hi
-	ann.EndOffset = max(lastRunes-suffixLen, 0)
+	ann.StartBlockID = newBlocks[annStartIdx].ID
+	startNewRunes := len([]rune(newBlocks[annStartIdx].PlainText()))
+	ann.StartOffset = clampInt(startOffset, 0, startNewRunes)
+	ann.EndBlockID = newBlocks[annEndIdx].ID
+	lastRunes := len([]rune(newBlocks[annEndIdx].PlainText()))
+	if hasTrailingSuffixBlock {
+		ann.EndOffset = lastRunes
+	} else {
+		suffixLen := len(endRunes) - hi
+		ann.EndOffset = clampInt(lastRunes-suffixLen, 0, lastRunes)
+	}
 	ann.QuotedText = replacement
 	ann.Applied = true
 	ann.Note = ""
@@ -6680,14 +6789,16 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 			s.editingAnnotID = ""
 		}
 	}
-	s.focusedBlock = startIdx
-	endOff := len([]rune(newBlocks[len(newBlocks)-1].PlainText()))
-	s.selAnchor = Position{Block: startIdx + len(newBlocks) - 1, Offset: endOff}
+	focusIdx := startIdx + annEndIdx
+	endOff := ann.EndOffset
+	s.focusedBlock = focusIdx
+	s.selAnchor = Position{Block: focusIdx, Offset: endOff}
 	s.selHead = s.selAnchor
 	s.focusPending = true
 	s.selSyncPending = true
 	s.markDirty()
 	s.persistAnnotations()
+	s.requestRedraw()
 	return true
 }
 
