@@ -2633,7 +2633,6 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 	s.notifyRedraw()
 
 	go func() {
-		startedAt := time.Now()
 		defer cancel()
 
 		unlockRPC, err := s.lockPluginRPCContext(queueCtx, pluginID)
@@ -2692,12 +2691,6 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				}
 				s.mu.Unlock()
 				_ = wasHeader
-			}
-		}
-		if !testing.Testing() {
-			const minBusyBeat = 220 * time.Millisecond
-			if elapsed := time.Since(startedAt); elapsed < minBusyBeat {
-				time.Sleep(minBusyBeat - elapsed)
 			}
 		}
 
@@ -3305,6 +3298,22 @@ func (s *Supervisor) ShutdownAll() {
 	for k := range s.feedbackTimers {
 		s.stopFeedbackTimerLocked(k)
 	}
+	var cancels []context.CancelFunc
+	for _, v := range s.views {
+		if v == nil {
+			continue
+		}
+		if v.actionCancel != nil {
+			cancels = append(cancels, v.actionCancel)
+			v.actionCancel = nil
+		}
+		for _, req := range v.queuedSaves {
+			if req != nil && req.cancel != nil {
+				cancels = append(cancels, req.cancel)
+				req.cancel = nil
+			}
+		}
+	}
 	rts := make([]*Runtime, 0, len(s.runtimes))
 	for id, rt := range s.runtimes {
 		rts = append(rts, rt)
@@ -3312,7 +3321,11 @@ func (s *Supervisor) ShutdownAll() {
 	}
 	s.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	for _, fn := range cancels {
+		fn()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	var wg sync.WaitGroup
 	for _, rt := range rts {
@@ -3326,10 +3339,17 @@ func (s *Supervisor) ShutdownAll() {
 		}(rt)
 	}
 	wg.Wait()
+	warmupFinished := true
 	if s.warmupDone != nil {
-		<-s.warmupDone
+		warmupTimer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-s.warmupDone:
+			warmupTimer.Stop()
+		case <-warmupTimer.C:
+			warmupFinished = false
+		}
 	}
-	if s.wasmEngine != nil {
+	if warmupFinished && s.wasmEngine != nil {
 		_ = s.wasmEngine.Close(context.Background())
 	}
 }

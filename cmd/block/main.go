@@ -467,14 +467,22 @@ func main() {
 			win.SetBounds(resolved.Rect)
 		}
 		win.OnClose(func(e *mygo.CloseEvent) {
+			if isQuitting {
+				return
+			}
+			if runtime.GOOS == "darwin" && !isIsolatedRun {
+				if err := ws.FlushDirtySessions(); err != nil {
+					e.PreventDefault()
+					return
+				}
+				e.PreventDefault()
+				win.Hide()
+				return
+			}
 			ws.FlushWindowBounds()
 			if err := ws.FlushDirtySessions(); err != nil {
 				e.PreventDefault()
 				return
-			}
-			if runtime.GOOS == "darwin" && !isIsolatedRun && !isQuitting {
-				e.PreventDefault()
-				win.Hide()
 			}
 		})
 		return win
@@ -576,7 +584,7 @@ func main() {
 	})
 
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
-		if err := ws.FlushDirtySessions(); err != nil {
+		if err := ws.FlushDirtySessionsForQuit(); err != nil {
 			e.PreventDefault()
 			return
 		}
@@ -587,13 +595,15 @@ func main() {
 		isQuitting = true
 		modals.SetAppQuitting(true)
 		ws.FlushWindowBounds()
+		ws.FlushPendingState()
+		ws.AI().Flush()
 		ws.MarkCleanExit()
 		if sup := ws.Plugins(); sup != nil {
 			sup.ShutdownAll()
 		}
 		ws.CleanupPluginStage()
 		files.ShutdownFileDialogs()
-		plugins.WaitFileAssociationSyncTimeout(800 * time.Millisecond)
+		plugins.WaitFileAssociationSyncTimeout(50 * time.Millisecond)
 	})
 
 	mygo.App.OnQuitCanceled(func() {

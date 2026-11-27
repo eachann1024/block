@@ -203,6 +203,8 @@ func (r *ringBuffer) String() string {
 type Runtime struct {
 	exited   chan struct{}
 	reaped   chan struct{}
+	stopping chan struct{}
+	stopOnce sync.Once
 	manifest Manifest
 	cfg      HostConfig
 	dataRoot *os.Root
@@ -335,6 +337,7 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	rt := &Runtime{
 		exited:    make(chan struct{}),
 		reaped:    make(chan struct{}),
+		stopping:  make(chan struct{}),
 		manifest:  m,
 		cfg:       cfg,
 		dataRoot:  dataRoot,
@@ -365,9 +368,11 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 			files.LogErrorf("plugin exited unexpectedly: id=%s entry=%s err=%v stderr=%s",
 				rt.manifest.ID, entryLabel, waitErr, truncatePluginStderr(rt.Stderr()))
 		}
+		readTimer := time.NewTimer(150 * time.Millisecond)
 		select {
 		case <-readDone:
-		case <-time.After(time.Second):
+			readTimer.Stop()
+		case <-readTimer.C:
 			// Close the reader if the read loop is still draining stdout.
 			_ = sess.Kill()
 			_ = rt.stdout.Close()
@@ -729,14 +734,38 @@ func (rt *Runtime) NotifyNoteEventResult(ctx context.Context, eventName, noteboo
 	return outcome, nil
 }
 
+func (rt *Runtime) markStopping() {
+	if rt.stopping == nil {
+		return
+	}
+	rt.stopOnce.Do(func() {
+		close(rt.stopping)
+	})
+}
+
 func (rt *Runtime) Shutdown(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	rt.shuttingDown.Store(true)
+	rt.markStopping()
 	if !rt.closed.Swap(true) {
-		_ = rt.call(ctx, "plugin.shutdown", map[string]any{}, nil)
-		if rt.stdin != nil {
-			_ = rt.stdin.Close()
+		// Only send graceful plugin.shutdown when the single-threaded guest is idle.
+		// If another RPC holds callGate (e.g. a long git/HTTP sync), the guest cannot
+		// read stdin anyway, so abort immediately instead of stalling until timeout.
+		idle := false
+		select {
+		case rt.callGate <- struct{}{}:
+			<-rt.callGate
+			idle = true
+		default:
+		}
+		if idle {
+			_ = rt.call(ctx, "plugin.shutdown", map[string]any{}, nil)
+			if rt.stdin != nil {
+				_ = rt.stdin.Close()
+			}
+		} else {
+			rt.abort()
 		}
 	}
 	select {
@@ -744,10 +773,12 @@ func (rt *Runtime) Shutdown(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		rt.abort()
+		reapTimer := time.NewTimer(150 * time.Millisecond)
+		defer reapTimer.Stop()
 		select {
 		case <-rt.reaped:
 			return nil
-		case <-time.After(time.Second):
+		case <-reapTimer.C:
 			return errors.New("plugin sandbox did not exit")
 		}
 	}
@@ -755,6 +786,7 @@ func (rt *Runtime) Shutdown(ctx context.Context) error {
 
 func (rt *Runtime) abort() {
 	rt.closed.Store(true)
+	rt.markStopping()
 	rt.abortOnce.Do(func() {
 		select {
 		case <-rt.reaped:

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"block/internal/files"
 	"block/internal/model"
 	"github.com/egoist/mygo"
 )
@@ -372,14 +371,18 @@ func (w *Workspace) persistMainBoundsNow(win *mygo.Window) {
 		did := *b.DisplayID
 		cp.DisplayID = &did
 	}
-	next, err := files.UpdateState(func(st *model.AppState) {
-		st.MainWindowBounds = &cp
+	w.mu.Lock()
+	w.state.MainWindowBounds = &cp
+	w.mu.Unlock()
+	saved := cp
+	w.updateStateAsync(func(st *model.AppState) {
+		c := saved
+		if saved.DisplayID != nil {
+			did := *saved.DisplayID
+			c.DisplayID = &did
+		}
+		st.MainWindowBounds = &c
 	})
-	if err == nil {
-		w.mu.Lock()
-		w.state = next
-		w.mu.Unlock()
-	}
 }
 
 func (w *Workspace) scheduleSaveMainBounds() {

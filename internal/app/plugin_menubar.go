@@ -71,6 +71,9 @@ func (m *pluginMenubar) loop() {
 			continue
 		}
 		items := sup.MenubarItems()
+		if len(items) == 0 && m.lastSig == "" {
+			continue
+		}
 		raw, _ := json.Marshal(items)
 		if sig := string(raw); sig != m.lastSig {
 			m.lastSig = sig

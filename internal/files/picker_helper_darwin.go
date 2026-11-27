@@ -297,13 +297,14 @@ func (h *darwinHelperProc) closeAndWait(timeout time.Duration) {
 		_ = h.cmd.Wait()
 		close(done)
 	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case <-done:
-	case <-time.After(timeout):
+	case <-timer.C:
 		if h.cmd.Process != nil {
 			_ = h.cmd.Process.Kill()
 		}
-		<-done
 	}
 }
 
@@ -747,7 +748,7 @@ func (m *darwinHelperManager) shutdown() {
 		_ = stopR.Close()
 	}
 	if h != nil {
-		h.closeAndWait(250 * time.Millisecond)
+		h.closeAndWait(40 * time.Millisecond)
 	}
 }
 

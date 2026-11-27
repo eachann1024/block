@@ -212,6 +212,8 @@ func (rt *Runtime) hostCallContext(timeout time.Duration) (context.Context, cont
 		select {
 		case <-rt.exited:
 			cancel()
+		case <-rt.stopping:
+			cancel()
 		case <-done:
 		}
 	}()

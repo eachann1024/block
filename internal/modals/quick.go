@@ -267,7 +267,10 @@ type QuickNoteController struct {
 	visible         bool
 	activeSlot      int
 	slots           [quickSlotCount]string
+	slotDisk        [quickSlotCount]string
+	slotDiskKnown   [quickSlotCount]bool
 	names           [quickSlotCount]string
+	metaDirty       bool
 	sessions        [quickSlotCount]*editor.Session
 	sessHost        *quickSessionHost
 	lastTrigger     time.Time
@@ -380,6 +383,12 @@ func (q *QuickNoteController) syncSessionToDiskLocked(slot int) error {
 	if sess != nil && sess.Dirty() {
 		q.slots[slot] = q.serializeSessionLocked(slot)
 	}
+	if q.slotDiskKnown[slot] && q.slotDisk[slot] == q.slots[slot] {
+		if sess != nil && sess.Dirty() {
+			sess.MarkSaved()
+		}
+		return nil
+	}
 	if err := q.saveSlotLocked(slot); err != nil {
 		q.notice, q.savedFlash = err.Error(), false
 		return err
@@ -430,6 +439,8 @@ func (q *QuickNoteController) ensureSlotFileLocked(slot int) {
 	_ = os.MkdirAll(filepath.Dir(p), 0o755)
 	if f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644); err == nil {
 		_ = f.Close()
+		q.slotDisk[slot] = ""
+		q.slotDiskKnown[slot] = true
 	}
 }
 
@@ -454,6 +465,8 @@ func (q *QuickNoteController) loadFromDisk() {
 	for i := 0; i < quickSlotCount; i++ {
 		if b, err := os.ReadFile(q.slotFilePath(i)); err == nil {
 			q.slots[i] = string(b)
+			q.slotDisk[i] = q.slots[i]
+			q.slotDiskKnown[i] = true
 		}
 	}
 	q.ensureSlotFileLocked(q.activeSlot)
@@ -478,7 +491,9 @@ func (q *QuickNoteController) saveMetaLocked() {
 	target := filepath.Join(dir, "names.json")
 	tmp := target + ".tmp"
 	if os.WriteFile(tmp, b, 0o644) == nil {
-		_ = os.Rename(tmp, target)
+		if os.Rename(tmp, target) == nil {
+			q.metaDirty = false
+		}
 	}
 }
 
@@ -494,6 +509,10 @@ func (q *QuickNoteController) saveSlotLocked(slot int) error {
 	q.diskMu.Lock()
 	defer q.diskMu.Unlock()
 	_, err := files.WriteNoteAtomic(p, q.slots[slot])
+	if err == nil {
+		q.slotDisk[slot] = q.slots[slot]
+		q.slotDiskKnown[slot] = true
+	}
 	return err
 }
 
@@ -702,18 +721,45 @@ func (q *QuickNoteController) resolveBounds() (mygo.Rectangle, bool) {
 	return resolveQuickWindowBoundsFromDisplays(saved, displays, &pt)
 }
 
+func quickBoundsEqual(a, b *model.SavedWindowBounds) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	if a.X != b.X || a.Y != b.Y || a.Width != b.Width || a.Height != b.Height ||
+		a.Maximized != b.Maximized || a.Fullscreen != b.Fullscreen {
+		return false
+	}
+	if a.DisplayID == nil || b.DisplayID == nil {
+		return a.DisplayID == nil && b.DisplayID == nil
+	}
+	return *a.DisplayID == *b.DisplayID
+}
+
 func (q *QuickNoteController) persistBoundsNow(win *mygo.Window) {
 	b, ok := captureQuickWindowBounds(win)
 	if !ok {
 		return
 	}
 	q.mu.Lock()
+	prev := q.savedBounds
+	getBounds := q.GetQuickBounds
+	if prev == nil && getBounds != nil {
+		prev = getBounds()
+	}
+	if quickBoundsEqual(prev, &b) {
+		q.mu.Unlock()
+		return
+	}
 	cp := b
+	if b.DisplayID != nil {
+		did := *b.DisplayID
+		cp.DisplayID = &did
+	}
 	q.savedBounds = &cp
 	onBounds := q.OnQuickBoundsChanged
 	q.mu.Unlock()
 	if onBounds != nil {
-		onBounds(b)
+		onBounds(cp)
 	}
 }
 
@@ -801,7 +847,6 @@ func (q *QuickNoteController) AttachDesktop() {
 		})
 		win.OnClose(func(e *mygo.CloseEvent) {
 			if IsAppQuitting() {
-				q.Flush()
 				return
 			}
 			e.PreventDefault()
@@ -897,6 +942,7 @@ func absInt(v int) int {
 // Hide flushes the active slot and hides the Quick Note panel without closing the app.
 func (q *QuickNoteController) Hide() {
 	q.mu.Lock()
+	wasVisible := q.visible
 	q.visible = false
 	if q.boundsTimer != nil {
 		q.boundsTimer.Stop()
@@ -906,15 +952,22 @@ func (q *QuickNoteController) Hide() {
 		q.syncTimer.Stop()
 		q.syncTimer = nil
 	}
-	q.syncSessionToDiskLocked(q.activeSlot)
-	q.saveMetaLocked()
 	win := q.win
 	q.mu.Unlock()
 
 	if win != nil {
-		q.persistBoundsNow(win)
+		if wasVisible {
+			q.persistBoundsNow(win)
+		}
 		win.Hide()
 	}
+
+	q.mu.Lock()
+	q.syncSessionToDiskLocked(q.activeSlot)
+	if q.metaDirty {
+		q.saveMetaLocked()
+	}
+	q.mu.Unlock()
 }
 
 // Flush saves active slot content, metadata, and window bounds before application exit.
@@ -934,7 +987,9 @@ func (q *QuickNoteController) Flush() error {
 			saveErr = errors.Join(saveErr, q.syncSessionToDiskLocked(i))
 		}
 	}
-	q.saveMetaLocked()
+	if q.metaDirty {
+		q.saveMetaLocked()
+	}
 	win := q.win
 	vis := q.visible
 	q.mu.Unlock()
@@ -1185,6 +1240,7 @@ func (q *QuickNoteController) switchSlot(slot int) {
 	if q.activeSlot != slot {
 		q.syncSessionToDiskLocked(q.activeSlot)
 		q.activeSlot = slot
+		q.metaDirty = true
 		q.ensureSlotFileLocked(slot)
 		q.noticeSeq++
 		if q.noticeTimer != nil {

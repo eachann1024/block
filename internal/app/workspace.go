@@ -121,6 +121,10 @@ type Workspace struct {
 	bgSaveMu            sync.Mutex
 	saveGeneration      uint64
 	selfWriteUntil      time.Time
+	stateSaveMu         sync.Mutex
+	stateSavePending    []func(*model.AppState)
+	stateSaveRunning    bool
+	stateSaveDone       chan struct{}
 
 	aiSelKey         aiSelectionSyncKey
 	hasAISelKey      bool
@@ -205,7 +209,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		LastUpdatedFrom:   st.LastUpdatedFrom,
 		IsEn:              theme.IsEn,
 		OnSourceModeChanged: func(mode updater.SourceMode) {
-			if next, err := files.UpdateState(func(s *model.AppState) {
+			if next, err := w.updateStateSync(func(s *model.AppState) {
 				s.UpdateSource = string(mode)
 			}); err == nil {
 				w.mu.Lock()
@@ -217,11 +221,11 @@ func NewWorkspace(dataDir string) *Workspace {
 			saveErr := errors.New("editor is unavailable")
 			save := func() {
 				w.flushPendingSidebarWidth()
-				saveErr = w.flushDirtySessions()
+				saveErr = w.flushDirtySessionsOpts(false)
 				if saveErr != nil {
 					return
 				}
-				if next, err := files.UpdateState(func(s *model.AppState) {
+				if next, err := w.updateStateSync(func(s *model.AppState) {
 					if s.LastUpdatedFrom == "" || updater.CompareVersion(fromVersion, s.LastUpdatedFrom) > 0 {
 						s.LastUpdatedFrom = fromVersion
 					}
@@ -234,6 +238,7 @@ func NewWorkspace(dataDir string) *Workspace {
 				if w.quick != nil {
 					saveErr = w.quick.Flush()
 				}
+				w.FlushPendingState()
 			}
 			if mygo.App.IsReady() {
 				mygo.RunOnMain(save)
@@ -891,14 +896,13 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 	}
 	w.quick.OnQuickZoomChanged = func(zoom float32) {
 		z := zoom
-		next, err := files.UpdateState(func(st *model.AppState) {
-			st.QuickEditorZoom = &z
+		w.mu.Lock()
+		w.state.QuickEditorZoom = &z
+		w.mu.Unlock()
+		w.updateStateAsync(func(st *model.AppState) {
+			zz := z
+			st.QuickEditorZoom = &zz
 		})
-		if err == nil {
-			w.mu.Lock()
-			w.state = next
-			w.mu.Unlock()
-		}
 	}
 	w.quick.GetQuickBounds = func() *model.SavedWindowBounds {
 		w.mu.RLock()
@@ -911,14 +915,22 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 	}
 	w.quick.OnQuickBoundsChanged = func(b model.SavedWindowBounds) {
 		cp := b
-		next, err := files.UpdateState(func(st *model.AppState) {
-			st.QuickWindowBounds = &cp
-		})
-		if err == nil {
-			w.mu.Lock()
-			w.state = next
-			w.mu.Unlock()
+		if b.DisplayID != nil {
+			did := *b.DisplayID
+			cp.DisplayID = &did
 		}
+		w.mu.Lock()
+		w.state.QuickWindowBounds = &cp
+		w.mu.Unlock()
+		saved := cp
+		w.updateStateAsync(func(st *model.AppState) {
+			c := saved
+			if saved.DisplayID != nil {
+				did := *saved.DisplayID
+				c.DisplayID = &did
+			}
+			st.QuickWindowBounds = &c
+		})
 	}
 }
 
@@ -958,7 +970,7 @@ func (w *Workspace) wireModalCallbacks() {
 		prevScan := w.scanOptionsLocked()
 		w.mu.RUnlock()
 
-		next, err := files.UpdateState(mut)
+		next, err := w.updateStateSync(mut)
 		var nextScan files.ScanOptions
 		if err != nil {
 			files.LogWarnf("UpdateState failed: %v", err)
@@ -1028,8 +1040,12 @@ func (w *Workspace) wireModalCallbacks() {
 	w.modals.SidebarWidth = &w.sidebarWidth
 	w.modals.OnSidebarWidthChanged = func(nw float32) {
 		clamped := ClampSidebarWidth(nw)
-		_, _ = files.UpdateState(func(st *model.AppState) {
-			st.SidebarWidth = &clamped
+		w.mu.Lock()
+		w.state.SidebarWidth = &clamped
+		w.mu.Unlock()
+		w.updateStateAsync(func(st *model.AppState) {
+			v := clamped
+			st.SidebarWidth = &v
 		})
 	}
 	w.modals.OnForgetNotebook = w.ForgetNotebook
@@ -2339,7 +2355,7 @@ func (w *Workspace) ApplyPreparedRevealDirectory(prep model.PreparedDirectoryTar
 		w.mu.Unlock()
 		if stillSameFolder {
 			if wasCollapsed {
-				_, _ = files.UpdateState(func(st *model.AppState) {
+				w.updateStateAsync(func(st *model.AppState) {
 					st.SidebarCollapsed = false
 				})
 			}
@@ -3193,7 +3209,7 @@ func (w *Workspace) SetNotebook(folder string) error {
 		}
 	}
 
-	next, saveErr := files.UpdateState(func(st *model.AppState) {
+	next, saveErr := w.updateStateSync(func(st *model.AppState) {
 		savedPrev := ""
 		if st.Folder != "" {
 			savedPrev = filepath.Clean(st.Folder)
@@ -3263,21 +3279,28 @@ func (w *Workspace) SetNotebook(folder string) error {
 
 // ReorderNotebooks moves a notebook entry from fromIdx to toIdx and persists `state.Notebooks`.
 func (w *Workspace) ReorderNotebooks(fromIdx, toIdx int) {
-	next, err := files.UpdateState(func(st *model.AppState) {
+	w.mu.Lock()
+	if fromIdx < 0 || fromIdx >= len(w.state.Notebooks) || toIdx < 0 || toIdx >= len(w.state.Notebooks) || fromIdx == toIdx {
+		w.mu.Unlock()
+		return
+	}
+	list := append([]string(nil), w.state.Notebooks...)
+	item := list[fromIdx]
+	list = append(list[:fromIdx], list[fromIdx+1:]...)
+	list = append(list[:toIdx], append([]string{item}, list[toIdx:]...)...)
+	w.state.Notebooks = list
+	w.mu.Unlock()
+
+	w.updateStateAsync(func(st *model.AppState) {
 		if fromIdx < 0 || fromIdx >= len(st.Notebooks) || toIdx < 0 || toIdx >= len(st.Notebooks) || fromIdx == toIdx {
 			return
 		}
-		list := append([]string(nil), st.Notebooks...)
-		item := list[fromIdx]
-		list = append(list[:fromIdx], list[fromIdx+1:]...)
-		list = append(list[:toIdx], append([]string{item}, list[toIdx:]...)...)
-		st.Notebooks = list
+		l := append([]string(nil), st.Notebooks...)
+		it := l[fromIdx]
+		l = append(l[:fromIdx], l[fromIdx+1:]...)
+		l = append(l[:toIdx], append([]string{it}, l[toIdx:]...)...)
+		st.Notebooks = l
 	})
-	if err == nil {
-		w.mu.Lock()
-		w.state = next
-		w.mu.Unlock()
-	}
 	w.RequestRedraw()
 }
 
@@ -3366,7 +3389,7 @@ func (w *Workspace) ReorderSibling(parentDir, srcPath, targetPath string, after 
 	}
 	combined := append(dirs, regularFiles...)
 
-	nextState, err := files.UpdateState(func(st *model.AppState) {
+	nextState, err := w.updateStateSync(func(st *model.AppState) {
 		if st.FileOrder == nil {
 			st.FileOrder = make(map[string][]string)
 		}
@@ -3404,7 +3427,7 @@ func (w *Workspace) ForgetNotebook(root string) {
 	}
 
 	var switched bool
-	next, err := files.UpdateState(func(st *model.AppState) {
+	next, err := w.updateStateSync(func(st *model.AppState) {
 		filtered := make([]string, 0, len(st.Notebooks))
 		for _, nb := range st.Notebooks {
 			if filepath.Clean(nb) != clean {
@@ -3505,7 +3528,7 @@ func (w *Workspace) RegisterNotebook(folder string) error {
 		}
 	}
 	w.mu.RUnlock()
-	next, err := files.UpdateState(func(st *model.AppState) {
+	next, err := w.updateStateSync(func(st *model.AppState) {
 		for _, nb := range st.Notebooks {
 			if filepath.Clean(nb) == clean {
 				return
@@ -3699,12 +3722,16 @@ func (w *Workspace) placeCreatedFolderAtBottom(targetDir, created string) bool {
 	w.mu.RLock()
 	sortMode := w.state.TreeSort
 	root := w.state.Folder
+	hasFileOrder := len(w.state.FileOrder) > 0
 	inDir, found := entriesInDir(root, w.entries, cleanTarget)
 	inDirSnap := append([]model.FileEntry(nil), inDir...)
 	w.mu.RUnlock()
 
 	if sortMode != model.TreeSortManual {
-		nextState, err := files.UpdateState(func(st *model.AppState) {
+		if !hasFileOrder {
+			return false
+		}
+		nextState, err := w.updateStateSync(func(st *model.AppState) {
 			if len(st.FileOrder) == 0 {
 				return
 			}
@@ -3756,7 +3783,7 @@ func (w *Workspace) placeCreatedFolderAtBottom(targetDir, created string) bool {
 	dirs = append(dirs, createdBase)
 	combined := append(dirs, regularFiles...)
 
-	nextState, err := files.UpdateState(func(st *model.AppState) {
+	nextState, err := w.updateStateSync(func(st *model.AppState) {
 		if st.FileOrder == nil {
 			st.FileOrder = make(map[string][]string)
 		}
@@ -4583,7 +4610,7 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	collapsed := w.state.SidebarCollapsed
 	w.mu.Unlock()
 
-	_, _ = files.UpdateState(func(st *model.AppState) {
+	w.updateStateAsync(func(st *model.AppState) {
 		st.SidebarCollapsed = collapsed
 	})
 	if triggerCue {
@@ -4599,15 +4626,8 @@ func (w *Workspace) setOutlineViewMode(mode model.OutlineViewMode) {
 	default:
 		mode = model.OutlineViewAuto
 	}
-	nextState, err := files.UpdateState(func(st *model.AppState) {
-		st.OutlineView = mode
-	})
 	w.mu.Lock()
-	if err == nil {
-		w.state = nextState
-	} else {
-		w.state.OutlineView = mode
-	}
+	w.state.OutlineView = mode
 	sessions := make([]*editor.Session, 0, len(w.sessions))
 	for _, sess := range w.sessions {
 		if sess != nil {
@@ -4616,6 +4636,9 @@ func (w *Workspace) setOutlineViewMode(mode model.OutlineViewMode) {
 	}
 	w.mu.Unlock()
 
+	w.updateStateAsync(func(st *model.AppState) {
+		st.OutlineView = mode
+	})
 	for _, sess := range sessions {
 		sess.SetOutlineViewMode(mode)
 	}
@@ -4666,14 +4689,10 @@ func (w *Workspace) SetZoomPct(pct int) {
 	w.mu.Unlock()
 
 	theme.SetZoom(z)
-	if next, err := files.UpdateState(func(st *model.AppState) {
+	w.updateStateAsync(func(st *model.AppState) {
 		zz := z
 		st.EditorZoom = &zz
-	}); err == nil {
-		w.mu.Lock()
-		w.state = next
-		w.mu.Unlock()
-	}
+	})
 	w.RequestRedraw()
 }
 
@@ -4722,12 +4741,88 @@ func (w *Workspace) snapshotPersistedTabBindingsLocked(tabs []string) map[string
 	return out
 }
 
+func (w *Workspace) updateStateSync(mut func(*model.AppState)) (model.AppState, error) {
+	w.FlushPendingState()
+	return files.UpdateState(mut)
+}
+
+func (w *Workspace) updateStateAsync(mut func(*model.AppState)) {
+	if mut == nil {
+		return
+	}
+	w.mu.RLock()
+	syncMode := w.win == nil || blockui.IsProbeEnabled()
+	w.mu.RUnlock()
+	if syncMode {
+		_, _ = files.UpdateState(mut)
+		return
+	}
+	w.stateSaveMu.Lock()
+	w.stateSavePending = append(w.stateSavePending, mut)
+	if !w.stateSaveRunning {
+		w.stateSaveRunning = true
+		done := make(chan struct{})
+		w.stateSaveDone = done
+		go w.drainStateSaveQueue(done)
+	}
+	w.stateSaveMu.Unlock()
+}
+
+func (w *Workspace) drainStateSaveQueue(done chan struct{}) {
+	defer close(done)
+	for {
+		w.stateSaveMu.Lock()
+		if len(w.stateSavePending) == 0 {
+			w.stateSaveRunning = false
+			w.stateSaveMu.Unlock()
+			return
+		}
+		batch := w.stateSavePending
+		w.stateSavePending = nil
+		w.stateSaveMu.Unlock()
+
+		_, _ = files.UpdateState(func(st *model.AppState) {
+			for _, fn := range batch {
+				fn(st)
+			}
+		})
+	}
+}
+
+// FlushPendingState waits for any queued background state.json updates to finish writing.
+func (w *Workspace) FlushPendingState() {
+	for {
+		w.stateSaveMu.Lock()
+		if !w.stateSaveRunning {
+			if len(w.stateSavePending) == 0 {
+				w.stateSaveMu.Unlock()
+				return
+			}
+			batch := w.stateSavePending
+			w.stateSavePending = nil
+			w.stateSaveMu.Unlock()
+			_, _ = files.UpdateState(func(st *model.AppState) {
+				for _, fn := range batch {
+					fn(st)
+				}
+			})
+			return
+		}
+		done := w.stateSaveDone
+		w.stateSaveMu.Unlock()
+		if done != nil {
+			<-done
+		}
+	}
+}
+
 func (w *Workspace) persistTabs(tabs []string, active string) {
 	w.mu.RLock()
 	bindings := w.snapshotPersistedTabBindingsLocked(tabs)
 	w.mu.RUnlock()
-	_, _ = files.UpdateState(func(st *model.AppState) {
-		st.OpenTabs = append([]string(nil), tabs...)
+	tabsCopy := append([]string(nil), tabs...)
+	w.updateStateAsync(func(st *model.AppState) {
+		st.OpenTabs = tabsCopy
 		st.ActiveTab = active
 		st.TabBindings = bindings
 	})
@@ -5060,16 +5155,29 @@ func (w *Workspace) flushPendingSidebarWidth() {
 	}
 	clamped := w.pendingSidebarWidth
 	w.hasPendingSidebarW = false
+	w.state.SidebarWidth = &clamped
 	w.mu.Unlock()
-	_, _ = files.UpdateState(func(st *model.AppState) {
-		st.SidebarWidth = &clamped
+	w.updateStateAsync(func(st *model.AppState) {
+		v := clamped
+		st.SidebarWidth = &v
 	})
 }
 
 // FlushDirtySessions writes all modified non-virtual editor sessions to disk atomically.
 func (w *Workspace) FlushDirtySessions() error {
 	w.flushPendingSidebarWidth()
-	err := w.flushDirtySessions()
+	err := w.flushDirtySessionsOpts(true)
+	if err != nil {
+		w.setNotice(err.Error())
+	}
+	return err
+}
+
+// FlushDirtySessionsForQuit writes modified sessions before app exit without dispatching
+// new async plugin note.saved events right before plugin runtimes are shut down.
+func (w *Workspace) FlushDirtySessionsForQuit() error {
+	w.flushPendingSidebarWidth()
+	err := w.flushDirtySessionsOpts(false)
 	if err != nil {
 		w.setNotice(err.Error())
 	}
@@ -5077,16 +5185,24 @@ func (w *Workspace) FlushDirtySessions() error {
 }
 
 func (w *Workspace) flushDirtySessions() error {
+	return w.flushDirtySessionsOpts(true)
+}
+
+func (w *Workspace) flushDirtySessionsOpts(notifyPlugins bool) error {
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
-	return w.flushDirtySessionsLocked()
+	return w.flushDirtySessionsExceptLockedOpts("", notifyPlugins)
 }
 
 func (w *Workspace) flushDirtySessionsLocked() error {
-	return w.flushDirtySessionsExceptLocked("")
+	return w.flushDirtySessionsExceptLockedOpts("", true)
 }
 
 func (w *Workspace) flushDirtySessionsExceptLocked(skipPath string) error {
+	return w.flushDirtySessionsExceptLockedOpts(skipPath, true)
+}
+
+func (w *Workspace) flushDirtySessionsExceptLockedOpts(skipPath string, notifyPlugins bool) error {
 	w.syncNoteSourceBuffer()
 	cleanSkip := ""
 	skipPrefix := ""
@@ -5095,6 +5211,9 @@ func (w *Workspace) flushDirtySessionsExceptLocked(skipPath string) error {
 		skipPrefix = cleanSkip + string(filepath.Separator)
 	}
 	shouldNotify := func(p string) bool {
+		if !notifyPlugins {
+			return false
+		}
 		if cleanSkip == "" {
 			return true
 		}
@@ -5160,7 +5279,40 @@ func (w *Workspace) flushDirtySessionsExceptLocked(skipPath string) error {
 	return firstErr
 }
 
+func (w *Workspace) isPathCleanFast(path string) bool {
+	if w.noteSourceActive(path) {
+		return false
+	}
+	clean := filepath.Clean(path)
+	w.mu.RLock()
+	source := w.surfaces[path]
+	sess := w.sessions[path]
+	isVirtual := w.virtualPreview[path]
+	inFlight := w.pluginInsertInFlight[path] > 0 || w.pluginInsertInFlight[clean] > 0
+	lastDiskMD, hasLastDisk := w.lastDiskMarkdown[clean]
+	w.mu.RUnlock()
+	if inFlight {
+		return false
+	}
+	if source != nil && source.IsDirty() {
+		return false
+	}
+	if sess == nil || isVirtual {
+		return true
+	}
+	if sess.Dirty() {
+		return false
+	}
+	if hasLastDisk && sess.Markdown() != lastDiskMD {
+		return false
+	}
+	return true
+}
+
 func (w *Workspace) flushSingleSession(path string) error {
+	if w.isPathCleanFast(path) {
+		return nil
+	}
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
 	return w.flushSingleSessionLocked(path)
@@ -7252,7 +7404,7 @@ func (w *Workspace) togglePinnedPluginButton(slotID string) bool {
 			activeSlots[pluginButtonSlotID(b)] = true
 		}
 	}
-	next, err := files.UpdateState(func(s *model.AppState) {
+	next, err := w.updateStateSync(func(s *model.AppState) {
 		s.PinnedPluginButtons = TogglePinnedPluginSlot(s.PinnedPluginButtons, slotID, activeSlots)
 	})
 	if err != nil {
