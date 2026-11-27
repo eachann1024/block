@@ -3484,7 +3484,7 @@ func (w *Workspace) ForgetNotebook(root string) {
 
 		filteredIgnored := make([]string, 0, len(st.IgnoredSearchFolders))
 		for _, nb := range st.IgnoredSearchFolders {
-			if filepath.Clean(nb) != clean {
+			if c := filepath.Clean(nb); c != clean && !strings.HasPrefix(c, clean+string(filepath.Separator)) {
 				filteredIgnored = append(filteredIgnored, nb)
 			}
 		}

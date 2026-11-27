@@ -173,6 +173,9 @@ type Manager struct {
 	folderRuleDraft        string
 	folderRuleAdding       bool
 	searchIgnorePicker     internalui.DropdownSelectState
+	searchIgnoreDir        string
+	searchIgnoreDirs       []searchIgnoreEntry
+	searchIgnoreLoaded     string
 	regexRuleDraft         string
 	folderRuleError        string
 	regexRuleError         string
@@ -2212,35 +2215,23 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 					ui.Text(c, theme.Tr("不参与搜索的文件夹", "Excluded Folders")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
 				})
 				ui.Row(c).Grow(1).MinWidth(0).Wrap().Justify(ui.End).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
+					notebooks := m.knownNotebooks(st)
 					for i, folderPath := range st.IgnoredSearchFolders {
-						if folderChip(c, fmt.Sprintf("folder-search-ignore-%d", i), filepath.Base(folderPath), false) {
+						if folderChip(c, fmt.Sprintf("folder-search-ignore-%d", i), searchIgnoreChipLabel(folderPath, notebooks), false) {
 							m.toggleSearchIgnoreFolder(folderPath)
 						}
 					}
-					var options []internalui.SelectOption
-					for i, nb := range m.knownNotebooks(st) {
-						if slices.Contains(st.IgnoredSearchFolders, nb) {
-							continue
-						}
-						options = append(options, internalui.SelectOption{
-							ID:    fmt.Sprintf("settings-ignore-search-opt-%d", i),
-							Value: nb,
-							Label: filepath.Base(nb),
-							Hint:  tailEllipsis(folderLocationLabel(nb), 32),
-						})
-					}
-					if len(options) == 0 {
+					if len(notebooks) == 0 {
 						m.searchIgnorePicker.Open = false
 						return
 					}
-					m.searchIgnorePicker.MenuWidth = 360
 					if folderAddButton(c, "settings-ignore-search-add", theme.Tr("添加不参与搜索的文件夹", "Exclude Folder"), &m.searchIgnorePicker.TriggerRect) {
 						m.searchIgnorePicker.Open = !m.searchIgnorePicker.Open
 						m.searchIgnorePicker.Cursor = -1
+						m.searchIgnoreDir = ""
+						m.searchIgnoreLoaded = ""
 					}
-					if picked := internalui.SelectMenu(c, "settings-ignore-search-picker", options, &m.searchIgnorePicker, ""); picked >= 0 {
-						m.toggleSearchIgnoreFolder(options[picked].Value)
-					}
+					m.renderSearchIgnoreMenu(c, st, notebooks, hideAssets, assetsName, showHidden)
 				})
 			})
 		})
@@ -2342,6 +2333,193 @@ func folderChip(c *ui.Context, id, name string, shown bool) bool {
 	return removed
 }
 
+type searchIgnoreEntry struct {
+	Path        string
+	HasChildren bool
+}
+
+// pathWithin reports whether p equals root or sits below it.
+func pathWithin(p, root string) bool {
+	return p == root || strings.HasPrefix(p, root+string(filepath.Separator))
+}
+
+// searchIgnoreChipLabel shows a notebook by name and a nested folder as "parent / name".
+func searchIgnoreChipLabel(folder string, notebooks []string) string {
+	clean := filepath.Clean(folder)
+	for _, nb := range notebooks {
+		if filepath.Clean(nb) == clean {
+			return filepath.Base(clean)
+		}
+	}
+	return filepath.Base(filepath.Dir(clean)) + " / " + filepath.Base(clean)
+}
+
+// listSearchIgnoreDirs reads the visible subfolders of dir, noting which have subfolders of their own.
+func listSearchIgnoreDirs(dir string, hideAssets bool, assetsName string, showHidden bool) []searchIgnoreEntry {
+	visible := func(d os.DirEntry) bool {
+		return d.IsDir() && !theme.IsFolderHidden(d.Name(), assetsName, hideAssets, showHidden)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []searchIgnoreEntry
+	for _, e := range entries {
+		if !visible(e) {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		sub, _ := os.ReadDir(p)
+		out = append(out, searchIgnoreEntry{Path: p, HasChildren: slices.ContainsFunc(sub, visible)})
+	}
+	slices.SortFunc(out, func(a, b searchIgnoreEntry) int {
+		return cmp.Compare(strings.ToLower(filepath.Base(a.Path)), strings.ToLower(filepath.Base(b.Path)))
+	})
+	return out
+}
+
+// renderSearchIgnoreMenu shows a drill-in folder picker: rows with subfolders open the next level,
+// leaf rows exclude directly, and the header excludes the folder currently open.
+func (m *Manager) renderSearchIgnoreMenu(c *ui.Context, st model.AppState, notebooks []string, hideAssets bool, assetsName string, showHidden bool) {
+	state := &m.searchIgnorePicker
+	if !state.Open || state.TriggerRect.W <= 0 {
+		return
+	}
+	pal := theme.Ocean()
+	ignored := func(p string) bool {
+		clean := filepath.Clean(p)
+		for _, ig := range st.IgnoredSearchFolders {
+			if pathWithin(clean, filepath.Clean(ig)) {
+				return true
+			}
+		}
+		return false
+	}
+
+	dir := m.searchIgnoreDir
+	var entries []searchIgnoreEntry
+	if dir == "" {
+		for _, nb := range notebooks {
+			entries = append(entries, searchIgnoreEntry{Path: nb, HasChildren: true})
+		}
+	} else {
+		if m.searchIgnoreLoaded != dir {
+			m.searchIgnoreDirs = listSearchIgnoreDirs(dir, hideAssets, assetsName, showHidden)
+			m.searchIgnoreLoaded = dir
+		}
+		entries = m.searchIgnoreDirs
+	}
+	isNotebook := func(p string) bool { return slices.Contains(notebooks, p) }
+
+	const popW = float32(360)
+	winW, winH := c.Size()
+	rows := len(entries)
+	if dir != "" {
+		rows += 2
+	}
+	spec := internalui.PlaceBelow(state.TriggerRect).
+		WithAlignX(internalui.AlignX{Kind: internalui.AlignRight}).
+		WithGap(theme.Space6).WithMargin(theme.Space8)
+	maxH := internalui.MaxHeightForSpec(spec, winW, winH, 320)
+	estH := min(float32(rows)*(theme.MenuItemHeight+theme.MenuGap)+theme.MenuPadding*2, maxH)
+	x, y := internalui.ResolveOrigin(spec, popW, estH, winW, winH)
+
+	var drill, exclude string
+	goBack := false
+	ui.Overlay(c, func() {
+		backdrop := ui.Box(c.Key("settings-ignore-search-backdrop")).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+		c.Key("settings-ignore-search-menu")
+		panel := internalui.MenuSurface(internalui.Scroll(c, &state.Scroll).Absolute().Left(x).Top(y).Width(popW).MaxHeight(maxH))
+		internalui.Probe(panel, "settings-ignore-search-picker-menu")
+		panel.Children(func() {
+			if dir != "" {
+				ui.Row(c.Key("settings-ignore-search-head")).FillWidth().Height(theme.MenuItemHeight).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
+					backBtn := ui.ButtonBase(c.Key("settings-ignore-search-back")).Width(theme.MenuItemHeight).Height(theme.MenuItemHeight).
+						AlignItems(ui.Center).Justify(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(theme.Tr("返回上一级", "Back"))
+					if backBtn.Hovered() {
+						backBtn.Background(pal.MenuHover)
+					}
+					backBtn.Children(func() {
+						icons.DrawAnimated(c, icons.ChevronLeft, theme.IconInline, pal.DuoIconColors(pal.TextSecondary), backBtn.Hovered())
+					})
+					if backBtn.Clicked() {
+						goBack = true
+					}
+					label := filepath.Base(dir)
+					if !isNotebook(dir) {
+						label = filepath.Base(filepath.Dir(dir)) + " / " + label
+					}
+					ui.Text(c, label).Font("monospace").FontSize(theme.FontMeta).TextColor(pal.MenuMuted).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					if ignored(dir) {
+						ui.Text(c, theme.Tr("已排除", "Excluded")).FontSize(theme.FontSmall).TextColor(pal.MenuMuted).SingleLine().Shrink(0).PaddingX(theme.Space10)
+						return
+					}
+					exBtn := ui.ButtonBase(c.Key("settings-ignore-search-exclude-current")).Height(theme.MenuItemHeight).PaddingX(theme.Space10).
+						AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Shrink(0).Label(theme.Tr("排除此文件夹", "Exclude This Folder"))
+					if exBtn.Hovered() {
+						exBtn.Background(pal.MenuHover)
+					}
+					exBtn.Children(func() {
+						ui.Text(c, theme.Tr("排除", "Exclude")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
+					})
+					if exBtn.Clicked() {
+						exclude = dir
+					}
+				})
+				internalui.MenuRow(c, internalui.MenuItemSpec{Separator: true}, false)
+			}
+			if len(entries) == 0 {
+				ui.Row(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, theme.Tr("没有子文件夹", "No subfolders")).FontSize(theme.FontBody).TextColor(pal.MenuMuted).SingleLine()
+				})
+			}
+			for i, e := range entries {
+				entry := e
+				done := ignored(entry.Path)
+				hint := ""
+				if dir == "" {
+					hint = tailEllipsis(folderLocationLabel(entry.Path), 28)
+				}
+				if done {
+					hint = theme.Tr("已排除", "Excluded")
+				}
+				internalui.MenuRow(c, internalui.MenuItemSpec{
+					ID:         fmt.Sprintf("settings-ignore-search-opt-%d", i),
+					Label:      filepath.Base(entry.Path),
+					Hint:       hint,
+					HasSubmenu: entry.HasChildren && !done,
+					Disabled:   done,
+					OnClick: func() {
+						if entry.HasChildren {
+							drill = entry.Path
+						} else {
+							exclude = entry.Path
+						}
+					},
+				}, false)
+			}
+		})
+		if drill == "" && exclude == "" && !goBack && (backdrop.Clicked() || backdrop.OverlayShortcut(0, ui.KeyEscape)) {
+			state.Open = false
+		}
+	})
+	switch {
+	case exclude != "":
+		m.toggleSearchIgnoreFolder(exclude)
+		state.Open = false
+	case drill != "":
+		m.searchIgnoreDir = drill
+		state.Scroll = ui.ScrollState{}
+	case goBack:
+		if isNotebook(dir) {
+			m.searchIgnoreDir = ""
+		} else {
+			m.searchIgnoreDir = filepath.Dir(dir)
+		}
+		state.Scroll = ui.ScrollState{}
+	}
+}
+
 // tailEllipsis keeps the last max runes of s, prefixed with "…", so the folder end stays visible.
 func tailEllipsis(s string, max int) string {
 	r := []rune(s)
@@ -2390,7 +2568,7 @@ func (m *Manager) forgetNotebook(folder string) {
 		s.Notebooks = keep
 		var keepIgnored []string
 		for _, nb := range s.IgnoredSearchFolders {
-			if filepath.Clean(nb) != clean {
+			if !pathWithin(filepath.Clean(nb), clean) {
 				keepIgnored = append(keepIgnored, nb)
 			}
 		}
