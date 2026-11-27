@@ -93,6 +93,7 @@ type Workspace struct {
 	updater   *updater.Service
 	pluginsUI *pluginui.Controller
 	pluginUI  *pluginHostUI
+	stageCtrl *pluginStageController
 	palette   CommandPalette
 	quick     *modals.QuickNoteController
 	searchWin *modals.SearchWindowController
@@ -247,6 +248,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		})
 	}
 	w.pluginUI = newPluginHostUI(w)
+	w.stageCtrl = newPluginStageController(w)
 	w.pluginsUI = pluginui.NewController(plugins.NewSupervisor(plugins.SupervisorConfig{
 		AppDataDir:  actualDir,
 		HostVersion: updater.CurrentVersion(),
@@ -346,9 +348,12 @@ func NewWorkspace(dataDir string) *Workspace {
 		OnChanged: func() {
 			w.RequestRedraw()
 		},
-		OnRedraw: w.RequestRedraw,
-		UI:       w.pluginUI,
-		System:   w.pluginUI,
+		OnRedraw:      w.RequestRedraw,
+		UI:            w.pluginUI,
+		System:        w.pluginUI,
+		AI:            w.pluginUI,
+		OnStageChange: w.stageCtrl.OnStageChange,
+		OnStageEmit:   w.stageCtrl.OnStageEmit,
 	}))
 	w.pluginsUI.SetOnSuggestPlugin(func(_ plugins.Category) {
 		w.modals.OpenFeedbackWithCategory("idea")
@@ -421,6 +426,8 @@ func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.S
 	sess := editor.NewSession(cleanPath, doc, w.codec, w)
 	sess.SetDataDir(w.dataDir)
 	sess.SetAIEnabled(w.ai.Enabled())
+	sess.SetOutlineViewMode(w.State().OutlineView)
+	sess.OnOutlineViewModeChange = w.setOutlineViewMode
 	sess.SetInlineAIStreamResponder(w.inlineAIStreamRespond)
 	sess.SetAnnotationAIResponder(w.annotationAIRespond)
 	sess.OnPickImages = func(blockID model.BlockID, replace bool) {
@@ -903,9 +910,11 @@ func (w *Workspace) wireModalCallbacks() {
 					mode = string(model.ThemeSystem)
 				}
 				sup.EmitWorkspaceEvent("theme.changed", map[string]any{"theme": mode})
+				w.stageCtrl.NotifyThemeChanged(mode)
 			}
 			if prevState.Language != next.Language {
 				sup.EmitWorkspaceEvent("locale.changed", map[string]any{"locale": string(theme.Language())})
+				w.stageCtrl.NotifyLocaleChanged()
 			}
 		}
 		if prevState.Language != next.Language ||
@@ -1235,6 +1244,7 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 			w.RequestRedraw()
 		})
 		win.OnHide(func() { w.FlushWindowBounds() })
+		win.OnClosed(func() { w.CleanupPluginStage() })
 		win.OnFileDrop(w.handleWindowFileDrop)
 		blockui.SetWindowFullscreenProvider(
 			func() bool {
@@ -1261,6 +1271,32 @@ func (w *Workspace) Window() *mygo.Window {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	return w.win
+}
+
+// CleanupPluginStage destroys any active plugin WebView stage and unregisters its page.
+func (w *Workspace) CleanupPluginStage() {
+	if w != nil && w.stageCtrl != nil {
+		w.stageCtrl.Destroy()
+	}
+}
+
+// NotifyPluginStageThemeChanged notifies an open plugin stage WebView of theme updates.
+func (w *Workspace) NotifyPluginStageThemeChanged() {
+	if w == nil || w.stageCtrl == nil {
+		return
+	}
+	mode := string(w.State().Theme)
+	if mode == "" {
+		mode = string(model.ThemeSystem)
+	}
+	w.stageCtrl.NotifyThemeChanged(mode)
+}
+
+func (w *Workspace) activePluginStage() *plugins.ActiveStage {
+	if sup := w.Plugins(); sup != nil {
+		return sup.ActiveStage()
+	}
+	return nil
 }
 
 // AI returns the workspace's AI Controller.
@@ -4456,6 +4492,35 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	}
 }
 
+func (w *Workspace) setOutlineViewMode(mode model.OutlineViewMode) {
+	switch mode {
+	case model.OutlineViewAuto, model.OutlineViewCard, model.OutlineViewList:
+	default:
+		mode = model.OutlineViewAuto
+	}
+	nextState, err := files.UpdateState(func(st *model.AppState) {
+		st.OutlineView = mode
+	})
+	w.mu.Lock()
+	if err == nil {
+		w.state = nextState
+	} else {
+		w.state.OutlineView = mode
+	}
+	sessions := make([]*editor.Session, 0, len(w.sessions))
+	for _, sess := range w.sessions {
+		if sess != nil {
+			sessions = append(sessions, sess)
+		}
+	}
+	w.mu.Unlock()
+
+	for _, sess := range sessions {
+		sess.SetOutlineViewMode(mode)
+	}
+	w.RequestRedraw()
+}
+
 func (w *Workspace) onAIEnabledChanged(enabled bool) {
 	w.mu.RLock()
 	for _, sess := range w.sessions {
@@ -5809,6 +5874,22 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 		return
 	}
 
+	activeStage := w.activePluginStage()
+	if activeStage != nil && activeStage.FullWindow {
+		c.Key("workspace-root")
+		root := ui.Column(c).Fill().Background(pal.Shell).TextColor(pal.Text).Clip()
+		blockui.Probe(root, "workspace-root")
+		root.Children(func() {
+			ui.Column(c.Key("stage-plugin")).Fill().Transition(blockui.SurfaceStageTransition()).Children(func() {
+				w.RenderPluginStage(c, pal)
+			})
+			w.modals.RenderModals(c)
+			w.renderPluginOverlays(c)
+			blockui.RenderSmokeHUD(c)
+		})
+		return
+	}
+
 	vpW, _ := c.Size()
 	if vpW <= 0 {
 		vpW = 1100
@@ -5938,6 +6019,11 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 	canEdgeLeft, canEdgeRight, edgeSafeL, edgeSafeR := w.edgeFloat.PrepareFrame(
 		c, w, vpW, layout, inSettings, aiImmersive, activeSess,
 	)
+	if activeStage != nil && !activeStage.FullWindow && !w.modals.IsRecordingShortcut() && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && c.Shortcut(0, ui.KeyEscape) {
+		if sup := w.Plugins(); sup != nil {
+			sup.CloseStage(activeStage.PluginID, activeStage.StageID)
+		}
+	}
 	// Handle narrow sidebar drawer Escape before activeSess.Render registers its window Escape shortcut.
 	if layout.SidebarDrawer && !aiImmersive && !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !w.sidebarUI.HasActiveOverlay() && (activeSess == nil || !activeSess.HasAnnotationInputFocused(c)) && c.Shortcut(0, ui.KeyEscape) {
 		w.ToggleSidebar(vpW)
@@ -6362,6 +6448,11 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 								noteArea := ui.Column(c.Key("workspace-note-area")).Grow(1).MinHeight(0).FillWidth()
 								noteArea.Children(func() {
 									switch {
+									case activeStage != nil && !activeStage.FullWindow:
+										if w.pluginUI != nil {
+											w.pluginUI.setEditorFocus(activeTab, false)
+										}
+										w.RenderPluginStage(c, paperPal)
 									case activeSurf != nil:
 										if w.pluginUI != nil {
 											w.pluginUI.setEditorFocus(activeTab, false)
@@ -6391,6 +6482,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 										}
 										activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 										activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.RightOpen())
+										activeSess.SetOutlineViewMode(stSnap.OutlineView)
 										activeSess.SetBackground(w.pluginEditorBackground())
 										activeSess.SetBlockDecorators(w.pluginBlockDecorators())
 										activeSess.SetMindMapConfig(w.nativeMindMapConfig())

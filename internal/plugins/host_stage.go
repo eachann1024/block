@@ -201,12 +201,14 @@ func (s *Supervisor) CloseActiveStage() {
 	s.notifyRedraw()
 }
 
-func (s *Supervisor) closeStageForPlugin(pluginID string) {
+// CloseStage closes the active stage if it matches pluginID and (when non-empty) stageID.
+func (s *Supervisor) CloseStage(pluginID, stageID string) {
 	if s == nil || strings.TrimSpace(pluginID) == "" {
 		return
 	}
+	targetID := strings.TrimSpace(stageID)
 	s.stageMu.Lock()
-	if s.activeStage == nil || s.activeStage.PluginID != pluginID {
+	if s.activeStage == nil || s.activeStage.PluginID != pluginID || (targetID != "" && s.activeStage.StageID != targetID) {
 		s.stageMu.Unlock()
 		return
 	}
@@ -217,6 +219,10 @@ func (s *Supervisor) closeStageForPlugin(pluginID string) {
 		onChange(nil)
 	}
 	s.notifyRedraw()
+}
+
+func (s *Supervisor) closeStageForPlugin(pluginID string) {
+	s.CloseStage(pluginID, "")
 }
 
 func (s *Supervisor) dispatchStageHostMethod(rt *Runtime, method string, params json.RawMessage) (any, *rpcError, bool) {

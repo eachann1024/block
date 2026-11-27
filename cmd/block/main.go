@@ -139,6 +139,9 @@ func main() {
 	if smokeFlag || os.Getenv("MYGO_AUTOMATION") != "" {
 		blockui.EnableSmokeMode()
 	}
+	if err := app.RegisterPluginStageRuntime(); err != nil {
+		files.LogErrorf("register plugin stage runtime failed: %v", err)
+	}
 
 	ws := app.NewWorkspace(dataDirFlag)
 	if !isIsolatedRun {
@@ -587,6 +590,7 @@ func main() {
 		if sup := ws.Plugins(); sup != nil {
 			sup.ShutdownAll()
 		}
+		ws.CleanupPluginStage()
 		files.ShutdownFileDialogs()
 		plugins.WaitFileAssociationSyncTimeout(800 * time.Millisecond)
 	})
@@ -601,6 +605,7 @@ func main() {
 		theme.SetThemeMode(ws.State().Theme, mygo.Theme.IsDark())
 		mygo.Theme.OnUpdated(func() {
 			theme.SetThemeMode(ws.State().Theme, mygo.Theme.IsDark())
+			ws.NotifyPluginStageThemeChanged()
 			ws.SearchWindow().Invalidate()
 			ws.QuickNote().RefreshStyle()
 			ws.RequestRedraw()

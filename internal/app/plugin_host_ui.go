@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,7 +96,10 @@ type pluginHostUI struct {
 	menubar *pluginMenubar // system tray icons of plugins
 }
 
-var _ plugins.UIHost = (*pluginHostUI)(nil)
+var (
+	_ plugins.UIHost = (*pluginHostUI)(nil)
+	_ plugins.AIHost = (*pluginHostUI)(nil)
+)
 
 func newPluginHostUI(w *Workspace) *pluginHostUI {
 	h := &pluginHostUI{
@@ -1372,6 +1376,99 @@ func (h *pluginHostUI) EditorInsert(pluginID, expectedRoot, expectedNote, mode, 
 		insertSucceeded = true
 	}
 	return nil
+}
+
+// Status reports host AI availability for plugin host.ai.status calls.
+func (h *pluginHostUI) Status() plugins.AIStatus {
+	if h == nil || h.w == nil || h.w.ai == nil {
+		return plugins.AIStatus{}
+	}
+	enabled := h.w.ai.Enabled()
+	return plugins.AIStatus{
+		Enabled:   enabled,
+		Ready:     enabled && h.w.ai.IsLiveProviderReady(),
+		Streaming: enabled && h.w.ai.IsStreaming(),
+	}
+}
+
+// Complete runs a single-turn completion via ai.Controller.StreamPrompt.
+func (h *pluginHostUI) Complete(ctx context.Context, req plugins.AICompleteRequest) (plugins.AICompleteResult, error) {
+	if h == nil || h.w == nil || h.w.ai == nil {
+		return plugins.AICompleteResult{}, errors.New("host AI service unavailable")
+	}
+	if !h.w.ai.Enabled() {
+		return plugins.AICompleteResult{}, errors.New(theme.Tr("AI Agent 已关闭", "AI Agent is off"))
+	}
+	if !h.w.ai.IsLiveProviderReady() {
+		return plugins.AICompleteResult{}, errors.New(theme.Tr("AI 供应商尚未配置或未就绪", "AI provider is not configured or ready"))
+	}
+	text, err := h.w.ai.StreamPrompt(ctx, req.SystemPrompt, req.UserPrompt, nil)
+	if err != nil {
+		return plugins.AICompleteResult{}, err
+	}
+	cfg := h.w.ai.ProviderConfig()
+	modelName := strings.TrimSpace(cfg.Model)
+	if _, pure, ok := strings.Cut(modelName, "::"); ok {
+		modelName = strings.TrimSpace(pure)
+	}
+	return plugins.AICompleteResult{
+		Text:  text,
+		Model: modelName,
+	}, nil
+}
+
+// OpenWithPrompt opens an optional note, opens the AI panel, and fills/sends the prompt.
+func (h *pluginHostUI) OpenWithPrompt(req plugins.AIOpenPromptRequest) error {
+	if h == nil || h.w == nil || h.w.ai == nil {
+		return errors.New("host AI service unavailable")
+	}
+	if !h.w.ai.Enabled() {
+		return errors.New(theme.Tr("AI Agent 已关闭", "AI Agent is off"))
+	}
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		return errors.New("prompt is required")
+	}
+
+	ch := make(chan error, 1)
+	if cerr := h.onMainWait(func() {
+		if noteRel := strings.TrimSpace(req.NotePath); noteRel != "" {
+			nbRoot := strings.TrimSpace(h.w.State().Folder)
+			if nbRoot == "" {
+				ch <- errors.New("active notebook is unavailable")
+				return
+			}
+			absRoot, err := filepath.Abs(nbRoot)
+			if err != nil {
+				ch <- err
+				return
+			}
+			absNote := filepath.Clean(filepath.Join(absRoot, filepath.FromSlash(noteRel)))
+			rel, err := filepath.Rel(absRoot, absNote)
+			if err != nil || !filepath.IsLocal(rel) {
+				ch <- errors.New("note path escapes active notebook")
+				return
+			}
+			if err := h.w.OpenNote(absNote, 0); err != nil {
+				ch <- err
+				return
+			}
+		}
+		h.w.tabMenu.Close()
+		h.w.sidebarUI.ClosePopups()
+		h.w.edgeFloat.DismissAll(h.w)
+		h.closePanelLocal("", "")
+		h.w.ai.SetOpen(true)
+		h.w.ai.SetDraftText(prompt)
+		if (h.w.ai.IsLiveProviderReady() || h.w.ai.IsMockEnabled()) && !h.w.ai.IsStreaming() {
+			h.w.ai.SendPrompt(prompt)
+		}
+		h.w.RequestRedraw()
+		ch <- nil
+	}); cerr != nil {
+		return cerr
+	}
+	return <-ch
 }
 
 // isHostReservedShortcut delegates to internal/ui.IsHostReservedShortcut so
