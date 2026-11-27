@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T08:18:38.688Z",
-  "latest_version": "1.0.952",
-  "latest_tag": "v1.0.952",
+  "updated_at": "2026-11-27T08:52:25.784Z",
+  "latest_version": "1.0.953",
+  "latest_tag": "v1.0.953",
   "releases": [
+    {
+      "version": "1.0.953",
+      "tag": "v1.0.953",
+      "published_at": "2026-11-27T08:52:25Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.953",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "编辑器：修复了自动换行时文本选区不一致的问题，并统一了各平台下的制表符宽度。",
+          "源码模式：统一了各操作系统下的代码字体回退机制，并修复了制表符箭头的状态监听问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Editor: Fixed text selection inconsistencies across soft-wrapped lines and unified tab character widths across platforms.",
+          "Source Mode: Unified code font fallback behavior across operating systems and fixed an issue with tab arrow state observation."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-macos-arm64.dmg",
+          "size": 18768284,
+          "sha256": "65942349177680bf8396d7d2c8adc4308b74a3f7ba58fcadad748fcfe0f940f1"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-macos-x64.dmg",
+          "size": 20710272,
+          "sha256": "3893bee95f082d9a2295e07d7e360d55cedaab7239954a7a2a651833d1f60a38"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-windows-x64-setup.exe",
+          "size": 16227546,
+          "sha256": "e91a473783f9382bc38d186c3a538e88c2a47338c5c5ee1ad2da0edf20d20292"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-linux-x64.deb",
+          "size": 13190696,
+          "sha256": "d9cbc0107e481c8f6609a5926941502325af5b608c8914b014eed032d2402c3b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.953/block-linux-x64.AppImage",
+          "size": 26458616,
+          "sha256": "538a71191519de041c1682f011450c060c5d87fe127104533c1d5fead2576839"
+        }
+      ]
+    },
     {
       "version": "1.0.952",
       "tag": "v1.0.952",
@@ -28,38 +86,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-macos-arm64.dmg",
-          "size": 18769209,
-          "sha256": "df6850c33e0bd4372eef36ccddb246b0c78674b5c13510838fd895a5657aedac"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-macos-x64.dmg",
-          "size": 20696340,
-          "sha256": "64ddfcb4636a402a4e7fa7eedc6e1e88d27a2cdf821d65f0d35f32248e3585da"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-windows-x64-setup.exe",
-          "size": 16223837,
-          "sha256": "1a839b21e334eff826134888d33305d8f08cc2263024529e867757da46114423"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-linux-x64.deb",
-          "size": 13179650,
-          "sha256": "c062da8c397db8c394d1dd8e04c31a7103a8f6abb9a5cbc9f44fac0d2679ca0b"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.952/block-linux-x64.AppImage",
-          "size": 26454520,
-          "sha256": "edb07418b3de78e843858cc5f154ce8a5f04b00bf74cb283b8eeddef046a7196"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.951",
@@ -1673,31 +1700,6 @@
         ],
         "improvements": [],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.901",
-      "tag": "v1.0.901",
-      "published_at": "2026-11-22T06:38:59Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.901",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "插件商店中的插件详情页在闲置时不再自动关闭。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Plugin detail pages in the store now remain open instead of automatically closing when idle."
-        ],
         "other": []
       },
       "assets": []
