@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T19:44:24.138Z",
-  "latest_version": "1.0.970",
-  "latest_tag": "v1.0.970",
+  "updated_at": "2026-11-27T19:58:33.659Z",
+  "latest_version": "1.0.971",
+  "latest_tag": "v1.0.971",
   "releases": [
+    {
+      "version": "1.0.971",
+      "tag": "v1.0.971",
+      "published_at": "2026-11-27T19:58:33Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.971",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "编辑器：支持将背景应用于整个窗口，同时保持浮层独立。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Editor: Users can apply a backdrop across the entire window while keeping overlays isolated."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.971/block-macos-arm64.dmg",
+          "size": 19099603,
+          "sha256": "6537ca064bc54327add7048a7ad5931f080af1a7cd9b41068bfb8469f48f1505"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.971/block-macos-x64.dmg",
+          "size": 21097500,
+          "sha256": "d7fd7cbad99a110c122f7936359a1b06241b291560fc7cd0fb5791d144a7c58f"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.971/block-windows-x64-setup.exe",
+          "size": 16551665,
+          "sha256": "a179ad3235930ce7b37a1bb758a10c359b24474cf849be6b973e224025cb1895"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.971/block-linux-x64.deb",
+          "size": 13438396,
+          "sha256": "21d56b77337dd9de592de3a691d22d3cc1f99424ac04a096fa6f335a04f33116"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.971/block-linux-x64.AppImage",
+          "size": 26745336,
+          "sha256": "68db7a620d62ba0029acef20948ef1fb6f869adda0adda70d0d581acc7ba2b09"
+        }
+      ]
+    },
     {
       "version": "1.0.970",
       "tag": "v1.0.970",
@@ -32,38 +88,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-macos-arm64.dmg",
-          "size": 19092707,
-          "sha256": "6652df08e8b324ebd18c738e66a0dcc4adb2b1a4042438cdf64aa6eef07da525"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-macos-x64.dmg",
-          "size": 21102224,
-          "sha256": "9abfc5cba2f217ee167841a0e10e1c0ff8f93c06a9688673177343298091b5ba"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-windows-x64-setup.exe",
-          "size": 16546645,
-          "sha256": "66f115b74c964b2387c1692806e5cbda8037a0b9e6b943ee4ebdf7b48573b32c"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-linux-x64.deb",
-          "size": 13433100,
-          "sha256": "71b7724522d8de803393ab352f356aea9cab8218718429a48a258ea9cd0f5be4"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.970/block-linux-x64.AppImage",
-          "size": 26741240,
-          "sha256": "a7c74a1b7acee7e65f1cf6a0bc495d08b081817c0f24fa012fb66de331dfbf02"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.969",
@@ -1705,49 +1730,6 @@
         ],
         "improvements": [],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.918",
-      "tag": "v1.0.918",
-      "published_at": "2026-11-23T19:43:10Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.918",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "主题：用户可以选择图标着色，并在侧边栏图标磁贴上看到悬停样式。",
-          "插件接口：插件可以提供文件图标，系统也会验证插件包并支持这项扩展。",
-          "侧边栏：图标选择器不会遮挡内容，所选图标也会与对应标签页保持同步。",
-          "编辑器：按住 Command 或 Control 并点击行内路径链接，可以打开受限路径并预览外部文件。",
-          "标签栏：用户可以在后台打开标签页、恢复受限路径的标签页，并显示标签页所在目录。"
-        ],
-        "improvements": [
-          "文件管理：文件分类不会阻塞操作，并通过文件身份检查确保写入目标正确。",
-          "编辑器：源文档中的行列位置可以对应到可见块或表格单元格。"
-        ],
-        "fixes": [
-          "插件商店：归档下载会在镜像间切换重试，网络错误提示也更加清晰。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Themes: Users can choose icon tint colors and see a hover style on sidebar icon tiles.",
-          "Plugin API: Plugins can contribute file icons, with pack validation and host support for the new contribution.",
-          "Sidebar: Users can choose an icon from a picker that stays visible, and the selected icon stays in sync with its tab.",
-          "Editor: Users can Command-click or Control-click inline path links to open confined paths and preview external files.",
-          "Tabs: Users can open tabs in the background, restore tabs with confined paths, and reveal a tab’s directory."
-        ],
-        "improvements": [
-          "Files: File classification runs without blocking, and file identity checks help ensure writes apply to the intended file.",
-          "Editor: Source line and column positions can be mapped to their visible block or table cell."
-        ],
-        "fixes": [
-          "Plugin Store: Archive downloads retry with mirror failover, and network errors are reported more clearly."
-        ],
         "other": []
       },
       "assets": []
