@@ -68,6 +68,7 @@ func installSmokePluginFixture(baseTempDir, dataDir string) error {
 		Surfaces: []plugins.Surface{plugins.SurfaceSettingsPage},
 		Icon:     icon,
 		Contributes: &plugins.Contributes{
+			TitlebarManager: true,
 			TitlebarButtons: []plugins.TitlebarButtonContrib{
 				{
 					ID:      "toggle_panel",
