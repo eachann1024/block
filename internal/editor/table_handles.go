@@ -3,8 +3,6 @@ package editor
 import (
 	"fmt"
 	"math"
-	"sort"
-	"strconv"
 	"strings"
 
 	"block/internal/icons"
@@ -273,69 +271,6 @@ func (s *Session) tableSetAllAlign(blockID model.BlockID, align model.ColAlign) 
 	s.markDirty()
 }
 
-func compareTableCellText(a, b string) int {
-	ta := strings.TrimSpace(a)
-	tb := strings.TrimSpace(b)
-	if fa, errA := strconv.ParseFloat(ta, 64); errA == nil {
-		if fb, errB := strconv.ParseFloat(tb, 64); errB == nil {
-			switch {
-			case fa < fb:
-				return -1
-			case fa > fb:
-				return 1
-			default:
-				return 0
-			}
-		}
-	}
-	la := strings.ToLower(ta)
-	lb := strings.ToLower(tb)
-	if la != lb {
-		return strings.Compare(la, lb)
-	}
-	return strings.Compare(ta, tb)
-}
-
-func (s *Session) tableSortByCol(blockID model.BlockID, col int, asc bool) {
-	if s.readOnly {
-		return
-	}
-	idx := s.blockIndexByID(blockID)
-	if idx < 0 {
-		return
-	}
-	b := &s.doc.Blocks[idx]
-	if b.Table == nil || len(b.Table.Rows) <= 1 || col < 0 || col >= len(b.Table.Rows[0]) {
-		return
-	}
-	startRow := 1
-	if b.Table.NoHeaderRow {
-		startRow = 0
-	}
-	if len(b.Table.Rows)-startRow <= 1 {
-		return
-	}
-	s.pushUndo()
-	body := b.Table.Rows[startRow:]
-	sort.SliceStable(body, func(i, j int) bool {
-		var va, vb string
-		if col < len(body[i]) {
-			va = body[i][col].PlainText()
-		}
-		if col < len(body[j]) {
-			vb = body[j][col].PlainText()
-		}
-		cmp := compareTableCellText(va, vb)
-		if asc {
-			return cmp < 0
-		}
-		return cmp > 0
-	})
-	b.Dirty = true
-	b.CleanSource = ""
-	s.markDirty()
-}
-
 func (s *Session) tableSetColTint(blockID model.BlockID, col int, tint model.TableTint) {
 	if s.readOnly {
 		return
@@ -460,44 +395,6 @@ func (s *Session) tableDuplicateRow(blockID model.BlockID, row int) {
 	b.Table.Rows = rows
 	b.Dirty = true
 	b.CleanSource = ""
-	s.markDirty()
-}
-
-func (s *Session) tableClearCol(blockID model.BlockID, col int) {
-	if s.readOnly {
-		return
-	}
-	idx := s.blockIndexByID(blockID)
-	if idx < 0 {
-		return
-	}
-	b := &s.doc.Blocks[idx]
-	if b.Table == nil || len(b.Table.Rows) == 0 || col < 0 || col >= len(b.Table.Rows[0]) {
-		return
-	}
-	startRow := 1
-	if b.Table.NoHeaderRow || len(b.Table.Rows) == 1 {
-		startRow = 0
-	}
-	anyNonEmpty := false
-	for r := startRow; r < len(b.Table.Rows); r++ {
-		if col < len(b.Table.Rows[r]) && b.Table.Rows[r][col].PlainText() != "" {
-			anyNonEmpty = true
-			break
-		}
-	}
-	if !anyNonEmpty {
-		return
-	}
-	s.pushUndo()
-	for r := startRow; r < len(b.Table.Rows); r++ {
-		if col < len(b.Table.Rows[r]) {
-			b.Table.Rows[r][col].Spans = nil
-		}
-	}
-	b.Dirty = true
-	b.CleanSource = ""
-	s.syncTableActiveBounds(idx)
 	s.markDirty()
 }
 
@@ -1485,10 +1382,6 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 		}
 	}
 
-	icUp := icons.ArrowUp
-	icDown := icons.ArrowDown
-	icLeft := icons.ArrowLeft
-	icRight := icons.ArrowRight
 	icRowAbove := icons.RowInsertAbove
 	icRowBelow := icons.RowInsertBelow
 	icRowDel := icons.RowDelete
@@ -1539,31 +1432,12 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 			}, appUi.MenuItemSpec{Separator: true})
 		}
 		entries = append(entries,
-			appUi.MenuItemSpec{ID: "tbl-col-sort-asc", Label: theme.Tr("按 A → Z 升序排列", "Sort A → Z"), Icon: &icUp, Disabled: rows <= 1, OnClick: func() {
-				s.tableSortByCol(id, targetCol, true)
-				closeMenu()
-			}},
-			appUi.MenuItemSpec{ID: "tbl-col-sort-desc", Label: theme.Tr("按 Z → A 降序排列", "Sort Z → A"), Icon: &icDown, Disabled: rows <= 1, OnClick: func() {
-				s.tableSortByCol(id, targetCol, false)
-				closeMenu()
-			}},
-			appUi.MenuItemSpec{Separator: true},
 			appUi.MenuItemSpec{ID: "tbl-col-left", Label: theme.Tr("左侧插入列", "Insert column left"), Icon: &icColLeft, OnClick: func() {
 				s.tableAddCol(id, targetCol)
 				closeMenu()
 			}},
 			appUi.MenuItemSpec{ID: "tbl-col-right", Label: theme.Tr("右侧插入列", "Insert column right"), Icon: &icColRight, OnClick: func() {
 				s.tableAddCol(id, targetCol+1)
-				closeMenu()
-			}},
-			appUi.MenuItemSpec{ID: "tbl-col-move-left", Label: theme.Tr("向左移动一列", "Move column left"), Icon: &icLeft, Disabled: targetCol <= 0, OnClick: func() {
-				s.tableMoveCol(id, targetCol, targetCol-1)
-			}},
-			appUi.MenuItemSpec{ID: "tbl-col-move-right", Label: theme.Tr("向右移动一列", "Move column right"), Icon: &icRight, Disabled: targetCol >= cols-1, OnClick: func() {
-				s.tableMoveCol(id, targetCol, targetCol+1)
-			}},
-			appUi.MenuItemSpec{ID: "tbl-col-clear", Label: theme.Tr("清空本列内容", "Clear column contents"), Icon: &icEraser, OnClick: func() {
-				s.tableClearCol(id, targetCol)
 				closeMenu()
 			}},
 			appUi.MenuItemSpec{Separator: true},
@@ -1606,16 +1480,6 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 			}},
 			appUi.MenuItemSpec{ID: "tbl-row-dup", Label: theme.Tr("复制当前行到下方", "Duplicate row below"), Icon: &icDup, OnClick: func() {
 				s.tableDuplicateRow(id, targetRow)
-				closeMenu()
-			}},
-			appUi.MenuItemSpec{ID: "tbl-row-move-up", Label: theme.Tr("向上移动一行", "Move row up"), Icon: &icUp, Disabled: targetRow <= 0 || (!tbl.NoHeaderRow && targetRow == 1), OnClick: func() {
-				s.tableMoveRow(id, targetRow, targetRow-1)
-			}},
-			appUi.MenuItemSpec{ID: "tbl-row-move-down", Label: theme.Tr("向下移动一行", "Move row down"), Icon: &icDown, Disabled: targetRow >= rows-1 || (!tbl.NoHeaderRow && targetRow == 0), OnClick: func() {
-				s.tableMoveRow(id, targetRow, targetRow+1)
-			}},
-			appUi.MenuItemSpec{ID: "tbl-row-clear", Label: theme.Tr("清空本行内容", "Clear row contents"), Icon: &icEraser, OnClick: func() {
-				s.tableClearRow(id, targetRow)
 				closeMenu()
 			}},
 			appUi.MenuItemSpec{Separator: true},
