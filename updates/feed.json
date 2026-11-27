@@ -1,10 +1,82 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T16:04:14.117Z",
-  "latest_version": "1.0.964",
-  "latest_tag": "v1.0.964",
+  "updated_at": "2026-11-27T16:45:27.325Z",
+  "latest_version": "1.0.965",
+  "latest_tag": "v1.0.965",
   "releases": [
+    {
+      "version": "1.0.965",
+      "tag": "v1.0.965",
+      "published_at": "2026-11-27T16:45:26Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.965",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：插件查询标题栏项时，现在还能获取每个项的分组和预览图标。"
+        ],
+        "improvements": [
+          "插件：闲置的插件运行时会自动释放，轮询改为事件通知，并调整了内存上限，插件占用的资源更少。"
+        ],
+        "fixes": [
+          "标题栏：插件标题栏项的分组和预览图标显示一致，顺序符合预期，被隐藏的槽位也会正确隐藏。",
+          "标题栏：退出 Markdown 模式时，标题栏胶囊收起过程中发送区域不再消失。"
+        ],
+        "other": [
+          "其他：新增内部内存处理代码，应用界面没有可见变化。",
+          "其他：插件文档同步改为解析源码提取宿主方法，生成的文档保持准确。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Plugins that query titlebar items now also receive each item's group and preview icon."
+        ],
+        "improvements": [
+          "Plugins: Idle plugin runtimes are now released, polling is replaced with events, and memory limits are tuned, so plugins use fewer resources."
+        ],
+        "fixes": [
+          "Titlebar: Plugin titlebar items now show their groups and preview icons consistently, keep the intended order, and hidden slots are properly hidden.",
+          "Titlebar: The send segment stays visible while the titlebar pill collapses when you leave Markdown mode."
+        ],
+        "other": [
+          "Other: Internal memory handling code was added, with no visible change in the app.",
+          "Other: Plugin documentation sync now extracts dispatched host methods by parsing the source, so the generated docs stay accurate."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-macos-arm64.dmg",
+          "size": 18846323,
+          "sha256": "939da3d5c3dc1fcdd63ab3503ee732a779cdc522a08e3c385d2ccf628a4375bf"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-macos-x64.dmg",
+          "size": 20803356,
+          "sha256": "ec0a55af81355e4c2aab3b27063d37e9669437f7d82347b593cb305d80939099"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-windows-x64-setup.exe",
+          "size": 16323178,
+          "sha256": "713677b7f81169c017c322e59a44a3c7ca8f6d4ac0f76dac7936617892d2bc09"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-linux-x64.deb",
+          "size": 13263848,
+          "sha256": "d2a29b422a9277604fcb99f4cb3bc0c6f824f6ff1860c2f6f694665c0598ec02"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.965/block-linux-x64.AppImage",
+          "size": 26544632,
+          "sha256": "2621dea8b3c0caf6eb37b91e8fbfe0a452b6e7e4588567d63661d3837b69911e"
+        }
+      ]
+    },
     {
       "version": "1.0.964",
       "tag": "v1.0.964",
@@ -32,38 +104,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-macos-arm64.dmg",
-          "size": 18808933,
-          "sha256": "0d6e4dee36bc08f1f99b41c7d7e088d73b2d75c7a725f08cdc97deeb51d57b6b"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-macos-x64.dmg",
-          "size": 20759835,
-          "sha256": "d9378ea2a68a1d382525ce2fc69a05b38123eb4e5cf52e267602d725941884b9"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-windows-x64-setup.exe",
-          "size": 16287782,
-          "sha256": "c58ad3096507b718f87791b430cc62c28a5aadab5501847c8cf547feec9c898f"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-linux-x64.deb",
-          "size": 13234812,
-          "sha256": "465400b5bc44f50573a2eedcbc477b7e0de65973db4fef89feafa4d7981baa14"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.964/block-linux-x64.AppImage",
-          "size": 26507768,
-          "sha256": "0dce9067738ba750d6f8b8f3f548ffb52fc4a7cddbe64e30380a59c79817f1ce"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.963",
@@ -1683,35 +1724,6 @@
         "fixes": [
           "The settings drawer no longer displays a dark background overlay in narrow windows."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.912",
-      "tag": "v1.0.912",
-      "published_at": "2026-11-22T12:39:27Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.912",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "图标选择器中新增了圆形暂停图标，可用于页面和笔记块。"
-        ],
-        "improvements": [
-          "插件设置中的已禁用插件现以高亮横幅与侧边栏状态标签醒目提示，便于快速识别停用状态。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "The icon picker now includes a pause-circle icon for pages and blocks."
-        ],
-        "improvements": [
-          "Disabled plugins now display highlighted banners and sidebar status pills in settings, making inactive plugins easier to identify."
-        ],
-        "fixes": [],
         "other": []
       },
       "assets": []
