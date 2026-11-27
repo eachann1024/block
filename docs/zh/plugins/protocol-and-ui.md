@@ -169,8 +169,8 @@
 | `host.ui.refresh` | 无需权限 + 目标 `surface` 须已在本插件声明 | 异步触发已打开插件表面的 `plugin.render` 重绘 | [§7.4 · 8](ui-contributions.md) |
 | `host.ui.set_background_error` | 无需权限 | 注册或更新设置侧栏与顶栏胶囊的后台错误告警 | [§7.4 · 13](ui-contributions.md) |
 | `host.ui.clear_background_error` | 无需权限 | 清除指定或全部插件后台错误告警 | [§7.4 · 13](ui-contributions.md) |
-| `host.ui.backdrop` | `ui:appearance`（默认放行，无需声明） | 读取本插件当前持久化的编辑区背景状态 | [§7.5](ui-contributions.md) |
-| `host.ui.set_backdrop` | `ui:appearance`（默认放行，无需声明）+ `contributes.backdrops` | 更新并持久化编辑区矢量或纸纹背景状态 | [§7.5](ui-contributions.md) |
+| `host.ui.backdrop` | `ui:appearance`（默认放行，无需声明） | 读取本插件当前持久化的编辑区或全屏背景状态 | [§7.5](ui-contributions.md) |
+| `host.ui.set_backdrop` | `ui:appearance`（默认放行，无需声明）+ `contributes.backdrops` | 更新并持久化编辑区或全屏矢量/纸纹背景状态 | [§7.5](ui-contributions.md) |
 | `host.ui.theme_skin_state` | 运行时查 `ui:appearance`（默认放行；无 `contributes.themes` 也可调用，返回 `enabled: false`；声明 `themes` 时清单须显式声明 `ui:appearance`） | 查询当前主题皮肤启用与激活状态 | [§7.4 · 14](ui-contributions.md) |
 | `host.ui.set_theme_skin` | 运行时查 `ui:appearance`（默认放行）+ 须声明 `contributes.themes`（声明时清单须显式声明 `ui:appearance`） | 应用或关闭声明的主题皮肤 | [§7.4 · 14](ui-contributions.md) |
 | `host.stage.open` | 运行时查 `ui:appearance` / `ui:commands` / `ui:panels` 之一（默认放行）+ 须声明 `contributes.stages`（声明时清单须显式声明三者之一） | 打开离线 `block-plugin://` WebView 舞台并传入初始状态 | [§7.4 · 15](ui-contributions.md) |
@@ -193,7 +193,7 @@
 
 插件在处理 `plugin.initialize`、`plugin.render`、`plugin.action`、`plugin.command` 或 `plugin.event` 请求期间，可向 `stdout` 发送 JSON-RPC 请求调用 `host.*`，并从 `stdin` 读取匹配 `id` 的响应后再返回外层结果（同时在途不超过 8 个；`plugin.shutdown` 期间宿主不再响应 `host.*`）。
 
-常见错误码：`-32001` 缺少权限、`-32002` 存储失败或超 8 MiB、`-32003` 列举笔记失败（含未注册笔记本）、`-32004` 笔记文件系统错误（含文件打开/读写失败、路径下存在符号链接或超 16 MiB）、`-32005` 性能快照回调不可用或返回错误、`-32006` 编辑器脏状态/虚拟预览或版本冲突、`-32601` 未知方法、`-32602` 参数无效（含 `read`/`write` 未注册笔记本或参数路径不合规）。
+常见错误码：`-32001` 缺少权限、`-32002` 存储失败或超 8 MiB、`-32003` 列举笔记失败（含未注册笔记本）、`-32004` 笔记文件系统错误（含文件打开/读写失败、路径下存在符号链接或超 16 MiB）、`-32005` 性能快照回调不可用或返回错误、`-32006` 编辑器脏状态/虚拟预览或版本冲突、`-32008` 笔记本/目录根身份不匹配（`expected_root_identity`）、`-32601` 未知方法、`-32602` 参数无效（含 `read`/`write` 未注册笔记本或参数路径不合规）。
 
 笔记路径边界：支持扩展名 `.md`、`.markdown`、`.mdown`、`.mkd`、`.mkdn`、`.mdwn`、`.mdtxt`、`.mdtext`、`.mdx`（不区分大小写）。显式 `notebook_root` 会去空白并转绝对路径后与已注册笔记本精确匹配；省略时使用当前运行时上下文根。`host.notes.list` 跳过 `.` 开头项与非普通文件；`host.notes.read`/`write` 先对相对路径做 `Clean` 归一化，参数层校验须位于笔记本内、无 `:`、无 `.` 开头路径段且为支持后缀（不合规则报 `-32602`），文件系统层打开时拒绝符号链接且限制旧文件/读取 <= 16 MiB（失败报 `-32004`）。
 
@@ -212,7 +212,8 @@
 6. **`host.notes.read`**（需 `"notes:read"`）
    - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选，省略且运行时根为空报 `-32602`；`path` 必填）-> `{"path": "welcome.md", "content": "# 欢迎...", "revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`
 7. **`host.notes.write`**（需 `"notes:write"`）
-   - `{"notebook_root": "/abs/path/to/notebook", "path": "notes/synced.md", "content": "# 内容", "expected_revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}` -> `{"ok": true, "changed": true}`（示例哈希须替换为 `host.notes.read` 实际返回的 `revision`，原样传固定值会在实际写入时触发 `-32006`）。
+   - `{"notebook_root": "/abs/path/to/notebook", "path": "notes/synced.md", "content": "# 内容", "expected_revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "expected_root_identity": "16777233:123456"}` -> `{"ok": true, "changed": true}`（示例哈希须替换为 `host.notes.read` 实际返回的 `revision`，原样传固定值会在实际写入时触发 `-32006`）。
+   - 传入可选 `expected_root_identity`（`"<dev>:<ino>"`）时，宿主在同一已打开的笔记本 `os.Root` 句柄上核对 `dev:ino` 并在提交点复核后再写入（不匹配报 `-32008`，格式非法报 `-32602`；省略保持原行为）。
    - **必须显式传入字符串 `content`**（省略或传 `null` 直接返回 `-32602`，不会清空笔记；如需清空请显式传入 `""`）；单文件上限 **16 MiB**。
    - **冲突与幂等判定顺序**：
      1. 桌面端先检查编辑器会话：若目标笔记存在未保存修改或处于虚拟预览，直接返回 `-32006`（即使目标字节相同；此类冲突需用户先保存或退出预览）。
@@ -220,8 +221,8 @@
      3. 核对 `expected_revision`：省略或传 `null` 跳过校验；传 `""` 要求文件尚不存在；传读取时的 64 位小写 SHA-256 哈希则要求磁盘当前内容匹配，否则返回 `-32006`（不提供对外部写入进程的原子 CAS）。
    - 实际写入时原子落盘、尽力记录「插件保存」版本历史、刷新干净的编辑器标签页并向其他订阅插件派发 `note.saved`。响应不含新 `revision`，连续修改前请重新 `host.notes.read`。
 8. **`host.notes.trash`**（需 `"notes:write"`）
-   - `{"notebook_root": "/abs/path/to/notebook", "path": "notes/old.md", "expected_revision": "<读取时的 SHA-256>"}` -> 移入系统回收站返回 `{"ok": true, "trashed": true}`，文件已不存在返回 `{"ok": true, "trashed": false}`。
-   - 供同步类插件把远端删除落到本地，不弹确认框；因此 **`expected_revision` 必填**（省略或空串报 `-32602`），须等于磁盘当前字节的 64 位小写 SHA-256，否则报 `-32006`，插件绝不会删掉自己没读到过的内容。
+   - `{"notebook_root": "/abs/path/to/notebook", "path": "notes/old.md", "expected_revision": "<读取时的 SHA-256>", "expected_root_identity": "16777233:123456"}` -> 移入系统回收站返回 `{"ok": true, "trashed": true}`，文件已不存在返回 `{"ok": true, "trashed": false}`。
+   - 供同步类插件把远端删除落到本地，不弹确认框；因此 **`expected_revision` 必填**（省略或空串报 `-32602`），须等于磁盘当前字节的 64 位小写 SHA-256，否则报 `-32006`，插件绝不会删掉自己没读到过的内容；传入可选 `expected_root_identity`（`"<dev>:<ino>"`）时，宿主在同一打开的笔记本 `os.Root` 句柄上核对 `dev:ino` 并在同一句柄下完成哈希校验与移除（不匹配报 `-32008`）。
    - 路径规则同 `read`/`write`，但也允许笔记本内的附件等非 Markdown 普通文件（仍拒绝 `.` 开头路径段与符号链接）。目标笔记在编辑器中有未保存修改或处于虚拟预览时报 `-32006`；成功后宿主关闭对应标签页并重新扫描笔记本。需要用户逐次确认的删除请改用 `host.system.trash`。
 9. **`host.notes.open`**（需 `"notes:read"`）
    - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选；严格校验目标为已注册笔记本内的合法普通 Markdown 文件且非符号链接）-> 在桌面编辑器中切换打开目标笔记（若设置页开着会自动收起）并返回 `{"ok": true, "path": "welcome.md"}`；无 UI 宿主环境（如 CLI 校验）返回 `-32005`。
@@ -267,8 +268,8 @@
     - `host.fs.list_grants`（`{}`）：返回 `{"grants": [...], "data_dir", "downloads_dir", "notebooks": [{"path", "writable"}]}`。
     - `host.fs.stat`（`{"path", "lstat"?}`）：返回 `{"exists", "path", "name", "is_dir", "is_regular", "is_symlink", "size", "mod_time", "mod_time_ms", "is_icloud_placeholder"}`；传 `"lstat": true` 时不跟随末端符号链接或 Windows junction。
     - `host.fs.list`（`{"path", "recursive"}`，最多 10000 条）：返回 `{"path", "entries": [...], "truncated": bool}`（每项含 `stat` 同名元数据，递归模式另含 `rel_path`；达到上限截断时 `"truncated"` 为 `true`）。
-    - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、宿主上限 64 MiB）-> `{"path", "encoding", "size", "content"|"content_base64"}`；`host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents"}`，宿主上限 64 MiB）。
-    - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive"}`） / `host.fs.delete_data`（`{"path", "recursive"?}` -> `{"ok": true, "deleted": bool, "path"}`；严格限定在插件自身 `data_dir` 下——不含其他授权目录、下载目录或笔记本——从 `data_dir` 起基于 `os.Root` 逐级 `lstat` 并拒绝任何符号链接、junction 或受保护宿主文件，遇链接报错 `-32004`，越界/受保护文件报错 `-32001`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents"}`，跨不同授权根时回退为先复制再删除） / `host.fs.copy`（`{"from", "to", "overwrite", "mkdir_parents"}`，宿主流式原子复制普通非符号链接文件，不经过 Wasm 内存；不可同路径，且 `from`/`to` 不可为授权根目录本身；返回 `{"ok": true, "from", "to", "size"}`） / `host.fs.atomic_swap`（`{"path_a", "path_b"}`，同目录两文件交换，平台不支持原子交换时可能成功但返回 `atomic: false`）。
+    - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、宿主上限 64 MiB）-> `{"path", "encoding", "size", "content"|"content_base64"}`；`host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents", "expected_root_identity"?}`，宿主上限 64 MiB）。
+    - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive", "expected_root_identity"?}`） / `host.fs.delete_data`（`{"path", "recursive"?}` -> `{"ok": true, "deleted": bool, "path"}`；严格限定在插件自身 `data_dir` 下并使用启动时缓存的 `os.Root`——不含其他授权目录、下载目录或笔记本——受保护宿主文件通过 `os.SameFile` 文件身份识别而非仅凭文件名，并沿已打开的目录句柄单趟递归删除，遇符号链接/junction 报错 `-32004`，越界/受保护文件报错 `-32001`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents", "expected_root_identity"?}`，跨不同授权根时回退为先复制再删除） / `host.fs.copy`（`{"from", "to", "overwrite", "mkdir_parents", "expected_root_identity"?}`，宿主流式原子复制普通非符号链接文件，不经过 Wasm 内存；不可同路径，且 `from`/`to` 不可为授权根目录本身；返回 `{"ok": true, "from", "to", "size"}`） / `host.fs.atomic_swap`（`{"path_a", "path_b", "expected_root_identity"?}`，同目录两文件交换，平台不支持原子交换时可能成功但返回 `atomic: false`）。上述 `host.fs` 写删类方法传可选 `expected_root_identity`（`"<dev>:<ino>"`）时，宿主在已打开的目标目录 `os.Root` 句柄上核对 `dev:ino`，不匹配返回 `-32008`。
 
 15. **`host.crypto.*`**（内存计算无需额外权限；`host.crypto.hash` 传入 `file_path` 时需 `"system:fs"`）
     - `host.crypto.hash`：`{"algorithm": "sha1"|"sha256"|"sha512"|"md5", "text"|"base64"|"file_path"}`（三选一）-> `{"algorithm", "hex", "base64", "size"}`。
@@ -307,7 +308,7 @@
 | `host.system.reveal` | `system:open`、`notes:read` | `{"rel_path":"assets/example.png","notebook_root":"/abs/notebook"}`，在系统文件管理器里显示文件。 |
 | `host.system.open_dialog`、`host.system.save_dialog` | `system:dialogs` | 可传 `title`、`default_path`、`extensions`。打开框另支持 `directory`、`multiple`。选目录时省略 `extensions`。返回 `{"ok":true,"paths":["/abs/file"],"canceled":false}`，用户主动取消时 `canceled` 为 `true` 且 `paths` 为空。发起动作被用户取消或动作超时时返回 `-32007`（若系统原生选择框无法由宿主强制关闭，用户后续关闭时宿主会直接丢弃过期结果）。 |
 | `host.clipboard.read`、`host.clipboard.write` | `system:clipboard_read`、`system:clipboard_write` | 读取传 `{}`，返回 `{"ok":true,"text":"..."}`。写入传 `{"text":"..."}`。支持最多 64 KiB UTF-8 文本。 |
-| `host.system.trash` | `system:trash`、`notes:write` | 与 `reveal` 参数相同，仅支持普通文件。用户在原生确认框确认后，宿主移到系统回收站并更新相关标签页。 |
+| `host.system.trash` | `system:trash`、`notes:write` | 与 `reveal` 参数相同并支持可选 `expected_root_identity`（不匹配报 `-32008`），仅支持普通文件。用户在原生确认框确认后，宿主移到系统回收站并更新相关标签页。 |
 | `host.system.badge` | 无需声明（旧清单 `system:badge` 仍兼容） | `{"count":3}`，范围 0–999，0 清除本插件角标。宿主合计已启用插件的数值，上限 999。 |
 | `host.secrets.get`、`host.secrets.set`、`host.secrets.delete` | `system:secrets` | `{"key":"auth.token"}`，写入另传 `value`（1–1536 字节，无 NUL）。键以 ASCII 字母或数字开头，后续允许字母、数字、`.`、`_`、`-`，总长最多 128 字符。读取返回 `{"ok":true,"found":true,"value":"..."}` 或 `{"ok":true,"found":false}`。删除支持重复调用。宿主按应用数据目录、插件 ID 和安装来源隔离凭据。缺少宿主安装来源记录时，凭据接口返回不可用。 |
 

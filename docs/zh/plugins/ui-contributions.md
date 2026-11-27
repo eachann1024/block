@@ -63,9 +63,9 @@
    - `id`（必填）、`pack`（必填，插件目录内相对 `.json` 路径，<= 512 KiB）、`title`（可选 `LocalizedText`）、`picker`（可选 bool，启用点击侧栏/笔记本切换器/顶栏图标打开选择器）、`sync_tabs`（可选 bool，同步在顶栏标签页显示自定义图标）。
    - 图标包 JSON 顶层字段：`schema_version`（固定 `1`）、`categories`（1–16 项，含 `id`、`name`、`icon`）与 `icons`（1–256 项，含 `id`、`category`、`name`、可选 `keywords`，且 `ref` 宿主内置图标名与 `spec` 内联 `DuoIconSpec` 二选一）。
 9.2. **`ignored_dirs`** 需要显式声明 `"ui:sidebar"`。列表最多含 32 个目录名，每个 1–128 字节，不能是 `.` 或 `..`，也不能含 `/`、`\` 或 NUL。名字按原样精确匹配。启用的插件可在所有笔记本中将匹配目录及其内容从文件树、工作区扫描和搜索中排除，「显示隐藏文件」开启时同样生效。停用或卸载插件会移除它的忽略项并刷新文件树。
-10. **`backdrops`**（最多 **8** 个）：声明编辑区自定义矢量背景或统一纸纹背景，运行时通过 `host.ui.set_backdrop` 启用、切换或调节（宿主自动钳制透明度在 `0.03`–`0.25` 以保证正文清晰可读，停用或卸载插件立即消失）。
+10. **`backdrops`**（最多 **8** 个）：声明编辑区或全屏窗口自定义矢量背景或统一纸纹背景，运行时通过 `host.ui.set_backdrop` 启用、切换或调节（宿主自动钳制透明度在 `0.03`–`0.25` 以保证正文与界面文字清晰可读，停用或卸载插件立即消失）。
     - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
-    - `pattern`（可选：`"scatter"` | `"grid"` | `"watermark"` | `"corners"` | `"paper_dots"` | `"paper_grid"`，默认 `"scatter"`，其中 `paper_dots` 与 `paper_grid` 为与编辑器行高对齐的纸纹背景）、`density`（可选：`"sparse"` | `"medium"` | `"dense"`，默认 `"medium"`）、`contrast`（可选：`"standard"` | `"high"`，默认 `"standard"`，用于纸纹对比度）、`opacity`（可选：`0.01`–`0.35`，渲染钳制 `0.03`–`0.25`，默认 `0.09`）、`tint`（可选：`"accent"` | `"muted"` | `"warm"` | `"glow"`，默认 `"accent"`）、`dark_glow`（可选 bool，深色主题下提亮为夜光质感）。
+    - `pattern`（可选：`"scatter"` | `"grid"` | `"watermark"` | `"corners"` | `"paper_dots"` | `"paper_grid"`，默认 `"scatter"`，其中 `paper_dots` 与 `paper_grid` 为与编辑器行高对齐的纸纹背景）、`density`（可选：`"sparse"` | `"medium"` | `"dense"`，默认 `"medium"`）、`contrast`（可选：`"standard"` | `"high"`，默认 `"standard"`，用于纸纹对比度）、`scope`（可选：`"editor"` | `"window"`，默认 `"editor"`；兼容 `"fullscreen"` 别名并归一化为 `"window"`）、`opacity`（可选：`0.01`–`0.35`，渲染钳制 `0.03`–`0.25`，默认 `0.09`）、`tint`（可选：`"accent"` | `"muted"` | `"warm"` | `"glow"`，默认 `"accent"`）、`dark_glow`（可选 bool，深色主题下提亮为夜光质感）。
 11. **`status_items`**：注册底部状态栏条目。
     - `id`（必填）、`text`（可选 `LocalizedText`，作为 `host.status.set` 覆盖前的初始文案；解析后为空白时不显示）、`command`（可选，非空时须引用 `commands[].id`）、`icon`（可选 `DuoIconSpec`）。
 12. **`dialogs`**：注册模态弹窗（由 `host.ui.open_dialog` 打开，标题栏渲染图标）。
@@ -266,10 +266,10 @@
 
 ### 7.5 编辑区背景能力（`host.ui.backdrop` / `host.ui.set_backdrop`）
 
-以下接口用于控制声明在 `contributes.backdrops` 中的编辑区矢量或纸纹背景（代码检查 `"ui:appearance"`，默认放行，无需显式声明；`set_backdrop` 需声明 `contributes.backdrops`）：
+以下接口用于控制声明在 `contributes.backdrops` 中的编辑区或全屏窗口矢量/纸纹背景（代码检查 `"ui:appearance"`，默认放行，无需显式声明；`set_backdrop` 需声明 `contributes.backdrops`）：
 
-- **`host.ui.backdrop`**（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
-- **`host.ui.set_backdrop`**（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
+- **`host.ui.backdrop`**（参数 `{}`）：返回本插件当前持久化的背景状态 `{"id": "...", "enabled": true, "pattern": "scatter"|"grid"|"watermark"|"corners"|"paper_dots"|"paper_grid", "density": "sparse"|"medium"|"dense", "contrast": "standard"|"high", "scope": "editor"|"window", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
+- **`host.ui.set_backdrop`**（参数：`{"id": "...", "enabled": true, "pattern": "paper_dots", "contrast": "standard", "scope": "editor", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区或主窗口工作区底层（顶栏/侧栏/空白页/满宽编辑区，自动避开顶部品牌画幅与大纲目录刻度；弹窗、菜单、悬浮面板、提示与设置主体保持不透明隔离；AI 沉浸、历史对比、导出预览、全窗插件舞台与独立 Quick Note 窗口不套用）的矢量或行高对齐纸纹背景并持久化于 `contrib-state.json`，`scope` 支持 `"editor"`（默认）或 `"window"`（兼容 `"fullscreen"` 别名），停用插件时自动失效，返回归一化后的状态对象。
 
 <!-- ai-guide:skip-start -->
 ---

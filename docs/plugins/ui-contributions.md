@@ -39,7 +39,7 @@ Shared validation rules:
 9. **`file_badges`** (max 4): trailing file tree badges pushed via `host.sidebar.set_badges` (max 2 shown per row; cleared on disable/uninstall).
 9.1. **`file_icons`** (max 1): custom notebook/file/folder icon pack (`id`, `pack` relative `.json <= 512 KiB`, optional `title`, `picker`, `sync_tabs`). Pack schema: `schema_version: 1`, `categories` (1–16), `icons` (1–256, each using either host `ref` or inline `spec`).
 9.2. **`ignored_dirs`** requires an explicit `"ui:sidebar"` declaration. Each list accepts up to 32 exact directory names of 1–128 bytes each. Names may not contain `/`, `\`, or NUL, or equal `.` or `..`. An enabled plugin can exclude matching directories and their contents from the file tree, workspace scans, and search in every notebook, including when Show Hidden Files is on. Disable or uninstall removes that plugin's exclusions and refreshes the tree.
-10. **`backdrops`** (max 8): custom editor vector or paper-grain backgrounds controlled via `host.ui.set_backdrop` (`pattern`: `"scatter"` | `"grid"` | `"watermark"` | `"corners"` | `"paper_dots"` | `"paper_grid"`; `density`, `contrast`, `opacity` clamped to `0.03`–`0.25`, `tint`, `dark_glow`).
+10. **`backdrops`** (max 8): custom editor or full-window vector or paper-grain backgrounds controlled via `host.ui.set_backdrop` (`pattern`: `"scatter"` | `"grid"` | `"watermark"` | `"corners"` | `"paper_dots"` | `"paper_grid"`; `density`, `contrast`, `scope`: `"editor"` default | `"window"` (`"fullscreen"` alias), `opacity` clamped to `0.03`–`0.25`, `tint`, `dark_glow`).
 11. **`status_items`**: bottom status bar entries (`id`, optional `text`, `command`, `icon`).
 12. **`dialogs`**: modal dialogs opened via `host.ui.open_dialog` (`id`, `title`, optional `width` `320`–`720` default `460`, `icon`; surface `"dialog:<id>"`).
 13. **`menubar_items`** (max 2): OS menu bar icons (`id`, `icon`—template strokes only, `fill_paths` omitted—`tooltip`, and at least one of `command`, `menu` (`<= 16`), or `drop`; `command` and `menu` are mutually exclusive). Menu items with `input: "clipboard"` require `"system:clipboard_read"`. Drag-and-drop (`drop`) is currently macOS-only (`ui_capabilities` includes `"menubar_drop"`).
@@ -96,10 +96,10 @@ Shared validation rules:
 
 ### 7.5 Editor Backdrop Methods (`host.ui.backdrop` / `host.ui.set_backdrop`)
 
-Controls editor vector or paper-grain backdrops declared in `contributes.backdrops` (checks `"ui:appearance"`, default-allowed; `set_backdrop` requires `contributes.backdrops`):
+Controls editor or full-window vector or paper-grain backdrops declared in `contributes.backdrops` (checks `"ui:appearance"`, default-allowed; `set_backdrop` requires `contributes.backdrops`):
 
-- **`host.ui.backdrop`** (`{}`): returns persisted backdrop state `{"id", "enabled", "pattern", "density", "contrast", "opacity", "tint", "dark_glow"}`.
-- **`host.ui.set_backdrop`**: updates and persists backdrop state in `contrib-state.json` (omitted style fields keep existing or manifest defaults; disabled automatically when the plugin is turned off) and returns the normalized state object.
+- **`host.ui.backdrop`** (`{}`): returns persisted backdrop state `{"id", "enabled", "pattern", "density", "contrast", "scope", "opacity", "tint", "dark_glow"}` (`scope` defaults to `"editor"`).
+- **`host.ui.set_backdrop`**: updates and persists backdrop state in `contrib-state.json` (omitted style fields keep existing or manifest defaults; `scope`: `"editor"` or `"window"`—`"fullscreen"` is accepted as an alias and normalized to `"window"`—extends the backdrop across the main workspace window chrome, empty stage, and full editor viewport while excluding the top brand artwork band and outline rail, and keeping opaque panels, menus, tooltips, modals, and toasts isolated above it; full-window dedicated modes such as AI immersive, history/export views, full-window plugin stages, and standalone Quick Note windows are not covered; disabled automatically when the plugin is turned off) and returns the normalized state object.
 
 <!-- ai-guide:skip-start -->
 ---
