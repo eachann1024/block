@@ -466,6 +466,20 @@ func resolveActualPath(canon string) string {
 	}
 }
 
+func resolveActualLeafPath(canon string) string {
+	clean := filepath.Clean(canon)
+	parent := filepath.Dir(clean)
+	if parent == clean {
+		return resolveActualPath(clean)
+	}
+	actualParent := resolveActualPath(parent)
+	base := filepath.Base(clean)
+	if base == "" || base == "." || base == ".." {
+		return actualParent
+	}
+	return filepath.Join(actualParent, base)
+}
+
 func resolveActualRootPath(root *os.Root, fallback string) string {
 	if live := files.LiveRootDirPath(root); live != "" {
 		return live
@@ -540,7 +554,11 @@ func (rt *Runtime) openMatchingOperationRoot(expectedRootID string, primary *res
 
 	targetActuals := make([]string, len(targets))
 	for i, tgt := range targets {
-		targetActuals[i] = resolveActualPath(tgt.canonPath)
+		if tgt.isDirRoot && tgt.rel == "." {
+			targetActuals[i] = resolveActualPath(tgt.canonPath)
+		} else {
+			targetActuals[i] = resolveActualLeafPath(tgt.canonPath)
+		}
 	}
 
 	var containingAll []rootCandidate
@@ -676,7 +694,12 @@ func (rt *Runtime) openVerifiedFSOperationRoot(expectedRootRaw, expectedRootIDRa
 		cleanup := func() { _ = expRoot.Close() }
 		expActual := resolveActualRootPath(expRoot, expTarget.canonPath)
 		for _, tgt := range targets {
-			tgtActual := resolveActualPath(tgt.canonPath)
+			var tgtActual string
+			if tgt.isDirRoot && tgt.rel == "." {
+				tgtActual = resolveActualPath(tgt.canonPath)
+			} else {
+				tgtActual = resolveActualLeafPath(tgt.canonPath)
+			}
 			rel, ok := pathWithinDir(tgtActual, expActual)
 			if !ok {
 				cleanup()
@@ -746,6 +769,9 @@ func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSyml
 	var dataRoot *os.Root
 	var protectedData []protectedDataFile
 	canonActual := resolveActualPath(canon)
+	if !followLeafSymlink {
+		canonActual = resolveActualLeafPath(canon)
+	}
 	checkDataProtection := func(relInData string) *rpcError {
 		if dataRoot != nil {
 			var info os.FileInfo
@@ -781,10 +807,12 @@ func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSyml
 		}
 	}
 
-	matchScopes := func(useActual bool) (*resolvedFSTarget, bool, *rpcError) {
+	matchScopes := func(useActual bool, overrideTarget string, exactOnly bool) (*resolvedFSTarget, bool, *rpcError) {
 		var matchedRO bool
 		targetPath := canon
-		if useActual {
+		if overrideTarget != "" {
+			targetPath = overrideTarget
+		} else if useActual {
 			targetPath = canonActual
 		}
 		for _, sc := range scopes {
@@ -796,7 +824,13 @@ func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSyml
 			var rootDir string
 			matched := false
 			if sc.isDir {
-				if r, ok := pathWithinDir(targetPath, scopePath); ok {
+				if exactOnly {
+					if targetPath == scopePath {
+						matched = true
+						rel = "."
+						rootDir = scopePath
+					}
+				} else if r, ok := pathWithinDir(targetPath, scopePath); ok {
 					matched = true
 					rel = r
 					rootDir = scopePath
@@ -830,12 +864,25 @@ func (rt *Runtime) resolveFSScopeOpts(rawPath string, write bool, followLeafSyml
 		return nil, matchedRO, nil
 	}
 
-	if res, matchedRO, rerr := matchScopes(false); rerr != nil || res != nil {
+	if res, matchedRO, rerr := matchScopes(false, "", false); rerr != nil || res != nil {
 		return res, rerr
-	} else if resActual, matchedActualRO, rerr := matchScopes(true); rerr != nil || resActual != nil {
+	} else if resActual, matchedActualRO, rerr := matchScopes(true, "", false); rerr != nil || resActual != nil {
 		return resActual, rerr
-	} else if matchedRO || matchedActualRO {
-		return nil, rpcErr(-32001, "path is read-only without notes:write permission")
+	} else {
+		matchedExactRO := false
+		if !followLeafSymlink {
+			canonFullActual := resolveActualPath(canon)
+			if canonFullActual != canonActual {
+				if resExact, exactRO, rerr := matchScopes(true, canonFullActual, true); rerr != nil || resExact != nil {
+					return resExact, rerr
+				} else {
+					matchedExactRO = exactRO
+				}
+			}
+		}
+		if matchedRO || matchedActualRO || matchedExactRO {
+			return nil, rpcErr(-32001, "path is read-only without notes:write permission")
+		}
 	}
 	return nil, rpcErr(-32001, "path is outside authorized filesystem scope")
 }
@@ -1609,7 +1656,7 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 	if rerr != nil {
 		return nil, rerr
 	}
-	toTarget, rerr := rt.resolveFSScope(p.To, true)
+	toTarget, rerr := rt.resolveFSScopeOpts(p.To, true, false)
 	if rerr != nil {
 		return nil, rerr
 	}
@@ -1629,6 +1676,10 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 		fromTarget.rootDir = toTarget.rootDir
 		fromTarget.rel = fromRel
 		fromTarget.isDirRoot = true
+	} else if fromRel, ok := pathWithinDir(resolveActualPath(fromTarget.canonPath), toTarget.rootDir); ok && fromRel != "." {
+		fromTarget.rootDir = toTarget.rootDir
+		fromTarget.rel = fromRel
+		fromTarget.isDirRoot = true
 	}
 
 	if fromTarget.rootDir == toTarget.rootDir {
@@ -1641,8 +1692,11 @@ func (rt *Runtime) fsRename(params json.RawMessage) (any, *rpcError) {
 			}
 		}
 		if !p.Overwrite {
-			if _, err := toRoot.Lstat(toTarget.rel); err == nil {
-				return nil, rpcErr(-32004, os.ErrExist.Error())
+			if dstInfo, err := toRoot.Lstat(toTarget.rel); err == nil {
+				fromInfo, ferr := toRoot.Lstat(fromTarget.rel)
+				if fromTarget.rel == toTarget.rel || ferr != nil || !os.SameFile(fromInfo, dstInfo) {
+					return nil, rpcErr(-32004, os.ErrExist.Error())
+				}
 			}
 		}
 		if err := toRoot.Rename(fromTarget.rel, toTarget.rel); err != nil {
@@ -1676,7 +1730,7 @@ func (rt *Runtime) fsCopy(params json.RawMessage) (any, *rpcError) {
 	if rerr != nil {
 		return nil, rerr
 	}
-	toTarget, rerr := rt.resolveFSScope(p.To, true)
+	toTarget, rerr := rt.resolveFSScopeOpts(p.To, true, false)
 	if rerr != nil {
 		return nil, rerr
 	}

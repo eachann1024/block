@@ -535,6 +535,7 @@ func inspectOldNotebookPath(oldPath string, curInfo os.FileInfo) (oldExists bool
 type dirProbeResult struct {
 	info      os.FileInfo
 	statErr   error
+	isSymlink bool
 	dev       uint64
 	ino       uint64
 	hasDevIno bool
@@ -598,15 +599,18 @@ func runProbeWithTimeout[T any](ctx context.Context, timeout time.Duration, fn f
 
 func probeDirIdentity(ctx context.Context, clean string) dirProbeResult {
 	res, ok := runProbeWithTimeout(ctx, notebookProbeTimeout, func() dirProbeResult {
+		linfo, lErr := os.Lstat(clean)
+		isSymlink := lErr == nil && isSymlinkOrReparseInfo(linfo)
 		info, statErr := os.Stat(clean)
 		if statErr != nil || !info.IsDir() || IsTrashPath(clean) {
-			return dirProbeResult{info: info, statErr: statErr}
+			return dirProbeResult{info: info, statErr: statErr, isSymlink: isSymlink}
 		}
 		dev, ino, hasDevIno := statDirDevIno(clean, info)
 		xattrID, xattrErr := readNotebookXattr(clean)
 		return dirProbeResult{
 			info:      info,
 			statErr:   nil,
+			isSymlink: isSymlink,
 			dev:       dev,
 			ino:       ino,
 			hasDevIno: hasDevIno,
@@ -1795,6 +1799,7 @@ type sweepProbeOutcome struct {
 	locator            string
 	needsXattr         bool
 	recoveredElsewhere bool
+	pathOccupied       bool
 	missingConfirmed   bool
 }
 
@@ -1817,7 +1822,10 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 		chk := probeOldPathMissing(ctx, r, nil)
 		if chk.foundLivePath != "" {
 			out.recoveredElsewhere = true
-		} else if chk.inconclusive || inc || chk.pathOccupied {
+		} else if chk.pathOccupied {
+			out.pathOccupied = true
+			return out
+		} else if chk.inconclusive || inc {
 			return out
 		} else if chk.confirmedMissing {
 			out.missingConfirmed = true
@@ -1843,6 +1851,9 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 		if isUnreadableDirErr(p.xattrErr) {
 			return out
 		}
+		if !p.isSymlink {
+			out.pathOccupied = true
+		}
 		// Check complete locator, sibling xattr, and previous_paths; never count a
 		// readable occupying directory at r.Path as missing (only explicit ENOENT counts).
 		type elsewhereResult struct {
@@ -1865,6 +1876,10 @@ func probeRecordForSweep(ctx context.Context, r NotebookRecord) sweepProbeOutcom
 	chk := probeOldPathMissing(ctx, r, nil)
 	if chk.foundLivePath != "" {
 		out.recoveredElsewhere = true
+		return out
+	}
+	if chk.pathOccupied {
+		out.pathOccupied = true
 		return out
 	}
 	if chk.confirmedMissing {
@@ -1997,7 +2012,7 @@ func SweepNotebookRegistryContext(ctx context.Context, appDataDir string) ([]Not
 			kept = append(kept, r)
 			continue
 		}
-		if pr.recoveredElsewhere {
+		if pr.recoveredElsewhere || pr.pathOccupied {
 			if r.MissingSince != 0 {
 				r.MissingSince = 0
 				dirty = true
