@@ -26,6 +26,7 @@ type PluginNavEntry struct {
 	TabID         string
 	Title         string
 	CountText     string
+	UpdateCount   int
 	DisabledLabel string
 	Beta          bool
 	Lit           bool

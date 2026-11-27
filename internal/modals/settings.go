@@ -644,7 +644,13 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 											FontWeight(theme.WeightRegular).TextColor(betaCol).SingleLine().Shrink(0)
 									}
 								})
-								if ent.CountText != "" {
+								if ent.UpdateCount > 0 {
+									ui.Row(c).Height(theme.Space20).MinWidth(theme.Space20).PaddingX(theme.Space6).Justify(ui.Center).
+										AlignItems(ui.Center).Radius(theme.RadiusPill).Background(pal.Accent).Shrink(0).Children(func() {
+										ui.Text(c, strconv.Itoa(ent.UpdateCount)).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+											FontWeight(theme.WeightControl).TextColor(pal.AccentText).SingleLine().Shrink(0)
+									})
+								} else if ent.CountText != "" {
 									ui.Text(c, ent.CountText).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 										FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 								} else if isPlugin && ent.Starting {

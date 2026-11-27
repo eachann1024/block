@@ -218,8 +218,9 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	}
 	entries := []modals.PluginNavEntry{
 		{
-			TabID: modals.TabAppStore,
-			Title: theme.Tr("应用商店", "App Store"),
+			TabID:       modals.TabAppStore,
+			Title:       theme.Tr("应用商店", "App Store"),
+			UpdateCount: len(updatableStoreEntries(c)),
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors, active bool) {
 				DrawDuoSpecAnimated(ctx, storeSpec, size, colors, active)
 			},
