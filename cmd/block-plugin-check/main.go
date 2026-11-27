@@ -64,6 +64,18 @@ func main() {
 		}
 		fmt.Printf("[OK] file_icons: %d icon pack(s) validated cleanly\n", len(m.Contributes.FileIcons))
 	}
+	if m.Contributes != nil && len(m.Contributes.Themes) > 0 {
+		if err := plugins.ValidatePluginThemes(pluginDir, m); err != nil {
+			fail("theme skin validation failed: %v", err)
+		}
+		fmt.Printf("[OK] themes: %d theme skin(s) validated cleanly\n", len(m.Contributes.Themes))
+	}
+	if m.Contributes != nil && len(m.Contributes.Stages) > 0 {
+		if err := plugins.ValidatePluginStages(pluginDir, m); err != nil {
+			fail("stage validation failed: %v", err)
+		}
+		fmt.Printf("[OK] stages: %d stage(s) validated cleanly\n", len(m.Contributes.Stages))
+	}
 
 	isOfficial := plugins.IsOfficialRepo(m.Repo)
 	requireBilingual := *bilingualFlag || isOfficial

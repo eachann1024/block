@@ -132,8 +132,11 @@ type SupervisorConfig struct {
 	OnRedraw        func()
 	IsOnline        func() bool
 	// UI lets plugins drive host UI (toasts, dialogs, panels, editor).
-	UI     UIHost
-	System SystemHost
+	UI            UIHost
+	System        SystemHost
+	AI            AIHost
+	OnStageChange func(stage *ActiveStage)
+	OnStageEmit   func(ev StageEvent)
 }
 
 // Supervisor coordinates StoreManager, lazy plugin Runtime subprocesses, async form actions,
@@ -156,6 +159,8 @@ type Supervisor struct {
 	installed          []InstalledApp
 	installEpoch       map[string]uint64
 	runtimes           map[string]*Runtime
+	stageMu            sync.RWMutex
+	activeStage        *ActiveStage
 	views              map[viewKey]*PluginViewState
 	lastViewRoot       map[surfaceKey]string
 	formVersions       map[surfaceKey]uint64
@@ -221,6 +226,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	}
 	sm.beforeReplace = s.preparePluginReplacement
 	SyncActiveLanguagesSeq(installed, NextLanguageSyncSeq())
+	s.restoreActiveThemeSkin()
 	if s.wasmEngine != nil && (!testing.Testing() || hasWasmOrJSPlugin(installed)) {
 		go func() {
 			defer close(s.warmupDone)
@@ -254,8 +260,10 @@ func (s *Supervisor) preparePluginReplacement(pluginID string) error {
 	s.mu.Unlock()
 	if rt != nil {
 		go s.clearInactiveSystemBadge(pluginID)
+		s.closeStageForPlugin(pluginID)
 		return rt.Shutdown(context.Background())
 	}
+	s.closeStageForPlugin(pluginID)
 	go s.clearInactiveSystemBadge(pluginID)
 	return nil
 }
@@ -752,9 +760,13 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	}
 	if enabled {
 		s.warmupPluginAsync(pluginID)
-	} else if changed {
-		s.clearPluginScheduler(pluginID)
-		go s.clearInactiveSystemBadge(pluginID)
+	} else {
+		s.clearPluginThemeSkin(pluginID)
+		s.closeStageForPlugin(pluginID)
+		if changed {
+			s.clearPluginScheduler(pluginID)
+			go s.clearInactiveSystemBadge(pluginID)
+		}
 	}
 	if changed || rt != nil {
 		SyncActiveLanguagesSeq(langSnap, langSeq)
@@ -820,6 +832,8 @@ func shouldAutoWarmupPlugin(m Manifest) bool {
 	if m.Contributes.TitlebarManager ||
 		len(m.Contributes.Backdrops) > 0 ||
 		len(m.Contributes.BlockDecorators) > 0 ||
+		len(m.Contributes.Themes) > 0 ||
+		len(m.Contributes.Stages) > 0 ||
 		len(m.Contributes.SidebarSections) > 0 ||
 		len(m.Contributes.FileBadges) > 0 ||
 		len(m.Contributes.FileIcons) > 0 ||
@@ -1461,6 +1475,8 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.mu.Unlock()
 		SyncActiveLanguagesSeq(langSnap, langSeq)
 		s.contrib.forgetPlugin(pluginID, wasTitlebarMgr && !hasRemainingTitlebarMgr)
+		s.clearPluginThemeSkin(pluginID)
+		s.closeStageForPlugin(pluginID)
 		s.clearPluginScheduler(pluginID)
 		s.clearInactiveSystemBadge(pluginID)
 
@@ -2191,6 +2207,7 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		OnActionProgress:  s.reportActionProgress,
 		OpenNote:          openNoteFn,
 		ContribHost:       s.dispatchExtensionHostMethod,
+		AI:                s.cfg.AI,
 		SystemIntegration: s.cfg.System != nil,
 		wasmEngine:        s.wasmEngine,
 	}
@@ -3201,6 +3218,8 @@ func (s *Supervisor) ShutdownAll() {
 	if c, ok := s.cfg.UI.(interface{ HostClosing() }); ok {
 		c.HostClosing()
 	}
+	s.CloseActiveStage()
+	s.clearAllThemeSkins()
 	if s.wasmCancel != nil {
 		s.wasmCancel()
 	}

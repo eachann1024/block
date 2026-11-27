@@ -8,14 +8,18 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"block/internal/theme"
 )
 
 func newTestCapabilityRuntime(t *testing.T, perms []Permission, domains []string, execAllow []string) (*Runtime, string, string, string, string) {
@@ -1092,4 +1096,423 @@ func TestPhase2BPart2SchedulerBackgroundErrorsAndButtonLabels(t *testing.T) {
 	if btn.BusyLabel != "Running..." || btn.SuccessLabel != "Completed" || btn.ErrorLabel != "Run failed" || btn.RetryLabel != "Run again" || btn.Icon == nil || btn.Icon.Name != "refresh" {
 		t.Fatalf("unexpected button fields: %+v", btn)
 	}
+}
+
+type mockAIHost struct {
+	status   AIStatus
+	reply    AICompleteResult
+	err      error
+	lastReq  AICompleteRequest
+	lastOpen AIOpenPromptRequest
+}
+
+func (m *mockAIHost) Status() AIStatus { return m.status }
+func (m *mockAIHost) Complete(_ context.Context, req AICompleteRequest) (AICompleteResult, error) {
+	m.lastReq = req
+	if m.err != nil {
+		return AICompleteResult{}, m.err
+	}
+	return m.reply, nil
+}
+func (m *mockAIHost) OpenWithPrompt(req AIOpenPromptRequest) error {
+	m.lastOpen = req
+	return m.err
+}
+
+func TestThemeSkinManifestAndHostRPC(t *testing.T) {
+	t.Cleanup(func() { theme.ClearActiveSkin("") })
+	theme.ClearActiveSkin("")
+
+	icon := DuoIconSpec{ViewBox: "0 0 24 24", StrokePaths: []string{"M4 4H20V20H4Z"}}
+	baseManifest := func(id string, perms []Permission) Manifest {
+		return Manifest{
+			App:           TargetApp,
+			SchemaVersion: CurrentSchemaVersion,
+			ID:            id,
+			Name:          LocalizedText{Zh: "皮肤插件", En: "Skin Plugin"},
+			Version:       "1.0.0",
+			Author:        "tester",
+			Summary:       LocalizedText{Zh: "皮肤测试", En: "Skin test"},
+			Entry:         EntrySpec{JS: "main.js"},
+			Permissions:   perms,
+			Icon:          icon,
+		}
+	}
+
+	// Missing PermUIAppearance must fail validation.
+	mNoPerm := baseManifest("skin-noperm", nil)
+	mNoPerm.Contributes = &Contributes{
+		Themes: []ThemeContrib{{ID: "slate", Title: LocalizedText{Zh: "青石", En: "Slate"}, File: "skin.json"}},
+	}
+	if err := mNoPerm.Validate(); err == nil {
+		t.Fatalf("expected contributes.themes without ui:appearance to fail")
+	}
+
+	// Escaping path must fail validation.
+	mEscape := baseManifest("skin-escape", []Permission{PermUIAppearance})
+	mEscape.Contributes = &Contributes{
+		Themes: []ThemeContrib{{ID: "slate", Title: LocalizedText{Zh: "青石", En: "Slate"}, File: "../skin.json"}},
+	}
+	if err := mEscape.Validate(); err == nil {
+		t.Fatalf("expected escaping themes.file to fail")
+	}
+
+	// Build a valid plugin directory with a theme skin JSON.
+	appDataDir := t.TempDir()
+	srcDir := filepath.Join(t.TempDir(), "skin-src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skinJSON := `{
+		"id": "slate-copper",
+		"fonts": {"serif": "Georgia, serif", "display": "Palatino, serif"},
+		"chrome_dark": true,
+		"light": {"Paper": "#f4ecd9", "Text": "#221d16"},
+		"dark": {"Shell": "#101826", "Paper": "#121b2b", "Text": "#ece4d0"},
+		"surfaces": {
+			"paper": {"Paper": "#f4ecd9", "Accent": "#8a6526"},
+			"chrome": {"Shell": "#101826", "Accent": "#c9a25a"}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(srcDir, "skin.json"), []byte(skinJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "main.js"), []byte(`import { serve } from '/runtime/block-sdk.js'; serve(() => ({ ready: true }));`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mValid := baseManifest("skin-plugin", []Permission{PermUIAppearance})
+	mValid.Contributes = &Contributes{
+		Themes: []ThemeContrib{{ID: "slate-copper", Title: LocalizedText{Zh: "青石铜", En: "Slate Copper"}, File: "skin.json"}},
+	}
+	rawManifest, _ := json.Marshal(mValid)
+	if err := os.WriteFile(filepath.Join(srcDir, "manifest.json"), rawManifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sup := NewSupervisor(SupervisorConfig{AppDataDir: appDataDir, GetLocale: func() string { return "en" }})
+	t.Cleanup(sup.ShutdownAll)
+	installed, err := sup.Store().InstallFromDirectory(srcDir)
+	if err != nil {
+		t.Fatalf("InstallFromDirectory failed: %v", err)
+	}
+	if err := sup.Store().SetEnabled(mValid.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	installed.Enabled = true
+	rt := &Runtime{manifest: installed.Manifest, cfg: HostConfig{PluginDir: installed.InstallDir}, exited: make(chan struct{}), reaped: make(chan struct{})}
+	sup.mu.Lock()
+	sup.installed = []InstalledApp{*installed}
+	sup.runtimes[mValid.ID] = rt
+	sup.mu.Unlock()
+
+	// Undeclared themes and unknown theme IDs must be rejected at runtime.
+	rtNoThemes := &Runtime{manifest: baseManifest("skin-nothemes", nil), cfg: HostConfig{PluginDir: installed.InstallDir}, exited: make(chan struct{}), reaped: make(chan struct{})}
+	sup.mu.Lock()
+	sup.installed = append(sup.installed, InstalledApp{Manifest: rtNoThemes.manifest, Enabled: true})
+	sup.runtimes[rtNoThemes.manifest.ID] = rtNoThemes
+	sup.mu.Unlock()
+	if _, rerr, handled := sup.dispatchContribHostMethod(rtNoThemes, "host.ui.set_theme_skin", json.RawMessage(`{"id":"slate-copper","enabled":true}`)); !handled || rerr == nil || rerr.Code != -32602 {
+		t.Fatalf("expected -32602 when manifest declares no themes, got handled=%v err=%v", handled, rerr)
+	}
+	if _, rerr, handled := sup.dispatchContribHostMethod(rt, "host.ui.set_theme_skin", json.RawMessage(`{"id":"missing-theme","enabled":true}`)); !handled || rerr == nil || rerr.Code != -32602 {
+		t.Fatalf("expected -32602 for unknown theme id, got handled=%v err=%v", handled, rerr)
+	}
+
+	// Enable theme skin via host.ui.set_theme_skin.
+	res, rerr, handled := sup.dispatchContribHostMethod(rt, "host.ui.set_theme_skin", json.RawMessage(`{"id":"slate-copper","enabled":true}`))
+	if !handled || rerr != nil {
+		t.Fatalf("host.ui.set_theme_skin enable failed: handled=%v err=%v", handled, rerr)
+	}
+	st := res.(ThemeSkinState)
+	if !st.Enabled || st.ID != "slate-copper" || st.SkinID != "slate-copper" {
+		t.Fatalf("unexpected theme skin state: %+v", st)
+	}
+	if theme.ActiveSkinOwner() != mValid.ID || theme.ActiveSkin() == nil || theme.ActiveSkin().ID != "slate-copper" {
+		t.Fatalf("expected active skin set on theme package, owner=%q skin=%+v", theme.ActiveSkinOwner(), theme.ActiveSkin())
+	}
+
+	// host.ui.theme_skin_state reflects active skin.
+	stRes, rerr, handled := sup.dispatchContribHostMethod(rt, "host.ui.theme_skin_state", json.RawMessage(`{}`))
+	if !handled || rerr != nil {
+		t.Fatalf("host.ui.theme_skin_state failed: handled=%v err=%v", handled, rerr)
+	}
+	if got := stRes.(ThemeSkinState); !got.Enabled || got.SkinID != "slate-copper" {
+		t.Fatalf("unexpected theme_skin_state: %+v", got)
+	}
+
+	// A new Supervisor reading the persisted contrib-state.json restores the active skin automatically.
+	theme.ClearActiveSkin("")
+	supRestored := NewSupervisor(SupervisorConfig{AppDataDir: appDataDir, GetLocale: func() string { return "en" }})
+	t.Cleanup(supRestored.ShutdownAll)
+	if theme.ActiveSkinOwner() != mValid.ID || theme.ActiveSkin() == nil || theme.ActiveSkin().ID != "slate-copper" {
+		t.Fatalf("expected restored skin on new supervisor, owner=%q skin=%+v", theme.ActiveSkinOwner(), theme.ActiveSkin())
+	}
+
+	// Disable via host.ui.set_theme_skin clears active skin.
+	resOff, rerr, handled := sup.dispatchContribHostMethod(rt, "host.ui.set_theme_skin", json.RawMessage(`{"id":"slate-copper","enabled":false}`))
+	if !handled || rerr != nil || resOff.(ThemeSkinState).Enabled {
+		t.Fatalf("host.ui.set_theme_skin disable failed: res=%v err=%v", resOff, rerr)
+	}
+	if theme.ActiveSkin() != nil {
+		t.Fatalf("expected active skin cleared on disable")
+	}
+
+	// Re-enable, then disabling the plugin clears the active skin automatically.
+	if _, rerr, _ := sup.dispatchContribHostMethod(rt, "host.ui.set_theme_skin", json.RawMessage(`{"id":"slate-copper","enabled":true}`)); rerr != nil {
+		t.Fatal(rerr)
+	}
+	sup.SetPluginEnabled(mValid.ID, false)
+	if theme.ActiveSkin() != nil {
+		t.Fatalf("expected active skin cleared when plugin disabled")
+	}
+}
+
+func TestStageManifestValidationAndHostRPCAndInvoke(t *testing.T) {
+	t.Setenv("PATH", "")
+
+	icon := DuoIconSpec{ViewBox: "0 0 24 24", StrokePaths: []string{"M4 4H20V20H4Z"}}
+	baseManifest := func(id string, perms []Permission, entry string) Manifest {
+		return Manifest{
+			App:           TargetApp,
+			SchemaVersion: CurrentSchemaVersion,
+			ID:            id,
+			Name:          LocalizedText{Zh: "舞台插件", En: "Stage Plugin"},
+			Version:       "1.0.0",
+			Author:        "tester",
+			Summary:       LocalizedText{Zh: "舞台测试", En: "Stage test"},
+			Entry:         EntrySpec{JS: "main.js"},
+			Permissions:   perms,
+			Icon:          icon,
+			Contributes: &Contributes{
+				Stages: []StageContrib{{
+					ID:         "main-stage",
+					Title:      LocalizedText{Zh: "主舞台", En: "Main Stage"},
+					Entry:      entry,
+					FullWindow: true,
+				}},
+			},
+		}
+	}
+
+	mStNoPerm := baseManifest("st-noperm", nil, "web/index.html")
+	if err := mStNoPerm.Validate(); err == nil {
+		t.Fatalf("expected contributes.stages without permission to fail")
+	}
+	mStBadEntry := baseManifest("st-badentry", []Permission{PermUICommands}, "index.html")
+	if err := mStBadEntry.Validate(); err == nil {
+		t.Fatalf("expected stage entry outside web/ to fail")
+	}
+	mStEscape := baseManifest("st-escape", []Permission{PermUICommands}, "web/../secret.html")
+	if err := mStEscape.Validate(); err == nil {
+		t.Fatalf("expected escaping stage entry to fail")
+	}
+
+	// External HTTP URL inside web/ must fail ValidatePluginStages.
+	badDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(badDir, "web"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badDir, "web", "index.html"), []byte(`<html><script src="https://cdn.example.com/x.js"></script></html>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mOK := baseManifest("stage-plugin", []Permission{PermUICommands}, "web/index.html")
+	if err := ValidatePluginStages(badDir, &mOK); err == nil {
+		t.Fatalf("expected external https:// asset in web/ to fail ValidatePluginStages")
+	}
+
+	// Valid plugin directory with offline web/index.html and JS handler for plugin.stage_action.
+	srcDir := filepath.Join(t.TempDir(), "stage-src")
+	if err := os.MkdirAll(filepath.Join(srcDir, "web"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "web", "index.html"), []byte(`<!doctype html><html><body>Stage</body></html>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	jsMain := `
+import { serve } from '/runtime/block-sdk.js';
+serve((method, params) => {
+  if (method === 'plugin.initialize') {
+    return { ready: true };
+  }
+  if (method === 'plugin.stage_action') {
+    return { ok: true, stage_id: params.stage_id, action: params.action, echo: params.payload?.x ?? null };
+  }
+  if (method === 'plugin.shutdown') {
+    return { ok: true };
+  }
+  throw new Error('unsupported: ' + method);
+});
+`
+	if err := os.WriteFile(filepath.Join(srcDir, "main.js"), []byte(jsMain), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rawM, _ := json.Marshal(mOK)
+	if err := os.WriteFile(filepath.Join(srcDir, "manifest.json"), rawM, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var changes []*ActiveStage
+	var emits []StageEvent
+
+	sup := NewSupervisor(SupervisorConfig{
+		AppDataDir: t.TempDir(),
+		GetLocale:  func() string { return "en" },
+		OnStageChange: func(st *ActiveStage) {
+			mu.Lock()
+			changes = append(changes, st)
+			mu.Unlock()
+		},
+		OnStageEmit: func(ev StageEvent) {
+			mu.Lock()
+			emits = append(emits, ev)
+			mu.Unlock()
+		},
+	})
+	t.Cleanup(sup.ShutdownAll)
+
+	installed, err := sup.Store().InstallFromDirectory(srcDir)
+	if err != nil {
+		t.Fatalf("InstallFromDirectory failed: %v", err)
+	}
+	if err := sup.Store().SetEnabled(mOK.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	sup.mu.Lock()
+	installed.Enabled = true
+	sup.installed = []InstalledApp{*installed}
+	sup.mu.Unlock()
+
+	rt := &Runtime{manifest: installed.Manifest, cfg: HostConfig{PluginDir: installed.InstallDir}, exited: make(chan struct{}), reaped: make(chan struct{})}
+	sup.mu.Lock()
+	sup.runtimes[mOK.ID] = rt
+	sup.mu.Unlock()
+
+	// host.stage.open
+	openRes, rerr, handled := sup.dispatchContribHostMethod(rt, "host.stage.open", json.RawMessage(`{"id":"main-stage","route":"overview","state":{"step":1}}`))
+	if !handled || rerr != nil {
+		t.Fatalf("host.stage.open failed: handled=%v err=%v", handled, rerr)
+	}
+	if openMap := openRes.(map[string]any); openMap["open"] != true {
+		t.Fatalf("unexpected open result: %+v", openMap)
+	}
+	active := sup.ActiveStage()
+	if active == nil || active.PluginID != mOK.ID || active.StageID != "main-stage" || active.Route != "overview" || !active.FullWindow ||
+		!strings.HasSuffix(active.EntryPath, filepath.Join("web", "index.html")) || string(active.State) != `{"step":1}` {
+		t.Fatalf("unexpected ActiveStage: %+v", active)
+	}
+
+	// host.stage.state
+	stRes, rerr, handled := sup.dispatchContribHostMethod(rt, "host.stage.state", json.RawMessage(`{}`))
+	if !handled || rerr != nil {
+		t.Fatalf("host.stage.state failed: %v", rerr)
+	}
+	if stMap := stRes.(map[string]any); stMap["open"] != true || stMap["route"] != "overview" {
+		t.Fatalf("unexpected stage state: %+v", stMap)
+	}
+
+	// host.stage.emit
+	if _, rerr, handled := sup.dispatchContribHostMethod(rt, "host.stage.emit", json.RawMessage(`{"id":"main-stage","event":"state.updated","payload":{"step":2}}`)); !handled || rerr != nil {
+		t.Fatalf("host.stage.emit failed: handled=%v err=%v", handled, rerr)
+	}
+	mu.Lock()
+	if len(emits) != 1 || emits[0].Event != "state.updated" || string(emits[0].Payload) != `{"step":2}` {
+		mu.Unlock()
+		t.Fatalf("unexpected emitted events: %+v", emits)
+	}
+	mu.Unlock()
+
+	// host.stage.close
+	closeRes, rerr, handled := sup.dispatchContribHostMethod(rt, "host.stage.close", json.RawMessage(`{"id":"main-stage"}`))
+	if !handled || rerr != nil || closeRes.(map[string]any)["closed"] != true {
+		t.Fatalf("host.stage.close failed: res=%v err=%v", closeRes, rerr)
+	}
+	if sup.ActiveStage() != nil {
+		t.Fatalf("expected ActiveStage nil after close")
+	}
+
+	// Open again, then disable plugin -> automatically closes active stage.
+	if _, rerr, _ := sup.dispatchContribHostMethod(rt, "host.stage.open", json.RawMessage(`{"id":"main-stage","route":"detail"}`)); rerr != nil {
+		t.Fatal(rerr)
+	}
+	sup.SetPluginEnabled(mOK.ID, false)
+	if sup.ActiveStage() != nil {
+		t.Fatalf("expected ActiveStage closed when plugin disabled")
+	}
+
+	// Re-enable and exercise real JS runtime via Supervisor.InvokeStageAction.
+	sup.mu.Lock()
+	delete(sup.runtimes, mOK.ID)
+	sup.mu.Unlock()
+	sup.SetPluginEnabled(mOK.ID, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	rawActionRes, err := sup.InvokeStageAction(ctx, mOK.ID, "main-stage", "ping", map[string]any{"x": 42})
+	if err != nil {
+		t.Fatalf("InvokeStageAction failed: %v", err)
+	}
+	var actionOut map[string]any
+	if err := json.Unmarshal(rawActionRes, &actionOut); err != nil {
+		t.Fatalf("decode stage action response: %v (raw=%s)", err, string(rawActionRes))
+	}
+	if actionOut["ok"] != true || actionOut["stage_id"] != "main-stage" || actionOut["action"] != "ping" || actionOut["echo"] != float64(42) {
+		t.Fatalf("unexpected InvokeStageAction response: %+v", actionOut)
+	}
+}
+
+func TestAIHostRPCAndPermissions(t *testing.T) {
+	// Without PermAIComplete -> rejected with -32001.
+	rtNoPerm, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermStorage}, nil, nil)
+	mustFailDispatch(t, rtNoPerm, "host.ai.status", map[string]any{}, -32001)
+	mustFailDispatch(t, rtNoPerm, "host.ai.complete", map[string]any{"user_prompt": "hi"}, -32001)
+	mustFailDispatch(t, rtNoPerm, "host.ai.open_with_prompt", map[string]any{"prompt": "hi"}, -32001)
+
+	// With PermAIComplete but nil AIHost -> status reports unavailable; complete/open return -32005.
+	rtNoHost, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermAIComplete}, nil, nil)
+	stUnavail := mustDispatch(t, rtNoHost, "host.ai.status", map[string]any{})
+	if stUnavail["enabled"] != false || stUnavail["ready"] != false {
+		t.Fatalf("expected unavailable AI status, got %+v", stUnavail)
+	}
+	mustFailDispatch(t, rtNoHost, "host.ai.complete", map[string]any{"user_prompt": "hi"}, -32005)
+	mustFailDispatch(t, rtNoHost, "host.ai.open_with_prompt", map[string]any{"prompt": "hi"}, -32005)
+
+	// With PermAIComplete and mock AIHost.
+	aiMock := &mockAIHost{
+		status: AIStatus{Enabled: true, Ready: true, Streaming: false},
+		reply:  AICompleteResult{Text: "Concise insight.", Model: "mock-model"},
+	}
+	rt, _, _, _, _ := newTestCapabilityRuntime(t, []Permission{PermAIComplete}, nil, nil)
+	rt.cfg.AI = aiMock
+
+	stOK := mustDispatch(t, rt, "host.ai.status", map[string]any{})
+	if stOK["enabled"] != true || stOK["ready"] != true {
+		t.Fatalf("expected ready AI status, got %+v", stOK)
+	}
+
+	comp := mustDispatch(t, rt, "host.ai.complete", map[string]any{
+		"system_prompt": "Be concise",
+		"user_prompt":   "Summarize notes",
+		"max_tokens":    256,
+	})
+	if comp["text"] != "Concise insight." || comp["model"] != "mock-model" {
+		t.Fatalf("unexpected complete result: %+v", comp)
+	}
+	if aiMock.lastReq.PluginID != rt.manifest.ID || aiMock.lastReq.SystemPrompt != "Be concise" ||
+		aiMock.lastReq.UserPrompt != "Summarize notes" || aiMock.lastReq.MaxTokens != 256 {
+		t.Fatalf("unexpected AICompleteRequest: %+v", aiMock.lastReq)
+	}
+
+	mustFailDispatch(t, rt, "host.ai.complete", map[string]any{"user_prompt": ""}, -32602)
+	mustFailDispatch(t, rt, "host.ai.open_with_prompt", map[string]any{"prompt": "Follow up", "note_path": "../escape.md"}, -32602)
+
+	openRes := mustDispatch(t, rt, "host.ai.open_with_prompt", map[string]any{
+		"prompt":    "Follow up",
+		"note_path": "notes/ideas.md",
+	})
+	if openRes["ok"] != true || aiMock.lastOpen.Prompt != "Follow up" || aiMock.lastOpen.NotePath != "notes/ideas.md" {
+		t.Fatalf("unexpected open_with_prompt result=%+v req=%+v", openRes, aiMock.lastOpen)
+	}
+
+	aiMock.err = errors.New("upstream quota exceeded")
+	mustFailDispatch(t, rt, "host.ai.complete", map[string]any{"user_prompt": "Summarize"}, -32005)
 }

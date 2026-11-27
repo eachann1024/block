@@ -33,6 +33,7 @@ const (
 	PermEventNoteSaved Permission = "events:note_saved"
 	PermSystemFS       Permission = "system:fs"
 	PermSystemExec     Permission = "system:exec"
+	PermAIComplete     Permission = "ai:complete"
 )
 
 var validPermissions = map[Permission]bool{
@@ -43,6 +44,7 @@ var validPermissions = map[Permission]bool{
 	PermEventNoteSaved: true,
 	PermSystemFS:       true,
 	PermSystemExec:     true,
+	PermAIComplete:     true,
 }
 
 func PermissionLabel(p Permission, locale string) string {
@@ -89,6 +91,11 @@ func PermissionLabel(p Permission, locale string) string {
 			return "Allowlisted Executables"
 		}
 		return "受控命令行工具"
+	case PermAIComplete:
+		if en {
+			return "AI Completion"
+		}
+		return "AI 生成"
 	default:
 		if l, ok := contribPermissionLabel(p, en); ok {
 			return l
@@ -143,6 +150,11 @@ func PermissionDescription(p Permission, locale string) string {
 			return "Run specific allowlisted executables declared in the manifest without a shell inside granted directories."
 		}
 		return "以无 Shell 方式运行清单白名单声明的特定外部程序，并在授权目录内执行。"
+	case PermAIComplete:
+		if en {
+			return "Call the configured AI model on demand to generate text or open the AI panel with a prompt."
+		}
+		return "按需调用已配置的 AI 模型生成文本，或携带提示词打开 AI 面板。"
 	default:
 		if d, ok := contribPermissionDescription(p, en); ok {
 			return d
@@ -184,7 +196,7 @@ func PermissionCategoryOf(p Permission) (PermissionCategory, bool) {
 		return PermCategoryCredentials, true
 	case PermClipboardRead, PermClipboardWrite:
 		return PermCategoryClipboard, true
-	case PermSystemTrash, PermSystemOpen, PermSystemDialogs, PermSystemFS, PermSystemExec:
+	case PermSystemTrash, PermSystemOpen, PermSystemDialogs, PermSystemFS, PermSystemExec, PermAIComplete:
 		return PermCategorySystem, true
 	case PermNetwork:
 		return PermCategoryNetwork, true

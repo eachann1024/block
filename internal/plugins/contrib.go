@@ -8,6 +8,7 @@ import (
 	"maps"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +17,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"block/internal/theme"
 )
 
 // UI contribution permissions. Each contribution kind in manifest.contributes
@@ -169,6 +172,8 @@ type Contributes struct {
 	FileIcons        []FileIconPackContrib    `json:"file_icons,omitempty"`
 	Backdrops        []BackdropContrib        `json:"backdrops,omitempty"`
 	BlockDecorators  []BlockDecoratorContrib  `json:"block_decorators,omitempty"`
+	Themes           []ThemeContrib           `json:"themes,omitempty"`
+	Stages           []StageContrib           `json:"stages,omitempty"`
 	StatusItems      []StatusItemContrib      `json:"status_items,omitempty"`
 	Dialogs          []DialogContrib          `json:"dialogs,omitempty"`
 	MenubarItems     []MenubarItemContrib     `json:"menubar_items,omitempty"`
@@ -299,11 +304,26 @@ type DialogContrib struct {
 	Icon  *DuoIconSpec  `json:"icon,omitempty"`
 }
 
+// ThemeContrib declares a declarative theme skin JSON file that a plugin can toggle at runtime.
+type ThemeContrib struct {
+	ID    string        `json:"id"`
+	Title LocalizedText `json:"title"`
+	File  string        `json:"file"`
+}
+
+// ThemeSkinState tracks a plugin's persisted theme skin activation state.
+type ThemeSkinState struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+	SkinID  string `json:"skin_id,omitempty"`
+}
+
 func (c *Contributes) hasRuntimeContributions() bool {
 	return c != nil && (len(c.TitlebarButtons) > 0 || c.TitlebarManager || len(c.SettingsSections) > 0 || len(c.Commands) > 0 ||
 		len(c.PageMenu) > 0 || len(c.EditorMenu) > 0 || len(c.SidebarMenu) > 0 || len(c.TabMenu) > 0 ||
 		len(c.Panels) > 0 || len(c.SidebarSections) > 0 || len(c.FileBadges) > 0 || len(c.FileIcons) > 0 ||
-		len(c.Backdrops) > 0 || len(c.BlockDecorators) > 0 || len(c.StatusItems) > 0 || len(c.Dialogs) > 0 || len(c.MenubarItems) > 0)
+		len(c.Backdrops) > 0 || len(c.BlockDecorators) > 0 || len(c.Themes) > 0 || len(c.Stages) > 0 ||
+		len(c.StatusItems) > 0 || len(c.Dialogs) > 0 || len(c.MenubarItems) > 0)
 }
 
 func (c *Contributes) empty() bool {
@@ -344,6 +364,18 @@ func (c *Contributes) backdropByID(id string) (BackdropContrib, bool) {
 		}
 	}
 	return BackdropContrib{}, false
+}
+
+func (c *Contributes) themeByID(id string) (ThemeContrib, bool) {
+	if c == nil {
+		return ThemeContrib{}, false
+	}
+	for _, t := range c.Themes {
+		if t.ID == id {
+			return t, true
+		}
+	}
+	return ThemeContrib{}, false
 }
 
 // hasContribSurface reports whether a prefixed surface is declared in contributes.
@@ -616,6 +648,8 @@ var contribLimits = []struct {
 	{"file_icons", 1, func(c Contributes) int { return len(c.FileIcons) }},
 	{"backdrops", 8, func(c Contributes) int { return len(c.Backdrops) }},
 	{"block_decorators", 8, func(c Contributes) int { return len(c.BlockDecorators) }},
+	{"themes", 8, func(c Contributes) int { return len(c.Themes) }},
+	{"stages", 8, func(c Contributes) int { return len(c.Stages) }},
 	{"status_items", 4, func(c Contributes) int { return len(c.StatusItems) }},
 	{"dialogs", 16, func(c Contributes) int { return len(c.Dialogs) }},
 	{"languages", 16, func(c Contributes) int { return len(c.Languages) }},
@@ -888,6 +922,85 @@ func (m *Manifest) validateContributes() error {
 		}
 		if err := validateLanguageContrib(l); err != nil {
 			return err
+		}
+	}
+	if len(c.Themes) > 0 && !m.HasDeclaredPermission(PermUIAppearance) {
+		return fmt.Errorf("contributes.themes requires permission %q", PermUIAppearance)
+	}
+	for _, th := range c.Themes {
+		if err := id("themes", th.ID); err != nil {
+			return err
+		}
+		if err := validateContribText("contributes.themes.title", th.Title); err != nil {
+			return err
+		}
+		if _, err := validateThemeFilePath(th.File); err != nil {
+			return err
+		}
+	}
+	if len(c.Stages) > 0 && !hasDeclaredStagePermission(*m) {
+		return fmt.Errorf("contributes.stages requires permission %q, %q, or %q", PermUIAppearance, PermUICommands, PermUIPanels)
+	}
+	for _, st := range c.Stages {
+		if err := id("stages", st.ID); err != nil {
+			return err
+		}
+		if err := validateContribText("contributes.stages.title", st.Title); err != nil {
+			return err
+		}
+		if _, err := validateStageEntryPath(st.Entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+const maxThemeSkinFileBytes = 512 * 1024
+
+func validateThemeFilePath(raw string) (string, error) {
+	p := strings.TrimSpace(raw)
+	if p == "" {
+		return "", errors.New("contributes.themes.file is required")
+	}
+	if strings.ContainsAny(p, "\\:\x00\r\n") || strings.HasPrefix(p, "/") {
+		return "", fmt.Errorf("contributes.themes.file %q must be a relative slash path", raw)
+	}
+	clean := path.Clean(p)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
+		return "", fmt.Errorf("contributes.themes.file %q escapes plugin directory", raw)
+	}
+	return clean, nil
+}
+
+func loadPluginThemeSkin(pluginDir, relPath string) (*theme.ThemeSkinSpec, error) {
+	clean, err := validateThemeFilePath(relPath)
+	if err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(pluginDir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	raw, err := readPluginFile(root, clean, maxThemeSkinFileBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", clean, err)
+	}
+	spec, err := theme.ParseThemeSkinJSON(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", clean, err)
+	}
+	return spec, nil
+}
+
+// ValidatePluginThemes validates every theme skin file declared in m.Contributes.Themes.
+func ValidatePluginThemes(pluginDir string, m *Manifest) error {
+	if m == nil || m.Contributes == nil || len(m.Contributes.Themes) == 0 {
+		return nil
+	}
+	for _, th := range m.Contributes.Themes {
+		if _, err := loadPluginThemeSkin(pluginDir, th.File); err != nil {
+			return fmt.Errorf("themes %q: %w", th.ID, err)
 		}
 	}
 	return nil
@@ -1203,6 +1316,7 @@ type contribRegistry struct {
 	hidden          map[string]bool                                                 // legacy global titlebar slot id -> hidden
 	hiddenBy        map[string]map[string]bool                                      // plugin id -> hidden titlebar slot ids
 	backdropBy      map[string]EditorBackdropState                                  // plugin id -> custom vector or paper backdrop
+	themeSkins      map[string]ThemeSkinState                                       // plugin id -> theme skin state
 	fileBadges      map[string]map[string]map[string]map[string]FileBadgeEntry      // pluginID -> notebookRoot -> badgeID -> relPath -> entry
 	fileIcons       map[string]map[string]map[string]FileIconEntry                  // pluginID -> notebookRoot -> relPath -> entry
 	fileIconPrefs   map[string]FileIconPrefs                                        // pluginID -> picker/sync_tabs overrides
@@ -1228,6 +1342,7 @@ type contribFile struct {
 	TitlebarHidden   []string                                                 `json:"titlebar_hidden,omitempty"`
 	TitlebarHiddenBy map[string][]string                                      `json:"titlebar_hidden_by,omitempty"`
 	EditorBackdrops  map[string]EditorBackdropState                           `json:"editor_backdrops,omitempty"`
+	ThemeSkins       map[string]ThemeSkinState                                `json:"theme_skins,omitempty"`
 	FileBadges       map[string]map[string]map[string]map[string]FileBadgeEntry `json:"file_badges,omitempty"`
 	FileIcons        map[string]map[string]map[string]FileIconEntry           `json:"file_icons,omitempty"`
 	FileIconPrefs    map[string]FileIconPrefs                                 `json:"file_icon_prefs,omitempty"`
@@ -1240,6 +1355,7 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 		hidden:          map[string]bool{},
 		hiddenBy:        map[string]map[string]bool{},
 		backdropBy:      map[string]EditorBackdropState{},
+		themeSkins:      map[string]ThemeSkinState{},
 		fileBadges:      map[string]map[string]map[string]map[string]FileBadgeEntry{},
 		fileIcons:       map[string]map[string]map[string]FileIconEntry{},
 		fileIconPrefs:   map[string]FileIconPrefs{},
@@ -1278,6 +1394,11 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 				for pluginID, bd := range f.EditorBackdrops {
 					if strings.TrimSpace(pluginID) != "" {
 						r.backdropBy[pluginID] = bd
+					}
+				}
+				for pluginID, ts := range f.ThemeSkins {
+					if strings.TrimSpace(pluginID) != "" {
+						r.themeSkins[pluginID] = ts
 					}
 				}
 				for pluginID, byRoot := range f.FileBadges {
@@ -1438,6 +1559,13 @@ func (r *contribRegistry) saveLocked() {
 			backdrops[pluginID] = bd
 		}
 	}
+	var themeSkins map[string]ThemeSkinState
+	if len(r.themeSkins) > 0 {
+		themeSkins = make(map[string]ThemeSkinState, len(r.themeSkins))
+		for pluginID, ts := range r.themeSkins {
+			themeSkins[pluginID] = ts
+		}
+	}
 	var fileBadges map[string]map[string]map[string]map[string]FileBadgeEntry
 	if len(r.fileBadges) > 0 {
 		fileBadges = make(map[string]map[string]map[string]map[string]FileBadgeEntry, len(r.fileBadges))
@@ -1534,6 +1662,7 @@ func (r *contribRegistry) saveLocked() {
 		TitlebarHidden:   ids,
 		TitlebarHiddenBy: hiddenBy,
 		EditorBackdrops:  backdrops,
+		ThemeSkins:       themeSkins,
 		FileBadges:       fileBadges,
 		FileIcons:        fileIcons,
 		FileIconPrefs:    fileIconPrefs,
@@ -1602,6 +1731,10 @@ func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool
 	}
 	if _, ok := r.backdropBy[pluginID]; ok {
 		delete(r.backdropBy, pluginID)
+		changed = true
+	}
+	if _, ok := r.themeSkins[pluginID]; ok {
+		delete(r.themeSkins, pluginID)
 		changed = true
 	}
 	if _, ok := r.fileBadges[pluginID]; ok {
@@ -1950,6 +2083,54 @@ func (s *Supervisor) ActiveBackdrop() (ResolvedBackdrop, bool) {
 		}, true
 	}
 	return ResolvedBackdrop{}, false
+}
+
+func (s *Supervisor) restoreActiveThemeSkin() {
+	if s == nil || s.contrib == nil {
+		return
+	}
+	for _, a := range s.enabledContribs() {
+		if !a.Manifest.HasPermission(PermUIAppearance) || len(a.Manifest.Contributes.Themes) == 0 {
+			continue
+		}
+		s.contrib.mu.RLock()
+		st, ok := s.contrib.themeSkins[a.Manifest.ID]
+		s.contrib.mu.RUnlock()
+		if !ok || !st.Enabled {
+			continue
+		}
+		base, found := a.Manifest.Contributes.themeByID(st.ID)
+		if !found {
+			base = a.Manifest.Contributes.Themes[0]
+		}
+		spec, err := loadPluginThemeSkin(a.InstallDir, base.File)
+		if err != nil {
+			continue
+		}
+		theme.SetActiveSkin(a.Manifest.ID, spec)
+		return
+	}
+}
+
+func (s *Supervisor) clearPluginThemeSkin(pluginID string) {
+	if s == nil || strings.TrimSpace(pluginID) == "" {
+		return
+	}
+	theme.ClearActiveSkin(pluginID)
+	if s.contrib == nil {
+		return
+	}
+	s.contrib.mu.Lock()
+	if st, ok := s.contrib.themeSkins[pluginID]; ok && st.Enabled {
+		st.Enabled = false
+		s.contrib.themeSkins[pluginID] = st
+		s.contrib.saveLocked()
+	}
+	s.contrib.mu.Unlock()
+}
+
+func (s *Supervisor) clearAllThemeSkins() {
+	theme.ClearActiveSkin("")
 }
 
 // ActiveBlockDecorators returns all block decorators declared by currently
@@ -2631,7 +2812,8 @@ func missingPerm(p Permission) *rpcError {
 func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, params json.RawMessage) (res any, rerr *rpcError, ok bool) {
 	if !strings.HasPrefix(method, "host.titlebar.") && !strings.HasPrefix(method, "host.status.") &&
 		!strings.HasPrefix(method, "host.ui.") && !strings.HasPrefix(method, "host.editor.") &&
-		!strings.HasPrefix(method, "host.sidebar.") && method != "host.menubar.set" {
+		!strings.HasPrefix(method, "host.sidebar.") && !strings.HasPrefix(method, "host.stage.") &&
+		method != "host.menubar.set" {
 		return nil, nil, false
 	}
 	m := rt.manifest
@@ -3287,6 +3469,107 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		s.contrib.mu.Unlock()
 		s.mu.RUnlock()
 		return next, nil, true
+
+	case "host.ui.theme_skin_state":
+		if !m.HasPermission(PermUIAppearance) {
+			return nil, missingPerm(PermUIAppearance), true
+		}
+		var baseID string
+		if m.Contributes != nil && len(m.Contributes.Themes) > 0 {
+			baseID = m.Contributes.Themes[0].ID
+		}
+		s.contrib.mu.RLock()
+		st, ok := s.contrib.themeSkins[m.ID]
+		s.contrib.mu.RUnlock()
+		if !ok {
+			st = ThemeSkinState{ID: baseID}
+		}
+		active := theme.ActiveSkin()
+		owner := theme.ActiveSkinOwner()
+		if owner == m.ID && active != nil {
+			st.Enabled = true
+			st.SkinID = active.ID
+			if st.ID == "" {
+				st.ID = baseID
+			}
+		} else {
+			st.Enabled = false
+		}
+		return st, nil, true
+
+	case "host.ui.set_theme_skin":
+		if !m.HasPermission(PermUIAppearance) {
+			return nil, missingPerm(PermUIAppearance), true
+		}
+		var p struct {
+			ID      string `json:"id"`
+			Enabled *bool  `json:"enabled"`
+		}
+		if e := decode(&p); e != nil {
+			return nil, e, true
+		}
+		if m.Contributes == nil || len(m.Contributes.Themes) == 0 {
+			return nil, rpcErr(-32602, "manifest declares no themes"), true
+		}
+		enabled := true
+		if p.Enabled != nil {
+			enabled = *p.Enabled
+		}
+		var base ThemeContrib
+		if id := strings.TrimSpace(p.ID); id != "" {
+			var found bool
+			base, found = m.Contributes.themeByID(id)
+			if !found {
+				return nil, rpcErr(-32602, "unknown theme: "+p.ID), true
+			}
+		} else {
+			base = m.Contributes.Themes[0]
+		}
+		var next ThemeSkinState
+		if enabled {
+			spec, err := loadPluginThemeSkin(rt.cfg.PluginDir, base.File)
+			if err != nil {
+				return nil, rpcErr(-32005, fmt.Sprintf("load theme skin %q: %v", base.ID, err)), true
+			}
+			s.mu.RLock()
+			if !s.isRuntimeActiveLocked(m.ID, rt) {
+				s.mu.RUnlock()
+				return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
+			}
+			theme.SetActiveSkin(m.ID, spec)
+			s.contrib.mu.Lock()
+			next = ThemeSkinState{ID: base.ID, Enabled: true, SkinID: spec.ID}
+			s.contrib.themeSkins[m.ID] = next
+			for pid, prev := range s.contrib.themeSkins {
+				if pid != m.ID && prev.Enabled {
+					prev.Enabled = false
+					s.contrib.themeSkins[pid] = prev
+				}
+			}
+			s.contrib.saveLocked()
+			s.contrib.mu.Unlock()
+			s.mu.RUnlock()
+		} else {
+			s.mu.RLock()
+			if !s.isRuntimeActiveLocked(m.ID, rt) {
+				s.mu.RUnlock()
+				return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
+			}
+			theme.ClearActiveSkin(m.ID)
+			s.contrib.mu.Lock()
+			next = ThemeSkinState{ID: base.ID, Enabled: false}
+			if prev, ok := s.contrib.themeSkins[m.ID]; !ok || prev != next {
+				s.contrib.themeSkins[m.ID] = next
+				s.contrib.saveLocked()
+			}
+			s.contrib.mu.Unlock()
+			s.mu.RUnlock()
+		}
+		s.notifyChanged()
+		return next, nil, true
+
+	case "host.stage.open", "host.stage.close", "host.stage.state", "host.stage.emit":
+		return s.dispatchStageHostMethod(rt, method, params)
 
 	case "host.sidebar.get_badges":
 		if !m.HasPermission(PermUISidebar) {

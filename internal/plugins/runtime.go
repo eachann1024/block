@@ -91,8 +91,9 @@ type HostConfig struct {
 	OnNoteWritten    func(pluginID, notebookRoot, absPath string)
 	OnActionProgress func(rt *Runtime, progress ActionProgress)
 	OpenNote         func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error
-	// ContribHost handles host.titlebar/status/ui/editor/sidebar methods; ok=false falls through.
+	// ContribHost handles host.titlebar/status/ui/editor/sidebar/stage methods; ok=false falls through.
 	ContribHost       func(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError, bool)
+	AI                AIHost
 	SystemIntegration bool
 	credentialScope   string
 	wasmEngine        *wasmrt.Engine
@@ -1444,7 +1445,7 @@ func (rt *Runtime) abort() {
 }
 
 func isInteractivePluginRPC(method string) bool {
-	return method == "plugin.action" || method == "plugin.command"
+	return method == "plugin.action" || method == "plugin.command" || method == "plugin.stage_action"
 }
 
 func (rt *Runtime) truncatedStderr() string {
@@ -2214,6 +2215,9 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 
 	case "host.scheduler.register", "host.scheduler.unregister", "host.scheduler.list":
 		return rt.dispatchSchedulerHostMethod(method, params)
+
+	case "host.ai.status", "host.ai.complete", "host.ai.open_with_prompt":
+		return rt.dispatchAIHostMethod(method, params)
 
 	default:
 		if rt.cfg.ContribHost != nil {

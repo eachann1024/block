@@ -1739,6 +1739,16 @@ func validateCandidateDir(tmpDir string, entry *StoreAppEntry) (*Manifest, error
 			return nil, err
 		}
 	}
+	if m.Contributes != nil && len(m.Contributes.Themes) > 0 {
+		if err := ValidatePluginThemes(tmpDir, m); err != nil {
+			return nil, err
+		}
+	}
+	if m.Contributes != nil && len(m.Contributes.Stages) > 0 {
+		if err := ValidatePluginStages(tmpDir, m); err != nil {
+			return nil, err
+		}
+	}
 	return m, nil
 }
 

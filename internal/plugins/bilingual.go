@@ -176,6 +176,16 @@ func ValidateManifestEnglish(m *Manifest) error {
 			return err
 		}
 	}
+	for i, th := range m.Contributes.Themes {
+		if err := check(fmt.Sprintf("manifest.contributes.themes[%d].title.en", i), th.Title.En); err != nil {
+			return err
+		}
+	}
+	for i, st := range m.Contributes.Stages {
+		if err := check(fmt.Sprintf("manifest.contributes.stages[%d].title.en", i), st.Title.En); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
