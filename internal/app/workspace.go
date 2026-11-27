@@ -5850,13 +5850,17 @@ func (w *Workspace) TriggerFind(replace bool) bool {
 		handled = w.openNoteSourceFind(replace)
 	} else if surf := w.ActiveSurface(); surf != nil {
 		handled = surf.OpenFind(replace)
-	} else if sess := w.ActiveSession(); sess != nil && !sess.IsLightboxOpen() && !sess.HasMindMapFullscreen() {
-		if replace {
-			sess.OpenFindReplace()
-		} else {
-			sess.ToggleFind()
+	} else if sess := w.ActiveSession(); sess != nil && !sess.IsLightboxOpen() {
+		if !replace && sess.OpenMindMapFind() {
+			handled = true
+		} else if !sess.HasMindMapFullscreen() {
+			if replace {
+				sess.OpenFindReplace()
+			} else {
+				sess.ToggleFind()
+			}
+			handled = true
 		}
-		handled = true
 	}
 	if handled {
 		w.RequestRedraw()
@@ -5895,9 +5899,16 @@ func (w *Workspace) ToggleFullScreen() {
 
 // HandleZoomShortcut routes zoom shortcuts to the active mind map, image/SVG preview, or UI zoom.
 func (w *Workspace) HandleZoomShortcut(delta int) {
-	if sess := w.ActiveSession(); sess != nil && sess.HandleMindMapZoom(delta) {
-		w.RequestRedraw()
-		return
+	w.handleZoomShortcutWithContext(nil, delta)
+}
+
+func (w *Workspace) handleZoomShortcutWithContext(c *ui.Context, delta int) {
+	activeTab := w.ActiveNotePath()
+	if !w.noteSourceActive(activeTab) && w.ActiveSurface() == nil {
+		if sess := w.ActiveSession(); sess != nil && sess.HandleMindMapZoomContext(c, delta) {
+			w.RequestRedraw()
+			return
+		}
 	}
 	if surf := w.ActiveSurface(); surf != nil && surf.HandlePreviewZoom(delta) {
 		w.RequestRedraw()
@@ -6092,15 +6103,16 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 	}
 	// A focused MindMap block owns ⌘1/2/3 (Map / Outline / Source) and, on
 	// Windows/Linux, Alt+Left/Right (promote/demote node).
-	mindMapFocused := false
+	mindMapFocused, mindMapCanvasFocused := false, false
 	if sess := w.ActiveSession(); sess != nil {
 		mindMapFocused = sess.HasMindMapFocus(c)
+		mindMapCanvasFocused = sess.HasMindMapCanvasFocus(c)
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyBracketLeft) || (!theme.IsMacOS() && !mindMapFocused && c.Shortcut(ui.Alt, ui.KeyLeft)) {
+	if c.Shortcut(ui.Cmd, ui.KeyBracketLeft) || (!theme.IsMacOS() && !mindMapCanvasFocused && c.Shortcut(ui.Alt, ui.KeyLeft)) {
 		w.NavigateBack()
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyBracketRight) || (!theme.IsMacOS() && !mindMapFocused && c.Shortcut(ui.Alt, ui.KeyRight)) {
+	if c.Shortcut(ui.Cmd, ui.KeyBracketRight) || (!theme.IsMacOS() && !mindMapCanvasFocused && c.Shortcut(ui.Alt, ui.KeyRight)) {
 		w.NavigateForward()
 		return
 	}
@@ -6124,7 +6136,8 @@ func (w *Workspace) handlePluginCommandShortcuts(c *ui.Context) {
 	if w.sidebarUI.RenamingPath != "" || w.sidebarUI.RenamingNewItem || w.sidebarUI.HasActiveOverlay() {
 		return
 	}
-	if sess := w.ActiveSession(); sess != nil && (sess.IsFindOpen() || sess.IsInlineAIOpen() || sess.IsSlashMenuOpen()) {
+	sess := w.ActiveSession()
+	if sess != nil && (sess.IsFindOpen() || sess.IsInlineAIOpen() || sess.IsSlashMenuOpen()) {
 		return
 	}
 	textFocused := c.FocusTakesText()
@@ -6136,6 +6149,9 @@ func (w *Workspace) handlePluginCommandShortcuts(c *ui.Context) {
 		}
 		mods, key, ok := blockui.ParseShortcut(spec)
 		if !ok || isHostReservedShortcut(mods, key) {
+			continue
+		}
+		if sess != nil && sess.CapturesMindMapShortcut(c, mods, key) {
 			continue
 		}
 		if textFocused {
@@ -6219,15 +6235,26 @@ func (w *Workspace) handleEditorZoomShortcuts(c *ui.Context) bool {
 		return false
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyEqual) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEqual) {
-		w.HandleZoomShortcut(1)
+		w.handleZoomShortcutWithContext(c, 1)
 		return true
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyMinus) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyMinus) {
-		w.HandleZoomShortcut(-1)
+		w.handleZoomShortcutWithContext(c, -1)
 		return true
 	}
+	activeTab := w.ActiveNotePath()
+	if !w.noteSourceActive(activeTab) && w.ActiveSurface() == nil {
+		if sess := w.ActiveSession(); sess != nil && sess.HasMindMapZoomOwner(c) {
+			if c.Shortcut(ui.Cmd|ui.Shift, ui.Key0) || c.Shortcut(ui.Cmd|ui.Alt, ui.Key0) {
+				if sess.HandleMindMapZoomContext(c, 2) {
+					w.RequestRedraw()
+					return true
+				}
+			}
+		}
+	}
 	if c.Shortcut(ui.Cmd, ui.Key0) {
-		w.HandleZoomShortcut(0)
+		w.handleZoomShortcutWithContext(c, 0)
 		return true
 	}
 	return false
@@ -6503,13 +6530,15 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 	canEdgeLeft, canEdgeRight, edgeSafeL, edgeSafeR := w.edgeFloat.PrepareFrame(
 		c, w, vpW, layout, inSettings, aiImmersive, activeSess,
 	)
-	if activeStage != nil && !activeStage.FullWindow && !w.modals.IsRecordingShortcut() && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && c.Shortcut(0, ui.KeyEscape) {
+	noteEditorLive := activeSess != nil && activeSurf == nil && !w.noteSourceActive(activeTab)
+	sessOwnsEsc := noteEditorLive && (activeSess.HasAnnotationInputFocused(c) || activeSess.HasMindMapEscapeOwner(c))
+	if activeStage != nil && !activeStage.FullWindow && !w.modals.IsRecordingShortcut() && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !sessOwnsEsc && c.Shortcut(0, ui.KeyEscape) {
 		if sup := w.Plugins(); sup != nil {
 			sup.CloseStage(activeStage.PluginID, activeStage.StageID)
 		}
 	}
 	// Handle narrow sidebar drawer Escape before activeSess.Render registers its window Escape shortcut.
-	if layout.SidebarDrawer && !aiImmersive && !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !w.sidebarUI.HasActiveOverlay() && (activeSess == nil || !activeSess.HasAnnotationInputFocused(c)) && c.Shortcut(0, ui.KeyEscape) {
+	if layout.SidebarDrawer && !aiImmersive && !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !w.sidebarUI.HasActiveOverlay() && !sessOwnsEsc && c.Shortcut(0, ui.KeyEscape) {
 		w.ToggleSidebar(vpW)
 		layout.SidebarDrawer = false
 	}

@@ -1053,11 +1053,34 @@ func (q *QuickNoteController) OpenFind(replace bool) {
 	}
 	if replace {
 		sess.OpenFindReplace()
-	} else {
+	} else if !sess.OpenMindMapFind() {
 		sess.ToggleFind()
 	}
 	if win != nil {
 		win.Invalidate()
+	}
+}
+
+// HandleZoomShortcut routes zoom shortcuts to a focused MindMap block in the
+// active Quick Note slot first, falling back to Quick Note panel zoom.
+func (q *QuickNoteController) HandleZoomShortcut(mode int) {
+	q.mu.Lock()
+	sess := q.sessions[q.activeSlot]
+	win := q.win
+	q.mu.Unlock()
+	if sess != nil && sess.HandleMindMapZoom(mode) {
+		if win != nil {
+			win.Invalidate()
+		}
+		return
+	}
+	switch {
+	case mode > 0:
+		q.StepZoom(quickStepZoomPct)
+	case mode < 0:
+		q.StepZoom(-quickStepZoomPct)
+	default:
+		q.ResetZoom()
 	}
 }
 
@@ -1651,7 +1674,11 @@ func (q *QuickNoteController) renderViewPaper(c *ui.Context) {
 			return
 		}
 	}
-	if c.Shortcut(0, ui.KeyEscape) {
+	// A focused MindMap owns ⌘1/2/3 (view switch); only yield Esc while the
+	// MindMap has an active cancelable edit, popup, find bar, gesture, or zoom.
+	mindMapFocused := sess != nil && sess.HasMindMapFocus(c)
+	mindMapOwnsEsc := sess != nil && sess.HasMindMapEscapeOwner(c)
+	if !mindMapOwnsEsc && c.Shortcut(0, ui.KeyEscape) {
 		if sess != nil && sess.DismissTransientOverlay() {
 			q.syncActiveSlotIfDirty()
 			return
@@ -1668,13 +1695,14 @@ func (q *QuickNoteController) renderViewPaper(c *ui.Context) {
 		}
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.Key1) {
+	// Leave ⌘1/2/3 to the MindMap view switcher while a MindMap is focused.
+	if !mindMapFocused && c.Shortcut(ui.Cmd, ui.Key1) {
 		q.switchSlot(0)
 		activeSlot = 0
-	} else if c.Shortcut(ui.Cmd, ui.Key2) {
+	} else if !mindMapFocused && c.Shortcut(ui.Cmd, ui.Key2) {
 		q.switchSlot(1)
 		activeSlot = 1
-	} else if c.Shortcut(ui.Cmd, ui.Key3) {
+	} else if !mindMapFocused && c.Shortcut(ui.Cmd, ui.Key3) {
 		q.switchSlot(2)
 		activeSlot = 2
 	} else if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
@@ -1682,12 +1710,29 @@ func (q *QuickNoteController) renderViewPaper(c *ui.Context) {
 	}
 
 	zoom := q.currentZoom()
+	mindMapZoomOwner := sess != nil && sess.HasMindMapZoomOwner(c)
 	if c.Shortcut(ui.Cmd, ui.KeyEqual) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEqual) {
-		zoom = q.StepZoom(quickStepZoomPct)
+		if mindMapZoomOwner && sess.HandleMindMapZoomContext(c, 1) {
+			c.Invalidate()
+		} else {
+			zoom = q.StepZoom(quickStepZoomPct)
+		}
 	} else if c.Shortcut(ui.Cmd, ui.KeyMinus) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyMinus) {
-		zoom = q.StepZoom(-quickStepZoomPct)
+		if mindMapZoomOwner && sess.HandleMindMapZoomContext(c, -1) {
+			c.Invalidate()
+		} else {
+			zoom = q.StepZoom(-quickStepZoomPct)
+		}
+	} else if mindMapZoomOwner && (c.Shortcut(ui.Cmd|ui.Shift, ui.Key0) || c.Shortcut(ui.Cmd|ui.Alt, ui.Key0)) {
+		if sess.HandleMindMapZoomContext(c, 2) {
+			c.Invalidate()
+		}
 	} else if c.Shortcut(ui.Cmd, ui.Key0) {
-		zoom = q.ResetZoom()
+		if mindMapZoomOwner && sess.HandleMindMapZoomContext(c, 0) {
+			c.Invalidate()
+		} else {
+			zoom = q.ResetZoom()
+		}
 	}
 	if c.Zoom() != zoom {
 		c.SetZoom(zoom)

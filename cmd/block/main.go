@@ -242,12 +242,6 @@ func main() {
 			ws.QuickNote().OpenFind(replace)
 			return
 		}
-		if !replace && !ws.Modals().IsSettingsOpen() && !ws.Modals().HasActiveModal() && !ws.Export().IsOpen() && !ws.IsPageHistoryOpen() && ws.ActiveSurface() == nil {
-			if sess := ws.ActiveSession(); sess != nil && !sess.IsLightboxOpen() && sess.OpenMindMapFind() {
-				ws.RequestRedraw()
-				return
-			}
-		}
 		ws.TriggerFind(replace)
 	}
 
@@ -330,7 +324,7 @@ func main() {
 				return
 			}
 			if ws.QuickNote().IsFocused() {
-				ws.QuickNote().ResetZoom()
+				ws.QuickNote().HandleZoomShortcut(0)
 				return
 			}
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
@@ -343,7 +337,7 @@ func main() {
 				return
 			}
 			if ws.QuickNote().IsFocused() {
-				ws.QuickNote().StepZoom(10)
+				ws.QuickNote().HandleZoomShortcut(1)
 				return
 			}
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
@@ -356,7 +350,7 @@ func main() {
 				return
 			}
 			if ws.QuickNote().IsFocused() {
-				ws.QuickNote().StepZoom(-10)
+				ws.QuickNote().HandleZoomShortcut(-1)
 				return
 			}
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {

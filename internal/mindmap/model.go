@@ -633,6 +633,16 @@ func SerializeSubtreeMarkdown(n *Node) string {
 	if len(n.Children) == 0 && n.Task == nil && strings.TrimSpace(n.Link) == "" {
 		return encodeNodeLineBreaks(n.Text)
 	}
+	return SerializeSubtreeListItemMarkdown(n)
+}
+
+// SerializeSubtreeListItemMarkdown always serializes n (and its descendants) as
+// Markdown list items so multi-node copy/cut encodes plain leaves, empty leaves,
+// and structured subtrees uniformly.
+func SerializeSubtreeListItemMarkdown(n *Node) string {
+	if n == nil {
+		return ""
+	}
 	var b strings.Builder
 	var writeNode func(cur *Node, depth int)
 	writeNode = func(cur *Node, depth int) {

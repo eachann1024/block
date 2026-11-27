@@ -43,6 +43,9 @@ const (
 	outlineActExitFullscreen
 	outlineActAddChild
 	outlineActDeleteNode
+	outlineActDuplicate
+	outlineActEditLink
+	outlineActToggleTaskProp
 )
 
 type outlineAction struct {
@@ -189,18 +192,36 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
-func isOutlinePrimaryMod(mods ui.Modifiers) bool {
-	if theme.IsMacOS() {
-		return mods == ui.Cmd
+func isOutlineRedoKey(mods ui.Modifiers, key ui.Key) bool {
+	if isMMPrimaryShiftMod(mods) && key == ui.KeyZ {
+		return true
 	}
-	return mods == ui.Ctrl || mods == ui.Cmd
+	return isMMPrimaryMod(mods) && key == ui.KeyY
 }
 
-func isOutlinePrimaryShiftMod(mods ui.Modifiers) bool {
-	if theme.IsMacOS() {
-		return mods == ui.Cmd|ui.Shift
+// outlineVisibleFocusTarget picks a row that is actually rendered under the
+// zoomed outline root: the remembered row, else the selection, else the root;
+// a row hidden inside a folded ancestor falls back to that visible ancestor.
+func outlineVisibleFocusTarget(activeRoot *Node, focusID, selectedID int) int {
+	target := activeRoot
+	for _, id := range []int{focusID, selectedID} {
+		if id == 0 {
+			continue
+		}
+		if n := activeRoot.FindByID(id); n != nil {
+			target = n
+			break
+		}
 	}
-	return mods == ui.Ctrl|ui.Shift || mods == ui.Cmd|ui.Shift
+	for p := target.Parent; p != nil && target != activeRoot; p = p.Parent {
+		if p.Folded {
+			target = p
+		}
+		if p == activeRoot {
+			break
+		}
+	}
+	return target.ID
 }
 
 func (st *BlockState) focusOutlineNode(nodeID, caret int) {
@@ -211,10 +232,31 @@ func (st *BlockState) focusOutlineNode(nodeID, caret int) {
 	st.OutlineCaretTarget = caret
 }
 
+func (st *BlockState) commitOutlineLiveText(nodeID int, raw string, cb Callbacks) {
+	if cb.ReadOnly || st.Root == nil || nodeID == 0 {
+		return
+	}
+	n := st.Root.FindByID(nodeID)
+	if n == nil {
+		return
+	}
+	next := normalizeNodeLineEndings(raw)
+	if next == n.Text {
+		return
+	}
+	if st.OutlineUndoNodeID != nodeID {
+		st.pushUndo()
+		st.OutlineUndoNodeID = nodeID
+	}
+	n.Text = next
+	st.commitChange(cb)
+}
+
 // renderOutlineView renders a Mubu-style direct-edit outliner aligned with Ocean Paper tokens
 // and Block's native list bullet, vertical guide, and todo checkbox design language.
 func (st *BlockState) renderOutlineView(c *ui.Context, id string, fullscreen bool, cb Callbacks) {
 	st.LastCanvasFocused = false
+	st.OutlineComposing = false
 	pal := theme.Ocean()
 	activeRoot := st.outlineActiveRoot()
 	if activeRoot == nil {
@@ -228,12 +270,12 @@ func (st *BlockState) renderOutlineView(c *ui.Context, id string, fullscreen boo
 		padX = theme.Space24
 	}
 
-	if !fullscreen && st.consumeFullscreenFocusRestore() {
-		if st.OutlineFocusID == 0 || st.Root == nil || st.Root.FindByID(st.OutlineFocusID) == nil {
-			st.OutlineFocusID = activeRoot.ID
-		}
+	fsRestore := !fullscreen && st.consumeFullscreenFocusRestore()
+	reqFocus, reqPreventScroll := st.consumeViewFocus()
+	if fsRestore || reqFocus {
+		st.OutlineFocusID = outlineVisibleFocusTarget(activeRoot, st.OutlineFocusID, st.SelectedID)
 		st.OutlineFocusPending = true
-		st.OutlineFocusPreventScroll = true
+		st.OutlineFocusPreventScroll = fsRestore || reqPreventScroll
 		if cb.OnRequestFocus != nil {
 			cb.OnRequestFocus()
 		}
@@ -293,6 +335,9 @@ func (st *BlockState) renderOutlineView(c *ui.Context, id string, fullscreen boo
 				}
 			})
 		})
+		if outer.FocusWithin() || st.OutlineFocusPending || focusJustMoved {
+			st.tabFocusClaimedThisFrame = true
+		}
 	})
 
 	// Only discard earlier requests that could not find their target. A click
@@ -307,6 +352,9 @@ func (st *BlockState) renderOutlineView(c *ui.Context, id string, fullscreen boo
 		act := st.outlinePending
 		st.outlinePending = nil
 		st.applyOutlineAction(c, act, fullscreen, cb)
+		if st.OutlineFocusPending {
+			st.tabFocusClaimedThisFrame = true
+		}
 	}
 }
 
@@ -374,33 +422,66 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 			ta.ReadOnly(true)
 		}
 
+		if st.OutlineInsertNewlineID == rootID && !cb.ReadOnly {
+			st.OutlineInsertNewlineID = 0
+			s0, s1 := ta.TextSelection()
+			ta.ReplaceText(s0, s1, "\n")
+		}
+		if ta.Composing() {
+			st.OutlineComposing = true
+		}
 		ta.OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyUnknown {
+				return false
+			}
 			if st.captureBlockTextKey(k) {
+				st.commitOutlineLiveText(rootID, k.Text(), cb)
 				return true
 			}
-			if isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyZ {
+			if !st.FindOpen && cb.OnHostNavKey != nil && cb.OnHostNavKey(k.Key, k.Mods) {
+				st.commitOutlineLiveText(rootID, k.Text(), cb)
+				return true
+			}
+			live := k.Text()
+			s0, s1 := st.estimateOutlineSelection(rootID, live)
+			if isMMPrimaryMod(k.Mods) && k.Key == ui.KeyZ {
 				if !cb.ReadOnly {
 					st.outlinePending = &outlineAction{kind: outlineActUndo}
 					return true
 				}
 			}
-			if (isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyZ) || (isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyY) {
+			if isOutlineRedoKey(k.Mods, k.Key) {
 				if !cb.ReadOnly {
 					st.outlinePending = &outlineAction{kind: outlineActRedo}
 					return true
 				}
 			}
-			if isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyPeriod {
+			if (isMMPrimaryShiftMod(k.Mods) && k.Key == ui.KeyPeriod) || (isMMPrimaryAltMod(k.Mods) && k.Key == ui.KeySlash) {
 				st.outlinePending = &outlineAction{kind: outlineActToggleFoldAll}
 				return true
 			}
+			if isMMPrimaryMod(k.Mods) && k.Key == ui.KeyL {
+				if !cb.ReadOnly {
+					st.outlinePending = &outlineAction{kind: outlineActEditLink, nodeID: rootID, text: live, selStart: s0, selEnd: s1}
+					return true
+				}
+			}
 			if k.Mods == 0 && k.Key == ui.KeyEscape {
+				if st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.LinkNodeID != 0 {
+					return false
+				}
 				if st.OutlineZoomID != 0 {
 					st.outlinePending = &outlineAction{kind: outlineActZoomOut}
 					return true
 				}
 				if fullscreen {
 					st.outlinePending = &outlineAction{kind: outlineActExitFullscreen}
+					return true
+				}
+			}
+			if k.Mods == ui.Alt && k.Key == ui.KeyEnter {
+				if !cb.ReadOnly {
+					st.OutlineInsertNewlineID = rootID
 					return true
 				}
 			}
@@ -411,8 +492,6 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 				}
 			}
 			if k.Mods == 0 && k.Key == ui.KeyDown {
-				live := k.Text()
-				_, s1 := st.estimateOutlineSelection(rootID, live)
 				runes := []rune(live)
 				if !strings.ContainsRune(string(runes[s1:]), '\n') {
 					st.outlinePending = &outlineAction{kind: outlineActTitleDown}
@@ -589,30 +668,61 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 				}
 
 				nodeID := node.ID
+				if st.OutlineInsertNewlineID == nodeID && !cb.ReadOnly {
+					st.OutlineInsertNewlineID = 0
+					s0, s1 := ta.TextSelection()
+					ta.ReplaceText(s0, s1, "\n")
+				}
+				if ta.Composing() {
+					st.OutlineComposing = true
+				}
 				ta.OnTextKey(func(k ui.TextKey) bool {
+					if k.Key == ui.KeyUnknown {
+						return false
+					}
 					if st.captureBlockTextKey(k) {
+						st.commitOutlineLiveText(nodeID, k.Text(), cb)
+						return true
+					}
+					if !st.FindOpen && cb.OnHostNavKey != nil && cb.OnHostNavKey(k.Key, k.Mods) {
+						st.commitOutlineLiveText(nodeID, k.Text(), cb)
 						return true
 					}
 					live := k.Text()
 					s0, s1 := st.estimateOutlineSelection(nodeID, live)
 					switch {
-					case isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyZ:
+					case isMMPrimaryMod(k.Mods) && k.Key == ui.KeyZ:
 						if !cb.ReadOnly {
 							st.outlinePending = &outlineAction{kind: outlineActUndo}
 							return true
 						}
-					case (isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyZ) || (isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyY):
+					case isOutlineRedoKey(k.Mods, k.Key):
 						if !cb.ReadOnly {
 							st.outlinePending = &outlineAction{kind: outlineActRedo}
 							return true
 						}
-					case isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyPeriod:
+					case (isMMPrimaryShiftMod(k.Mods) && k.Key == ui.KeyPeriod) || (isMMPrimaryAltMod(k.Mods) && k.Key == ui.KeySlash):
 						st.outlinePending = &outlineAction{kind: outlineActToggleFoldAll}
 						return true
-					case isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyPeriod:
+					case (isMMPrimaryMod(k.Mods) && k.Key == ui.KeyPeriod) || (isMMPrimaryMod(k.Mods) && k.Key == ui.KeySlash):
 						st.outlinePending = &outlineAction{kind: outlineActToggleFold, nodeID: nodeID, text: live, selStart: s0, selEnd: s1}
 						return true
-					case isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyEnter:
+					case isMMPrimaryMod(k.Mods) && k.Key == ui.KeyD:
+						if !cb.ReadOnly {
+							st.outlinePending = &outlineAction{kind: outlineActDuplicate, nodeID: nodeID, text: live, selStart: s0, selEnd: s1}
+							return true
+						}
+					case isMMPrimaryMod(k.Mods) && k.Key == ui.KeyL:
+						if !cb.ReadOnly {
+							st.outlinePending = &outlineAction{kind: outlineActEditLink, nodeID: nodeID, text: live, selStart: s0, selEnd: s1}
+							return true
+						}
+					case isMMPrimaryAltMod(k.Mods) && k.Key == ui.KeyT:
+						if !cb.ReadOnly {
+							st.outlinePending = &outlineAction{kind: outlineActToggleTaskProp, nodeID: nodeID, text: live, selStart: s0, selEnd: s1}
+							return true
+						}
+					case isMMPrimaryMod(k.Mods) && k.Key == ui.KeyEnter:
 						if !cb.ReadOnly {
 							st.outlinePending = &outlineAction{kind: outlineActToggleTask, nodeID: nodeID, text: live, selStart: s0, selEnd: s1}
 							return true
@@ -625,6 +735,11 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 					case k.Mods == ui.Alt && k.Key == ui.KeyDown:
 						if !cb.ReadOnly {
 							st.outlinePending = &outlineAction{kind: outlineActMoveDown, nodeID: nodeID, text: live, selStart: s0, selEnd: s1}
+							return true
+						}
+					case k.Mods == ui.Alt && k.Key == ui.KeyEnter:
+						if !cb.ReadOnly {
+							st.OutlineInsertNewlineID = nodeID
 							return true
 						}
 					case k.Mods == 0 && k.Key == ui.KeyEnter:
@@ -663,6 +778,9 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 							return true
 						}
 					case k.Mods == 0 && k.Key == ui.KeyEscape:
+						if st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.LinkNodeID != 0 {
+							return false
+						}
 						if st.OutlineZoomID != 0 {
 							st.outlinePending = &outlineAction{kind: outlineActZoomOut}
 							return true
@@ -1148,6 +1266,23 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		st.focusOutlineNode(created.ID, 0)
 		c.Invalidate()
 		return
+	case outlineActEditLink:
+		if cb.ReadOnly {
+			return
+		}
+		target := activeRoot.FindByID(act.nodeID)
+		if target == nil {
+			return
+		}
+		live := normalizeNodeLineEndings(act.text)
+		if live != target.Text {
+			st.pushUndo()
+			target.Text = live
+			st.commitChange(cb)
+		}
+		st.beginLinkEdit(target)
+		c.Invalidate()
+		return
 	}
 
 	node := activeRoot.FindByID(act.nodeID)
@@ -1157,6 +1292,35 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 	live := normalizeNodeLineEndings(act.text)
 
 	switch act.kind {
+	case outlineActDuplicate:
+		if cb.ReadOnly || node.Parent == nil {
+			return
+		}
+		node.Text = live
+		st.pushUndo()
+		st.OutlineUndoNodeID = 0
+		cp := node.Clone()
+		st.NextID = cp.AssignIDs(st.NextID)
+		cp.Parent = node.Parent
+		idx := node.IndexInParent()
+		kids := node.Parent.Children
+		kids = append(kids, nil)
+		copy(kids[idx+2:], kids[idx+1:])
+		kids[idx+1] = cp
+		node.Parent.Children = kids
+		st.SelectedID = cp.ID
+		st.commitChange(cb)
+		st.focusOutlineNode(cp.ID, utf8.RuneCountInString(cp.Text))
+		c.Invalidate()
+	case outlineActToggleTaskProp:
+		if cb.ReadOnly {
+			return
+		}
+		node.Text = live
+		st.OutlineUndoNodeID = 0
+		st.opToggleTask(node, cb)
+		st.focusOutlineNode(node.ID, act.selStart)
+		c.Invalidate()
 	case outlineActDeleteNode:
 		if cb.ReadOnly || node.Parent == nil {
 			return

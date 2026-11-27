@@ -56,6 +56,9 @@ func (s *Session) HasScrollablePopupOpen() bool {
 // and reports whether anything was dismissed. Used by Quick Note so Escape closes popups first
 // before hiding the panel.
 func (s *Session) DismissTransientOverlay() bool {
+	if s.dismissMindMapTransient() {
+		return true
+	}
 	if s.inlineAI != nil {
 		s.aiEscape()
 		return true

@@ -441,6 +441,8 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderMediaLightbox(c)
 		s.renderMindMapFullscreen(c, readOnly)
 		s.renderHoveredPathTooltip(c)
+		// MindMaps rendered this frame report Tab ownership via frameTabChildFocused;
+		// a MindMap that stopped rendering cannot leave a stale claim behind.
 		if s.rootHandle.FocusWithin(c) && !s.frameTabChildFocused {
 			root.Shortcut(0, ui.KeyTab)
 			root.Shortcut(ui.Shift, ui.KeyTab)
@@ -516,7 +518,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if appUi.MatchShortcut(c, appUi.FindReplaceShortcut()) {
 		s.OpenFindReplace()
 	}
-	if s.findOpen {
+	if s.findOpen && !s.HasMindMapFindActive(c) {
 		if theme.IsMacOS() {
 			if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyG) {
 				s.FindPrev()
@@ -532,7 +534,8 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 		}
 	}
 	outlineInputFocused := s.outlineInputHandle.Focused(c)
-	if !annotInputFocused && !outlineInputFocused && c.Shortcut(0, ui.KeyEscape) {
+	mindMapOwnsEsc := s.HasMindMapEscapeOwner(c)
+	if !annotInputFocused && !outlineInputFocused && !mindMapOwnsEsc && c.Shortcut(0, ui.KeyEscape) {
 		if s.dragBlockID != 0 {
 			s.cancelBlockDrag()
 		} else if s.isTableExtending() {
@@ -548,7 +551,11 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 			s.closeTransientOverlays()
 		}
 	}
-	s.handlePlanReviewShortcuts(c, annotInputFocused)
+	// A pending plan makes MindMaps read-only, so the canvas yields ⌘↵ / ⌘⌫ to
+	// plan review; MindMap text inputs (find, source) keep their own keys.
+	if !mindMapFocused || !c.FocusTakesText() {
+		s.handlePlanReviewShortcuts(c, annotInputFocused)
+	}
 	if readOnly {
 		return
 	}
@@ -1717,7 +1724,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 					s.ToggleMarkOnSelection(model.MarkStrike)
 					return true
 				case s.isFindShortcut(mods, key):
-					if s.OpenMindMapFind() {
+					if s.HasMindMapFullscreen() && s.OpenMindMapFind() {
 						s.requestRedraw()
 						return true
 					}

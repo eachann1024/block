@@ -137,7 +137,7 @@ func BuildMenuBarForOS(goos string, shortcuts map[string]string, act MenuActions
 	}
 	viewSubmenu = append(viewSubmenu,
 		mygo.Separator(),
-		&mygo.MenuItem{ID: "menu-zoom-reset", Label: theme.Tr("实际大小 (100%)", "Actual Size (100%)"), Accelerator: "CmdOrCtrl+0", Click: call(act.OnZoomReset)},
+		&mygo.MenuItem{ID: "menu-zoom-reset", Label: theme.Tr("重置缩放", "Reset Zoom"), Accelerator: "CmdOrCtrl+0", Click: call(act.OnZoomReset)},
 		&mygo.MenuItem{ID: "menu-zoom-in", Label: theme.Tr("放大", "Zoom In"), Accelerator: "CmdOrCtrl+=", Click: call(act.OnZoomIn)},
 		&mygo.MenuItem{ID: "menu-zoom-out", Label: theme.Tr("缩小", "Zoom Out"), Accelerator: "CmdOrCtrl+-", Click: call(act.OnZoomOut)},
 		mygo.Separator(),

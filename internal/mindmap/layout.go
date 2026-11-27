@@ -910,11 +910,12 @@ func nodeFirstLineCenterY(n *Node) float32 {
 
 // PaintOptions configures how PaintScene renders a mind map onto a ui.Painter.
 type PaintOptions struct {
-	SelectedID int
-	HoveredID  int
-	HoveredHit HitKind
-	EditingID  int
-	Palette    theme.Palette
+	SelectedID  int
+	SelectedIDs map[int]bool
+	HoveredID   int
+	HoveredHit  HitKind
+	EditingID   int
+	Palette     theme.Palette
 	// Background fills the viewport before painting if FillBackground is true.
 	FillBackground bool
 	Background     ui.Color
@@ -937,6 +938,10 @@ type PaintOptions struct {
 	DragPos      DragDropPos
 	DragGhostX   float32 // Pointer X relative to viewport r.X
 	DragGhostY   float32 // Pointer Y relative to viewport r.Y
+
+	// Box-selection marquee in canvas-local DIPs relative to r.X, r.Y.
+	BoxSelectActive bool
+	BoxSelectRect   ui.Rect
 }
 
 // PaintScene renders the entire mind map (edges, nodes, checkboxes, links, fold badges,
@@ -1052,7 +1057,8 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						sw = 2.2
 					}
 					p.StrokePath(&path, max(sw*scale, 1), col)
-					if n.Depth > 1 && n.ID == opt.SelectedID && n.ID != opt.EditingID {
+					isNodeSel := (n.ID == opt.SelectedID || opt.SelectedIDs[n.ID]) && n.ID != opt.EditingID
+					if n.Depth > 1 && isNodeSel {
 						var selLine ui.Path
 						selLine.Cap(ui.RoundCap)
 						selLine.MoveTo(wxToScreen(n.X+0.5), wyToScreen(ny))
@@ -1122,7 +1128,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				rect := ui.Rect{X: sx, Y: sy, W: sw, H: sh}
 
 				isEditing := n.ID == opt.EditingID
-				isSelected := n.ID == opt.SelectedID && !isEditing
+				isPrimary := n.ID == opt.SelectedID && !isEditing
+				isSelected := (isPrimary || opt.SelectedIDs[n.ID]) && !isEditing
+				multiActive := len(opt.SelectedIDs) > 1
 				isHovered := n.ID == opt.HoveredID && !isSelected && !isEditing && opt.DragNodeID == 0
 				hasLink := strings.TrimSpace(n.Link) != ""
 				linkStatus := LinkStatusNone
@@ -1188,6 +1196,13 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 							fillCol = pal.SelectionBG
 							strokeCol = pal.Accent
 							strokeW = max(1.5*scale, 1.2)
+							if multiActive {
+								if isPrimary {
+									strokeW = max(1.9*scale, 1.5)
+								} else {
+									strokeCol = pal.Accent.Alpha(0.70)
+								}
+							}
 							if dimFactor < 1 {
 								fillCol = fillCol.Alpha(0.45)
 								strokeCol = strokeCol.Alpha(0.45)
@@ -1234,6 +1249,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 							selBG = selBG.Alpha(0.45)
 						}
 						p.Fill(leafR, selBG, leafRad)
+						if multiActive && isPrimary {
+							p.Stroke(leafR, pal.Accent.Alpha(0.75), leafRad, max(1.2*scale, 1.0))
+						}
 					} else if isHovered {
 						hoverAlpha := float32(0.06)
 						if pal.Dark {
@@ -1397,8 +1415,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				// Root node uses an outset selection pill ring; depth >= 1 uses soft selection tint.
 				if isSelected && n.Depth == 0 {
 					ringStroke := pal.Accent
+					if multiActive && !isPrimary {
+						ringStroke = pal.Accent.Alpha(0.75)
+					}
 					if dimFactor < 1 {
-						ringStroke = pal.Accent.Alpha(0.45)
+						ringStroke = ringStroke.Alpha(0.45)
 					}
 					p.Stroke(ringR, ringStroke, ringRad, max(1.6*scale, 1.2))
 				}
@@ -1576,6 +1597,22 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					p.RichText(gx+theme.Space10, gy+theme.Space6+th+2, 0, hintSpan)
 				}
 			})
+		}
+
+		// Pass 4: Translucent box-selection marquee.
+		if opt.BoxSelectActive && (opt.BoxSelectRect.W > 0 || opt.BoxSelectRect.H > 0) {
+			mr := ui.Rect{
+				X: r.X + opt.BoxSelectRect.X,
+				Y: r.Y + opt.BoxSelectRect.Y,
+				W: max(opt.BoxSelectRect.W, 1),
+				H: max(opt.BoxSelectRect.H, 1),
+			}
+			fillCol := pal.SelectionBG.Alpha(0.45)
+			if pal.Dark {
+				fillCol = pal.SelectionBG.Alpha(0.55)
+			}
+			p.Fill(mr, fillCol, theme.RadiusXS)
+			p.Stroke(mr, pal.Accent.Alpha(0.70), theme.RadiusXS, 1)
 		}
 	})
 }

@@ -87,9 +87,8 @@ func (s *Session) HasMindMapFullscreen() bool {
 	return active
 }
 
-// HasMindMapFocus reports whether any live MindMap block currently owns keyboard focus.
-func (s *Session) HasMindMapFocus(c *ui.Context) bool {
-	if s == nil || c == nil || s.doc == nil || len(s.mindMapStates) == 0 {
+func (s *Session) hasMindMapStateMatching(pred func(*mindmap.BlockState) bool) bool {
+	if s == nil || s.doc == nil || len(s.mindMapStates) == 0 {
 		return false
 	}
 	for i := range s.doc.Blocks {
@@ -97,11 +96,64 @@ func (s *Session) HasMindMapFocus(c *ui.Context) bool {
 		if b.Kind != model.BlockCode || codepreview.CanonicalLanguage(b.Language) != "mindmap" {
 			continue
 		}
-		if st := s.mindMapStates[b.ID]; st != nil && st.HasFocus(c) {
+		if st := s.mindMapStates[b.ID]; st != nil && pred(st) {
 			return true
 		}
 	}
 	return false
+}
+
+// HasMindMapFocus reports whether any live MindMap block currently owns keyboard focus.
+func (s *Session) HasMindMapFocus(c *ui.Context) bool {
+	return c != nil && s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
+		return st.HasFocus(c)
+	})
+}
+
+// HasMindMapEscapeOwner reports whether any live MindMap block currently owns Escape
+// (inline node editing, IME composition, find/link inputs, popovers, drag/box-select,
+// multi-selection, outline zoom, or fullscreen overlay).
+func (s *Session) HasMindMapEscapeOwner(c *ui.Context) bool {
+	return s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
+		return st.HasEscapeOwner(c)
+	})
+}
+
+// HasMindMapZoomOwner reports whether any live MindMap block currently owns canvas zoom shortcuts.
+func (s *Session) HasMindMapZoomOwner(c *ui.Context) bool {
+	return s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
+		return st.HasZoomOwner(c)
+	})
+}
+
+// HasMindMapFindActive reports whether any live MindMap block has its in-canvas
+// Find bar open and currently owns focus (or fullscreen).
+func (s *Session) HasMindMapFindActive(c *ui.Context) bool {
+	return s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
+		return st.HasFindActive(c)
+	})
+}
+
+// CapturesMindMapShortcut reports whether any focused live MindMap block handles
+// the given keyboard shortcut in its current view and state.
+func (s *Session) CapturesMindMapShortcut(c *ui.Context, mods ui.Modifiers, key ui.Key) bool {
+	return c != nil && s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
+		return st.CapturesShortcut(c, mods, key)
+	})
+}
+
+// HasMindMapCanvasFocus reports whether a MindMap canvas (not one of its text
+// fields) currently holds keyboard focus.
+func (s *Session) HasMindMapCanvasFocus(c *ui.Context) bool {
+	return c != nil && s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
+		return st.HasCanvasFocus(c)
+	})
+}
+
+func (s *Session) hasActiveMindMapLocalModalOrEdit() bool {
+	return s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
+		return st.EditingID != 0 || st.LinkNodeID != 0 || st.FindOpen || st.ComposeText != "" || st.OutlineComposing || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.BoxSelecting || st.Panning || st.DragActive || st.DragNodeID != 0
+	})
 }
 
 // CloseMindMapFullscreen exits fullscreen mode for any active MindMap block.
@@ -116,10 +168,31 @@ func (s *Session) CloseMindMapFullscreen() {
 	}
 }
 
-// HandleMindMapZoom handles Cmd+0 / Cmd+= / Cmd+- from the native menu bar when
-// a MindMap block is open in fullscreen or currently focused in Map view.
-// mode: 0 = fit, >0 = zoom in, <0 = zoom out.
+func (s *Session) dismissMindMapTransient() bool {
+	if s == nil || s.doc == nil || len(s.mindMapStates) == 0 {
+		return false
+	}
+	for i := range s.doc.Blocks {
+		b := &s.doc.Blocks[i]
+		if b.Kind != model.BlockCode || codepreview.CanonicalLanguage(b.Language) != "mindmap" {
+			continue
+		}
+		if st := s.mindMapStates[b.ID]; st != nil && st.DismissTransient(s.mindMapCallbacks(nil, b.ID, s.readOnly)) {
+			return true
+		}
+	}
+	return false
+}
+
+// HandleMindMapZoom handles Cmd+0 / Cmd+= / Cmd+- / 100% reset from the native menu bar when
+// a MindMap block is open in fullscreen or currently active in Map view.
+// mode: 0 = fit, 2 = 100%, >0 = zoom in, <0 = zoom out.
 func (s *Session) HandleMindMapZoom(mode int) bool {
+	return s.HandleMindMapZoomContext(nil, mode)
+}
+
+// HandleMindMapZoomContext routes zoom shortcuts using live focus context when available.
+func (s *Session) HandleMindMapZoomContext(c *ui.Context, mode int) bool {
 	if s == nil || s.doc == nil || len(s.mindMapStates) == 0 {
 		return false
 	}
@@ -137,7 +210,7 @@ func (s *Session) HandleMindMapZoom(mode int) bool {
 			target = st
 			break
 		}
-		if st.LastCanvasFocused {
+		if st.HasZoomOwner(c) {
 			target = st
 		}
 	}
@@ -147,6 +220,8 @@ func (s *Session) HandleMindMapZoom(mode int) bool {
 	switch {
 	case mode == 0:
 		target.FitCanvas()
+	case mode == 2:
+		target.ResetZoom()
 	case mode > 0:
 		target.ZoomBy(1.15)
 	default:
@@ -179,7 +254,7 @@ func (s *Session) openMindMapFind(c *ui.Context) bool {
 			target = st
 			break
 		}
-		if st.LastCanvasFocused || (c != nil && st.HasFocus(c)) || (c == nil && i == s.focusedBlock && (st.EditingID != 0 || st.LinkNodeID != 0 || st.FindOpen)) {
+		if st.HasFindOwner(c) {
 			target = st
 		}
 	}
@@ -402,7 +477,7 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 				})
 			}()
 		},
-		OnSaveExportFile: func(defaultName, ext string, data []byte, onDone func(err error)) {
+		OnSaveExportFile: func(defaultName, ext string, data []byte, onDone func(savedPath string, err error)) {
 			ext = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(ext)), ".")
 			if ext == "" {
 				ext = "md"
@@ -430,7 +505,7 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 				if err != nil {
 					mygo.RunOnMain(func() {
 						if onDone != nil {
-							onDone(err)
+							onDone("", err)
 						}
 						if s.host != nil {
 							s.host.RequestRedraw()
@@ -447,7 +522,7 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 				writeErr := writeFileAtomic(dest, data, 0o644)
 				mygo.RunOnMain(func() {
 					if onDone != nil {
-						onDone(writeErr)
+						onDone(dest, writeErr)
 					}
 					if s.host != nil {
 						s.host.RequestRedraw()
@@ -463,6 +538,15 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 		OnRequestFocus: func() {
 			if idx := s.blockIndexByID(blockID); idx >= 0 {
 				s.focusedBlock = idx
+				s.selAnchor = Position{Block: idx, Offset: 0}
+				s.selHead = Position{Block: idx, Offset: 0}
+				s.multiSelFocusPending = false
+				s.focusPending = false
+				s.focusPreventScroll = false
+				s.selSyncPending = false
+				s.tableActiveBlock = 0
+				s.caretHidden = false
+				s.detachedCompose = ""
 			}
 		},
 	}
@@ -524,10 +608,19 @@ func writeFileAtomic(dest string, data []byte, perm os.FileMode) error {
 func (s *Session) renderMindMapCodeBlock(c *ui.Context, idx int, b *model.Block, isFocused, _ bool, readOnly bool) {
 	st := s.mindMapState(b.ID)
 	st.SetEditorBounds(s.editorRect)
+	if isFocused && s.focusPending && !s.needsDetachedSelectionFocus() {
+		st.RequestFocus(s.focusPreventScroll)
+		s.focusPending = false
+		s.focusPreventScroll = false
+		s.selSyncPending = false
+	}
 	cfg := s.effectiveMindMapConfig()
 	id := fmt.Sprintf("block-%d", b.ID)
 	cb := s.mindMapCallbacks(c, b.ID, readOnly)
 	st.RenderInline(c, id, b.Code, cfg, isFocused, cb)
+	if st.HasTabFocus(c) {
+		s.frameTabChildFocused = true
+	}
 }
 
 func (s *Session) renderMindMapFullscreen(c *ui.Context, readOnly bool) {
@@ -549,6 +642,9 @@ func (s *Session) renderMindMapFullscreen(c *ui.Context, readOnly bool) {
 		id := fmt.Sprintf("block-%d", b.ID)
 		cb := s.mindMapCallbacks(c, b.ID, readOnly)
 		st.RenderFullscreen(c, id, b.Code, cfg, cb)
+		if st.HasTabFocus(c) {
+			s.frameTabChildFocused = true
+		}
 		return
 	}
 }
