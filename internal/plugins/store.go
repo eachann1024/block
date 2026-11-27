@@ -349,7 +349,7 @@ func NewStoreManager(blockAppDataDir string) *StoreManager {
 		urls = append([]string{custom}, urls...)
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.Proxy = http.ProxyFromEnvironment
+	tr.Proxy = proxyForRequest
 	tr.ResponseHeaderTimeout = 10 * time.Second
 	return &StoreManager{
 		AppsRoot:     filepath.Join(blockAppDataDir, "apps"),

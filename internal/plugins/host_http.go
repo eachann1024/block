@@ -113,6 +113,16 @@ func validateDialAddr(addr netip.Addr, reqHost string, networkDomains []string) 
 	return nil
 }
 
+func proxyForRequest(req *http.Request) (*url.URL, error) {
+	if u, err := http.ProxyFromEnvironment(req); err != nil || u != nil {
+		return u, err
+	}
+	if req == nil || req.URL == nil {
+		return nil, nil
+	}
+	return systemProxyForRequest(req.URL), nil
+}
+
 func (rt *Runtime) newHTTPTransport(timeout time.Duration) *http.Transport {
 	var tr *http.Transport
 	if base, ok := http.DefaultTransport.(*http.Transport); ok && base != nil {
@@ -147,7 +157,7 @@ func (rt *Runtime) newHTTPTransport(timeout time.Duration) *http.Transport {
 		if rt.lookupNetIP != nil {
 			return nil, nil
 		}
-		return http.ProxyFromEnvironment(req)
+		return proxyForRequest(req)
 	}
 
 	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
