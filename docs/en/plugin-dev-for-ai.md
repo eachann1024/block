@@ -704,13 +704,13 @@ Shared validation rules:
     - **Runtime permission**: both check `"ui:appearance"` (default-allowed at runtime even if omitted from `manifest.permissions`).
     - **Manifest validation**: declaring non-empty `contributes.themes` requires explicit `"ui:appearance"` in `manifest.permissions`.
     - **Per-method contribution requirement**:
-      - `host.ui.theme_skin_state` (`{}`): does **not** require `contributes.themes`; plugins without `themes` can call it with default permissions and receive `{"id", "enabled", "skin_id"}` with `enabled: false`.
+      - `host.ui.theme_skin_state` (`{}`): does **not** require `contributes.themes`; plugins without `themes` can call it with default permissions and receive `{"id", "enabled", "skin_id"}` (`skin_id` is optional and only returned while a skin is active; otherwise `enabled` is `false`).
       - `host.ui.set_theme_skin` (`{"id", "enabled": true|false}`): **requires** `contributes.themes`; activates or deactivates a declared theme skin and persists state in `contrib-state.json`.
 15. **`host.stage.*`**:
     - **Runtime permission**: all four methods check `"ui:appearance"`, `"ui:commands"`, or `"ui:panels"` (all three are default-allowed at runtime).
     - **Manifest validation**: declaring non-empty `contributes.stages` requires explicitly declaring at least one of `"ui:appearance"`, `"ui:commands"`, or `"ui:panels"` in `manifest.permissions`.
     - **Per-method contribution requirement**:
-      - `host.stage.open` (`{"id", "route", "state"}`; `state` accepts valid JSON `<= 2 MiB`) and `host.stage.emit` (`{"id", "event", "payload"}`; `payload <= 2 MiB`): **require** `contributes.stages`.
+      - `host.stage.open` (`{"id", "route", "state"}` -> `{"ok": true, "open": true, "stage": {...}}`) and `host.stage.emit` (`{"id", "event", "payload"}` -> `{"ok": true}`): **require** `contributes.stages` (`room` is accepted as a legacy alias of `route`; `state` and `payload` accept any valid JSON up to 2 MiB).
       - `host.stage.close` (`{"id"}`) and `host.stage.state` (`{}`): do **not** require `contributes.stages`; plugins without `stages` (or without an open stage) receive `{"ok": true, "closed": false}` and `{"open": false}` respectively (when open, `state` returns `{"open": true, "stage_id", "route", "state"}`).
 
 ### 7.5 Editor Backdrop Methods (`host.ui.backdrop` / `host.ui.set_backdrop`)

@@ -1169,7 +1169,7 @@ serve((method, params) => {
     - **运行时权限**：两个方法均检查 `"ui:appearance"`（默认放行权限，未声明时也会在运行时放行）。
     - **清单校验**：仅当插件声明非空 `contributes.themes` 时，清单加载/校验才强制要求在 `manifest.permissions` 中显式声明 `"ui:appearance"`。
     - **各方法对贡献项的要求**：
-      - `host.ui.theme_skin_state`（`{}`）：**不要求** `contributes.themes`，未声明 `themes` 的插件也可凭默认权限调用，返回 `{"id", "enabled", "skin_id"}`（无激活皮肤时 `enabled` 为 `false`）。
+      - `host.ui.theme_skin_state`（`{}`）：**不要求** `contributes.themes`，未声明 `themes` 的插件也可凭默认权限调用，返回 `{"id", "enabled", "skin_id"}`（`skin_id` 可选，仅在有激活皮肤时返回；无激活皮肤时 `enabled` 为 `false`）。
       - `host.ui.set_theme_skin`（`{"id", "enabled": true|false}`）：**须声明 `contributes.themes`**；应用或关闭声明的主题皮肤并持久化于 `contrib-state.json`，同时停用其他插件皮肤。
 15. **`host.stage.*`**
     - **运行时权限**：四个方法均检查 `"ui:appearance"` / `"ui:commands"` / `"ui:panels"` 之一（三者均属默认放行权限，未声明时也会在运行时放行）。
