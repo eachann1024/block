@@ -667,7 +667,8 @@ func (m *Manifest) RedundantPermissions() []Permission {
 	}
 	var out []Permission
 	for _, p := range m.Permissions {
-		if IsExemptPermission(p) {
+		// ui:sidebar is required for the directory filter, while older sidebar APIs stay exempt.
+		if p != PermUISidebar && IsExemptPermission(p) {
 			out = append(out, p)
 		}
 	}

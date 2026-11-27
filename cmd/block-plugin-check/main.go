@@ -64,6 +64,9 @@ func main() {
 		}
 		fmt.Printf("[OK] file_icons: %d icon pack(s) validated cleanly\n", len(m.Contributes.FileIcons))
 	}
+	if m.Contributes != nil && len(m.Contributes.IgnoredDirs) > 0 {
+		fmt.Printf("[OK] ignored_dirs: %d directory name(s) validated\n", len(m.Contributes.IgnoredDirs))
+	}
 	if m.Contributes != nil && len(m.Contributes.Themes) > 0 {
 		if err := plugins.ValidatePluginThemes(pluginDir, m); err != nil {
 			fail("theme skin validation failed: %v", err)

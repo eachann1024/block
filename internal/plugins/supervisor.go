@@ -118,22 +118,23 @@ type PluginViewState struct {
 }
 
 type SupervisorConfig struct {
-	AppDataDir      string
-	HostVersion     string
-	GetNotebookRoot func() string
-	GetNotebooks    func() []string
-	GetActiveNote   func() string
-	GetLocale       func() string
-	GetTheme        func() string
-	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
-	PickDirectory   func(title, defaultPath string, onPicked func(path string))
-	PickFile        func(title, defaultPath string, extensions []string, onPicked func(path string))
-	AddNotebook     func(path string) error
-	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
-	ApplyNoteTrash  func(pluginID, absPath string, verify, trash func() error) error
-	OnChanged       func()
-	OnRedraw        func()
-	IsOnline        func() bool
+	AppDataDir           string
+	HostVersion          string
+	GetNotebookRoot      func() string
+	GetNotebooks         func() []string
+	GetActiveNote        func() string
+	GetLocale            func() string
+	GetTheme             func() string
+	GetPerfSnapshot      func(refreshDisk bool) (*PerfSnapshot, error)
+	PickDirectory        func(title, defaultPath string, onPicked func(path string))
+	PickFile             func(title, defaultPath string, extensions []string, onPicked func(path string))
+	AddNotebook          func(path string) error
+	ApplyNoteWrite       func(absPath, content string, write func() (bool, error)) (bool, error)
+	ApplyNoteTrash       func(pluginID, absPath string, verify, trash func() error) error
+	OnChanged            func()
+	OnIgnoredDirsChanged func()
+	OnRedraw             func()
+	IsOnline             func() bool
 	// UI lets plugins drive host UI (toasts, dialogs, panels, editor).
 	UI            UIHost
 	System        SystemHost
@@ -160,6 +161,8 @@ type Supervisor struct {
 	notebookEpoch      atomic.Uint64
 	catalog            *StoreIndex
 	installed          []InstalledApp
+	ignoredDirs        atomic.Value // immutable map[string]struct{}
+	runtimeIgnoredDirs map[string][]string
 	installEpoch       map[string]uint64
 	runtimes           map[string]*Runtime
 	stageMu            sync.RWMutex
@@ -228,6 +231,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		bgErrors:           make(map[string]map[string]BackgroundError),
 	}
 	sm.beforeReplace = s.preparePluginReplacement
+	s.refreshIgnoredDirsLocked()
 	SyncActiveLanguagesSeq(installed, NextLanguageSyncSeq())
 	s.restoreActiveThemeSkin()
 	if s.wasmEngine != nil && (!testing.Testing() || hasWasmOrJSPlugin(installed)) {
@@ -797,11 +801,14 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	}
 	var langSnap []InstalledApp
 	var langSeq uint64
+	var ignoredDirsChanged bool
 	if changed || rt != nil {
 		langSnap = append([]InstalledApp(nil), s.installed...)
 		langSeq = NextLanguageSyncSeq()
+		ignoredDirsChanged = s.refreshIgnoredDirsLocked()
 	}
 	s.mu.Unlock()
+	s.notifyIgnoredDirsChanged(ignoredDirsChanged)
 
 	if rt != nil {
 		go func() {
@@ -845,7 +852,8 @@ func (s *Supervisor) WarmupAppearancePluginsAsync() {
 		if !inst.Enabled || !shouldAutoWarmupPlugin(inst.Manifest) {
 			continue
 		}
-		if !needsTransientUISync(inst.Manifest) && s.contrib != nil && s.contrib.isWarmedUp(inst.Manifest.ID, inst.Manifest.Version) {
+		if !inst.Manifest.HasDeclaredPermission(PermUISidebar) && !needsTransientUISync(inst.Manifest) &&
+			s.contrib != nil && s.contrib.isWarmedUp(inst.Manifest.ID, inst.Manifest.Version) {
 			continue
 		}
 		s.warmupPluginAsync(inst.Manifest.ID)
@@ -875,7 +883,7 @@ func shouldAutoWarmupPlugin(m Manifest) bool {
 	if m.IsDeclarativeOnly() {
 		return false
 	}
-	if m.EffectiveCategory() == CategoryAppearance {
+	if m.EffectiveCategory() == CategoryAppearance || m.HasDeclaredPermission(PermUISidebar) {
 		return true
 	}
 	if m.Contributes == nil {
@@ -1147,7 +1155,9 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 			}
 			langSnap := s.applyInstalledLocked(inst, installedList)
 			langSeq := NextLanguageSyncSeq()
+			ignoredDirsChanged := s.refreshIgnoredDirsLocked()
 			s.mu.Unlock()
+			s.notifyIgnoredDirsChanged(ignoredDirsChanged)
 
 			SyncActiveLanguagesSeq(langSnap, langSeq)
 			if onInstalled != nil {
@@ -1390,7 +1400,9 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 		reloadTargets = s.recoverViewsAfterReplaceLocked(prevReplacing)
 	}
 	langSeq := NextLanguageSyncSeq()
+	ignoredDirsChanged := s.refreshIgnoredDirsLocked()
 	s.mu.Unlock()
+	s.notifyIgnoredDirsChanged(ignoredDirsChanged)
 	for _, k := range reloadTargets {
 		go s.reloadSurfaceViewForNotebookAsync(k.pluginID, k.notebookRoot, k.surface)
 	}
@@ -1524,7 +1536,9 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		}
 		langSnap := append([]InstalledApp(nil), s.installed...)
 		langSeq := NextLanguageSyncSeq()
+		ignoredDirsChanged := s.refreshIgnoredDirsLocked()
 		s.mu.Unlock()
+		s.notifyIgnoredDirsChanged(ignoredDirsChanged)
 		SyncActiveLanguagesSeq(langSnap, langSeq)
 		s.contrib.forgetPlugin(pluginID, wasTitlebarMgr && !hasRemainingTitlebarMgr)
 		s.clearPluginThemeSkin(pluginID)
@@ -1558,6 +1572,7 @@ func (s *Supervisor) clearUninstallErrorLocked(pluginID string) {
 }
 
 func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
+	delete(s.runtimeIgnoredDirs, pluginID)
 	delete(s.bgErrors, pluginID)
 	s.stopLiveTimersForPluginLocked(pluginID)
 	delete(s.activeActionKey, pluginID)

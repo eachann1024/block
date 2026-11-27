@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -345,9 +346,16 @@ func NewWorkspace(dataDir string) *Workspace {
 		},
 		ApplyNoteWrite: w.applyPluginNoteWrite,
 		ApplyNoteTrash: w.applyPluginNoteTrash,
-		OnChanged: func() {
-			w.RequestRedraw()
+		OnIgnoredDirsChanged: func() {
+			if w.searchWin != nil {
+				w.searchWin.Invalidate()
+			}
+			go func() {
+				w.RescanNotebook()
+				w.RequestRedraw()
+			}()
 		},
+		OnChanged:     w.RequestRedraw,
 		OnRedraw:      w.RequestRedraw,
 		UI:            w.pluginUI,
 		System:        w.pluginUI,
@@ -1081,6 +1089,7 @@ func (w *Workspace) scanOptionsLocked() files.ScanOptions {
 		HideAssets:      hideAssets,
 		ShowHidden:      w.state.ShowHiddenFiles,
 		AssetsFolder:    assetsFolder,
+		IgnoredDirs:     w.IgnoredDirs(),
 		FileOrder:       w.state.FileOrder,
 		SortMode:        w.state.TreeSort,
 	}
@@ -1116,6 +1125,7 @@ func scanOptionsEqual(a, b files.ScanOptions) bool {
 		a.ShowHidden != b.ShowHidden ||
 		a.AssetsFolder != b.AssetsFolder ||
 		a.SortMode != b.SortMode ||
+		!maps.Equal(a.IgnoredDirs, b.IgnoredDirs) ||
 		len(a.FileOrder) != len(b.FileOrder) {
 		return false
 	}
@@ -2086,6 +2096,14 @@ func (w *Workspace) Plugins() *plugins.Supervisor {
 		return nil
 	}
 	return w.pluginsUI.Supervisor()
+}
+
+// IgnoredDirs supplies the shared workspace filter to the search windows.
+func (w *Workspace) IgnoredDirs() map[string]struct{} {
+	if sup := w.Plugins(); sup != nil {
+		return sup.IgnoredDirs()
+	}
+	return nil
 }
 
 func (w *Workspace) notifyPluginNoteSaved(absPath string) {
@@ -3557,6 +3575,10 @@ func (w *Workspace) rescanNotebook() bool {
 	}
 	list, err := files.ScanNotebook(folder, opts)
 	w.mu.Lock()
+	if w.state.Folder != folder || !maps.Equal(opts.IgnoredDirs, w.IgnoredDirs()) {
+		w.mu.Unlock()
+		return false
+	}
 	var changed bool
 	var scanErr string
 	if err != nil {

@@ -542,6 +542,9 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"checklist_add_folder", "item_icons", "tab_menu", "file_path", "log_timeline",
 		"progress_bar", "segmented_status", "toast_banner", "open_settings", "form_autosave", "button_link",
 	}
+	if rt.cfg.ContribHost != nil {
+		capabilities = append(capabilities, "sidebar_ignored_dirs")
+	}
 	if rt.cfg.SystemIntegration {
 		capabilities = append(capabilities, "system_integration")
 	}

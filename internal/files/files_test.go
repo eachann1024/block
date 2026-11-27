@@ -362,18 +362,16 @@ func TestSearchNotebooksAndIgnoredFolders(t *testing.T) {
 	}
 }
 
-func TestScanAndSearchIgnoreSyncRecoveryDirsWhenShowHidden(t *testing.T) {
+func TestScanAndSearchShowHiddenDirs(t *testing.T) {
 	_ = setupTestDataDir(t)
 	root := t.TempDir()
 
-	for _, dir := range []string{".block-sync-replaced", ".block-sync-recovery", ".visible-dot"} {
-		dirPath := filepath.Join(root, dir)
-		if err := os.MkdirAll(dirPath, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dirPath, "recover.md"), []byte("findme sync recovery"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	dirPath := filepath.Join(root, ".visible-dot")
+	if err := os.MkdirAll(dirPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirPath, "note.md"), []byte("findme"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
 	opts := ScanOptions{
@@ -395,8 +393,8 @@ func TestScanAndSearchIgnoreSyncRecoveryDirsWhenShowHidden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchNotebooks: %v", err)
 	}
-	if len(hits) != 1 || hits[0].Path != filepath.Join(root, ".visible-dot", "recover.md") {
-		t.Fatalf("SearchNotebooks(ShowHidden=true) hits = %+v, want only .visible-dot/recover.md", hits)
+	if len(hits) != 1 || hits[0].Path != filepath.Join(root, ".visible-dot", "note.md") {
+		t.Fatalf("SearchNotebooks(ShowHidden=true) hits = %+v, want only .visible-dot/note.md", hits)
 	}
 }
 

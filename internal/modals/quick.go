@@ -91,6 +91,10 @@ func (h *quickSessionHost) ListNotebookFiles(root string) ([]model.FileEntry, er
 	return nil, nil
 }
 
+func (h *quickSessionHost) IgnoredDirs() map[string]struct{} {
+	return searchIgnoredDirs(h.q.host)
+}
+
 func (h *quickSessionHost) SearchWorkspace(query string, allNotebooks bool) ([]model.SearchHit, error) {
 	if h.q.host != nil {
 		return h.q.host.SearchWorkspace(query, allNotebooks)

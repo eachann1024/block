@@ -58,7 +58,9 @@ func (s *SearchWindowController) activeNotebookPath() string {
 }
 
 func (s *SearchWindowController) scanOptions() files.ScanOptions {
-	return scanOptionsFromAppState(s.currentState())
+	opts := scanOptionsFromAppState(s.currentState())
+	opts.IgnoredDirs = searchIgnoredDirs(s.host)
+	return opts
 }
 
 // AttachDesktop registers the hidden standalone 680x460 floating search panel window.
@@ -390,7 +392,12 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 	c.SetTheme(&uiTheme)
 
 	s.st.consumeAsyncResult(&s.hits, &s.selected, &s.errMsg)
-	if s.st.syncFolders(s.notebookFolders()) && strings.TrimSpace(s.query) != "" {
+	ignoredDirsChanged := s.st.syncIgnoredDirs(searchIgnoredDirs(s.host))
+	if ignoredDirsChanged {
+		s.hits = nil
+		s.st.hitMeta = nil
+	}
+	if (s.st.syncFolders(s.notebookFolders()) || ignoredDirsChanged) && strings.TrimSpace(s.query) != "" {
 		s.runSearch()
 	}
 	wasScopeOpen := s.st.scopeMenuOpen

@@ -24,22 +24,21 @@ type ScanOptions struct {
 	HideAssets      bool
 	ShowHidden      bool
 	AssetsFolder    string
+	IgnoredDirs     map[string]struct{}
 	FileOrder       map[string][]string
 	SortMode        model.TreeSortMode
 }
 
 var ignoredCommonNames = map[string]bool{
-	"node_modules":         true,
-	"dist":                 true,
-	"build":                true,
-	"target":               true,
-	"__pycache__":          true,
-	".next":                true,
-	".nuxt":                true,
-	".venv":                true,
-	"venv":                 true,
-	".block-sync-replaced": true,
-	".block-sync-recovery": true,
+	"node_modules": true,
+	"dist":         true,
+	"build":        true,
+	"target":       true,
+	"__pycache__":  true,
+	".next":        true,
+	".nuxt":        true,
+	".venv":        true,
+	"venv":         true,
 }
 
 var markdownExtensions = map[string]bool{
@@ -181,6 +180,9 @@ func isIgnoredFile(name string, opts ScanOptions) bool {
 }
 
 func isIgnoredDir(name string, opts ScanOptions) bool {
+	if _, ignored := opts.IgnoredDirs[name]; ignored {
+		return true
+	}
 	if theme.IsFolderHidden(name, opts.AssetsFolder, opts.HideAssets, opts.ShowHidden) {
 		return true
 	}

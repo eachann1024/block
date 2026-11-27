@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -69,6 +70,7 @@ type searchHitMeta struct {
 }
 
 type searchPaletteState struct {
+	ignoredDirs       map[string]struct{}
 	folders           []string
 	scopeFolder       string // "" = All Folders
 	scopeMenuOpen     bool
@@ -362,7 +364,22 @@ func collectNotebookFolders(appState model.AppState, host model.WorkspaceHost) [
 }
 
 func (m *Manager) searchScanOptions() files.ScanOptions {
-	return scanOptionsFromAppState(m.currentState())
+	opts := scanOptionsFromAppState(m.currentState())
+	opts.IgnoredDirs = searchIgnoredDirs(m.host)
+	return opts
+}
+
+func searchIgnoredDirs(host model.WorkspaceHost) map[string]struct{} {
+	if source, ok := host.(interface{ IgnoredDirs() map[string]struct{} }); ok {
+		return source.IgnoredDirs()
+	}
+	return nil
+}
+
+func (st *searchPaletteState) syncIgnoredDirs(dirs map[string]struct{}) bool {
+	changed := !maps.Equal(st.ignoredDirs, dirs)
+	st.ignoredDirs = dirs
+	return changed
 }
 
 func scanOptionsFromAppState(st model.AppState) files.ScanOptions {
@@ -847,7 +864,12 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 	pal := theme.Ocean()
 	st := m.searchState()
 	st.consumeAsyncResult(&m.searchHits, &m.searchSelected, &m.searchErr)
-	if st.syncFolders(m.notebookFolders()) && strings.TrimSpace(m.searchQuery) != "" {
+	ignoredDirsChanged := st.syncIgnoredDirs(searchIgnoredDirs(m.host))
+	if ignoredDirsChanged {
+		m.searchHits = nil
+		st.hitMeta = nil
+	}
+	if (st.syncFolders(m.notebookFolders()) || ignoredDirsChanged) && strings.TrimSpace(m.searchQuery) != "" {
 		m.runSearch()
 	}
 	wasScopeOpen := st.scopeMenuOpen

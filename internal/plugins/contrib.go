@@ -170,6 +170,7 @@ type Contributes struct {
 	SidebarSections  []SidebarSectionContrib  `json:"sidebar_sections,omitempty"`
 	FileBadges       []FileBadgeContrib       `json:"file_badges,omitempty"`
 	FileIcons        []FileIconPackContrib    `json:"file_icons,omitempty"`
+	IgnoredDirs      ignoredDirsList          `json:"ignored_dirs,omitempty"`
 	Backdrops        []BackdropContrib        `json:"backdrops,omitempty"`
 	BlockDecorators  []BlockDecoratorContrib  `json:"block_decorators,omitempty"`
 	Themes           []ThemeContrib           `json:"themes,omitempty"`
@@ -657,6 +658,14 @@ var contribLimits = []struct {
 
 func (m *Manifest) validateContributes() error {
 	c := m.Contributes
+	if c != nil && c.IgnoredDirs != nil {
+		if !m.HasDeclaredPermission(PermUISidebar) {
+			return fmt.Errorf("contributes.ignored_dirs requires permission %q", PermUISidebar)
+		}
+		if err := validateIgnoredDirs(c.IgnoredDirs); err != nil {
+			return fmt.Errorf("contributes.ignored_dirs: %w", err)
+		}
+	}
 	if c.empty() {
 		return nil
 	}
@@ -3670,6 +3679,9 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		s.contrib.mu.Unlock()
 		s.mu.RUnlock()
 		return map[string]any{"ok": true, "count": count}, nil, true
+
+	case "host.sidebar.get_ignored_dirs", "host.sidebar.set_ignored_dirs":
+		return s.handleSidebarIgnoredDirs(rt, method == "host.sidebar.set_ignored_dirs", decode)
 
 	case "host.sidebar.get_file_icons":
 		return s.handleSidebarGetFileIcons(m, rt, decode)
