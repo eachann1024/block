@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-28T05:15:21.344Z",
-  "latest_version": "1.0.978",
-  "latest_tag": "v1.0.978",
+  "updated_at": "2026-11-28T05:30:01.545Z",
+  "latest_version": "1.0.979",
+  "latest_tag": "v1.0.979",
   "releases": [
+    {
+      "version": "1.0.979",
+      "tag": "v1.0.979",
+      "published_at": "2026-11-28T05:30:00Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.979",
+      "prerelease": true,
+      "channel": "nightly",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "思维导图：快捷键教程现在仅在用户主动点击时打开，启动时不会自动弹出。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Mind Map: The shortcut tutorial now opens only when clicked and no longer appears automatically at startup."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-macos-arm64.dmg",
+          "size": 22498937,
+          "sha256": "35eef94da94cc6889ab53350f9140c05844f76197c5e21ad8827f1d2e2c0a7a6"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-macos-x64.dmg",
+          "size": 24578738,
+          "sha256": "0857501f440e967cd52e8ad1db27aff29012ab436d0018c693168f43ae34ce13"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-windows-x64-setup.exe",
+          "size": 19866632,
+          "sha256": "8869720995aceb7af606d0a84cb20cb3dfb98f4f251c0209f7b23032370b0fe0"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-linux-x64.deb",
+          "size": 16193160,
+          "sha256": "00a44e471df87c851834e9c94d5a4944b27f5757aa34190c3756e229a14326c5"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-linux-x64.AppImage",
+          "size": 29915640,
+          "sha256": "8ac0012aaa6965bf4031196c6a8363cb1b96a9c5bd5432e8dafc611e4696cad2"
+        }
+      ]
+    },
     {
       "version": "1.0.978",
       "tag": "v1.0.978",
@@ -36,38 +94,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-macos-arm64.dmg",
-          "size": 22496888,
-          "sha256": "96d63b77c0903779b17c42e9e1e8915e54cbacabacdd587c0251ee16b595ccec"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-macos-x64.dmg",
-          "size": 24578541,
-          "sha256": "8e2dda1847e29c9021e8084f95fdcd2078d3533a4156781e6fdce24d3a0c5edb"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-windows-x64-setup.exe",
-          "size": 19866983,
-          "sha256": "9d0b9f400b0f3c4f7dd818bad69121392a3a77720e93a8d776dd2a08ca981fd3"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-linux-x64.deb",
-          "size": 16191744,
-          "sha256": "a0dabe5455f09a56f04c6200a71ca5a1b316c96b220838a4d3ee8f49d7659750"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-linux-x64.AppImage",
-          "size": 29923832,
-          "sha256": "5b0aab03504d5b47ed784236b351cc36c9509d1b49ef8e732e5f690ad14cfdc6"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.977",
@@ -1834,33 +1861,6 @@
           "Installer: The Windows installer verification step now reads the 32-bit registry view, so installed entries are checked correctly.",
           "Installer: Setup now exits with a success status once the custom window has finished the installation."
         ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.926",
-      "tag": "v1.0.926",
-      "published_at": "2026-11-24T06:31:29Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.926",
-      "prerelease": false,
-      "channel": "stable",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "思维导图：修复了切换全屏模式时可能导致应用崩溃的问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Mind Map: Fixed a crash that could occur when toggling full-screen mode."
-        ],
-        "other": []
       },
       "assets": []
     }
