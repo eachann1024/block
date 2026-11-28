@@ -5,6 +5,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"block/internal/icons"
 	"block/internal/plugins"
@@ -16,6 +17,8 @@ import (
 // InputBindings connects declarative controls to persistent string drafts,
 // dropdown popover states, directory pickers, and secret visibility toggles.
 type InputBindings struct {
+	LogMedia            *logMediaStore
+	CanCopyClipboard    bool
 	SelectState         func(controlID string) *bui.DropdownSelectState
 	TreemapState        func(controlID string) *bui.TreemapState
 	OnTreemapSelect     func()
@@ -1243,7 +1246,7 @@ func renderLogListItem(
 			renderLogTimeline(c, pluginID, item, values, bindings, busyAction, sidebar, onAction)
 			return
 		}
-		renderLogEntries(c, pluginID, item, values, busyAction, sidebar, onAction)
+		renderLogEntries(c, pluginID, item, values, bindings, busyAction, sidebar, onAction)
 	}
 	if strings.TrimSpace(item.Label) != "" {
 		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
@@ -1495,11 +1498,83 @@ func renderLogTimeline(
 	})
 }
 
+type logListCopyKey struct{}
+
+type logListCopyState struct {
+	RowIndex    int
+	Key         string
+	CopiedUntil time.Time
+}
+
+func renderLogThumbZoomOverlay(
+	c *ui.Context,
+	pal theme.Palette,
+	rowKey string,
+	thumb ui.Element,
+	asset logMediaAsset,
+	fileName string,
+) {
+	if c == nil || !thumb.Valid() || asset.Image == nil {
+		return
+	}
+	vpW, vpH := c.Size()
+	maxW := float32(280)
+	maxH := float32(220)
+	if vpW > theme.Space24*2 {
+		maxW = min(maxW, max(vpW-theme.Space24*2, 120))
+	}
+	if vpH > 120 {
+		maxH = min(maxH, max(vpH-100, 100))
+	}
+	sw, sh := ui.ImageSize(asset.Image)
+	drawW, drawH := float32(200), float32(140)
+	if sw > 0 && sh > 0 {
+		scale := min(maxW/sw, maxH/sh)
+		if scale > 1 {
+			scale = min(scale, 3)
+			if sw*scale < 120 && sh*scale < 120 {
+				up := min(120/max(sw, sh), min(maxW/sw, maxH/sh))
+				scale = max(scale, up)
+			}
+		}
+		drawW = max(float32(math.Round(float64(sw*scale))), 64)
+		drawH = max(float32(math.Round(float64(sh*scale))), 64)
+	}
+	ui.Overlay(c, func() {
+		card := bui.PopoverSurface(ui.Column(c.Key(rowKey+"-zoom-pop"))).
+			IgnoreInput(true).
+			Padding(theme.Space6).Gap(theme.Space6).
+			AttachTo(thumb, ui.AnchorTopLeft, ui.AnchorBottomLeft).
+			Margin(theme.Space6, 0)
+		card.Children(func() {
+			frame := ui.Box(c).Size(drawW, drawH).Radius(theme.RadiusMD).Clip().
+				Background(pal.Shell).Border(1, pal.Hairline).Center()
+			frame.Children(func() {
+				ui.Image(c, asset.Image).Fill().Fit(ui.Contain)
+			})
+			if strings.TrimSpace(fileName) != "" || (sw > 0 && sh > 0) {
+				ui.Row(c).Width(drawW).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+					if strings.TrimSpace(fileName) != "" {
+						ui.Text(c, fileName).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					}
+					if sw > 0 && sh > 0 {
+						dims := fmt.Sprintf("%d×%d", int(math.Round(float64(sw))), int(math.Round(float64(sh))))
+						ui.Text(c, dims).Font("monospace").FontSize(theme.FontMicro).FixedLineHeight(theme.LineMeta).
+							TextColor(pal.TextSecondary).Shrink(0).SingleLine()
+					}
+				})
+			}
+		})
+	})
+}
+
 func renderLogEntries(
 	c *ui.Context,
 	pluginID string,
 	item plugins.UIItem,
 	values map[string]any,
+	bindings *InputBindings,
 	busyAction string,
 	sidebar bool,
 	onAction func(actionID string, currentValues map[string]any),
@@ -1512,14 +1587,21 @@ func renderLogEntries(
 		return
 	}
 
+	canCopyClipboard := bindings == nil || bindings.CanCopyClipboard
 	hasStatus := false
 	hasTime := false
+	anyCopyable := false
 	allArrow := true
 	maxStatusW := 0
 	maxTimeW := 0
 	for _, e := range item.Entries {
 		st := strings.TrimSpace(e.Status)
 		tm := strings.TrimSpace(e.Time)
+		if canCopyClipboard && strings.TrimSpace(e.CopyText) != "" {
+			anyCopyable = true
+			hasStatus = true
+			allArrow = false
+		}
 		if st != "" {
 			hasStatus = true
 			if st != "→" {
@@ -1542,6 +1624,15 @@ func renderLogEntries(
 	var statusColW float32
 	if hasStatus && !allArrow {
 		statusColW = float32(maxStatusW)*7.5 + 8
+		if anyCopyable {
+			minCopyW := float32(68)
+			if sidebar {
+				minCopyW = 58
+			}
+			if statusColW < minCopyW {
+				statusColW = minCopyW
+			}
+		}
 		if statusColW < 48 {
 			statusColW = 48
 		}
@@ -1579,19 +1670,73 @@ func renderLogEntries(
 		titleLine = theme.LineBody
 	}
 
-	ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+	listCol := ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space6)
+	var copyState *logListCopyState
+	var now time.Time
+	if anyCopyable {
+		copyState = ui.Local(listCol, logListCopyKey{}, func() logListCopyState {
+			return logListCopyState{RowIndex: -1}
+		})
+		now = c.Now()
+		if copyState != nil && !copyState.CopiedUntil.IsZero() {
+			if now.Before(copyState.CopiedUntil) {
+				if rem := copyState.CopiedUntil.Sub(now); rem > 0 {
+					c.After(rem + 5*time.Millisecond)
+				}
+			} else {
+				copyState.RowIndex = -1
+				copyState.Key = ""
+				copyState.CopiedUntil = time.Time{}
+			}
+		}
+	}
+
+	listCol.Children(func() {
 		for idx, entry := range item.Entries {
 			e := entry
 			rowKey := fmt.Sprintf("plugin-log-%s-%s-%d", pluginID, item.ID, idx)
+			copyText := strings.TrimSpace(e.CopyText)
+			canCopy := canCopyClipboard && copyText != ""
 			actID := strings.TrimSpace(e.ActionID)
-			clickable := actID != "" && onAction != nil
+			clickable := canCopy || (actID != "" && onAction != nil)
+			rowDisabled := !canCopy && busyAction != ""
+
+			spec := classifyLogEntryMedia(e)
+			if allArrow {
+				spec = logEntryMediaSpec{}
+			}
+
+			rowHeight := theme.HeightControl
+			thumbSize := theme.IconButtonBox
+			thumbIconSize := theme.IconAction
+			if spec.HasBox {
+				if sidebar {
+					rowHeight = theme.HeightControl
+					thumbSize = theme.IconButtonBox
+					thumbIconSize = theme.IconAction
+				} else {
+					rowHeight = theme.SettingsRowHeight
+					thumbSize = theme.HeightControl
+					thumbIconSize = theme.IconRow
+				}
+			}
+
+			var asset logMediaAsset
+			if spec.HasBox && spec.FetchImage {
+				asset = resolveLogMediaAsset(bindings, spec.MediaURL, c.Services())
+			}
+
+			copyKey := copyText + "\x00" + e.Title + "\x00" + e.Time
+			isCopied := canCopy && copyState != nil && copyState.RowIndex == idx && copyState.Key == copyKey &&
+				!copyState.CopiedUntil.IsZero() && now.Before(copyState.CopiedUntil)
+
 			var row ui.Element
 			if clickable {
 				row = ui.ButtonBase(c.Key(rowKey)).FillWidth().MinWidth(0).
-					Height(theme.HeightControl).PaddingX(rowPadX).Gap(rowGap).
+					Height(rowHeight).PaddingX(rowPadX).Gap(rowGap).
 					Radius(rowRadius).Background(rowBG).
 					AlignItems(ui.Center).Justify(ui.SpaceBetween).
-					Cursor(ui.CursorPointer).Disabled(busyAction != "").Label(e.Title)
+					Cursor(ui.CursorPointer).Disabled(rowDisabled).Label(e.Title)
 				if e.Ratio <= 0 {
 					if row.Pressed() {
 						row.Background(pal.Selected)
@@ -1601,7 +1746,7 @@ func renderLogEntries(
 				}
 			} else {
 				row = ui.Row(c.Key(rowKey)).FillWidth().MinWidth(0).
-					Height(theme.HeightControl).PaddingX(rowPadX).Gap(rowGap).
+					Height(rowHeight).PaddingX(rowPadX).Gap(rowGap).
 					Radius(rowRadius).Background(rowBG).
 					AlignItems(ui.Center).Justify(ui.SpaceBetween)
 				if e.Ratio <= 0 && row.Hovered() {
@@ -1626,12 +1771,10 @@ func renderLogEntries(
 				})
 			}
 
-			tip := strings.TrimSpace(e.Tooltip)
-			if tip != "" {
-				bui.WrappedTooltip(c, row, tip)
-			}
-
 			if allArrow {
+				if tip := strings.TrimSpace(e.Tooltip); tip != "" {
+					bui.WrappedTooltip(c, row, tip)
+				}
 				row.Children(func() {
 					ui.Text(c, e.Title).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 						TextColor(pal.TextSecondary).Grow(1).Basis(0).MinWidth(0).SingleLine().Ellipsis("…")
@@ -1642,8 +1785,19 @@ func renderLogEntries(
 							TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 					})
 				})
-				if clickable && busyAction == "" && row.Clicked() {
-					onAction(actID, cloneValues(values))
+				if clickable && row.Clicked() {
+					if canCopy {
+						c.Services().WriteClipboard(copyText)
+						if copyState != nil {
+							copyState.RowIndex = idx
+							copyState.Key = copyKey
+							copyState.CopiedUntil = c.Now().Add(1500 * time.Millisecond)
+							c.After(1505 * time.Millisecond)
+						}
+						c.Invalidate()
+					} else if !rowDisabled && onAction != nil {
+						onAction(actID, cloneValues(values))
+					}
 				}
 				continue
 			}
@@ -1652,46 +1806,136 @@ func renderLogEntries(
 			if e.Ratio > 0 {
 				showDot = false
 			}
+			toneLower := strings.ToLower(strings.TrimSpace(e.Tone))
+			rowHovered := row.Hovered()
+
+			var thumbEl ui.Element
+			var infoEl ui.Element
+
 			row.Children(func() {
-				ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-					if showDot {
-						ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(dotColor).Shrink(0)
+				if spec.HasBox {
+					thumb := ui.Box(c.Key(rowKey+"-thumb")).Size(thumbSize, thumbSize).Shrink(0).
+						Radius(theme.RadiusSM).Clip().Center()
+					thumbEl = thumb
+					thumbBorder := pal.Hairline
+					if thumb.Hovered() && asset.Image != nil {
+						thumbBorder = pal.Accent
+					} else if rowHovered {
+						thumbBorder = pal.BtnBorder
 					}
-					ui.Text(c, e.Title).FontSize(titleSize).FixedLineHeight(titleLine).
-						TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
-					if strings.TrimSpace(e.SubText) != "" {
-						ui.Text(c, e.SubText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-							TextColor(pal.TextSecondary).MinWidth(0).Shrink(2).SingleLine().Ellipsis("…")
-					}
-				})
-				if hasStatus || hasTime {
-					ui.Row(c).Gap(theme.Space12).AlignItems(ui.Center).Shrink(0).Children(func() {
-						if hasStatus {
-							ui.Row(c).Width(statusColW).Justify(ui.End).AlignItems(ui.Center).Shrink(0).Children(func() {
-								if strings.TrimSpace(e.Status) != "" {
-									ui.Text(c, e.Status).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-										TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
-								}
-							})
-						}
-						if hasTime {
-							ui.Row(c).Width(timeColW).Justify(ui.End).AlignItems(ui.Center).Shrink(0).Children(func() {
-								if strings.TrimSpace(e.Time) != "" {
-									if sidebar {
-										ui.Text(c, e.Time).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-											TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
-									} else {
-										ui.Text(c, e.Time).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-											TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
-									}
-								}
-							})
+					thumb.Background(pal.Card).Border(1, thumbBorder)
+					thumb.Children(func() {
+						switch {
+						case asset.Image != nil:
+							ui.Image(c, asset.Image).Fill().Fit(ui.Cover)
+						case asset.Loading:
+							icons.Draw(c, icons.Image, thumbIconSize, pal.DuoIconColors(pal.TextSecondary))
+						default:
+							icons.DrawAnimated(c, spec.Icon, thumbIconSize, pal.DuoIconColors(pal.TextSecondary), rowHovered)
 						}
 					})
 				}
+
+				info := ui.Row(c).Grow(1).MinWidth(0).FillHeight().Gap(rowGap).AlignItems(ui.Center).Justify(ui.SpaceBetween)
+				infoEl = info
+				info.Children(func() {
+					ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
+						if !spec.HasBox && showDot {
+							ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(dotColor).Shrink(0)
+						}
+						ui.Text(c, e.Title).FontSize(titleSize).FixedLineHeight(titleLine).
+							TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+						if strings.TrimSpace(e.SubText) != "" {
+							ui.Text(c, e.SubText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								TextColor(pal.TextSecondary).MinWidth(0).Shrink(2).SingleLine().Ellipsis("…")
+						}
+					})
+					if hasStatus || hasTime {
+						ui.Row(c).Gap(theme.Space12).AlignItems(ui.Center).Shrink(0).Children(func() {
+							if hasStatus {
+								ui.Row(c).Width(statusColW).Gap(theme.Space4).Justify(ui.End).AlignItems(ui.Center).Shrink(0).Children(func() {
+									switch {
+									case isCopied:
+										icons.Draw(c, icons.Check, theme.IconMicro, pal.MinimalIconColors(pal.Success))
+										ui.Text(c, theme.Tr("已复制", "Copied")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+											FontWeight(theme.WeightControl).TextColor(pal.Success).SingleLine()
+									case strings.TrimSpace(e.Status) != "":
+										if spec.HasBox && showDot {
+											ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(dotColor).Shrink(0)
+										}
+										statusCol := pal.TextSecondary
+										if toneLower == "danger" || toneLower == "error" {
+											statusCol = pal.Danger
+										}
+										ui.Text(c, e.Status).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+											TextColor(statusCol).SingleLine().Ellipsis("…")
+									case canCopy && rowHovered:
+										icons.Draw(c, icons.Copy, theme.IconMicro, pal.MinimalIconColors(pal.TextSecondary))
+									}
+								})
+							}
+							if hasTime {
+								ui.Row(c).Width(timeColW).Justify(ui.End).AlignItems(ui.Center).Shrink(0).Children(func() {
+									if strings.TrimSpace(e.Time) != "" {
+										if sidebar {
+											ui.Text(c, e.Time).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+												TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+										} else {
+											ui.Text(c, e.Time).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+												TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+										}
+									}
+								})
+							}
+						})
+					}
+				})
 			})
-			if clickable && busyAction == "" && row.Clicked() {
-				onAction(actID, cloneValues(values))
+
+			tip := strings.TrimSpace(e.Tooltip)
+			if tip == "" && canCopy {
+				tip = copyText
+			}
+			if asset.Image != nil && thumbEl.Valid() {
+				if tip != "" && infoEl.Valid() {
+					if canCopy {
+						bui.TooltipCard(c, infoEl, bui.TooltipCardSpec{
+							Placement: bui.TooltipAbove,
+							Body:      tip,
+							Note:      theme.Tr("点击复制链接", "Click to copy link"),
+						})
+					} else {
+						bui.WrappedTooltip(c, infoEl, tip)
+					}
+				}
+				if thumbEl.Hovered() && !row.Pressed() {
+					renderLogThumbZoomOverlay(c, pal, rowKey, thumbEl, asset, spec.FileName)
+				}
+			} else if tip != "" {
+				if canCopy {
+					bui.TooltipCard(c, row, bui.TooltipCardSpec{
+						Placement: bui.TooltipAbove,
+						Body:      tip,
+						Note:      theme.Tr("点击复制链接", "Click to copy link"),
+					})
+				} else {
+					bui.WrappedTooltip(c, row, tip)
+				}
+			}
+
+			if clickable && row.Clicked() {
+				if canCopy {
+					c.Services().WriteClipboard(copyText)
+					if copyState != nil {
+						copyState.RowIndex = idx
+						copyState.Key = copyKey
+						copyState.CopiedUntil = c.Now().Add(1500 * time.Millisecond)
+						c.After(1505 * time.Millisecond)
+					}
+					c.Invalidate()
+				} else if !rowDisabled && onAction != nil {
+					onAction(actID, cloneValues(values))
+				}
 			}
 		}
 	})

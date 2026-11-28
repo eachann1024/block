@@ -184,6 +184,9 @@ type UILogEntry struct {
 	Ratio    float64  `json:"ratio,omitempty"`
 	Tooltip  string   `json:"tooltip,omitempty"`
 	ActionID string   `json:"action_id,omitempty"`
+	CopyText string   `json:"copy_text,omitempty"`
+	MediaURL string   `json:"media_url,omitempty"`
+	FileName string   `json:"file_name,omitempty"`
 	Kind     string   `json:"kind,omitempty"`    // "" | "event" | "span"
 	Badge    string   `json:"badge,omitempty"`   // short pill label for span rows
 	Span     string   `json:"span,omitempty"`    // time range label e.g. "16:09 → 16:53"
@@ -836,6 +839,15 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			}
 			if e.ActionID != "" && (strings.TrimSpace(e.ActionID) == "" || len(e.ActionID) > 128 || ContainsEmoji(e.ActionID)) {
 				return fmt.Errorf("%s.entries[%d].action_id is invalid", prefix, ei)
+			}
+			if len(e.CopyText) > 16*1024 || !utf8.ValidString(e.CopyText) {
+				return fmt.Errorf("%s.entries[%d].copy_text is invalid", prefix, ei)
+			}
+			if len(e.MediaURL) > 16*1024 || !utf8.ValidString(e.MediaURL) {
+				return fmt.Errorf("%s.entries[%d].media_url is invalid", prefix, ei)
+			}
+			if len(e.FileName) > 512 || !utf8.ValidString(e.FileName) {
+				return fmt.Errorf("%s.entries[%d].file_name is invalid", prefix, ei)
 			}
 		}
 	case KindProgress:

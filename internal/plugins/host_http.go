@@ -122,6 +122,12 @@ func envProxyConfigured() bool {
 	return false
 }
 
+// ProxyForRequest resolves the outbound proxy for req from environment variables
+// or the OS proxy settings.
+func ProxyForRequest(req *http.Request) (*url.URL, error) {
+	return proxyForRequest(req)
+}
+
 func proxyForRequest(req *http.Request) (*url.URL, error) {
 	if envProxyConfigured() {
 		return http.ProxyFromEnvironment(req)

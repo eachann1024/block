@@ -20,6 +20,7 @@ var _ modals.PluginSettingsHost = (*Controller)(nil)
 type Controller struct {
 	sup         *plugins.Supervisor
 	storeReadme *storeReadmePreview
+	logMedia    *logMediaStore
 
 	mu                  sync.Mutex
 	storeQuery          string
@@ -72,6 +73,7 @@ func NewController(sup *plugins.Supervisor) *Controller {
 	}
 	return &Controller{
 		sup:            sup,
+		logMedia:       newLogMediaStore(),
 		drafts:         make(map[string]map[string]string),
 		lastSynced:     make(map[string]map[string]string),
 		secretRevealed: make(map[string]map[string]bool),
@@ -648,6 +650,8 @@ func (c *Controller) inputBindingsForSurface(pluginID string, surface plugins.Su
 		}
 	}
 	return &InputBindings{
+		LogMedia:            c.logMedia,
+		CanCopyClipboard:    c.sup == nil || c.sup.PluginHasPermission(pluginID, plugins.PermClipboardWrite),
 		PickDirectory:       pickDirectory,
 		PickFile:            pickFile,
 		PickChecklistFolder: pickChecklistFolder,
