@@ -39,7 +39,8 @@
 3. **`commands`**：注册到命令面板并支持默认快捷键。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
    - `shortcut`（可选字符串）：例如 `"cmd-alt-p"`。`cmd` 在 macOS 表示 Command，在 Windows/Linux 表示 Ctrl。宿主优先处理内置组合，例如 `cmd-f`、`cmd-,`、`cmd-o`、`cmd-s`、`cmd-shift-p`，以及 Windows/Linux 的 `ctrl-f4`、`f1`、`f2`、`f3`、`shift-f3` 和 `f11`。保留键以 `internal/ui/shortcuts.go` 的 `IsHostReservedShortcut` 为准。
-   - **宿主统一快捷键托管**：只要插件声明了 `commands`，宿主会自动将其纳入「设置 / 快捷键」（按插件自动分组，支持按「全部 / 内置 / 插件」筛选），并在该插件独立设置页底部自动注入「快捷键」分组；用户可直接点击录键、按 `Backspace`/`Delete` 清空或一键恢复默认，自定义结果会自动同步到快捷键分发、命令面板以及侧栏/页面/标签页右键菜单，插件无需也不应自行绘制快捷键设置 UI。
+   - `hidden`（可选布尔值，不可与 `shortcut` 同时声明）：设为 `true` 时表示仅用于宿主菜单、按钮或 `menubar_items` 等内部回调，仍可通过 `plugin.command` 正常触发，但不会出现在命令面板、「设置 / 快捷键」及插件设置页底部的「快捷键」分组中，也不参与键盘快捷键监听。
+   - **宿主统一快捷键托管**：只要插件声明了非隐藏的 `commands`，宿主会自动将其纳入「设置 / 快捷键」（按插件自动分组，支持按「全部 / 内置 / 插件」筛选），并在该插件独立设置页底部自动注入「快捷键」分组；用户可直接点击录键、按 `Backspace`/`Delete` 清空或一键恢复默认，自定义结果会自动同步到快捷键分发、命令面板以及侧栏/页面/标签页右键菜单，插件无需也不应自行绘制快捷键设置 UI。
 4. **`page_menu`**：向页面右上角 `…` 菜单追加条目。Markdown 笔记、代码/HTML/SVG 源码与图片预览等所有页面都会显示。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
 5. **`editor_menu`**：向编辑器右键菜单追加条目（渲染原生彩色 SVG 图标）。
