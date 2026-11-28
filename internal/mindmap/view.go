@@ -3971,89 +3971,38 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 		if n == nil {
 			return
 		}
-		leftSide := n.Dir < 0
+		// 只留高频动作；移动、升降级、插入父节点、副本、全部折叠等
+		// 已有快捷键、拖拽、底部提示或右下角按钮，不在菜单里重复。
 		if !cb.ReadOnly {
 			if m.Item(theme.Tr("添加子节点", "Add Child")).Shortcut(0, ui.KeyTab).Chosen() {
 				st.opAddChild(cb)
 			}
 			if n.Parent != nil {
-				if m.Item(theme.Tr("在下方添加同级", "Add Sibling Below")).Shortcut(0, ui.KeyEnter).Chosen() {
+				if m.Item(theme.Tr("添加同级", "Add Sibling")).Shortcut(0, ui.KeyEnter).Chosen() {
 					st.opAddSibling(cb)
-				}
-				if m.Item(theme.Tr("在上方添加同级", "Add Sibling Above")).Shortcut(ui.Shift, ui.KeyEnter).Chosen() {
-					st.opAddSiblingBefore(cb)
-				}
-				if m.Item(theme.Tr("插入父节点", "Insert Parent")).Shortcut(ui.Shift, ui.KeyTab).Chosen() {
-					st.opInsertParent(cb)
-				}
-			}
-			m.Separator()
-			if m.Item(theme.Tr("改名", "Rename")).Shortcut(0, ui.KeyF2).Chosen() {
-				st.beginEdit(n, false)
-			}
-			if n.Parent != nil {
-				if m.Item(theme.Tr("上移节点", "Move Up")).Shortcut(ui.Alt, ui.KeyUp).Chosen() {
-					st.opMoveSibling(-1, cb)
-				}
-				if m.Item(theme.Tr("下移节点", "Move Down")).Shortcut(ui.Alt, ui.KeyDown).Chosen() {
-					st.opMoveSibling(1, cb)
-				}
-				if n.Parent.Parent != nil {
-					promoteKey := ui.KeyLeft
-					if leftSide {
-						promoteKey = ui.KeyRight
-					}
-					if m.Item(theme.Tr("升级节点", "Promote")).Shortcut(ui.Alt, promoteKey).Chosen() {
-						st.opPromote(cb)
-					}
-				}
-				if n.IndexInParent() > 0 {
-					demoteKey := ui.KeyRight
-					if leftSide {
-						demoteKey = ui.KeyLeft
-					}
-					if m.Item(theme.Tr("降级节点", "Demote")).Shortcut(ui.Alt, demoteKey).Chosen() {
-						st.opDemote(cb)
-					}
 				}
 			}
 			m.Separator()
 		}
-		if m.Item(theme.Tr("复制分支", "Copy")).Shortcut(ui.Cmd, ui.KeyC).Chosen() {
+		if m.Item(theme.Tr("复制", "Copy")).Shortcut(ui.Cmd, ui.KeyC).Chosen() {
 			st.opCopy(c)
 		}
 		if !cb.ReadOnly {
 			if n.Parent != nil {
-				if m.Item(theme.Tr("剪切分支", "Cut")).Shortcut(ui.Cmd, ui.KeyX).Chosen() {
+				if m.Item(theme.Tr("剪切", "Cut")).Shortcut(ui.Cmd, ui.KeyX).Chosen() {
 					st.opCut(c, cb)
 				}
 			}
-			if m.Item(theme.Tr("粘贴为子节点", "Paste as Child")).Shortcut(ui.Cmd, ui.KeyV).Chosen() {
+			if m.Item(theme.Tr("粘贴", "Paste")).Shortcut(ui.Cmd, ui.KeyV).Chosen() {
 				st.opPaste(c, cb)
 			}
-			if n.Parent != nil {
-				if m.Item(theme.Tr("创建副本", "Duplicate")).Shortcut(ui.Cmd, ui.KeyD).Chosen() {
-					st.opDuplicate(cb)
-				}
-			}
 			m.Separator()
-			linkLbl := theme.Tr("链接到笔记", "Link to Note")
+			linkLbl := theme.Tr("链接", "Link")
 			if strings.TrimSpace(n.Link) != "" {
 				linkLbl = theme.Tr("编辑链接", "Edit Link")
 			}
 			if m.Item(linkLbl).Shortcut(ui.Cmd, ui.KeyL).Chosen() {
 				st.beginLinkEdit(n)
-			}
-			if strings.TrimSpace(n.Link) != "" {
-				if m.Item(theme.Tr("打开链接", "Open Link")).Shortcut(ui.Alt, ui.KeyEnter).Chosen() {
-					st.openNodeLink(c.Now(), n, cb)
-				}
-				if m.Item(theme.Tr("移除链接", "Remove Link")).Chosen() {
-					st.pushUndo()
-					n.Link = ""
-					st.invalidateLinkStatusCache()
-					st.commitChange(cb)
-				}
 			}
 			if n.Parent != nil {
 				taskLbl := theme.Tr("设为任务", "Convert to Task")
@@ -4063,34 +4012,16 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				if m.Item(taskLbl).Shortcut(ui.Cmd|ui.Alt, ui.KeyT).Chosen() {
 					st.opToggleTask(n, cb)
 				}
-				if n.Task != nil {
-					doneLbl := theme.Tr("标记已完成", "Mark Done")
-					if *n.Task {
-						doneLbl = theme.Tr("标记未完成", "Mark Undone")
-					}
-					if m.Item(doneLbl).Shortcut(ui.Cmd, ui.KeyEnter).Chosen() {
-						st.opFlipTaskDone(n, cb)
-					}
-				}
 			}
 		}
-		m.Separator()
 		if len(n.Children) > 0 {
+			m.Separator()
 			foldLbl := theme.Tr("折叠", "Fold")
 			if n.Folded {
 				foldLbl = theme.Tr("展开", "Unfold")
 			}
 			if m.Item(foldLbl).Shortcut(0, ui.KeySpace).Chosen() {
 				st.opToggleFold()
-			}
-		}
-		if st.hasAnyFolded() {
-			if m.Item(theme.Tr("全部展开", "Expand All")).Shortcut(ui.Cmd|ui.Alt, ui.KeySlash).Chosen() {
-				st.opExpandAll()
-			}
-		} else {
-			if m.Item(theme.Tr("折叠所有子分支", "Collapse All")).Shortcut(ui.Cmd|ui.Alt, ui.KeySlash).Chosen() {
-				st.opCollapseAll()
 			}
 		}
 		if !cb.ReadOnly && (n.Parent != nil || (st.hasMultiSelect() && st.multiSelectDeletableCount() > 0)) {
@@ -4107,11 +4038,6 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			}
 			if m.Item(delLbl).Shortcut(0, delKey).Chosen() {
 				st.opDelete(cb)
-			}
-			if n.Parent != nil && len(n.Children) > 0 && !st.hasMultiSelect() {
-				if m.Item(theme.Tr("仅删除当前节点", "Delete Single Node")).Shortcut(ui.Alt, delKey).Chosen() {
-					st.opDeleteSingle(cb)
-				}
 			}
 		}
 	})
