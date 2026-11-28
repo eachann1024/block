@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-28T05:30:01.545Z",
-  "latest_version": "1.0.979",
-  "latest_tag": "v1.0.979",
+  "updated_at": "2026-11-28T06:18:00.060Z",
+  "latest_version": "1.0.980",
+  "latest_tag": "v1.0.980",
   "releases": [
+    {
+      "version": "1.0.980",
+      "tag": "v1.0.980",
+      "published_at": "2026-11-28T06:17:59Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.980",
+      "prerelease": true,
+      "channel": "nightly",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "主窗口：玻璃模式下的卡片不再显示细线边框。",
+          "编辑器：编辑器、大纲和插件中的待处理更改现在可以正确提交。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Window: Cards no longer show a hairline border in glass mode.",
+          "Editor: Pending changes in the editor, outline, and plugins are now committed correctly."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.980/block-macos-arm64.dmg",
+          "size": 22564920,
+          "sha256": "1933ed5f398721fc9c9dbf50e99b2744549746762100254f2e973316e3a57835"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.980/block-macos-x64.dmg",
+          "size": 24655064,
+          "sha256": "166d6569a7c8e6173ba546085eac1b9d5d50c7742b3291b154da40340960e73f"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.980/block-windows-x64-setup.exe",
+          "size": 19938184,
+          "sha256": "446d10f1915959f93db11aae7a0be6c26d6a20aa8d3b6b0ddca51a194acd5c36"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.980/block-linux-x64.deb",
+          "size": 16240076,
+          "sha256": "7ef5806866f4d1b5c8279ac7483277cdcb68c1542bf44a25f006560cb0ebd73b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.980/block-linux-x64.AppImage",
+          "size": 29981176,
+          "sha256": "48a9f431b40412aeb448e3a48c48ab45f3e1bd0fa9811d051cd111e53d19fd35"
+        }
+      ]
+    },
     {
       "version": "1.0.979",
       "tag": "v1.0.979",
@@ -30,38 +90,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-macos-arm64.dmg",
-          "size": 22498937,
-          "sha256": "35eef94da94cc6889ab53350f9140c05844f76197c5e21ad8827f1d2e2c0a7a6"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-macos-x64.dmg",
-          "size": 24578738,
-          "sha256": "0857501f440e967cd52e8ad1db27aff29012ab436d0018c693168f43ae34ce13"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-windows-x64-setup.exe",
-          "size": 19866632,
-          "sha256": "8869720995aceb7af606d0a84cb20cb3dfb98f4f251c0209f7b23032370b0fe0"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-linux-x64.deb",
-          "size": 16193160,
-          "sha256": "00a44e471df87c851834e9c94d5a4944b27f5757aa34190c3756e229a14326c5"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.979/block-linux-x64.AppImage",
-          "size": 29915640,
-          "sha256": "8ac0012aaa6965bf4031196c6a8363cb1b96a9c5bd5432e8dafc611e4696cad2"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.978",
@@ -1817,49 +1846,6 @@
           "Interface Language: The macOS app bundle now declares its supported localizations, so the system lists them for the app.",
           "Release: Generated macOS disk images are now mounted and strictly verified for code signing during the release process.",
           "Release: An empty feedback address now falls back to the local configuration, and release builds require the address to be set."
-        ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.927",
-      "tag": "v1.0.927",
-      "published_at": "2026-11-24T07:07:53Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.927",
-      "prerelease": false,
-      "channel": "stable",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "安装包：Windows 安装程序改用自定义安装窗口，不再显示系统默认向导。"
-        ],
-        "improvements": [
-          "安装包：macOS 磁盘映像的安装窗口换上自定义背景，拖拽安装的布局更整齐。"
-        ],
-        "fixes": [
-          "自动更新：Windows 上更新改为就地安装，已有安装会直接升级，不再要求重新选择安装位置。"
-        ],
-        "other": [
-          "安装包：发版打包时，Windows 安装流程改由自定义安装窗口处理。",
-          "安装包：Windows 安装包的校验步骤改为读取 32 位注册表视图，已安装项能被正确检查。",
-          "安装包：自定义窗口完成安装后，安装程序以成功状态退出。"
-        ]
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Installer: The Windows installer now opens a custom setup window instead of the default system wizard."
-        ],
-        "improvements": [
-          "Installer: The macOS disk image now uses a styled drag-to-install window with a custom background and tidier layout."
-        ],
-        "fixes": [
-          "Updates: On Windows, updates are now installed in place, so an existing installation is upgraded directly without asking for a new install location."
-        ],
-        "other": [
-          "Installer: Release packaging now hands the Windows installation off to the custom setup window.",
-          "Installer: The Windows installer verification step now reads the 32-bit registry view, so installed entries are checked correctly.",
-          "Installer: Setup now exits with a success status once the custom window has finished the installation."
         ]
       },
       "assets": []
