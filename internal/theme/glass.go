@@ -15,7 +15,8 @@ var glassAtLaunch atomic.Bool
 
 // WindowGlassSupported reports whether the OS draws a window material at all.
 func WindowGlassSupported() bool {
-	return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+	// Window translucency is paused for now; keep the implementation for later.
+	return false && (runtime.GOOS == "darwin" || runtime.GOOS == "windows")
 }
 
 // WindowGlassActive reports whether window translucency is enabled in user

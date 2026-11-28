@@ -339,7 +339,7 @@ func DefaultAppState(defaultLang LanguageMode) AppState {
 		AssetsFolder:         "assets",
 		HideAssetsFolder:     &hideAssets,
 		HideNonMarkdownFiles: &hideNonMD,
-		BrandDeco:            BrandDeco{Mode: BrandDecoOff},
+		BrandDeco:            BrandDeco{Mode: BrandDecoByTime, Density: BrandDecoDensityMinimal},
 	}
 }
 
