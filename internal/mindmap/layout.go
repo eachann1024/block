@@ -1603,13 +1603,22 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						p.Stroke(editLeafR, col, leafRad, max(1.5*scale, 1.1))
 					} else if isSelected {
 						selBG := pal.SelectionBG
+						strokeCol := pal.Accent.Alpha(0.75)
+						strokeW := max(1.1*scale, 1.0)
+						if multiActive {
+							if isPrimary {
+								strokeCol = pal.Accent
+								strokeW = max(1.4*scale, 1.1)
+							} else {
+								strokeCol = pal.Accent.Alpha(0.65)
+							}
+						}
 						if dimFactor < 1 {
 							selBG = selBG.Alpha(0.45)
+							strokeCol = strokeCol.Alpha(0.45)
 						}
 						p.Fill(leafR, selBG, leafRad)
-						if multiActive && isPrimary {
-							p.Stroke(leafR, pal.Accent.Alpha(0.75), leafRad, max(1.2*scale, 1.0))
-						}
+						p.Stroke(leafR, strokeCol, leafRad, strokeW)
 					} else if isHovered {
 						hoverAlpha := float32(0.06)
 						if pal.Dark {
@@ -1959,12 +1968,12 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				W: max(opt.BoxSelectRect.W, 1),
 				H: max(opt.BoxSelectRect.H, 1),
 			}
-			fillCol := pal.SelectionBG.Alpha(0.45)
+			fillCol := pal.Accent.Alpha(0.10)
 			if pal.Dark {
-				fillCol = pal.SelectionBG.Alpha(0.55)
+				fillCol = pal.Accent.Alpha(0.16)
 			}
 			p.Fill(mr, fillCol, theme.RadiusXS)
-			p.Stroke(mr, pal.Accent.Alpha(0.70), theme.RadiusXS, 1)
+			p.Stroke(mr, pal.Accent.Alpha(0.65), theme.RadiusXS, 1)
 		}
 	})
 }

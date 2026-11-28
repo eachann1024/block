@@ -115,6 +115,7 @@ type BlockState struct {
 	LinkNodeID       int
 	LinkDraft        string
 	LinkFocusPending bool
+	LinkComposing    bool
 	LinkActiveIdx    int
 	LinkBrokenNotice bool
 	LinkHandle       ui.Handle
@@ -124,6 +125,7 @@ type BlockState struct {
 	FindOpen         bool
 	FindQuery        string
 	FindFocusPending bool
+	FindComposing    bool
 	FindMatchIDs     []int
 	FindMatchSet     map[int]bool
 	FindCurrentIdx   int
@@ -272,7 +274,9 @@ func (st *BlockState) SyncSource(src string, cfg Config) {
 func (st *BlockState) clearTransientNodeState() {
 	st.LinkNodeID = 0
 	st.LinkFocusPending = false
+	st.LinkComposing = false
 	st.LinkBrokenNotice = false
+	st.FindComposing = false
 	st.EditingID = 0
 	st.EditFocusPending = false
 	st.EditInsertNewlinePending = false
@@ -299,10 +303,10 @@ func (st *BlockState) HasFocus(c *ui.Context) bool {
 	if st == nil || c == nil {
 		return false
 	}
-	if st.TutorialOpen {
+	if st.Fullscreen || st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil {
 		return true
 	}
-	if st.LinkNodeID != 0 || st.LinkFocusPending || st.LinkHandle.Focused(c) || st.LinkPanelHandle.FocusWithin(c) {
+	if st.LinkNodeID != 0 || st.LinkFocusPending || st.LinkComposing || st.LinkHandle.Focused(c) || st.LinkPanelHandle.FocusWithin(c) {
 		return true
 	}
 	if st.viewFocusPending {
@@ -310,19 +314,26 @@ func (st *BlockState) HasFocus(c *ui.Context) bool {
 	}
 	switch st.View {
 	case ViewOutline:
-		return st.OutlineFocusPending || st.OutlineHandle.FocusWithin(c)
+		return st.OutlineFocusPending || st.OutlineComposing || st.OutlineHandle.FocusWithin(c)
 	case ViewSource:
-		return st.SourceHandle.Focused(c)
+		return st.SourceComposing || st.SourceHandle.Focused(c)
 	default:
 		return st.EditingID != 0 ||
 			st.EditFocusPending ||
+			st.EditCompose != "" ||
 			st.FindFocusPending ||
+			st.FindComposing ||
 			st.ComposeText != "" ||
 			st.CanvasHandle.Focused(c) ||
 			st.EditHandle.Focused(c) ||
 			st.FindHandle.Focused(c) ||
 			(st.FindOpen && st.FindBarHandle.FocusWithin(c))
 	}
+}
+
+func (st *BlockState) canvasFocusedOrPending(c *ui.Context) bool {
+	return st.CanvasHandle.Focused(c) ||
+		(st.viewFocusPending && !st.EditFocusPending && !st.LinkFocusPending && !st.FindFocusPending)
 }
 
 // HasEscapeOwner reports whether this MindMap currently has an active cancelable edit,
@@ -346,7 +357,10 @@ func (st *BlockState) HasEscapeOwner(c *ui.Context) bool {
 	case ViewMap:
 		if st.EditingID != 0 ||
 			st.EditFocusPending ||
+			st.EditCompose != "" ||
 			st.FindFocusPending ||
+			st.FindComposing ||
+			st.LinkComposing ||
 			st.BoxSelecting ||
 			st.Panning ||
 			st.DragActive ||
@@ -366,9 +380,9 @@ func (st *BlockState) HasEscapeOwner(c *ui.Context) bool {
 		}
 		if st.hasMultiSelect() {
 			if c != nil {
-				return st.CanvasHandle.Focused(c)
+				return st.canvasFocusedOrPending(c)
 			}
-			return st.LastCanvasFocused
+			return st.LastCanvasFocused || st.viewFocusPending
 		}
 		return false
 	case ViewOutline:
@@ -434,8 +448,9 @@ func (st *BlockState) HasFindActive(c *ui.Context) bool {
 
 // HasCanvasFocus reports whether the Map canvas itself (not a text field) owns focus.
 func (st *BlockState) HasCanvasFocus(c *ui.Context) bool {
-	return st != nil && c != nil && st.View == ViewMap && st.CanvasHandle.Focused(c) &&
-		st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c)
+	return st != nil && c != nil && st.View == ViewMap && st.canvasFocusedOrPending(c) &&
+		st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) &&
+		!st.FindFocusPending && !(st.FindOpen && st.FindBarHandle.FocusWithin(c))
 }
 
 // HasTabFocus reports whether any focused MindMap control should handle Tab / Shift+Tab
@@ -470,7 +485,7 @@ func (st *BlockState) CapturesShortcut(c *ui.Context, mods ui.Modifiers, key ui.
 
 	switch st.View {
 	case ViewOutline:
-		if !st.OutlineHandle.FocusWithin(c) {
+		if !st.OutlineHandle.FocusWithin(c) && !st.OutlineFocusPending && !st.viewFocusPending {
 			return false
 		}
 		if isMMPrimaryMod(mods) {
@@ -488,12 +503,19 @@ func (st *BlockState) CapturesShortcut(c *ui.Context, mods ui.Modifiers, key ui.
 		if mods == ui.Alt && (key == ui.KeyUp || key == ui.KeyDown || key == ui.KeyEnter) {
 			return true
 		}
+		if key == ui.KeyTab && (mods == 0 || mods == ui.Shift) {
+			return true
+		}
+		if mods == 0 && (key == ui.KeyEnter || key == ui.KeyEscape || key == ui.KeyBackspace || key == ui.KeyUp || key == ui.KeyDown) {
+			return true
+		}
 		return false
 	case ViewSource:
 		return false
 	default: // ViewMap
 		if st.LinkNodeID != 0 {
-			return mods == 0 && (key == ui.KeyEnter || key == ui.KeyEscape || key == ui.KeyUp || key == ui.KeyDown)
+			return (mods == 0 && (key == ui.KeyEnter || key == ui.KeyEscape || key == ui.KeyUp || key == ui.KeyDown)) ||
+				(key == ui.KeyTab && (mods == 0 || mods == ui.Shift))
 		}
 		if st.EditingID != 0 {
 			if key == ui.KeyEnter && (mods == 0 || mods == ui.Shift || mods == ui.Alt || isMMPrimaryMod(mods)) {
@@ -504,16 +526,16 @@ func (st *BlockState) CapturesShortcut(c *ui.Context, mods ui.Modifiers, key ui.
 			}
 			return mods == 0 && key == ui.KeyEscape
 		}
-		if st.FindOpen && st.FindHandle.Focused(c) {
+		if st.FindOpen && (st.FindHandle.Focused(c) || st.FindFocusPending || st.FindBarHandle.FocusWithin(c)) {
 			if theme.IsMacOS() && (isMMPrimaryMod(mods) || isMMPrimaryShiftMod(mods)) && key == ui.KeyG {
 				return true
 			}
 			if !theme.IsMacOS() && (mods == 0 || mods == ui.Shift) && key == ui.KeyF3 {
 				return true
 			}
-			return false
+			return key == ui.KeyTab && (mods == 0 || mods == ui.Shift)
 		}
-		if !st.CanvasHandle.Focused(c) {
+		if !st.canvasFocusedOrPending(c) {
 			return false
 		}
 		if isMMPrimaryMod(mods) {
@@ -883,9 +905,9 @@ func (st *BlockState) toggleMultiSelectNode(id int) {
 	st.SelectedID = id
 }
 
-func (st *BlockState) applyBoxSelection(additive bool) {
+func (st *BlockState) boxSelectResult(additive bool) (int, map[int]bool) {
 	if st.Root == nil || st.Camera.Scale <= 0 {
-		return
+		return st.SelectedID, st.SelectedIDs
 	}
 	sr := st.boxSelectRect()
 	wx0, wy0 := st.Camera.ScreenToWorld(sr.X, sr.Y)
@@ -912,24 +934,24 @@ func (st *BlockState) applyBoxSelection(additive bool) {
 	if !additive {
 		switch len(hits) {
 		case 0:
-			st.clearMultiSelect()
+			return 0, nil
 		case 1:
-			st.setSingleSelection(hits[0].ID)
+			return hits[0].ID, nil
 		default:
 			set := make(map[int]bool, len(hits))
 			for _, n := range hits {
 				set[n.ID] = true
 			}
-			st.SelectedIDs = set
-			if !set[st.SelectedID] {
-				st.SelectedID = hits[0].ID
+			primary := st.SelectedID
+			if !set[primary] {
+				primary = hits[0].ID
 			}
+			return primary, set
 		}
-		return
 	}
 
 	if len(hits) == 0 {
-		return
+		return st.SelectedID, st.SelectedIDs
 	}
 	set := make(map[int]bool, len(st.SelectedIDs)+len(hits)+1)
 	for id := range st.SelectedIDs {
@@ -945,14 +967,21 @@ func (st *BlockState) applyBoxSelection(additive bool) {
 	}
 	if len(set) == 1 {
 		for id := range set {
-			st.setSingleSelection(id)
+			return id, nil
 		}
+	}
+	primary := st.SelectedID
+	if primary == 0 || !set[primary] {
+		primary = hits[0].ID
+	}
+	return primary, set
+}
+
+func (st *BlockState) applyBoxSelection(additive bool) {
+	if st.Root == nil || st.Camera.Scale <= 0 {
 		return
 	}
-	st.SelectedIDs = set
-	if st.SelectedID == 0 || !set[st.SelectedID] {
-		st.SelectedID = hits[0].ID
-	}
+	st.SelectedID, st.SelectedIDs = st.boxSelectResult(additive)
 }
 
 func (st *BlockState) pruneHiddenMultiSelect() {
@@ -2271,6 +2300,7 @@ func (st *BlockState) beginLinkEdit(n *Node) {
 	st.LinkActiveIdx = -1
 	st.LinkBrokenNotice = false
 	st.LinkListScroll.Y = 0
+	st.LinkComposing = false
 	st.LinkFocusPending = true
 }
 
@@ -2283,6 +2313,7 @@ func (st *BlockState) applyLink(target string, cb Callbacks) {
 	if cb.ReadOnly || st.LinkNodeID == 0 || st.Root == nil {
 		st.LinkNodeID = 0
 		st.LinkFocusPending = false
+		st.LinkComposing = false
 		st.LinkBrokenNotice = false
 		st.LinkHandle.CancelFocus()
 		return
@@ -2290,6 +2321,7 @@ func (st *BlockState) applyLink(target string, cb Callbacks) {
 	n := st.Root.FindByID(st.LinkNodeID)
 	st.LinkNodeID = 0
 	st.LinkFocusPending = false
+	st.LinkComposing = false
 	st.LinkBrokenNotice = false
 	st.LinkHandle.CancelFocus()
 	if n == nil {
@@ -2321,6 +2353,7 @@ func (st *BlockState) OpenFind() {
 	st.lastKeyMod = 0
 	st.resetBoxSelect()
 	st.FindOpen = true
+	st.FindComposing = false
 	st.FindFocusPending = true
 	st.cancelViewFocus()
 	if strings.TrimSpace(st.FindQuery) != "" {
@@ -2335,6 +2368,7 @@ func (st *BlockState) CloseFind() {
 	}
 	st.FindOpen = false
 	st.FindFocusPending = false
+	st.FindComposing = false
 	st.FindHandle.CancelFocus()
 	st.FindMatchIDs = nil
 	st.FindMatchSet = nil
@@ -2420,6 +2454,8 @@ func (st *BlockState) SwitchView(mode ViewMode, focus bool, cb Callbacks) {
 	st.LinkNodeID = 0
 	st.LinkBrokenNotice = false
 	st.LinkFocusPending = false
+	st.LinkComposing = false
+	st.FindComposing = false
 	st.LinkHandle.CancelFocus()
 	st.ExportMenuOpen = false
 	st.ShortcutsOpen = false
@@ -3390,7 +3426,7 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 		}
 	}
 	bui.Probe(overlay, "mm-fullscreen-"+id)
-	hadModalPopup := st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil
+	hadModalPopup := st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil
 	overlay.Children(func() {
 		st.renderHeader(c, id+"-fs", true, cb)
 		if !st.IsFullscreenOverlayActive() && animatingOverlay == false {
@@ -3402,8 +3438,12 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 			st.renderHintBar(c, id+"-fs", cb)
 		}
 	})
-	if st.Fullscreen && !hadModalPopup && st.EditingID == 0 && st.LinkNodeID == 0 && st.ComposeText == "" &&
-		!st.FindHandle.Focused(c) && !st.OutlineHandle.FocusWithin(c) && overlay.OverlayShortcut(0, ui.KeyEscape) {
+	if st.Fullscreen && !hadModalPopup && st.EditingID == 0 && !st.EditFocusPending && st.EditCompose == "" &&
+		st.LinkNodeID == 0 && !st.LinkFocusPending && !st.LinkComposing &&
+		st.ComposeText == "" && !st.OutlineComposing && !st.SourceComposing &&
+		!st.FindHandle.Focused(c) && !st.FindFocusPending && !st.FindComposing &&
+		!(st.FindOpen && st.FindBarHandle.FocusWithin(c)) &&
+		!st.OutlineHandle.FocusWithin(c) && overlay.OverlayShortcut(0, ui.KeyEscape) {
 		switch {
 		case st.BoxSelecting:
 			st.resetBoxSelect()
@@ -3894,16 +3934,17 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 	} else if st.LastCanvasW <= 0 || st.LastCanvasH <= 0 {
 		st.LastCanvasW, st.LastCanvasH = cw, ch
 	}
+	findFocused := st.FindOpen && (st.FindFocusPending || st.FindHandle.Focused(c) || st.FindBarHandle.FocusWithin(c))
 	canvasFocused := (canvas.Focused() || st.CanvasHandle.Focused(c)) &&
-		st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c)
+		st.EditingID == 0 && st.LinkNodeID == 0 && !findFocused
 	st.LastCanvasFocused = canvasFocused
-	if st.EditingID != 0 || st.EditFocusPending || st.LinkNodeID != 0 || (st.FindOpen && st.FindFocusPending) ||
-		(st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) && canvas.Focused()) {
+	if st.EditingID != 0 || st.EditFocusPending || st.LinkNodeID != 0 || findFocused ||
+		(st.EditingID == 0 && st.LinkNodeID == 0 && !findFocused && canvas.Focused()) {
 		st.tabFocusClaimedThisFrame = true
 	}
 
-	spaceAllowed := st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) &&
-		!st.ShortcutsOpen && !st.ExportMenuOpen && st.ComposeText == "" &&
+	spaceAllowed := st.EditingID == 0 && st.LinkNodeID == 0 && !findFocused &&
+		!st.TutorialOpen && !st.ShortcutsOpen && !st.ExportMenuOpen && st.ImportResult == nil && st.ComposeText == "" &&
 		(canvasFocused || (fullscreen && !c.FocusTakesText()))
 	if st.SpaceHeld && (!spaceAllowed || !c.KeyDown(ui.KeySpace)) {
 		st.SpaceHeld = false
@@ -4221,6 +4262,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 
 			if ev.Button == 1 {
 				// Right-click selects hit node and focuses canvas before ContextMenu opens.
+				st.RequestFocus(true)
 				st.CanvasHandle.Focus(c)
 				if cb.OnRequestFocus != nil {
 					cb.OnRequestFocus()
@@ -4236,6 +4278,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			}
 			if ev.Button == 2 {
 				// Middle-mouse drag pans the canvas anywhere, even over a node.
+				st.RequestFocus(true)
 				st.CanvasHandle.Focus(c)
 				if cb.OnRequestFocus != nil {
 					cb.OnRequestFocus()
@@ -4267,6 +4310,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				// Any click while Space is held means "pan", never "fold" on release.
 				st.SpaceUsedForPan = true
 			}
+			st.RequestFocus(true)
 			st.CanvasHandle.Focus(c)
 			if cb.OnRequestFocus != nil {
 				cb.OnRequestFocus()
@@ -4443,7 +4487,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			return false
 
 		case ui.InputCompose:
-			if st.EditingID != 0 || st.LinkNodeID != 0 || cb.ReadOnly || st.DragActive {
+			if st.EditingID != 0 || st.LinkNodeID != 0 || st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || cb.ReadOnly || st.DragActive {
 				st.ComposeText = ""
 				return false
 			}
@@ -4455,7 +4499,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 
 		case ui.InputText:
 			st.ComposeText = ""
-			if st.LinkNodeID != 0 || cb.ReadOnly || st.DragActive {
+			if st.LinkNodeID != 0 || st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || cb.ReadOnly || st.DragActive {
 				return false
 			}
 			if st.EditingID != 0 {
@@ -4486,6 +4530,9 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 
 		case ui.InputKeyDown:
 			st.lastKeyMod = ev.Mods
+			if st.TutorialOpen {
+				return false
+			}
 			if ev.Key == ui.KeyEscape && ev.Mods == 0 && (st.EditingID != 0 || st.LinkNodeID != 0) {
 				st.SpaceHeld = false
 				st.SpaceUsedForPan = false
@@ -4504,13 +4551,20 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 					return true
 				}
 				if st.LinkNodeID != 0 {
+					if st.LinkComposing {
+						return false
+					}
 					st.LinkNodeID = 0
 					st.LinkBrokenNotice = false
 					st.LinkFocusPending = false
+					st.LinkComposing = false
 					st.LinkHandle.CancelFocus()
 					return true
 				}
 				if st.EditingID != 0 {
+					if st.EditCompose != "" {
+						return false
+					}
 					st.finishEdit(false, cb)
 					return true
 				}
@@ -4565,14 +4619,14 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 					return true
 				}
 			}
-			if st.ComposeText != "" && (ev.Mods&(ui.Cmd|ui.Ctrl|ui.Alt)) == 0 {
+			if st.ComposeText != "" || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil {
 				return false
 			}
-			if !st.ShortcutsOpen && !st.ExportMenuOpen && st.ImportResult == nil && !st.FindOpen && !st.BoxSelecting && !st.Panning && !st.DragActive && st.DragNodeID == 0 && cb.OnHostNavKey != nil && cb.OnHostNavKey(ev.Key, ev.Mods) {
+			if !st.FindOpen && !st.BoxSelecting && !st.Panning && !st.DragActive && st.DragNodeID == 0 && cb.OnHostNavKey != nil && cb.OnHostNavKey(ev.Key, ev.Mods) {
 				return true
 			}
 			if ev.Key == ui.KeySpace && ev.Mods == 0 {
-				if !st.ShortcutsOpen && !st.ExportMenuOpen && !st.DragActive && !st.BoxSelecting && !st.Panning {
+				if !st.DragActive && !st.BoxSelecting && !st.Panning {
 					if !ev.Repeat && !st.SpaceHeld {
 						st.SpaceHeld = true
 						st.SpaceUsedForPan = false
@@ -4742,9 +4796,15 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 		if st.FindOpen && len(st.FindMatchIDs) > 0 && st.FindCurrentIdx >= 0 && st.FindCurrentIdx < len(st.FindMatchIDs) {
 			findCurID = st.FindMatchIDs[st.FindCurrentIdx]
 		}
+		selID := st.SelectedID
+		selIDs := st.SelectedIDs
+		boxActive := st.boxSelectActive()
+		if boxActive && st.Root != nil && st.Camera.Scale > 0 {
+			selID, selIDs = st.boxSelectResult(st.BoxAdditive)
+		}
 		opt := PaintOptions{
-			SelectedID:  st.SelectedID,
-			SelectedIDs: st.SelectedIDs,
+			SelectedID:  selID,
+			SelectedIDs: selIDs,
 			HoveredID:   hoveredID,
 			HoveredHit:  hoveredHit,
 			EditingID:   paintEditID,
@@ -4757,7 +4817,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			FindActive:      st.FindOpen && strings.TrimSpace(st.FindQuery) != "",
 			FindMatchIDs:    st.FindMatchSet,
 			FindCurrentID:   findCurID,
-			BoxSelectActive: st.boxSelectActive(),
+			BoxSelectActive: boxActive,
 			BoxSelectRect:   st.boxSelectRect(),
 		}
 		if st.DragActive && st.DragNodeID != 0 {
@@ -4844,6 +4904,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				Bind(&st.EditHandle)
 			if st.EditFocusPending {
 				st.EditFocusPending = false
+				input.Focus(ui.FocusOptions{PreventScroll: true})
 				if st.EditSelectAll {
 					st.EditHandle.SelectAll(c)
 				} else {
@@ -4862,10 +4923,6 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 					st.EditCompose = ev.Text
 				case ui.InputText, ui.InputCommand:
 					st.EditCompose = ""
-				case ui.InputKeyDown:
-					if ev.Key != ui.KeyUnknown {
-						st.EditCompose = ""
-					}
 				}
 			})
 			input.OnTextKey(func(k ui.TextKey) bool {
@@ -5659,13 +5716,30 @@ func (st *BlockState) renderFindBar(c *ui.Context, id string, cb Callbacks) {
 			Bind(&st.FindHandle)
 		if st.FindFocusPending {
 			st.FindFocusPending = false
+			inp.Focus(ui.FocusOptions{PreventScroll: true})
 			st.FindHandle.SelectAll(c)
 		}
+		liveFindComposing := inp.Composing()
+		st.FindComposing = liveFindComposing
+		inp.ObserveInput(func(ev ui.InputEvent) {
+			switch ev.Kind {
+			case ui.InputCompose:
+				liveFindComposing = ev.Text != ""
+				st.FindComposing = liveFindComposing
+			case ui.InputText, ui.InputCommand:
+				liveFindComposing = false
+				st.FindComposing = false
+			}
+		})
 		inp.HandleInput(func(ev ui.InputEvent) bool {
-			if ev.Kind != ui.InputKeyDown || ev.Key == ui.KeyUnknown {
+			if ev.Kind != ui.InputKeyDown || ev.Key == ui.KeyUnknown || liveFindComposing || st.FindComposing {
 				return false
 			}
 			switch ev.Key {
+			case ui.KeyTab:
+				if ev.Mods == 0 || ev.Mods == ui.Shift {
+					return true
+				}
 			case ui.KeyEscape:
 				if ev.Mods == 0 {
 					st.CloseFind()
@@ -5776,7 +5850,7 @@ func (st *BlockState) renderFindBar(c *ui.Context, id string, cb Callbacks) {
 			st.focusCanvas(c, cb)
 		}
 	})
-	if bar.OverlayShortcut(0, ui.KeyEscape) {
+	if !st.FindComposing && bar.OverlayShortcut(0, ui.KeyEscape) {
 		st.CloseFind()
 		st.restoreCanvasFocusAfterEdit(cb)
 	}
@@ -5827,9 +5901,20 @@ func (st *BlockState) renderSourceView(c *ui.Context, id string, fullscreen bool
 				cb.OnRequestFocus()
 			}
 		}
-		st.SourceComposing = ta.Composing()
+		liveSourceComposing := ta.Composing()
+		st.SourceComposing = liveSourceComposing
+		ta.ObserveInput(func(ev ui.InputEvent) {
+			switch ev.Kind {
+			case ui.InputCompose:
+				liveSourceComposing = ev.Text != ""
+				st.SourceComposing = liveSourceComposing
+			case ui.InputText, ui.InputCommand:
+				liveSourceComposing = false
+				st.SourceComposing = false
+			}
+		})
 		ta.OnTextKey(func(k ui.TextKey) bool {
-			if k.Key == ui.KeyUnknown {
+			if k.Key == ui.KeyUnknown || liveSourceComposing {
 				return false
 			}
 			flushSource := func() {
@@ -6125,11 +6210,12 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 		st.LinkNodeID = 0
 		st.LinkBrokenNotice = false
 		st.LinkFocusPending = false
+		st.LinkComposing = false
 		st.LinkHandle.CancelFocus()
 		st.focusCanvas(c, cb)
 	}
 	scrim := ui.Box(c.Key("mm-link-scrim-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).Background(ui.Transparent)
-	if scrim.Clicked() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+	if scrim.Clicked() || (!st.LinkComposing && scrim.OverlayShortcut(0, ui.KeyEscape)) {
 		closeLink()
 		return
 	}
@@ -6258,21 +6344,38 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 			Bind(&st.LinkHandle)
 		if st.LinkFocusPending {
 			st.LinkFocusPending = false
+			inp.Focus(ui.FocusOptions{PreventScroll: true})
 			st.LinkHandle.Focus(c)
 		}
+		liveLinkComposing := inp.Composing()
+		st.LinkComposing = liveLinkComposing
+		inp.ObserveInput(func(ev ui.InputEvent) {
+			switch ev.Kind {
+			case ui.InputCompose:
+				liveLinkComposing = ev.Text != ""
+				st.LinkComposing = liveLinkComposing
+			case ui.InputText, ui.InputCommand:
+				liveLinkComposing = false
+				st.LinkComposing = false
+			}
+		})
 		inp.HandleInput(func(ev ui.InputEvent) bool {
-			if ev.Kind != ui.InputKeyDown || ev.Key == ui.KeyUnknown {
+			if ev.Kind != ui.InputKeyDown || ev.Key == ui.KeyUnknown || liveLinkComposing || st.LinkComposing {
 				return false
 			}
 			switch ev.Key {
+			case ui.KeyTab:
+				if ev.Mods == 0 || ev.Mods == ui.Shift {
+					return true
+				}
 			case ui.KeyDown:
-				if len(filtered) > 0 {
+				if ev.Mods == 0 && len(filtered) > 0 {
 					st.LinkActiveIdx = (st.LinkActiveIdx + 1) % len(filtered)
 					ensureCandidateVisible(st.LinkActiveIdx)
 					return true
 				}
 			case ui.KeyUp:
-				if len(filtered) > 0 {
+				if ev.Mods == 0 && len(filtered) > 0 {
 					if st.LinkActiveIdx <= 0 {
 						st.LinkActiveIdx = len(filtered) - 1
 					} else {
@@ -6282,16 +6385,20 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 					return true
 				}
 			case ui.KeyEnter:
-				if st.LinkActiveIdx >= 0 && st.LinkActiveIdx < len(filtered) {
-					st.applyLink(filtered[st.LinkActiveIdx].RelPath, cb)
-				} else {
-					st.applyLink(st.LinkDraft, cb)
+				if ev.Mods == 0 {
+					if st.LinkActiveIdx >= 0 && st.LinkActiveIdx < len(filtered) {
+						st.applyLink(filtered[st.LinkActiveIdx].RelPath, cb)
+					} else {
+						st.applyLink(st.LinkDraft, cb)
+					}
+					st.focusCanvas(c, cb)
+					return true
 				}
-				st.focusCanvas(c, cb)
-				return true
 			case ui.KeyEscape:
-				closeLink()
-				return true
+				if ev.Mods == 0 {
+					closeLink()
+					return true
+				}
 			}
 			return false
 		})
@@ -6837,18 +6944,24 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string, cb Callbacks) {
 		// Pinned right-side Tutorial & Shortcuts buttons.
 		ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
 		tutBtn := ui.ButtonBase(c.Key("mm-tut-btn-"+id)).
-			Height(theme.HeightControl).PaddingX(theme.Space8).AlignItems(ui.Center).Gap(theme.Space4).
+			Height(theme.HeightCompact).PaddingX(theme.Space10).Margin(0, theme.Space4, 0, theme.Space4).
+			Radius(theme.RadiusMD).AlignItems(ui.Center).Gap(theme.Space4).
 			Cursor(ui.CursorPointer).Shrink(0).Label(theme.Tr("教程", "Guide")).KeepFocus()
-		bui.Tooltip(c, tutBtn, theme.Tr("快捷键动画教程", "Animated shortcut guide"))
+		bui.Tooltip(c, tutBtn, theme.Tr("观看快捷键动画教程", "Watch animated shortcut guide"))
 		tutHot := tutBtn.Hovered() || tutBtn.Pressed()
-		tutFG := pal.TextSecondary
+		tutFG := pal.Accent
+		tutBG := pal.SelectionBG
+		tutBD := pal.Accent.Alpha(0.35)
 		if st.TutorialOpen {
-			tutBtn.Background(pal.SelectionBG)
-			tutFG = pal.Accent
+			tutBG = pal.Accent
+			tutFG = pal.Paper
+			tutBD = pal.Accent
 		} else if tutHot {
-			tutBtn.Background(pal.Hover)
-			tutFG = pal.Text
+			tutBG = pal.SelectionBG
+			tutFG = pal.AccentHover
+			tutBD = pal.Accent
 		}
+		tutBtn.Background(tutBG).Border(1, tutBD)
 		tutBtn.Children(func() {
 			icons.DrawAnimated(c, icons.Video, theme.IconMicro, pal.MonoIconColors(tutFG), st.TutorialOpen || tutHot)
 			ui.Text(c, theme.Tr("教程", "Guide")).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
