@@ -201,12 +201,14 @@ type SettingsSectionContrib struct {
 	Icon  *DuoIconSpec  `json:"icon,omitempty"`
 }
 
-// CommandContrib appears in the command palette; Shortcut is an optional
-// default binding in shortcuts.go spec form, e.g. "cmd-shift-t".
+// CommandContrib declares a command handler. Visible commands appear in the
+// command palette and shortcut settings; Hidden commands are callable from
+// menus, buttons, or menubar items without surfacing in the palette or shortcuts.
 type CommandContrib struct {
 	ID       string        `json:"id"`
 	Title    LocalizedText `json:"title"`
 	Shortcut string        `json:"shortcut,omitempty"`
+	Hidden   bool          `json:"hidden,omitempty"`
 	Icon     *DuoIconSpec  `json:"icon,omitempty"`
 }
 
@@ -736,6 +738,9 @@ func (m *Manifest) validateContributes() error {
 		}
 		if err := validateContribText("contributes.commands.title", cmd.Title); err != nil {
 			return err
+		}
+		if cmd.Hidden && strings.TrimSpace(cmd.Shortcut) != "" {
+			return fmt.Errorf("contributes.commands %q cannot set shortcut when hidden is true", cmd.ID)
 		}
 		if cmd.Icon != nil {
 			if err := validateContribIcon("contributes.commands.icon", *cmd.Icon); err != nil {
@@ -1712,6 +1717,7 @@ type contribRegistry struct {
 	fileIconPrefs   map[string]FileIconPrefs                                   // pluginID -> picker/sync_tabs overrides
 	fileIconRecents map[string][]string                                        // pluginID -> recent icon ids
 	warmedUp        map[string]string                                          // plugin id -> initialized version
+	menubarHidden   map[string]bool                                            // plugin id -> menu bar icons hidden by the user
 	badges          map[string]string                                          // plugin slot id -> badge text
 	active          map[string]bool                                            // plugin slot id -> active
 	status          map[string]statusOverlay                                   // "<plugin>/<item>" -> text/icon
@@ -1739,6 +1745,7 @@ type contribFile struct {
 	FileIconPrefs    map[string]FileIconPrefs                                   `json:"file_icon_prefs,omitempty"`
 	FileIconRecents  map[string][]string                                        `json:"file_icon_recents,omitempty"`
 	WarmedUp         map[string]string                                          `json:"warmed_up,omitempty"`
+	MenubarHidden    []string                                                   `json:"menubar_hidden,omitempty"`
 }
 
 func newContribRegistry(appDataDir string) *contribRegistry {
@@ -1752,6 +1759,7 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 		fileIconPrefs:   map[string]FileIconPrefs{},
 		fileIconRecents: map[string][]string{},
 		warmedUp:        map[string]string{},
+		menubarHidden:   map[string]bool{},
 		badges:          map[string]string{},
 		active:          map[string]bool{},
 		status:          map[string]statusOverlay{},
@@ -1909,6 +1917,11 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 						r.warmedUp[pluginID] = strings.TrimSpace(ver)
 					}
 				}
+				for _, pluginID := range f.MenubarHidden {
+					if id := strings.TrimSpace(pluginID); id != "" {
+						r.menubarHidden[id] = true
+					}
+				}
 			}
 		}
 	}
@@ -2049,6 +2062,13 @@ func (r *contribRegistry) saveLocked() {
 			warmed[pluginID] = ver
 		}
 	}
+	var menubarHidden []string
+	for pluginID, h := range r.menubarHidden {
+		if h {
+			menubarHidden = append(menubarHidden, pluginID)
+		}
+	}
+	slices.Sort(menubarHidden)
 	b, _ := json.MarshalIndent(contribFile{
 		TitlebarHidden:   ids,
 		TitlebarHiddenBy: hiddenBy,
@@ -2059,6 +2079,7 @@ func (r *contribRegistry) saveLocked() {
 		FileIconPrefs:    fileIconPrefs,
 		FileIconRecents:  fileIconRecents,
 		WarmedUp:         warmed,
+		MenubarHidden:    menubarHidden,
 	}, "", "  ")
 	_ = os.MkdirAll(filepath.Dir(r.path), 0o755)
 	tmp := r.path + ".tmp"
@@ -2145,6 +2166,10 @@ func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool
 	}
 	if _, ok := r.warmedUp[pluginID]; ok {
 		delete(r.warmedUp, pluginID)
+		changed = true
+	}
+	if _, ok := r.menubarHidden[pluginID]; ok {
+		delete(r.menubarHidden, pluginID)
 		changed = true
 	}
 	for id := range r.badges {
@@ -2686,12 +2711,15 @@ func (s *Supervisor) SettingsSections(tab string) []ResolvedSection {
 	return out
 }
 
-// Commands returns every enabled plugin command for the command palette and shortcuts.
+// Commands returns every enabled visible plugin command for the command palette and shortcuts.
 func (s *Supervisor) Commands() []ResolvedCommand {
 	loc := s.Locale()
 	var out []ResolvedCommand
 	for _, a := range s.enabledContribs() {
 		for _, cmd := range a.Manifest.Contributes.Commands {
+			if cmd.Hidden {
+				continue
+			}
 			out = append(out, ResolvedCommand{
 				PluginID:   a.Manifest.ID,
 				PluginName: a.Manifest.Name.Resolve(loc),
