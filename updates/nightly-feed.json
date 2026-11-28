@@ -1,10 +1,74 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-27T22:39:28.208Z",
-  "latest_version": "1.0.977",
-  "latest_tag": "v1.0.977",
+  "updated_at": "2026-11-28T05:15:21.344Z",
+  "latest_version": "1.0.978",
+  "latest_tag": "v1.0.978",
   "releases": [
+    {
+      "version": "1.0.978",
+      "tag": "v1.0.978",
+      "published_at": "2026-11-28T05:15:20Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.978",
+      "prerelease": true,
+      "channel": "nightly",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "AI 对话：所有 AI 后端默认支持网页搜索和网页内容获取。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "思维导图：拖动框选时，节点选中高亮会实时更新。",
+          "思维导图：教程视频播放器会立即加载，可即时自动播放时长为 10.5 秒的高对比度教程。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "AI Chat: All AI backends now support web search and web fetching by default."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Mind Map: Node selection highlights now update live while you drag a marquee selection.",
+          "Mind Map: The tutorial video player is mounted immediately, enabling instant autoplay of the 10.5-second high-contrast tutorial."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-macos-arm64.dmg",
+          "size": 22496888,
+          "sha256": "96d63b77c0903779b17c42e9e1e8915e54cbacabacdd587c0251ee16b595ccec"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-macos-x64.dmg",
+          "size": 24578541,
+          "sha256": "8e2dda1847e29c9021e8084f95fdcd2078d3533a4156781e6fdce24d3a0c5edb"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-windows-x64-setup.exe",
+          "size": 19866983,
+          "sha256": "9d0b9f400b0f3c4f7dd818bad69121392a3a77720e93a8d776dd2a08ca981fd3"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-linux-x64.deb",
+          "size": 16191744,
+          "sha256": "a0dabe5455f09a56f04c6200a71ca5a1b316c96b220838a4d3ee8f49d7659750"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.978/block-linux-x64.AppImage",
+          "size": 29923832,
+          "sha256": "5b0aab03504d5b47ed784236b351cc36c9509d1b49ef8e732e5f690ad14cfdc6"
+        }
+      ]
+    },
     {
       "version": "1.0.977",
       "tag": "v1.0.977",
@@ -30,38 +94,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.977/block-macos-arm64.dmg",
-          "size": 22096052,
-          "sha256": "9be4162b19efa457f1a75f9e7359bec406db5e6c809fff2d91864dc26cca3a4d"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.977/block-macos-x64.dmg",
-          "size": 24182623,
-          "sha256": "c35a724afbf7b52cfa067e0e2b061fb41cfe2903a93198f0018c6b2b7d0c7e5a"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.977/block-windows-x64-setup.exe",
-          "size": 19478604,
-          "sha256": "13f0df491b6c537539b3ad2905a6e14daf6be90115121a6dabd21548c3a024f0"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.977/block-linux-x64.deb",
-          "size": 15849866,
-          "sha256": "0e244f6313f9a96cad8cc8ecd1cb15b43e20929652af357fcaec2f5c5305bbfa"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.977/block-linux-x64.AppImage",
-          "size": 29547000,
-          "sha256": "c820440239f397ac508311a109a0f9bdd1a1dcb571284baff181ac25d296780a"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.976",
@@ -1827,39 +1860,6 @@
         "fixes": [
           "Mind Map: Fixed a crash that could occur when toggling full-screen mode."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.925",
-      "tag": "v1.0.925",
-      "published_at": "2026-11-24T06:13:52Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.925",
-      "prerelease": false,
-      "channel": "stable",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "主题：新增海洋纸思维导图分支配色方案。",
-          "思维导图：内置原生思维导图引擎与矢量渲染器，并支持六种数据格式的解析与导出。",
-          "编辑器：支持插入原生思维导图代码块，并提供全屏编辑模式与统一的撤销历史。",
-          "插件接口：新增思维导图状态接口，支持插件与工作区中的思维导图进行状态交互。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Themes: The theme options now include an Ocean Paper color palette for mind map branches.",
-          "Mind Maps: A native mind map engine provides vector rendering and supports six data formats.",
-          "Editor: The editor now supports native mind map code blocks with fullscreen editing and unified undo history.",
-          "Plugin API: New mind map state interfaces allow plugins to interact with workspace mind maps."
-        ],
-        "improvements": [],
-        "fixes": [],
         "other": []
       },
       "assets": []
