@@ -3537,57 +3537,6 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					}
 				}
 			})
-
-			// Task progress pill (click to jump to next incomplete task).
-			if st.Root != nil {
-				if totalTasks, doneTasks := st.Root.CountTaskStats(); totalTasks > 0 {
-					allDone := doneTasks == totalTasks
-					pillTip := theme.Tr("定位下一个未完成任务", "Jump to next incomplete task")
-					if allDone {
-						pillTip = theme.Tr("全部任务已完成", "All tasks completed")
-					}
-					pill := ui.ButtonBase(c.Key("mm-task-prog-"+id)).
-						Height(theme.HeightCompact).PaddingX(theme.Space8).Radius(theme.RadiusPill).
-						AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Shrink(0).
-						Label(pillTip)
-					pillHov := pill.Hovered() || pill.Pressed()
-					bg := pal.Hover
-					fg := pal.TextSecondary
-					border := pal.Hairline
-					if allDone {
-						bg = pal.SuccessSurface
-						fg = pal.Success
-						border = pal.Success.Alpha(0.28)
-					} else if pillHov {
-						bg = pal.SelectionBG
-						fg = pal.Accent
-						border = pal.Accent.Alpha(0.35)
-					}
-					pill.Background(bg).Border(1, border)
-					st.keepCanvasButtonFocus(c, pill)
-					bui.Tooltip(c, pill, pillTip)
-					pill.Children(func() {
-						icons.DrawAnimated(c, icons.Check, theme.IconMicro, pal.MonoIconColors(fg), pillHov || allDone)
-						ui.Text(c, fmt.Sprintf("%d/%d", doneTasks, totalTasks)).
-							FontSize(theme.FontMeta).FontWeight(theme.WeightMono).TextColor(fg).SingleLine()
-					})
-					if pill.Clicked() {
-						if next := NextUndoneTask(st.Root, st.SelectedID); next != nil {
-							ExpandAncestors(next)
-							st.setSingleSelection(next.ID)
-							st.EnsureVisiblePending = true
-							if st.View == ViewOutline {
-								st.focusOutlineNode(next.ID, 0)
-							} else if st.View == ViewSource {
-								st.View = ViewMap
-								st.EnsureVisiblePending = true
-							}
-							c.Invalidate()
-						}
-						st.focusCanvas(c, cb)
-					}
-				}
-			}
 		})
 
 		// Right: Context-aware actions tailored to the active view.

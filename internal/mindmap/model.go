@@ -284,27 +284,6 @@ func (n *Node) CountStats() (nodes, tasks, links int) {
 	return
 }
 
-// CountTaskStats returns the total number of task nodes and completed tasks in the subtree.
-func (n *Node) CountTaskStats() (total, done int) {
-	if n == nil {
-		return 0, 0
-	}
-	var walk func(x *Node)
-	walk = func(x *Node) {
-		if x.Task != nil {
-			total++
-			if *x.Task {
-				done++
-			}
-		}
-		for _, ch := range x.Children {
-			walk(ch)
-		}
-	}
-	walk(n)
-	return
-}
-
 // ExpandAncestors unfolds every collapsed ancestor above n so n becomes visible.
 func ExpandAncestors(n *Node) {
 	if n == nil {
@@ -313,36 +292,6 @@ func ExpandAncestors(n *Node) {
 	for p := n.Parent; p != nil; p = p.Parent {
 		p.Folded = false
 	}
-}
-
-// NextUndoneTask finds the next unchecked task node in DFS order after afterID,
-// wrapping around to the first unchecked task if needed.
-func NextUndoneTask(root *Node, afterID int) *Node {
-	if root == nil {
-		return nil
-	}
-	var undone []*Node
-	var walk func(x *Node)
-	walk = func(x *Node) {
-		if x.Task != nil && !*x.Task {
-			undone = append(undone, x)
-		}
-		for _, ch := range x.Children {
-			walk(ch)
-		}
-	}
-	walk(root)
-	if len(undone) == 0 {
-		return nil
-	}
-	if afterID != 0 {
-		for i, u := range undone {
-			if u.ID == afterID {
-				return undone[(i+1)%len(undone)]
-			}
-		}
-	}
-	return undone[0]
 }
 
 // FindMatches returns all nodes whose Text or Link matches query (case-insensitive) in DFS order.
