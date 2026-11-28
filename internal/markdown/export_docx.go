@@ -243,6 +243,12 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			body.WriteString(`<w:p><w:pPr><w:spacing w:before="0" w:after="100" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`)
 
 		case b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML:
+			if isMindMapCodeBlock(b) {
+				if mindmapXML, ok := renderDOCXMindMap(b, avail, docxPageHeightPx-topM-bottomM-16, indentPx, pal, assets); ok {
+					body.WriteString(mindmapXML)
+					continue
+				}
+			}
 			body.WriteString(renderDOCXCode(b, avail, indentPx, pal, legacy))
 
 		case b.Kind == model.BlockCallout:

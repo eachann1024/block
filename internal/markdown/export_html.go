@@ -1180,6 +1180,9 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 		renderHTMLCallout(out, b, st.calloutOrd, pal, legacy)
 
 	case b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML:
+		if isMindMapCodeBlock(b) && renderHTMLMindMap(out, b, pal, legacy, &st.imageBytes) {
+			return
+		}
 		cls := ""
 		lang := strings.TrimSpace(b.Language)
 		if b.Kind == model.BlockRawHTML && lang == "" {

@@ -159,16 +159,29 @@ func textLineColRuneRange(text string, line0, col1 int) (startRune, endRune int,
 
 // JumpToBlock is used by the outline. Jumping preserves the editing caret.
 func (s *Session) JumpToBlock(idx int) {
-	if s.jumpTo(idx, -1, -1) {
-		blockID := s.doc.Blocks[idx].ID
-		s.outlineJumpLockID = blockID
-		s.outlineJumpLockUntil = time.Time{}
-		s.outlineLastClickedID = blockID
-		s.outlinePreferScroll = false
-		s.outlineWakeUntil = time.Time{}
-		s.outlineIdleFadeAt = time.Time{}
+	s.jumpToOutlineBlock(idx, true)
+}
+
+func (s *Session) jumpToOutlineBlock(idx int, closeOverlay bool) bool {
+	if !s.jumpTo(idx, -1, -1) {
+		return false
+	}
+	blockID := s.doc.Blocks[idx].ID
+	s.outlineSelectedBlockID = blockID
+	s.outlineJumpLockID = blockID
+	s.outlineJumpLockUntil = time.Time{}
+	s.outlineLastClickedID = blockID
+	s.outlinePreferScroll = false
+	s.outlineWakeUntil = time.Time{}
+	s.outlineIdleFadeAt = time.Time{}
+	if closeOverlay {
 		s.closeOutline(blockID)
 	}
+	return true
+}
+
+func (s *Session) previewOutlineBlock(idx int) bool {
+	return s.jumpToOutlineBlock(idx, false)
 }
 
 func (s *Session) jumpTo(idx, row, col int) bool {

@@ -32,7 +32,7 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
      ```
      - **Runtime Context**: `notebook_root` is populated only when declaring `notes:read`, `notes:write`, or `events:note_saved` and a notebook is active (otherwise `""`); `notebooks` is populated only when declaring `notes:read` (otherwise `[]`). Switching notebooks typically re-initializes the sandbox with the new `notebook_root` on the next call (including background `note.saved` events), while certain appearance/UI plugins may warm immediately on switch.
      - `downloads_dir` (defaults to `~/Downloads`, env `BLOCKMD_DOWNLOADS_DIR`): export files, backups, and user-facing output should default to `downloads_dir` rather than hidden directories inside `apps-data` or notebooks.
-     - `ui_capabilities`: progressive capability flags (up to 40 keys depending on host version, config, and OS; see Section 4.4).
+     - `ui_capabilities`: progressive capability flags (up to 43 keys depending on host version, config, and OS; see Section 4.4).
    - Return `result`: `{"ready": true}`.
 
 2. **`plugin.render`**
@@ -94,7 +94,7 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
 
 ### Host Method Index
 
-This table lists all 80 `host.*` JSON-RPC methods currently dispatched by the host and their exact permission / manifest requirements. Capabilities marked "default-allowed" may be omitted from `manifest.permissions` unless an explicit declaration is noted; all other permissions must be declared explicitly.
+This table lists all 81 `host.*` JSON-RPC methods currently dispatched by the host and their exact permission / manifest requirements. Capabilities marked "default-allowed" may be omitted from `manifest.permissions` unless an explicit declaration is noted; all other permissions must be declared explicitly.
 
 <!-- host-methods-table:start -->
 | Method | Required Permission / Manifest Condition | Purpose | Details |
@@ -119,6 +119,7 @@ This table lists all 80 `host.*` JSON-RPC methods currently dispatched by the ho
 | `host.fs.list` | `system:fs` | List entries in a granted directory (optionally recursive) | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.read` | `system:fs` | Read a granted file as UTF-8 or Base64 | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.write` | `system:fs` | Write UTF-8 or Base64 data to a granted path (supports atomic) | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.save_download` | `system:fs` (`reveal: true` also requires `system:open`) | Save a file directly to `downloads_dir` with automatic suffix deduplication (`" 2"`, `" 3"`) and optional file-manager reveal | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.mkdir` | `system:fs` | Create a directory under a granted path | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.delete` | `system:fs` | Delete a granted file or directory | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.delete_data` | `system:fs` | Delete a file or directory strictly under plugin `data_dir` without following symlinks or junctions | [§4.2 · 14](protocol-and-ui.md) |
@@ -140,9 +141,9 @@ This table lists all 80 `host.*` JSON-RPC methods currently dispatched by the ho
 | `host.system.capabilities` | None (check `system_integration`) | Query boolean availability of OS integration features | [§4.3](protocol-and-ui.md) |
 | `host.system.notify` | `system:notify` (default-allowed; note link needs `notes:read`) | Send a native OS notification banner | [§4.3](protocol-and-ui.md) |
 | `host.system.open_url` | `system:open` + active user action & window focus | Open an HTTP(S) URL in the default browser | [§4.3](protocol-and-ui.md) |
-| `host.system.reveal` | `system:open` + `notes:read` + user action & focus | Reveal a notebook file in the OS file manager | [§4.3](protocol-and-ui.md) |
+| `host.system.reveal` | `system:open` + (`notes:read` for notebook items, or `downloads_dir`/`system:fs` for `path`) + user action & focus | Reveal a notebook, Downloads, or granted file in the OS file manager | [§4.3](protocol-and-ui.md) |
 | `host.system.open_dialog` | `system:dialogs` + active user action & window focus | Show a native OS file or directory picker | [§4.3](protocol-and-ui.md) |
-| `host.system.save_dialog` | `system:dialogs` + active user action & window focus | Show a native OS save-location picker | [§4.3](protocol-and-ui.md) |
+| `host.system.save_dialog` | `system:dialogs` + active user action & window focus | Show a native OS save-location or directory picker (`directory: true`) | [§4.3](protocol-and-ui.md) |
 | `host.system.trash` | `system:trash` + `notes:write` + user action & focus | Confirm natively and move a regular notebook file to Trash | [§4.3](protocol-and-ui.md) |
 | `host.system.badge` | `system:badge` (default-allowed) | Set or clear this plugin's app icon badge count | [§4.3](protocol-and-ui.md) |
 | `host.clipboard.read` | `system:clipboard_read` + user action & window focus | Read UTF-8 text from the OS clipboard | [§4.3](protocol-and-ui.md) |
@@ -208,12 +209,13 @@ Note path rules: case-insensitive `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`,
 11. **`host.perf.snapshot`** (`"notes:read"`): `{"refresh_disk": false}` -> host CPU, RSS, and 7 disk categories (`notes`, `assets`, `history`, `recovery`, `ai_sessions`, `logs`, `config`).
 12. **`host.store.changelog`** (no permission; check `"store_changelog"` capability): `{"id": "example-sync", "locale": "en-US", "limit": 10}` (`limit` default 10, max 20). Resolves static JSON API → GitHub Releases → inline index changelog → local `CHANGELOG.md` (local fallback populates `markdown` and may have `releases: null`).
 13. **`host.log`** (no permission; `-32601` on older hosts): `{"entries": [{"level", "event", "notebook_root", "path", "protocol", "detail"}]}` (max 200 entries, 400 bytes per field). Never log note bodies or secrets.
-14. **`host.fs.*`** (`"system:fs"`, host absolute paths only; resolves symlinks before checking scope via `os.Root`. Authorized scope covers `data_dir`, `downloads_dir`, `granted-paths.json` entries, and registered notebooks when also holding `"notes:read"` for reads or `"notes:write"` for writes. Protected host files inside `data_dir`—`granted-paths.json`, `scheduler.json`, `state.json`—cannot be modified directly. Note that `host.system.open_dialog`/`save_dialog` only return selected paths; file grants are registered via form pickers or menubar drops):
+14. **`host.fs.*`** (`"system:fs"`, host absolute paths only except `host.fs.save_download` relative names; resolves symlinks before checking scope via `os.Root` and rejects escapes. Authorized scope covers `data_dir`, `downloads_dir`, `granted-paths.json` entries, and registered notebooks when also holding `"notes:read"` for reads or `"notes:write"` for writes. Protected host files inside `data_dir`—`granted-paths.json`, `scheduler.json`, `state.json`—cannot be modified directly. When holding `"system:fs"`, paths chosen via `host.system.open_dialog` / `save_dialog` are automatically registered as filesystem grants alongside form pickers and menubar drops):
     - `host.fs.list_grants` (`{}`): `{"grants": [...], "data_dir", "downloads_dir", "notebooks": [{"path", "writable"}]}`.
     - `host.fs.stat` (`{"path", "lstat"?}`): `{"exists", "path", "name", "is_dir", "is_regular", "is_symlink", "size", "mod_time", "mod_time_ms", "is_icloud_placeholder", "root_identity"?}` (`root_identity` reports `"<dev>:<ino>"` for existing non-symlink directories when available; pass `"lstat": true` to inspect symlinks/junctions without following them).
     - `host.fs.list` (`{"path", "recursive"}`, max 10000 entries): `{"path", "entries": [...], "truncated": bool}` (recursive entries include `rel_path`).
     - `host.fs.read` (`{"path", "encoding": "utf8"|"base64", "max_bytes"}`, default 16 MiB, host cap 64 MiB): `{"path", "encoding", "size", "content"|"content_base64"}`.
     - `host.fs.write` (`{"path", "content"|"content_base64", "atomic", "mkdir_parents", "expected_root"?, "expected_root_identity"?}`, host cap 64 MiB).
+    - `host.fs.save_download` (`{"filename", "content"|"content_base64"|"from_path", "reveal"?}`, check `"save_download"` capability): automatically saves UTF-8, Base64, or a readable granted regular file (up to 64 MiB) inside `downloads_dir` using exclusive creation, appending `" 2"`, `" 3"` before the extension on filename collisions (rejects dot/parent/`\`/`:` segments). Pass `"reveal": true` (requires `"system:open"`) to highlight the saved file in the OS file manager during an active focused user action; returns `{"ok": true, "path", "name", "size", "revealed": bool}` (`"revealed": false` when GUI reveal is unavailable).
     - `host.fs.mkdir` (`{"path", "recursive"|"parents"}`), `host.fs.delete` (`{"path", "recursive", "expected_root"?, "expected_root_identity"?}`), `host.fs.delete_data` (`{"path", "recursive"?}` -> `{"ok": true, "deleted": bool, "path"}`; strictly confined to plugin `data_dir` using the cached startup `os.Root` handle—never grants, downloads, or notebooks—verifies `os.SameFile` between the current `data_dir` path and the startup handle before acting, aborting with `-32004` if moved/changed, checks protected host files by `os.SameFile` identity rather than filename alone and traverses/deletes once along open directory handles, rejecting any symlink/junction with `-32004` or protected file/escape with `-32001`), `host.fs.rename` (`{"from", "to", "overwrite", "mkdir_parents", "expected_root"?, "expected_root_identity"?}`; falls back to copy+delete across different grant roots), `host.fs.copy` (`{"from", "to", "overwrite", "mkdir_parents", "expected_root"?, "expected_root_identity"?}`; host-side streaming atomic copy of regular non-symlink files bypassing Wasm memory, rejects identical paths and grant roots themselves, returns `{"ok": true, "from", "to", "size"}`), `host.fs.atomic_swap` (`{"path_a", "path_b", "expected_root"?, "expected_root_identity"?}`; may succeed with `atomic: false` if OS atomic exchange is unavailable). Pair `expected_root_identity` (`"<dev>:<ino>"`) with `expected_root` (an absolute directory path): the host opens `expected_root`, verifies its `dev:ino` (`-32008` on mismatch/symlink/non-dir), and executes via relative paths under that handle (`-32602` if a target lies outside `expected_root` or if `expected_root` omits `expected_root_identity`). When legacy callers pass only `expected_root_identity` without `expected_root`, the host searches all containing writable granted directory roots and registered notebook roots for one matching that `dev:ino` (returning `-32008` only when none match).
 15. **`host.crypto.*`** (memory hashing requires no permission; `file_path` requires `"system:fs"`):
     - `host.crypto.hash`: `{"algorithm": "sha1"|"sha256"|"sha512"|"md5", "text"|"base64"|"file_path"}` -> `{"algorithm", "hex", "base64", "size"}`.
@@ -239,14 +241,14 @@ Note path rules: case-insensitive `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`,
 
 ### 4.3 System Integration
 
-Desktop hosts advertise `"system_integration"` in `ui_capabilities`. Call `host.system.capabilities {}` (no permission) to query live boolean support for `notify`, `notify_click`, `secrets`, `open_url`, `reveal`, `open_dialog`, `save_dialog`, `clipboard_read`, `clipboard_write`, `trash`, `badge`, `wake`, `network`, and `focus`.
+Desktop hosts advertise `"system_integration"` in `ui_capabilities`. Call `host.system.capabilities {}` (no permission) to query live boolean support for `notify`, `notify_click`, `secrets`, `open_url`, `reveal`, `reveal_path`, `open_dialog`, `save_dialog`, `save_dialog_directory`, `save_download`, `clipboard_read`, `clipboard_write`, `trash`, `badge`, `wake`, `network`, and `focus`.
 
 | Method | Permission | Contract |
 | --- | --- | --- |
 | `host.system.notify` | Default-allowed | `{"title", "body", "tone", "notebook_root"?, "rel_path"?, "timeout_ms"?, "dedup_key"?}`. Sends OS native notification (`title <= 80`, `body <= 240`). `notebook_root`/`rel_path` require `notes:read`. Rate limit: 5 distinct notifications per 10s (`-32006`); 2-minute dedup window (`suppressed: true`). |
 | `host.system.open_url` | `system:open` | `{"url": "https://example.com"}` (HTTP/HTTPS without embedded credentials). |
-| `host.system.reveal` | `system:open`, `notes:read` | `{"rel_path", "notebook_root"?}`: reveals file in OS file manager. |
-| `host.system.open_dialog`, `host.system.save_dialog` | `system:dialogs` | Optional `title`, `default_path`, `extensions` (plus `directory`, `multiple` for open). Returns `{"ok": true, "paths": [...], "canceled": false}`. Canceled/timed-out actions return `-32007`. |
+| `host.system.reveal` | `system:open`; notebook items also need `notes:read`; `path` outside `downloads_dir` also needs `system:fs` | `{"rel_path", "notebook_root"?}` for a notebook item, or `{"path"}` (check `"reveal_path"`) for a file inside `downloads_dir` (only `system:open`) or a granted `system:fs` path. Reveals the item in the OS file manager. |
+| `host.system.open_dialog`, `host.system.save_dialog` | `system:dialogs` | Optional `title`, `default_path`, `extensions`, `directory` (also supported by `save_dialog`—omit `extensions`, check `"save_dialog_directory"`), and `multiple` (`open_dialog` only). Returns `{"ok": true, "paths": [...], "canceled": false}`. When holding `"system:fs"`, chosen paths become grants: read-only for `open_dialog`, writable for `save_dialog`; a grant is dropped if the path later turns into a symlink or switches between file and folder. Canceled/timed-out actions return `-32007`. |
 | `host.clipboard.read`, `host.clipboard.write` | `system:clipboard_read` / `write` | UTF-8 text up to 64 KiB. |
 | `host.system.trash` | `system:trash`, `notes:write` | Regular file only (`{"rel_path", "notebook_root"?, "expected_root_identity"?}`); verifies optional `expected_root_identity` (`-32008` on mismatch) and shows native confirmation dialog before moving to OS Trash. |
 | `host.system.badge` | Default-allowed | `{"count": 0..999}` (0 clears plugin contribution; host sums enabled plugins up to 999). |
@@ -256,8 +258,8 @@ Interactive system operations (open URL, reveal, dialogs, clipboard, trash) requ
 
 ### 4.4 Compatibility & Platform Notes
 
-- **`ui_capabilities` keys** (up to 40 total, depending on host version, config, and OS):
-  `kv_tooltip`, `treemap`, `host_perf`, `checklist`, `checklist_add_folder`, `form_layout`, `multi_notebook`, `card_collapse`, `metric_tone`, `log_columns`, `file_picker`, `action_feedback`, `action_progress`, `note_revision`, `sidebar_sections`, `file_badges`, `sidebar_menu`, `sidebar_ignored_dirs`, `backdrops`, `status_icon`, `toast_icon`, `notes_open`, `log_actions`, `panel_toggle`, `editor_insert_mode`, `dialog_token`, `item_icons`, `tab_menu`, `file_path`, `log_timeline`, `progress_bar`, `segmented_status`, `toast_banner`, `open_settings`, `form_autosave`, `button_link`, `store_changelog`, `system_integration`, `menubar`, `menubar_drop` (macOS only).
+- **`ui_capabilities` keys** (up to 43 total, depending on host version, config, and OS):
+  `kv_tooltip`, `treemap`, `host_perf`, `checklist`, `checklist_add_folder`, `form_layout`, `multi_notebook`, `card_collapse`, `metric_tone`, `log_columns`, `file_picker`, `action_feedback`, `action_progress`, `note_revision`, `sidebar_sections`, `file_badges`, `sidebar_menu`, `sidebar_ignored_dirs`, `backdrops`, `status_icon`, `toast_icon`, `notes_open`, `log_actions`, `panel_toggle`, `editor_insert_mode`, `dialog_token`, `item_icons`, `tab_menu`, `file_path`, `log_timeline`, `progress_bar`, `segmented_status`, `toast_banner`, `open_settings`, `form_autosave`, `button_link`, `save_download`, `store_changelog`, `system_integration`, `save_dialog_directory`, `reveal_path`, `menubar`, `menubar_drop` (macOS only).
 - **Platform Details**: macOS uses Notification Center (click targets persist 7 days across restarts), Keychain, and Dock; Windows uses native notifications, Credential Manager, and taskbar badge; Linux uses desktop notifications, Secret Service (must be unlocked), Unity Launcher Dock, and logind wake events.
 - **Safe Trash**: saves dirty editors before confirming, stages on the same volume, verifies file identity, restores on failure, and tracks original paths for recovery prompts.
 

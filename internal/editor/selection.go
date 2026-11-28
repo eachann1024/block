@@ -55,18 +55,26 @@ func (s *Session) hasMultiBlockSelection() bool {
 	return a.Block != b.Block
 }
 
+func (s *Session) isMindMapBlock(idx int) bool {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return false
+	}
+	b := &s.doc.Blocks[idx]
+	return b.Kind == model.BlockCode && codepreview.CanonicalLanguage(b.Language) == "mindmap"
+}
+
 func (s *Session) isPreviewOnlyCodeBlock(idx int) bool {
 	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
 		return false
+	}
+	if s.isMindMapBlock(idx) {
+		return true
 	}
 	b := &s.doc.Blocks[idx]
 	if b.Kind != model.BlockCode {
 		return false
 	}
 	canon := codepreview.CanonicalLanguage(b.Language)
-	if canon == "mindmap" {
-		return true
-	}
 	return codepreview.IsPreviewLanguage(canon) && !b.ShowSource && strings.TrimSpace(b.Code) != ""
 }
 
@@ -85,6 +93,9 @@ func (s *Session) hasWholeAtomicSelection() bool {
 	blk := &s.doc.Blocks[a.Block]
 	k := blk.Kind
 	if k == model.BlockTable && rlen > 0 {
+		if s.tableTextSelBlock == blk.ID {
+			return false
+		}
 		// Selecting text inside a single active cell (e.g. Shift+Right across a 1x1 table cell)
 		// is an inline cell selection, not a whole-table atomic selection.
 		if s.tableActiveBlock == blk.ID && blk.Table != nil {
@@ -134,7 +145,10 @@ func (s *Session) needsDetachedSelectionFocus() bool {
 	if s.readOnly && s.hasNonEmptySelection() {
 		return true
 	}
-	return s.hasMultiBlockSelection() || s.hasMultiCellTableSelection() || s.hasWholeAtomicSelection() || s.hasFocusedAtomicBlock()
+	// A lone focused MindMap keeps keyboard focus on its own canvas; it still
+	// counts as an atomic block for whole-block copy / cut / delete.
+	return s.hasMultiBlockSelection() || s.hasMultiCellTableSelection() || s.hasWholeAtomicSelection() ||
+		(s.hasFocusedAtomicBlock() && !s.isMindMapBlock(s.focusedBlock))
 }
 
 func (s *Session) blockSelectionLen(idx int) int {
@@ -355,6 +369,8 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 	}
 
 	s.pushUndo()
+	wholeAtomic := s.hasWholeAtomicSelection()
+	s.tableTextSelBlock = 0
 	s.firstLineDeleteArmed = false
 	s.clearAutoConvertState()
 	s.closeTransientOverlays()
@@ -366,7 +382,7 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 		rlen := s.blockSelectionLen(idx)
 		whole := a.Offset == 0 && b.Offset >= rlen
 
-		if blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || (blk.Kind == model.BlockTable && whole && s.hasWholeAtomicSelection()) || (whole && s.isPreviewOnlyCodeBlock(idx)) {
+		if blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || (blk.Kind == model.BlockTable && whole && wholeAtomic) || (whole && s.isPreviewOnlyCodeBlock(idx)) {
 			if insert != "" || len(s.doc.Blocks) == 1 {
 				nb := model.Block{ID: blk.ID, Kind: model.BlockParagraph, Dirty: true}
 				nb.SetText(insert)
@@ -414,15 +430,21 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 				return true
 			}
 			// Multi-cell selection inside table: clear touched text ranges inside each cell.
-			clearTableRange(blk.Table, a.Offset, b.Offset, insert)
+			actRow, actCol, caret, ok := clearTableRangeAt(blk.Table, a.Offset, b.Offset, insert)
 			blk.Dirty = true
 			blk.CleanSource = ""
-			caret := a.Offset + utf8.RuneCountInString(insert)
+			if !ok {
+				caret = clampInt(a.Offset+utf8.RuneCountInString(insert), 0, s.blockSelectionLen(idx))
+				if row, col, _, _, found := tableCellAtRuneRange(blk.Table, caret, caret); found {
+					actRow, actCol = row, col
+					ok = true
+				}
+			}
 			s.focusedBlock = idx
-			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, caret, caret); ok {
+			if ok {
 				s.tableActiveBlock = blk.ID
-				s.tableActiveRow = row
-				s.tableActiveCol = col
+				s.tableActiveRow = actRow
+				s.tableActiveCol = actCol
 			}
 			s.selAnchor = Position{Block: idx, Offset: caret}
 			s.selHead = s.selAnchor
@@ -519,6 +541,9 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 	caretBlockOffset := 0
 	caretRuneOffset := 0
 	placedCaret := false
+	var caretTableBlock model.BlockID
+	var caretTableRow, caretTableCol int
+	caretInTable := false
 
 	if a.Offset > 0 {
 		switch {
@@ -530,6 +555,29 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 			replacement = append(replacement, cp)
 			caretBlockOffset = 0
 			caretRuneOffset = keep + utf8.RuneCountInString(insert)
+			placedCaret = true
+			insert = ""
+		case first.Kind == model.BlockTable && first.Table != nil && a.Offset < firstLen:
+			cp := first.Clone()
+			actRow, actCol, caret, ok := clearTableRangeAt(cp.Table, a.Offset, firstLen, insert)
+			cp.Dirty = true
+			cp.CleanSource = ""
+			if !ok {
+				caret = a.Offset + utf8.RuneCountInString(insert)
+				if row, col, _, _, found := tableCellAtRuneRange(cp.Table, caret, caret); found {
+					actRow, actCol = row, col
+					ok = true
+				}
+			}
+			replacement = append(replacement, cp)
+			caretBlockOffset = 0
+			caretRuneOffset = caret
+			if ok {
+				caretTableBlock = cp.ID
+				caretTableRow = actRow
+				caretTableCol = actCol
+				caretInTable = true
+			}
 			placedCaret = true
 			insert = ""
 		case isRichBlock(first):
@@ -580,6 +628,23 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 				placedCaret = true
 			}
 			replacement = append(replacement, cp)
+		case last.Kind == model.BlockTable && last.Table != nil:
+			cp := last.Clone()
+			clearTableRange(cp.Table, 0, b.Offset, "")
+			cp.Dirty = true
+			cp.CleanSource = ""
+			if !placedCaret {
+				caretBlockOffset = len(replacement)
+				caretRuneOffset = 0
+				if row, col, _, _, found := tableCellAtRuneRange(cp.Table, 0, 0); found {
+					caretTableBlock = cp.ID
+					caretTableRow = row
+					caretTableCol = col
+					caretInTable = true
+				}
+				placedCaret = true
+			}
+			replacement = append(replacement, cp)
 		case isRichBlock(last):
 			suffix := sliceSpans(last.Spans, clampInt(b.Offset, 0, lastLen), lastLen)
 			if len(replacement) > 0 && isRichBlock(&replacement[len(replacement)-1]) {
@@ -620,6 +685,15 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 	s.focusedBlock = targetIdx
 	s.selAnchor = Position{Block: targetIdx, Offset: caretRuneOffset}
 	s.selHead = s.selAnchor
+	if caretInTable {
+		s.tableActiveBlock = caretTableBlock
+		s.tableActiveRow = caretTableRow
+		s.tableActiveCol = caretTableCol
+	} else if s.doc.Blocks[targetIdx].Kind == model.BlockTable {
+		s.syncCollapsedTableCellFocus(s.selAnchor)
+	} else {
+		s.tableActiveBlock = 0
+	}
 	s.focusPending = true
 	s.selSyncPending = true
 	s.multiSelFocusPending = false
@@ -628,10 +702,18 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 }
 
 func clearTableRange(tbl *model.TableData, startRune, endRune int, insertFirst string) {
+	_, _, _, _ = clearTableRangeAt(tbl, startRune, endRune, insertFirst)
+}
+
+func clearTableRangeAt(tbl *model.TableData, startRune, endRune int, insertFirst string) (actRow, actCol, caretOffset int, ok bool) {
 	if tbl == nil || startRune >= endRune {
-		return
+		return 0, 0, 0, false
 	}
 	pos := 0
+	var insSpans []model.Span
+	if insertFirst != "" {
+		insSpans = []model.Span{{Text: insertFirst}}
+	}
 	inserted := false
 	for rIdx := range tbl.Rows {
 		for cIdx := range tbl.Rows[rIdx] {
@@ -640,15 +722,35 @@ func clearTableRange(tbl *model.TableData, startRune, endRune int, insertFirst s
 			cStart, cEnd := pos, pos+clen
 			ovLo := max(startRune, cStart) - cStart
 			ovHi := min(endRune, cEnd) - cStart
-			if ovLo < ovHi {
-				var merged []model.Span
-				merged = append(merged, sliceSpans(cell.Spans, 0, ovLo)...)
-				if !inserted && insertFirst != "" {
-					merged = append(merged, model.Span{Text: insertFirst})
+			anchorHere := startRune >= cStart && startRune <= cEnd
+			switch {
+			case ovLo < ovHi:
+				var ins []model.Span
+				if !inserted && insSpans != nil {
+					ins = insSpans
 					inserted = true
 				}
-				merged = append(merged, sliceSpans(cell.Spans, ovHi, clen)...)
-				cell.Spans = normalizeSpans(merged)
+				nextSpans, nextRel := replaceSpanRange(cell.Spans, ovLo, ovHi, ins)
+				cell.Spans = nextSpans
+				if anchorHere || !ok {
+					actRow, actCol = rIdx, cIdx
+					caretOffset = tableCellStartOffset(tbl, rIdx, cIdx) + nextRel
+					ok = true
+				}
+			case anchorHere:
+				if !inserted && insSpans != nil {
+					insAt := clampInt(startRune-cStart, 0, clen)
+					nextSpans, nextRel := replaceSpanRange(cell.Spans, insAt, insAt, insSpans)
+					cell.Spans = nextSpans
+					inserted = true
+					actRow, actCol = rIdx, cIdx
+					caretOffset = tableCellStartOffset(tbl, rIdx, cIdx) + nextRel
+					ok = true
+				} else {
+					actRow, actCol = rIdx, cIdx
+					caretOffset = startRune
+					ok = true
+				}
 			}
 			pos = cEnd
 			if cIdx+1 < len(tbl.Rows[rIdx]) {
@@ -659,6 +761,7 @@ func clearTableRange(tbl *model.TableData, startRune, endRune int, insertFirst s
 			pos++
 		}
 	}
+	return actRow, actCol, caretOffset, ok
 }
 
 func (s *Session) handleFocusedAtomicInput(svc ui.Services, ev ui.InputEvent) bool {
@@ -758,14 +861,14 @@ func (s *Session) handleFocusedAtomicInput(svc ui.Services, ev ui.InputEvent) bo
 			}
 			s.deleteBlock(idx)
 			return true
-		case s.hasMenuPopupOpen() && ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight || ev.Key == ui.KeyEnter || ev.Key == ui.KeyEscape):
+		case (s.hasMenuPopupOpen() && ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight || ev.Key == ui.KeyEnter || ev.Key == ui.KeyEscape)) || (s.outlinePanelCapturesNav(nil) && isOutlineNavKey(ev.Key, ev.Mods)):
 			return false
 		case !s.hasMenuPopupOpen() && !s.lightbox.Open && ev.Mods == 0 &&
 			(ev.Key == ui.KeyF || (theme.IsMacOS() && ev.Key == ui.KeySpace)) &&
 			s.doc.Blocks[idx].Kind == model.BlockImage && strings.TrimSpace(s.doc.Blocks[idx].ImageSrc) != "":
 			s.OpenMediaLightbox(s.doc.Blocks[idx].ID)
 			return true
-		case !s.readOnly && ev.Mods == 0 && ev.Key == ui.KeyEnter:
+		case !s.readOnly && s.detachedCompose == "" && (ev.Mods == 0 || ev.Mods == ui.Shift) && ev.Key == ui.KeyEnter:
 			s.pushUndo()
 			nb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
 			s.spliceBlocks(idx+1, idx+1, []model.Block{nb})
@@ -889,9 +992,9 @@ func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) b
 				return true
 			}
 			return s.DeleteSelection()
-		case s.hasMenuPopupOpen() && ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight || ev.Key == ui.KeyEnter || ev.Key == ui.KeyEscape):
+		case (s.hasMenuPopupOpen() && ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight || ev.Key == ui.KeyEnter || ev.Key == ui.KeyEscape)) || (s.outlinePanelCapturesNav(nil) && isOutlineNavKey(ev.Key, ev.Mods)):
 			return false
-		case !s.readOnly && ev.Mods == 0 && ev.Key == ui.KeyEnter:
+		case !s.readOnly && s.detachedCompose == "" && ev.Mods == 0 && ev.Key == ui.KeyEnter:
 			if !s.DeleteSelection() {
 				return false
 			}
@@ -900,6 +1003,18 @@ func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) b
 				s.handleEnterOnBlock(idx, s.doc.Blocks[idx].PlainText(), s.selHead.Offset)
 			}
 			return true
+		case !s.readOnly && s.detachedCompose == "" && ev.Mods == ui.Shift && ev.Key == ui.KeyEnter:
+			if s.hasWholeAtomicSelection() {
+				a, _ := s.orderedSelection()
+				idx := clampInt(a.Block, 0, len(s.doc.Blocks)-1)
+				s.pushUndo()
+				nb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+				s.spliceBlocks(idx+1, idx+1, []model.Block{nb})
+				s.FocusBlock(idx + 1)
+				s.markDirty()
+				return true
+			}
+			return s.ReplaceSelectionWithText("\n")
 		case ev.Mods == 0 && (ev.Key == ui.KeyLeft || ev.Key == ui.KeyUp):
 			a, _ := s.orderedSelection()
 			s.focusedBlock = a.Block
@@ -924,6 +1039,8 @@ func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) b
 			return true
 		case ev.Mods == ui.Shift && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight):
 			return s.extendSelectionByArrow(ev.Key)
+		case !s.readOnly && !s.hasMenuPopupOpen() && s.handleInlineFormatShortcut(ev.Mods, ev.Key):
+			return true
 		case ev.Key == ui.KeyTab && (ev.Mods == 0 || ev.Mods == ui.Shift):
 			if !s.readOnly && s.hasMultiBlockSelection() {
 				s.indentMultiBlockSelection(ev.Mods == ui.Shift)
@@ -1425,7 +1542,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 		if k := s.doc.Blocks[idx].Kind; k == model.BlockDivider || k == model.BlockImage || s.isPreviewOnlyCodeBlock(idx) {
 			s.FocusBlock(idx)
 			s.focusPreventScroll = true
-			if readOnly {
+			if readOnly && !s.isMindMapBlock(idx) {
 				s.focusPending = false
 				s.selSyncPending = false
 			}
@@ -1439,6 +1556,13 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 
 	idx := clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
 	s.focusedBlock = idx
+	s.tableTextSelBlock = 0
+	if mode == mouseSelText && s.lastPressClicks < 3 && s.hasNonEmptySelection() {
+		a, b := s.orderedSelection()
+		if a.Block == b.Block && a.Block >= 0 && a.Block < len(s.doc.Blocks) && s.doc.Blocks[a.Block].Kind == model.BlockTable {
+			s.tableTextSelBlock = s.doc.Blocks[a.Block].ID
+		}
+	}
 	if s.needsDetachedSelectionFocus() {
 		s.multiSelFocusPending = true
 		s.focusPending = false
@@ -1584,6 +1708,11 @@ func (s *Session) updateFocusedTableCellDrag(c *ui.Context, root, in ui.Element,
 				s.scheduleRebuild(c)
 			}
 		}
+		if s.selAnchor.Block == blockIdx && s.selHead.Block == blockIdx && s.selAnchor.Offset != s.selHead.Offset {
+			s.tableTextSelBlock = blockID
+		} else {
+			s.tableTextSelBlock = 0
+		}
 		return true
 	}
 
@@ -1704,6 +1833,11 @@ func (s *Session) updateFocusedRichTableCellDrag(c *ui.Context, root ui.Element,
 				s.scheduleRebuild(c)
 			}
 		}
+		if s.selAnchor.Block == blockIdx && s.selHead.Block == blockIdx && s.selAnchor.Offset != s.selHead.Offset {
+			s.tableTextSelBlock = blockID
+		} else {
+			s.tableTextSelBlock = 0
+		}
 		return true
 	}
 
@@ -1747,6 +1881,7 @@ func (s *Session) isMarginBoxSelectStart(wx, wy float32) bool {
 }
 
 func (s *Session) applyBoxSelection(curWX, curWY float32) {
+	s.tableTextSelBlock = 0
 	if s.doc == nil || len(s.doc.Blocks) == 0 {
 		return
 	}

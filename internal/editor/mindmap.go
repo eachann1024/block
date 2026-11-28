@@ -9,12 +9,17 @@ import (
 
 	"block/internal/codepreview"
 	"block/internal/files"
+	"block/internal/markdown"
 	"block/internal/mindmap"
 	"block/internal/model"
 	"block/internal/theme"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
+
+func init() {
+	markdown.RegisterMindMapRenderer(mindmap.RenderMarkdownRaster)
+}
 
 const maxMindMapImportBytes = 32 * 1024 * 1024 // 32 MiB hard read cap for imported files
 
@@ -161,7 +166,7 @@ func (s *Session) HasMindMapCanvasFocus(c *ui.Context) bool {
 
 func (s *Session) hasActiveMindMapLocalModalOrEdit() bool {
 	return s.hasMindMapStateMatching(func(st *mindmap.BlockState) bool {
-		return st.EditingID != 0 || st.LinkNodeID != 0 || st.FindOpen || st.ComposeText != "" || st.OutlineComposing || st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.BoxSelecting || st.Panning || st.DragActive || st.DragNodeID != 0
+		return st.EditingID != 0 || st.LinkNodeID != 0 || st.LinkComposing || st.FindOpen || st.FindComposing || st.ComposeText != "" || st.OutlineComposing || st.SourceComposing || st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.BoxSelecting || st.Panning || st.DragActive || st.DragNodeID != 0
 	})
 }
 
@@ -513,30 +518,26 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 			if ext == "" {
 				ext = "md"
 			}
-			fileName := defaultName
+			fileName := filepath.Base(strings.TrimSpace(defaultName))
+			if fileName == "" || fileName == "." || fileName == ".." {
+				fileName = "mindmap"
+			}
 			if !strings.HasSuffix(strings.ToLower(fileName), "."+ext) {
 				fileName += "." + ext
 			}
-			defaultPath := fileName
+			fallbackDir := ""
 			if s.notePath != "" {
-				defaultPath = filepath.Join(filepath.Dir(s.notePath), fileName)
+				fallbackDir = filepath.Dir(s.notePath)
+			}
+			targetDir := files.DownloadsDir(fallbackDir)
+			if strings.TrimSpace(targetDir) == "" {
+				targetDir = "."
 			}
 			go func() {
-				dest, err := files.SaveDialog(nil, mygo.SaveDialogOptions{
-					Title:             theme.Tr("导出思维导图", "Export Mind Map"),
-					DefaultPath:       defaultPath,
-					CreateDirectories: true,
-					Filters: []mygo.FileFilter{
-						{
-							Name:       strings.ToUpper(ext),
-							Extensions: []string{ext},
-						},
-					},
-				})
-				if err != nil {
+				if mkErr := os.MkdirAll(targetDir, 0o755); mkErr != nil {
 					mygo.RunOnMain(func() {
 						if onDone != nil {
-							onDone("", err)
+							onDone("", mkErr)
 						}
 						if s.host != nil {
 							s.host.RequestRedraw()
@@ -544,13 +545,15 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 					})
 					return
 				}
-				if strings.TrimSpace(dest) == "" {
-					return
+				dest, writeErr := files.ReserveUniqueFile(filepath.Join(targetDir, fileName))
+				if writeErr == nil {
+					if writeErr = writeFileAtomic(dest, data, 0o644); writeErr != nil {
+						_ = os.Remove(dest)
+					}
 				}
-				if !strings.HasSuffix(strings.ToLower(dest), "."+ext) {
-					dest += "." + ext
+				if writeErr == nil && mygo.App.IsReady() {
+					mygo.Shell.ShowItemInFolder(dest)
 				}
-				writeErr := writeFileAtomic(dest, data, 0o644)
 				mygo.RunOnMain(func() {
 					if onDone != nil {
 						onDone(dest, writeErr)
@@ -654,6 +657,12 @@ func (s *Session) renderMindMapCodeBlock(c *ui.Context, idx int, b *model.Block,
 	cfg := s.effectiveMindMapConfig()
 	id := fmt.Sprintf("block-%d", b.ID)
 	cb := s.mindMapCallbacks(c, b.ID, readOnly)
+	cb.OnHostNavKey = func(key ui.Key, mods ui.Modifiers) bool {
+		if !s.outlinePanelCapturesNav(nil) || !isOutlineNavKey(key, mods) {
+			return false
+		}
+		return s.handleOutlinePanelKey(c, key, mods)
+	}
 	st.RenderInline(c, id, b.Code, cfg, isFocused, cb)
 	if st.HasTabFocus(c) {
 		s.frameTabChildFocused = true
@@ -722,4 +731,19 @@ func (s *Session) OpenFirstMindMapTutorial(firstRun bool) bool {
 		return true
 	}
 	return false
+}
+
+func (s *Session) syncMindMapLayoutsToDoc() {
+	if s == nil || s.doc == nil || len(s.mindMapStates) == 0 {
+		return
+	}
+	for i := range s.doc.Blocks {
+		b := &s.doc.Blocks[i]
+		if b.Kind != model.BlockCode || codepreview.CanonicalLanguage(b.Language) != "mindmap" {
+			continue
+		}
+		if st := s.mindMapStates[b.ID]; st != nil && st.Layout != "" {
+			b.MindMapLayout = string(st.Layout)
+		}
+	}
 }

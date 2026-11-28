@@ -36,7 +36,7 @@ const (
 var systemPermissions = map[Permission][4]string{
 	PermSystemNotify:   {"系统通知", "System Notifications", "发送操作系统原生系统通知。", "Send native operating system notifications."},
 	PermSystemSecrets:  {"系统凭据", "System Credentials", "在系统凭据库中读写该插件专属的凭据。", "Read and write this plugin's own credentials in the system credential store."},
-	PermSystemOpen:     {"打开系统链接", "Open Links and Reveal Files", "在用户操作时打开网页或在文件管理器中显示笔记本文件。", "Open a web page or reveal a notebook file in the file manager during a user action."},
+	PermSystemOpen:     {"打开系统链接", "Open Links and Reveal Files", "在用户操作时打开网页或在文件管理器中显示笔记本、下载或已授权路径中的文件。", "Open a web page or reveal a notebook, Downloads, or granted file in the file manager during a user action."},
 	PermSystemDialogs:  {"系统文件选择框", "System File Pickers", "在用户操作时弹出文件、文件夹或保存位置选择框。", "Show a native file, folder, or save-location picker during a user action."},
 	PermClipboardRead:  {"读取剪贴板", "Read Clipboard", "在用户操作且 Block 有焦点时读取剪贴板文本。", "Read clipboard text during a user action while Block has focus."},
 	PermClipboardWrite: {"写入剪贴板", "Write Clipboard", "在用户操作且 Block 有焦点时写入剪贴板文本。", "Write clipboard text during a user action while Block has focus."},
@@ -160,6 +160,7 @@ type systemParams struct {
 	TimeoutMS            int      `json:"timeout_ms"`
 	URL                  string   `json:"url"`
 	DefaultPath          string   `json:"default_path"`
+	Path                 string   `json:"path"`
 	Extensions           []string `json:"extensions"`
 	Directory            bool     `json:"directory"`
 	Multiple             bool     `json:"multiple"`
@@ -181,14 +182,8 @@ func (s *Supervisor) dispatchExtensionHostMethod(rt *Runtime, method string, par
 	return res, rerr, true
 }
 
-func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError) {
-	permission := systemMethods[method]
-	if permission != "" && !rt.manifest.HasPermission(permission) {
-		return nil, missingPerm(permission)
-	}
-	interactive := permission == PermSystemOpen || permission == PermSystemDialogs || permission == PermSystemTrash ||
-		permission == PermClipboardRead || permission == PermClipboardWrite
-	allowed := func() bool {
+func (s *Supervisor) systemInteractiveAllowed(rt *Runtime, action *systemAction, interactive bool) func() bool {
+	return func() bool {
 		if interactive && (action == nil || action.ctx.Err() != nil || rt.systemAction.Load() != action ||
 			action.epoch != s.notebookEpoch.Load() || action.notebookRoot != s.NotebookRoot()) {
 			return false
@@ -197,6 +192,30 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 		defer s.mu.RUnlock()
 		return s.isRuntimeActiveLocked(rt.manifest.ID, rt) && (!interactive || s.activeActionRT[rt.manifest.ID] == rt)
 	}
+}
+
+func (s *Supervisor) revealSystemPath(rt *Runtime, absPath string, action *systemAction) (bool, error) {
+	if s == nil || s.cfg.System == nil || rt == nil || action == nil {
+		return false, nil
+	}
+	allowed := s.systemInteractiveAllowed(rt, action, true)
+	if !allowed() {
+		return false, nil
+	}
+	if err := s.cfg.System.Reveal(absPath, allowed); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError) {
+	permission := systemMethods[method]
+	if permission != "" && !rt.manifest.HasPermission(permission) {
+		return nil, missingPerm(permission)
+	}
+	interactive := permission == PermSystemOpen || permission == PermSystemDialogs || permission == PermSystemTrash ||
+		permission == PermClipboardRead || permission == PermClipboardWrite
+	allowed := s.systemInteractiveAllowed(rt, action, interactive)
 	if !allowed() {
 		return nil, rpcErr(-32007, "system call requires an active runtime and, for interactive methods, a user action")
 	}
@@ -231,8 +250,19 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 		}
 		err = host.OpenURL(parsed.String(), allowed)
 	case "host.system.reveal", "host.system.trash":
-		required := PermNotesRead
 		trash := method == "host.system.trash"
+		if !trash && strings.TrimSpace(p.Path) != "" {
+			if strings.TrimSpace(p.RelPath) != "" || strings.TrimSpace(p.NotebookRoot) != "" {
+				return nil, rpcErr(-32602, "specify either path or notebook rel_path")
+			}
+			revealPath, rerr := rt.resolveSystemRevealPath(p.Path)
+			if rerr != nil {
+				return nil, rerr
+			}
+			err = host.Reveal(revealPath, allowed)
+			break
+		}
+		required := PermNotesRead
 		if trash {
 			required = PermNotesWrite
 		}
@@ -273,7 +303,7 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 	case "host.system.open_dialog", "host.system.save_dialog":
 		save := method == "host.system.save_dialog"
 		if len(p.DefaultPath) > 4096 || strings.ContainsRune(p.DefaultPath, 0) || len(p.Extensions) > 32 ||
-			(save && (p.Directory || p.Multiple)) || (p.Directory && len(p.Extensions) != 0) {
+			(save && p.Multiple) || (p.Directory && len(p.Extensions) != 0) {
 			return nil, rpcErr(-32602, "invalid picker options")
 		}
 		for _, ext := range p.Extensions {
@@ -285,6 +315,11 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 		if pickErr == nil {
 			if paths == nil {
 				paths = []string{}
+			}
+			if len(paths) > 0 && rt.manifest.HasPermission(PermSystemFS) && strings.TrimSpace(rt.cfg.DataDir) != "" {
+				for _, chosen := range paths {
+					_ = grantPickerFSPath(rt.cfg.DataDir, chosen, "dialog:"+method, !save)
+				}
 			}
 			result["paths"] = paths
 			result["canceled"] = len(paths) == 0

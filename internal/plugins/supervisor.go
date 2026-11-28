@@ -2587,6 +2587,7 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		OnActionProgress:  s.reportActionProgress,
 		OpenNote:          openNoteFn,
 		ContribHost:       s.dispatchExtensionHostMethod,
+		RevealSystemPath:  s.revealSystemPath,
 		AI:                s.cfg.AI,
 		SystemIntegration: s.cfg.System != nil,
 		wasmEngine:        s.wasmEngine,

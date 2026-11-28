@@ -70,6 +70,7 @@ func (s *Session) SelectedDoc() *model.Doc {
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return nil
 	}
+	s.syncMindMapLayoutsToDoc()
 	a, b := s.orderedSelection()
 	if a.Block < 0 || b.Block >= len(s.doc.Blocks) {
 		return nil
@@ -3688,6 +3689,65 @@ func (s *Session) selectionSpanRange(idx int, a, b Position) (int, int) {
 	return start, end
 }
 
+// visitSelectionSpanRanges invokes fn for each editable span slice and rune range [lo, hi)
+// covered by the current selection. Table blocks are visited per covered cell without separators.
+func (s *Session) visitSelectionSpanRanges(fn func(blk *model.Block, targetSpans *[]model.Span, lo, hi, totalLen int) bool) {
+	if !s.hasNonEmptySelection() || s.doc == nil {
+		return
+	}
+	a, b := s.orderedSelection()
+	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
+		blk := &s.doc.Blocks[idx]
+		lo, hi := s.selectionSpanRange(idx, a, b)
+		if lo >= hi {
+			continue
+		}
+		if blk.Kind == model.BlockTable {
+			if blk.Table == nil {
+				continue
+			}
+			pos := 0
+			stopped := false
+			for rIdx := range blk.Table.Rows {
+				row := blk.Table.Rows[rIdx]
+				for cIdx := range row {
+					cLen := len([]rune(row[cIdx].PlainText()))
+					cStart, cEnd := pos, pos+cLen
+					ovLo := max(lo, cStart) - cStart
+					ovHi := min(hi, cEnd) - cStart
+					if ovLo < ovHi {
+						if !fn(blk, &blk.Table.Rows[rIdx][cIdx].Spans, ovLo, ovHi, cLen) {
+							stopped = true
+							break
+						}
+					}
+					pos = cEnd
+					if cIdx+1 < len(row) {
+						pos++
+					}
+				}
+				if stopped {
+					break
+				}
+				if rIdx+1 < len(blk.Table.Rows) {
+					pos++
+				}
+			}
+			if stopped {
+				return
+			}
+			continue
+		}
+		if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
+			continue
+		}
+		totalLen := len([]rune(blk.PlainText()))
+		if !fn(blk, &blk.Spans, lo, hi, totalLen) {
+			return
+		}
+	}
+}
+
 func singleCellSpansInSelection(blk *model.Block, a, b Position, lo, hi int) (*[]model.Span, int, int, bool) {
 	if a.Block != b.Block || blk.Kind != model.BlockTable || blk.Table == nil {
 		return nil, 0, 0, false
@@ -3700,33 +3760,17 @@ func singleCellSpansInSelection(blk *model.Block, a, b Position, lo, hi int) (*[
 }
 
 func (s *Session) selectionHasMark(m model.Mark) bool {
-	if !s.hasNonEmptySelection() || s.doc == nil {
-		return false
-	}
-	a, b := s.orderedSelection()
 	saw := false
-	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
-		blk := &s.doc.Blocks[idx]
-		lo, hi := s.selectionSpanRange(idx, a, b)
-		if lo >= hi {
-			continue
-		}
-		spans := blk.Spans
-		if blk.Kind == model.BlockTable {
-			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
-			if !ok {
-				continue
-			}
-			spans, lo, hi = *cellSpans, cLo, cHi
-		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
-			continue
-		}
+	allMatch := true
+	s.visitSelectionSpanRanges(func(_ *model.Block, spans *[]model.Span, lo, hi, _ int) bool {
 		saw = true
-		if !spansAllMatch(spans, lo, hi, func(sp model.Span) bool { return sp.Marks&m != 0 }) {
+		if !spansAllMatch(*spans, lo, hi, func(sp model.Span) bool { return sp.Marks&m != 0 }) {
+			allMatch = false
 			return false
 		}
-	}
-	return saw
+		return true
+	})
+	return saw && allMatch
 }
 
 func (s *Session) ToggleMarkOnSelection(m model.Mark) {
@@ -3734,25 +3778,9 @@ func (s *Session) ToggleMarkOnSelection(m model.Mark) {
 		return
 	}
 	s.clearAutoConvertState()
-	a, b := s.orderedSelection()
 	clearMark := s.selectionHasMark(m)
 	pushedUndo := false
-	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
-		blk := &s.doc.Blocks[idx]
-		lo, hi := s.selectionSpanRange(idx, a, b)
-		if lo >= hi {
-			continue
-		}
-		targetSpans := &blk.Spans
-		if blk.Kind == model.BlockTable {
-			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
-			if !ok {
-				continue
-			}
-			targetSpans, lo, hi = cellSpans, cLo, cHi
-		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
-			continue
-		}
+	s.visitSelectionSpanRanges(func(blk *model.Block, targetSpans *[]model.Span, lo, hi, _ int) bool {
 		if !pushedUndo {
 			s.pushUndo()
 			pushedUndo = true
@@ -3779,39 +3807,29 @@ func (s *Session) ToggleMarkOnSelection(m model.Mark) {
 		})
 		blk.Dirty = true
 		blk.CleanSource = ""
-	}
+		return true
+	})
 	if pushedUndo {
 		s.markDirty()
 	}
 }
 
 func (s *Session) selectionLinkURL() string {
-	if !s.hasNonEmptySelection() || s.doc == nil {
-		return ""
-	}
-	a, b := s.orderedSelection()
-	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
-		blk := &s.doc.Blocks[idx]
-		lo, hi := s.selectionSpanRange(idx, a, b)
-		spans := blk.Spans
-		if blk.Kind == model.BlockTable {
-			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
-			if !ok {
-				continue
-			}
-			spans, lo, hi = *cellSpans, cLo, cHi
-		}
+	found := ""
+	s.visitSelectionSpanRanges(func(_ *model.Block, targetSpans *[]model.Span, lo, hi, _ int) bool {
 		pos := 0
-		for _, sp := range spans {
+		for _, sp := range *targetSpans {
 			n := len([]rune(sp.Text))
 			s0, s1 := pos, pos+n
 			pos = s1
 			if s1 > lo && s0 < hi && sp.Link != "" {
-				return sp.Link
+				found = sp.Link
+				return false
 			}
 		}
-	}
-	return ""
+		return true
+	})
+	return found
 }
 
 func (s *Session) ApplyLinkOnSelection(url string) {
@@ -3824,35 +3842,20 @@ func (s *Session) ApplyLinkOnSelection(url string) {
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
-	a, b := s.orderedSelection()
 	pushedUndo := false
-	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
-		blk := &s.doc.Blocks[idx]
-		lo, hi := s.selectionSpanRange(idx, a, b)
-		if lo >= hi {
-			continue
-		}
-		targetSpans := &blk.Spans
-		if blk.Kind == model.BlockTable {
-			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
-			if !ok {
-				continue
-			}
-			targetSpans, lo, hi = cellSpans, cLo, cHi
-		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
-			continue
-		}
+	s.visitSelectionSpanRanges(func(blk *model.Block, targetSpans *[]model.Span, lo, hi, _ int) bool {
 		if !pushedUndo {
 			s.pushUndo()
 			pushedUndo = true
 		}
 		*targetSpans = applySpanTransform(*targetSpans, lo, hi, func(sp model.Span) model.Span {
-			sp.Link = strings.TrimSpace(url)
+			sp.Link = url
 			return sp
 		})
 		blk.Dirty = true
 		blk.CleanSource = ""
-	}
+		return true
+	})
 	if pushedUndo {
 		s.markDirty()
 	}
@@ -3862,24 +3865,8 @@ func (s *Session) ApplyColorOnSelection(fgColor, bgColor *string) {
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
-	a, b := s.orderedSelection()
 	pushedUndo := false
-	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
-		blk := &s.doc.Blocks[idx]
-		lo, hi := s.selectionSpanRange(idx, a, b)
-		if lo >= hi {
-			continue
-		}
-		targetSpans := &blk.Spans
-		if blk.Kind == model.BlockTable {
-			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
-			if !ok {
-				continue
-			}
-			targetSpans, lo, hi = cellSpans, cLo, cHi
-		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
-			continue
-		}
+	s.visitSelectionSpanRanges(func(blk *model.Block, targetSpans *[]model.Span, lo, hi, _ int) bool {
 		if !pushedUndo {
 			s.pushUndo()
 			pushedUndo = true
@@ -3903,7 +3890,8 @@ func (s *Session) ApplyColorOnSelection(fgColor, bgColor *string) {
 		})
 		blk.Dirty = true
 		blk.CleanSource = ""
-	}
+		return true
+	})
 	if pushedUndo {
 		s.markDirty()
 	}
@@ -3911,23 +3899,9 @@ func (s *Session) ApplyColorOnSelection(fgColor, bgColor *string) {
 
 func (s *Session) selectionColors() (fgName, bgName string) {
 	fgName, bgName = "default", "default"
-	if !s.hasNonEmptySelection() || s.doc == nil {
-		return
-	}
-	a, b := s.orderedSelection()
-	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
-		blk := &s.doc.Blocks[idx]
-		lo, hi := s.selectionSpanRange(idx, a, b)
-		spans := blk.Spans
-		if blk.Kind == model.BlockTable {
-			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
-			if !ok {
-				continue
-			}
-			spans, lo, hi = *cellSpans, cLo, cHi
-		}
+	s.visitSelectionSpanRanges(func(_ *model.Block, targetSpans *[]model.Span, lo, hi, _ int) bool {
 		pos := 0
-		for _, sp := range spans {
+		for _, sp := range *targetSpans {
 			n := len([]rune(sp.Text))
 			s0, s1 := pos, pos+n
 			pos = s1
@@ -3940,7 +3914,8 @@ func (s *Session) selectionColors() (fgName, bgName string) {
 				}
 			}
 		}
-	}
+		return true
+	})
 	return fgName, bgName
 }
 
@@ -4786,6 +4761,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 	// Auto-link bare URL right before caret when pressing Enter.
 	if caretRune > 0 {
 		if res := tryBareURLAutolinkBefore(b.Spans, r, caretRune); res.changed {
+			pushUndoOnce()
 			b.Spans = res.spans
 			b.Dirty = true
 			b.CleanSource = ""
@@ -4951,6 +4927,225 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 	s.selHead = s.selAnchor
 	s.focusPending = true
 	s.selSyncPending = true
+	s.markDirty()
+	return true
+}
+
+func (s *Session) handleShiftEnterOnBlock(idx int, text string, caretRune int) bool {
+	if s.readOnly || s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return false
+	}
+	if s.blockMenu != nil && s.blockMenu.Mode == menuSlash && s.blockMenu.BlockIdx == idx {
+		s.blockMenu = nil
+	}
+
+	b := &s.doc.Blocks[idx]
+	switch b.Kind {
+	case model.BlockCode, model.BlockRawHTML, model.BlockDivider, model.BlockImage, model.BlockTable:
+		return false
+	}
+
+	if b.PlainText() != text {
+		b.Spans = spliceSpansByTextEdit(b.Spans, b.PlainText(), text)
+		b.Dirty = true
+		b.CleanSource = ""
+	}
+
+	r := []rune(b.PlainText())
+	caretRune = clampInt(caretRune, 0, len(r))
+	s.lastAutoConvert = nil
+	s.firstLineDeleteArmed = false
+	s.postEditCodeEdge = appUi.RichCodeEdgeNone
+
+	pushedUndo := false
+	pushUndoOnce := func() {
+		if !pushedUndo {
+			s.pushUndo()
+			pushedUndo = true
+		}
+	}
+
+	hadSel := false
+	if s.hasNonEmptySelection() {
+		a, endPos := s.orderedSelection()
+		if a.Block == idx && endPos.Block == idx && a.Offset < endPos.Offset {
+			pushUndoOnce()
+			nextSpans, nextCaret := replaceSpanRange(b.Spans, a.Offset, endPos.Offset, nil)
+			b.Spans = nextSpans
+			b.Dirty = true
+			b.CleanSource = ""
+			r = []rune(b.PlainText())
+			caretRune = clampInt(nextCaret, 0, len(r))
+			hadSel = true
+		}
+	}
+
+	codeEdge := appUi.RichCodeEdgeNone
+	if !hadSel {
+		if st, ok := s.richInputs[b.ID]; ok && st != nil {
+			codeEdge = st.CodeEdge()
+		}
+	}
+
+	caretRune = snapSplitOutsideInlineImage(b.Spans, caretRune)
+	r = []rune(b.PlainText())
+	caretRune = clampInt(caretRune, 0, len(r))
+	if caretRune > 0 {
+		if res := tryBareURLAutolinkBefore(b.Spans, r, caretRune); res.changed {
+			pushUndoOnce()
+			b.Spans = res.spans
+			b.Dirty = true
+			b.CleanSource = ""
+		}
+	}
+
+	oldText := b.PlainText()
+	oldR := []rune(oldText)
+	caretRune = clampInt(caretRune, 0, len(oldR))
+	newText := string(oldR[:caretRune]) + "\n" + string(oldR[caretRune:])
+	newCaret := caretRune + 1
+
+	var clearMask model.Mark
+	var clearBG bool
+	var useRightBias bool
+	if hadSel {
+		s.nextInsertGuard = nil
+		s.rightStyleBias = nil
+	} else {
+		clearMask, clearBG = s.consumeNextInsertGuard(b.ID, false, tableCellKey{}, caretRune, 1)
+		useRightBias = s.consumeRightStyleBias(b.ID, false, tableCellKey{}, caretRune, 1)
+	}
+
+	pushUndoOnce()
+	b.Spans = spliceSpansByTextEditWithEdge(b.Spans, oldText, newText, newCaret, codeEdge)
+	if useRightBias {
+		b.Spans = inheritRightSpanStyleOnInsert(b.Spans, caretRune, 1)
+	}
+	if clearMask != 0 || clearBG {
+		b.Spans = s.applyNextInsertStyleClear(b.Spans, caretRune, 1, clearMask, clearBG)
+	}
+	b.Dirty = true
+	b.CleanSource = ""
+
+	s.focusedBlock = idx
+	s.selAnchor = Position{Block: idx, Offset: newCaret}
+	s.selHead = s.selAnchor
+	if st, ok := s.richInputs[b.ID]; ok && st != nil {
+		st.Sync(b.PlainText(), newCaret, newCaret)
+	}
+	s.focusPending = true
+	s.selSyncPending = true
+	s.multiSelFocusPending = false
+	s.markDirty()
+	return true
+}
+
+func (s *Session) handleShiftEnterOnTableCell(blockIdx, rIdx, cIdx int, blockID model.BlockID, text string, caretRune int) bool {
+	if s.readOnly || s.doc == nil || blockIdx < 0 || blockIdx >= len(s.doc.Blocks) {
+		return false
+	}
+	b := &s.doc.Blocks[blockIdx]
+	if b.Kind != model.BlockTable || b.Table == nil || b.ID != blockID || rIdx < 0 || rIdx >= len(b.Table.Rows) || cIdx < 0 || cIdx >= len(b.Table.Rows[rIdx]) {
+		return false
+	}
+	cell := &b.Table.Rows[rIdx][cIdx]
+	if cell.PlainText() != text {
+		cell.Spans = spliceSpansByTextEdit(cell.Spans, cell.PlainText(), text)
+		b.Dirty = true
+		b.CleanSource = ""
+	}
+
+	r := []rune(cell.PlainText())
+	caretRune = clampInt(caretRune, 0, len(r))
+	s.lastAutoConvert = nil
+	s.firstLineDeleteArmed = false
+	s.postEditCodeEdge = appUi.RichCodeEdgeNone
+
+	pushedUndo := false
+	pushUndoOnce := func() {
+		if !pushedUndo {
+			s.pushUndo()
+			pushedUndo = true
+		}
+	}
+
+	base := tableCellStartOffset(b.Table, rIdx, cIdx)
+	hadSel := false
+	if s.hasNonEmptySelection() {
+		a, endPos := s.orderedSelection()
+		if a.Block == blockIdx && endPos.Block == blockIdx && a.Offset >= base && endPos.Offset <= base+len(r) && a.Offset < endPos.Offset {
+			pushUndoOnce()
+			nextSpans, nextCaret := replaceSpanRange(cell.Spans, a.Offset-base, endPos.Offset-base, nil)
+			cell.Spans = nextSpans
+			b.Dirty = true
+			b.CleanSource = ""
+			r = []rune(cell.PlainText())
+			caretRune = clampInt(nextCaret, 0, len(r))
+			hadSel = true
+		}
+	}
+
+	key := tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}
+	codeEdge := appUi.RichCodeEdgeNone
+	if !hadSel {
+		if st, ok := s.tableInputs[key]; ok && st != nil {
+			codeEdge = st.CodeEdge()
+		}
+	}
+
+	caretRune = snapSplitOutsideInlineImage(cell.Spans, caretRune)
+	r = []rune(cell.PlainText())
+	caretRune = clampInt(caretRune, 0, len(r))
+	if caretRune > 0 {
+		if res := tryBareURLAutolinkBefore(cell.Spans, r, caretRune); res.changed {
+			pushUndoOnce()
+			cell.Spans = res.spans
+			b.Dirty = true
+			b.CleanSource = ""
+		}
+	}
+
+	oldText := cell.PlainText()
+	oldR := []rune(oldText)
+	caretRune = clampInt(caretRune, 0, len(oldR))
+	newText := string(oldR[:caretRune]) + "\n" + string(oldR[caretRune:])
+	newCaret := caretRune + 1
+
+	var clearMask model.Mark
+	var clearBG bool
+	var useRightBias bool
+	if hadSel {
+		s.nextInsertGuard = nil
+		s.rightStyleBias = nil
+	} else {
+		clearMask, clearBG = s.consumeNextInsertGuard(b.ID, true, key, caretRune, 1)
+		useRightBias = s.consumeRightStyleBias(b.ID, true, key, caretRune, 1)
+	}
+
+	pushUndoOnce()
+	cell.Spans = spliceSpansByTextEditWithEdge(cell.Spans, oldText, newText, newCaret, codeEdge)
+	if useRightBias {
+		cell.Spans = inheritRightSpanStyleOnInsert(cell.Spans, caretRune, 1)
+	}
+	if clearMask != 0 || clearBG {
+		cell.Spans = s.applyNextInsertStyleClear(cell.Spans, caretRune, 1, clearMask, clearBG)
+	}
+	b.Dirty = true
+	b.CleanSource = ""
+
+	newBase := tableCellStartOffset(b.Table, rIdx, cIdx)
+	s.focusedBlock = blockIdx
+	s.tableActiveBlock = b.ID
+	s.tableActiveRow = rIdx
+	s.tableActiveCol = cIdx
+	s.selAnchor = Position{Block: blockIdx, Offset: newBase + newCaret}
+	s.selHead = s.selAnchor
+	if st, ok := s.tableInputs[key]; ok && st != nil {
+		st.Sync(cell.PlainText(), newCaret, newCaret)
+	}
+	s.focusPending = true
+	s.selSyncPending = true
+	s.multiSelFocusPending = false
 	s.markDirty()
 	return true
 }
@@ -6041,7 +6236,10 @@ func (s *Session) Outline() []model.OutlineItem {
 		if !b.Kind.IsHeading() {
 			continue
 		}
-		title := strings.TrimSpace(b.PlainText())
+		raw := strings.ReplaceAll(b.PlainText(), "\r\n", " ")
+		raw = strings.ReplaceAll(raw, "\n", " ")
+		raw = strings.ReplaceAll(raw, "\r", " ")
+		title := strings.TrimSpace(raw)
 		if title == "" {
 			continue
 		}

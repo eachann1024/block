@@ -54,6 +54,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	s.readOnly = readOnly
 	s.framePathHover = nil
 	s.frameTabChildFocused = false
+	s.frameCodeComposing = false
 	if s.lastPressCmdIntact && (!c.WindowActive() || c.Modifiers() != ui.Cmd) {
 		s.lastPressCmdIntact = false
 	}
@@ -448,10 +449,12 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			root.Shortcut(0, ui.KeyTab)
 			root.Shortcut(ui.Shift, ui.KeyTab)
 		}
-		if s.hasMenuPopupOpen() {
+		if s.hasMenuPopupOpen() && !s.outlineInputHandle.Focused(c) {
 			appUi.ReserveMenuNavKeys(c)
 			c.Shortcut(0, ui.KeyTab)
 			c.Shortcut(ui.Shift, ui.KeyTab)
+		} else if s.outlinePanelCapturesNav(c) && !s.outlineInputHandle.Focused(c) {
+			s.reserveOutlineNavKeys(c)
 		}
 	})
 }
@@ -536,7 +539,8 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	}
 	outlineInputFocused := s.outlineInputHandle.Focused(c)
 	mindMapOwnsEsc := s.HasMindMapEscapeOwner(c)
-	if !annotInputFocused && !outlineInputFocused && !mindMapOwnsEsc && c.Shortcut(0, ui.KeyEscape) {
+	outlineOwnsEsc := s.outlinePanelCapturesNav(c) || (s.HasOutlinePanelOpen() && (s.isAnyInputComposing() || s.frameCodeComposing))
+	if !annotInputFocused && !outlineInputFocused && !mindMapOwnsEsc && !outlineOwnsEsc && c.Shortcut(0, ui.KeyEscape) {
 		if s.dragBlockID != 0 {
 			s.cancelBlockDrag()
 		} else if s.isTableExtending() {
@@ -584,20 +588,17 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 		}
 	}
 	if !annotInputFocused && !mindMapFocused {
-		if c.Shortcut(ui.Cmd, ui.KeyB) {
-			s.ToggleMarkOnSelection(model.MarkBold)
-		}
-		if c.Shortcut(ui.Cmd, ui.KeyI) {
-			s.ToggleMarkOnSelection(model.MarkItalic)
-		}
-		if c.Shortcut(ui.Cmd, ui.KeyU) {
-			s.ToggleMarkOnSelection(model.MarkUnderline)
-		}
-		if c.Shortcut(ui.Cmd, ui.KeyE) {
-			s.ToggleMarkOnSelection(model.MarkCode)
-		}
-		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyX) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
-			s.ToggleMarkOnSelection(model.MarkStrike)
+		for _, sc := range [...]struct {
+			mods ui.Modifiers
+			key  ui.Key
+		}{
+			{ui.Cmd, ui.KeyB}, {ui.Cmd, ui.KeyI}, {ui.Cmd, ui.KeyU}, {ui.Cmd, ui.KeyE},
+			{ui.Cmd | ui.Shift, ui.KeyX}, {ui.Cmd | ui.Shift, ui.KeyS},
+		} {
+			if c.Shortcut(sc.mods, sc.key) {
+				// 统一走 handleInlineFormatShortcut，共用只读 / 菜单 / 输入法守卫。
+				s.handleInlineFormatShortcut(sc.mods, sc.key)
+			}
 		}
 	}
 	if canGlobalClip && (s.hasNonEmptySelection() || s.hasFocusedAtomicBlock()) && c.Shortcut(ui.Cmd, ui.KeyX) {
@@ -1596,6 +1597,9 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			HideCaret:         s.caretHidden,
 			SuppressSelection: multiSel || s.toolbarPop == "comment",
 			SuppressNavKeys:   s.hasMenuPopupOpen(),
+			SuppressKey: func(key ui.Key, mods ui.Modifiers) bool {
+				return s.outlinePanelCapturesNav(c) && isOutlineNavKey(key, mods)
+			},
 			SyncSelection:     syncSel,
 			FocusPending:      s.focusPending,
 			Anchor:            s.selAnchor.Offset,
@@ -1681,7 +1685,8 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			OnKey: func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool {
 				s.caretHidden = false
 				s.reactionPickerAnnotID = ""
-				if s.hasMenuPopupOpen() {
+				slashShiftEnter := s.blockMenu != nil && s.blockMenu.Mode == menuSlash && s.blockMenu.BlockIdx == idx && mods == ui.Shift && key == ui.KeyEnter
+				if (!slashShiftEnter && s.hasMenuPopupOpen()) || (s.outlinePanelCapturesNav(c) && isOutlineNavKey(key, mods)) {
 					return false
 				}
 				if s.navigateDocEdge(key, mods) {
@@ -1693,6 +1698,9 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 					return true
 				}
 				if s.handleBlockAndFormatShortcut(mods, key) {
+					return true
+				}
+				if s.handleInlineFormatShortcut(mods, key) {
 					return true
 				}
 
@@ -1709,21 +1717,6 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				case (mods == ui.Cmd|ui.Shift && key == ui.KeyZ) || (mods == ui.Cmd && key == ui.KeyY):
 					s.Redo()
 					return true
-				case mods == ui.Cmd && key == ui.KeyB:
-					s.ToggleMarkOnSelection(model.MarkBold)
-					return true
-				case mods == ui.Cmd && key == ui.KeyI:
-					s.ToggleMarkOnSelection(model.MarkItalic)
-					return true
-				case mods == ui.Cmd && key == ui.KeyU:
-					s.ToggleMarkOnSelection(model.MarkUnderline)
-					return true
-				case mods == ui.Cmd && key == ui.KeyE:
-					s.ToggleMarkOnSelection(model.MarkCode)
-					return true
-				case mods == ui.Cmd|ui.Shift && (key == ui.KeyX || key == ui.KeyS):
-					s.ToggleMarkOnSelection(model.MarkStrike)
-					return true
 				case s.isFindShortcut(mods, key):
 					if s.HasMindMapFullscreen() && s.OpenMindMapFind() {
 						s.requestRedraw()
@@ -1733,6 +1726,10 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 					return true
 				case mods == 0 && key == ui.KeyEnter:
 					if s.handleEnterOnBlock(idx, curText, caret) {
+						return true
+					}
+				case mods == ui.Shift && key == ui.KeyEnter:
+					if s.handleShiftEnterOnBlock(idx, curText, caret) {
 						return true
 					}
 				case mods == 0 && (key == ui.KeyBackspace || key == ui.KeyDelete):
@@ -2522,22 +2519,39 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					a, bSel := s.orderedSelection()
 					return a.Block == idx && bSel.Block == idx && a.Offset == 0 && bSel.Offset >= textLen
 				}
+				codeComposing := ta.Composing()
+				if codeComposing {
+					s.frameCodeComposing = true
+				}
+				liveCodeComposing := codeComposing
 				ta.ObserveInput(func(ev ui.InputEvent) {
-					if ev.Kind != ui.InputCommand {
-						return
-					}
-					switch ev.Text {
-					case "selectAll":
-						if s.hasMultipleVisibleBlocks() && isFullCodeBlockSelected(len([]rune(s.doc.Blocks[idx].Code))) {
-							s.SelectAllBlocks()
+					switch ev.Kind {
+					case ui.InputCompose:
+						liveCodeComposing = ev.Text != ""
+						if liveCodeComposing {
+							s.frameCodeComposing = true
 						}
-					case "undo", "redo":
-						// Intercept native Edit -> Undo/Redo so macOS menu commands route
-						// through Session's document undo stack instead of TextAreaBase's local stack.
-						s.codeUndoCmd = ev.Text
+					case ui.InputText:
+						liveCodeComposing = false
+					case ui.InputCommand:
+						liveCodeComposing = false
+						switch ev.Text {
+						case "selectAll":
+							if s.hasMultipleVisibleBlocks() && isFullCodeBlockSelected(len([]rune(s.doc.Blocks[idx].Code))) {
+								s.SelectAllBlocks()
+							}
+						case "undo", "redo":
+							// Intercept native Edit -> Undo/Redo so macOS menu commands route
+							// through Session's document undo stack instead of TextAreaBase's local stack.
+							s.codeUndoCmd = ev.Text
+						}
 					}
 				})
+				prevCode := b.Code
 				ta.OnTextKey(func(k ui.TextKey) bool {
+					if !(liveCodeComposing || (codeComposing && k.Text() == prevCode)) && s.outlinePanelCapturesNav(nil) && isOutlineNavKey(k.Key, k.Mods) && s.handleOutlinePanelKey(c, k.Key, k.Mods) {
+						return true
+					}
 					if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
 						if !s.readOnly {
 							cur := k.Text()
@@ -3216,6 +3230,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				HideCaret:         s.caretHidden,
 				SuppressSelection: multiSel,
 				SuppressNavKeys:   s.hasMenuPopupOpen(),
+				SuppressKey: func(key ui.Key, mods ui.Modifiers) bool {
+					return s.outlinePanelCapturesNav(c) && isOutlineNavKey(key, mods)
+				},
 				SyncSelection:     syncSel,
 				FocusPending:      s.focusPending,
 				Anchor:            relA,
@@ -3293,7 +3310,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				},
 				OnKey: func(key ui.Key, mods ui.Modifiers, curCellText string, cAnchor, cCaret int) bool {
 					s.caretHidden = false
-					if s.hasMenuPopupOpen() {
+					if s.hasMenuPopupOpen() || (s.outlinePanelCapturesNav(c) && isOutlineNavKey(key, mods)) {
 						return false
 					}
 					if s.navigateDocEdge(key, mods) {
@@ -3328,6 +3345,11 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						}
 						return true
 					}
+					if key == ui.KeyEnter && mods == ui.Shift {
+						if s.handleShiftEnterOnTableCell(blockIdx, rIdx, cIdx, blockID, curCellText, cCaret) {
+							return true
+						}
+					}
 					if key == ui.KeyEnter && mods == 0 {
 						if cCaret > 0 {
 							if res := tryBareURLAutolinkBefore(cell.Spans, []rune(curCellText), cCaret); res.changed {
@@ -3341,6 +3363,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						s.stepTableCell(blockID, tbl, rIdx, cIdx, len(tbl.Rows[0]))
 						return true
 					}
+					if s.handleInlineFormatShortcut(mods, key) {
+						return true
+					}
 					if mods == ui.Cmd && key == ui.KeyZ {
 						s.Undo()
 						return true
@@ -3349,32 +3374,12 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						s.Redo()
 						return true
 					}
-					if mods == ui.Cmd && key == ui.KeyB {
-						s.ToggleMarkOnSelection(model.MarkBold)
-						return true
-					}
-					if mods == ui.Cmd && key == ui.KeyI {
-						s.ToggleMarkOnSelection(model.MarkItalic)
-						return true
-					}
-					if mods == ui.Cmd && key == ui.KeyU {
-						s.ToggleMarkOnSelection(model.MarkUnderline)
-						return true
-					}
-					if mods == ui.Cmd && key == ui.KeyE {
-						s.ToggleMarkOnSelection(model.MarkCode)
-						return true
-					}
-					if mods == ui.Cmd|ui.Shift && (key == ui.KeyX || key == ui.KeyS) {
-						s.ToggleMarkOnSelection(model.MarkStrike)
-						return true
-					}
-					if mods == ui.Cmd|ui.Shift && key == ui.KeyH {
-						s.toggleHighlightOnSelection()
-						return true
-					}
-					if mods == ui.Cmd|ui.Shift && key == ui.KeyBackslash {
-						s.ClearFormattingOnSelection()
+					if s.isFindShortcut(mods, key) {
+						if s.HasMindMapFullscreen() && s.OpenMindMapFind() {
+							s.requestRedraw()
+							return true
+						}
+						s.ToggleFind()
 						return true
 					}
 					return false
@@ -3397,19 +3402,8 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				t = ui.Text(c.Key("cell-txt"), "").PreserveSpaces().FontSize(tFontSz).LineHeight(lhFactor).
 					MinHeight(tLineH).FontWeight(weight).TextColor(textCol).FillWidth()
 			} else {
-				pureSpans := s.buildPureDisplaySpans(&cellBlock, tFontSz, weight)
 				codeRanges := blockCodeRanges(&cellBlock, tFontSz)
-				renderSpans := pureSpans
-				if len(codeRanges) > 0 {
-					renderSpans = make([]ui.Span, len(pureSpans))
-					copy(renderSpans, pureSpans)
-					dark := theme.IsDark()
-					for i, sp := range cellBlock.Spans {
-						if _, hasNamedBG := theme.ResolveNamedBG(sp.BGColor, dark); sp.Marks&(model.MarkCode|model.MarkMath) != 0 && !hasNamedBG && i < len(renderSpans) {
-							renderSpans[i].Background = ui.Color{}
-						}
-					}
-				}
+				renderSpans := s.buildRenderDisplaySpans(&cellBlock, tFontSz, weight)
 				t = ui.RichText(c.Key("cell-txt"), renderSpans...).PreserveSpaces().FontSize(tFontSz).LineHeight(lhFactor).
 					MinHeight(tLineH).FontWeight(weight).TextColor(textCol).FillWidth()
 				var cellBands []appUi.RichBand
@@ -3447,7 +3441,11 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				var cellPathLinks []appUi.RichLinkRange
 				cmdActive := c.WindowActive() && c.Modifiers() == ui.Cmd && s.previewMedia == nil
 				if len(cellBands) > 0 || len(codeRanges) > 0 {
-					spansCopy := pureSpans
+					spansCopy := s.buildPureDisplaySpans(&cellBlock, tFontSz, weight)
+					effFont := edFont
+					if effFont == "" {
+						effFont = c.Theme().Font
+					}
 					cellKey := tableCellKey{BlockID: blockID, Row: rIdx, Col: cIdx}
 					cellPlain := txt
 					var ptrWin ui.Point
@@ -3466,7 +3464,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						}
 					}
 					appUi.DrawRichDecorations(c, t, txt, func(w float32) *ui.TextLayout {
-						return s.cachedShapeTableCell(cellKey, cellPlain, spansCopy, edFont, tFontSz, weight, lhFactor, cellAlign, w)
+						return s.cachedShapeTableCell(cellKey, cellPlain, spansCopy, effFont, tFontSz, weight, lhFactor, cellAlign, w)
 					}, appUi.RichDecorOptions{
 						FontSize:     tFontSz,
 						Spans:        spansCopy,

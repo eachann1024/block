@@ -780,3 +780,45 @@ func marshalJSON(v any, pretty bool) ([]byte, error) {
 	}
 	return json.Marshal(v)
 }
+
+// DownloadsDir returns the user's Downloads directory, falling back to fallback when unavailable.
+func DownloadsDir(fallback string) string {
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, "Downloads")
+	}
+	return fallback
+}
+
+// SuffixedFilename inserts " <n>" before the file extension when n >= 2.
+func SuffixedFilename(name string, n int) string {
+	if n < 2 {
+		return name
+	}
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	return fmt.Sprintf("%s %d%s", base, n, ext)
+}
+
+// ReserveUniqueFile atomically creates an empty placeholder at p, or at p with
+// " 2", " 3", ... before the extension when taken, and returns the reserved path.
+// Callers replace it (e.g. via atomic rename) and remove it on failure.
+func ReserveUniqueFile(p string) (string, error) {
+	dir := filepath.Dir(p)
+	base := filepath.Base(p)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	for i := 1; i < 10000; i++ {
+		cand := filepath.Join(dir, SuffixedFilename(base, i))
+		f, err := os.OpenFile(cand, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		_ = f.Close()
+		return cand, nil
+	}
+	return "", errors.New("could not allocate unique filename")
+}

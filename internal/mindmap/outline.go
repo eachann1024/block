@@ -427,11 +427,23 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 			s0, s1 := ta.TextSelection()
 			ta.ReplaceText(s0, s1, "\n")
 		}
-		if ta.Composing() {
+		composing := ta.Composing()
+		if composing {
 			st.OutlineComposing = true
 		}
+		liveComposing := composing
+		ta.ObserveInput(func(ev ui.InputEvent) {
+			switch ev.Kind {
+			case ui.InputCompose:
+				liveComposing = ev.Text != ""
+				st.OutlineComposing = liveComposing
+			case ui.InputText, ui.InputCommand:
+				liveComposing = false
+				st.OutlineComposing = false
+			}
+		})
 		ta.OnTextKey(func(k ui.TextKey) bool {
-			if k.Key == ui.KeyUnknown {
+			if k.Key == ui.KeyUnknown || liveComposing {
 				return false
 			}
 			if st.captureBlockTextKey(k) {
@@ -466,8 +478,14 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 					return true
 				}
 			}
+			if isMMPrimaryMod(k.Mods) && k.Key == ui.KeyEnter {
+				if !cb.ReadOnly && activeRoot.Parent != nil {
+					st.outlinePending = &outlineAction{kind: outlineActToggleTask, nodeID: rootID, text: live, selStart: s0, selEnd: s1}
+					return true
+				}
+			}
 			if k.Mods == 0 && k.Key == ui.KeyEscape {
-				if st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.LinkNodeID != 0 {
+				if st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.LinkNodeID != 0 {
 					return false
 				}
 				if st.OutlineZoomID != 0 {
@@ -478,6 +496,12 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 					st.outlinePending = &outlineAction{kind: outlineActExitFullscreen}
 					return true
 				}
+			}
+			if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
+				if k.Mods == 0 && !cb.ReadOnly {
+					st.outlinePending = &outlineAction{kind: outlineActAddChild, nodeID: rootID, text: live, selStart: s0, selEnd: s1}
+				}
+				return true
 			}
 			if k.Mods == ui.Alt && k.Key == ui.KeyEnter {
 				if !cb.ReadOnly {
@@ -673,11 +697,23 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 					s0, s1 := ta.TextSelection()
 					ta.ReplaceText(s0, s1, "\n")
 				}
-				if ta.Composing() {
+				composing := ta.Composing()
+				if composing {
 					st.OutlineComposing = true
 				}
+				liveComposing := composing
+				ta.ObserveInput(func(ev ui.InputEvent) {
+					switch ev.Kind {
+					case ui.InputCompose:
+						liveComposing = ev.Text != ""
+						st.OutlineComposing = liveComposing
+					case ui.InputText, ui.InputCommand:
+						liveComposing = false
+						st.OutlineComposing = false
+					}
+				})
 				ta.OnTextKey(func(k ui.TextKey) bool {
-					if k.Key == ui.KeyUnknown {
+					if k.Key == ui.KeyUnknown || liveComposing {
 						return false
 					}
 					if st.captureBlockTextKey(k) {
@@ -753,13 +789,13 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 					case k.Mods == 0 && k.Key == ui.KeyTab:
 						if !cb.ReadOnly {
 							st.outlinePending = &outlineAction{kind: outlineActIndent, nodeID: nodeID, text: live, selStart: s0, selEnd: s1}
-							return true
 						}
+						return true
 					case k.Mods == ui.Shift && k.Key == ui.KeyTab:
 						if !cb.ReadOnly {
 							st.outlinePending = &outlineAction{kind: outlineActOutdent, nodeID: nodeID, text: live, selStart: s0, selEnd: s1}
-							return true
 						}
+						return true
 					case k.Mods == 0 && k.Key == ui.KeyBackspace:
 						if !cb.ReadOnly && s0 == 0 && s1 == 0 {
 							st.outlinePending = &outlineAction{kind: outlineActBackspaceStart, nodeID: nodeID, text: live, selStart: 0, selEnd: 0}
@@ -778,7 +814,7 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 							return true
 						}
 					case k.Mods == 0 && k.Key == ui.KeyEscape:
-						if st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.LinkNodeID != 0 {
+						if st.TutorialOpen || st.ShortcutsOpen || st.ExportMenuOpen || st.ImportResult != nil || st.LinkNodeID != 0 {
 							return false
 						}
 						if st.OutlineZoomID != 0 {

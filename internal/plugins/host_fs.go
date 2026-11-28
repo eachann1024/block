@@ -37,6 +37,10 @@ type FSGrant struct {
 	IsDir     bool   `json:"is_dir"`
 	Source    string `json:"source,omitempty"`
 	GrantedAt string `json:"granted_at,omitempty"`
+	ReadOnly  bool   `json:"read_only,omitempty"`
+	// Strict grants (from system pickers) are dropped when the path is later
+	// redirected through a symlink or changes between file and directory.
+	Strict bool `json:"strict,omitempty"`
 }
 
 var grantedPathsLocks sync.Map // cleaned DataDir -> *sync.Mutex
@@ -48,6 +52,16 @@ func grantedPathsLock(dataDir string) *sync.Mutex {
 
 // GrantFSPath persists a directory or file authorization under apps-data/<id>/granted-paths.json.
 func GrantFSPath(dataDir, path, source string) error {
+	return grantFSPath(dataDir, path, source, false, false)
+}
+
+// grantPickerFSPath records a strict grant for a path chosen in a system picker.
+// readOnly grants allow reads only; an existing writable grant is never downgraded.
+func grantPickerFSPath(dataDir, path, source string, readOnly bool) error {
+	return grantFSPath(dataDir, path, source, readOnly, true)
+}
+
+func grantFSPath(dataDir, path, source string, readOnly, strict bool) error {
 	if strings.TrimSpace(dataDir) == "" {
 		return errors.New("plugin data directory is required")
 	}
@@ -55,8 +69,8 @@ func GrantFSPath(dataDir, path, source string) error {
 	if err != nil {
 		return err
 	}
-	info, err := os.Stat(canon)
-	isDir := err == nil && info.IsDir()
+	info, statErr := os.Stat(canon)
+	isDir := statErr == nil && info.IsDir()
 
 	mu := grantedPathsLock(dataDir)
 	mu.Lock()
@@ -76,6 +90,12 @@ func GrantFSPath(dataDir, path, source string) error {
 	updated := false
 	for i := range grants {
 		if grants[i].Path == canon {
+			if grants[i].Strict && grants[i].IsDir != isDir && statErr == nil {
+				grants[i].ReadOnly = readOnly
+			} else {
+				grants[i].ReadOnly = grants[i].ReadOnly && readOnly
+			}
+			grants[i].Strict = grants[i].Strict && strict
 			grants[i].IsDir = isDir
 			if source != "" {
 				grants[i].Source = source
@@ -94,6 +114,8 @@ func GrantFSPath(dataDir, path, source string) error {
 			IsDir:     isDir,
 			Source:    source,
 			GrantedAt: now,
+			ReadOnly:  readOnly,
+			Strict:    strict,
 		})
 	}
 	raw, err := json.MarshalIndent(grants, "", "  ")
@@ -289,13 +311,17 @@ func (rt *Runtime) collectFSScopes() ([]fsScopeEntry, error) {
 				continue
 			}
 			isDir := g.IsDir
-			if info, err := os.Stat(canon); err == nil {
+			info, statErr := os.Stat(canon)
+			if statErr == nil {
 				isDir = info.IsDir()
+			}
+			if g.Strict && (canon != g.Path || (statErr == nil && isDir != g.IsDir)) {
+				continue
 			}
 			scopes = append(scopes, fsScopeEntry{
 				canonPath: canon,
 				isDir:     isDir,
-				writable:  true,
+				writable:  !g.ReadOnly,
 				source:    g.Source,
 			})
 		}
@@ -916,7 +942,7 @@ func fsInfoEntry(fullPath, name string, info os.FileInfo) map[string]any {
 	}
 }
 
-func (rt *Runtime) dispatchFSHostMethod(method string, params json.RawMessage) (any, *rpcError) {
+func (rt *Runtime) dispatchFSHostMethod(method string, params json.RawMessage, action *systemAction) (any, *rpcError) {
 	if !rt.manifest.HasPermission(PermSystemFS) {
 		return nil, missingPerm(PermSystemFS)
 	}
@@ -931,6 +957,8 @@ func (rt *Runtime) dispatchFSHostMethod(method string, params json.RawMessage) (
 		return rt.fsRead(params)
 	case "host.fs.write":
 		return rt.fsWrite(params)
+	case "host.fs.save_download":
+		return rt.fsSaveDownload(params, action)
 	case "host.fs.mkdir":
 		return rt.fsMkdir(params)
 	case "host.fs.delete":
@@ -1255,6 +1283,238 @@ func (rt *Runtime) fsWrite(params json.RawMessage) (any, *rpcError) {
 		"path": target.canonPath,
 		"size": len(data),
 	}, nil
+}
+
+func normalizeDownloadRelPath(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || len(trimmed) > 512 || strings.ContainsAny(trimmed, "\\:\x00\r\n") ||
+		strings.HasPrefix(trimmed, "/") || strings.HasSuffix(trimmed, "/") {
+		return "", errors.New("invalid download filename")
+	}
+	parts := strings.Split(trimmed, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." || strings.HasPrefix(part, ".") {
+			return "", errors.New("download filename cannot contain empty, parent, or dot segments")
+		}
+	}
+	slashRel := strings.Join(parts, "/")
+	if !filepath.IsLocal(filepath.FromSlash(slashRel)) {
+		return "", errors.New("download filename must be local")
+	}
+	return slashRel, nil
+}
+
+func (rt *Runtime) fsSaveDownload(params json.RawMessage, action *systemAction) (any, *rpcError) {
+	var p struct {
+		Filename      string  `json:"filename"`
+		Name          string  `json:"name"`
+		Content       *string `json:"content"`
+		ContentBase64 *string `json:"content_base64"`
+		FromPath      string  `json:"from_path"`
+		Reveal        bool    `json:"reveal"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, rpcErr(-32602, "invalid host.fs.save_download params")
+	}
+	if p.Reveal && !rt.manifest.HasPermission(PermSystemOpen) {
+		return nil, missingPerm(PermSystemOpen)
+	}
+	rawName := p.Filename
+	if strings.TrimSpace(rawName) == "" {
+		rawName = p.Name
+	}
+	relSlash, nerr := normalizeDownloadRelPath(rawName)
+	if nerr != nil {
+		return nil, rpcErr(-32602, nerr.Error())
+	}
+
+	sources := 0
+	if p.Content != nil {
+		sources++
+	}
+	if p.ContentBase64 != nil {
+		sources++
+	}
+	if strings.TrimSpace(p.FromPath) != "" {
+		sources++
+	}
+	if sources != 1 {
+		return nil, rpcErr(-32602, "host.fs.save_download requires exactly one of content, content_base64, or from_path")
+	}
+
+	var data []byte
+	switch {
+	case p.ContentBase64 != nil:
+		decoded, err := base64.StdEncoding.DecodeString(*p.ContentBase64)
+		if err != nil {
+			return nil, rpcErr(-32602, "invalid content_base64: "+err.Error())
+		}
+		if int64(len(decoded)) > maxFSWriteLimit {
+			return nil, rpcErr(-32602, "content exceeds maximum write size")
+		}
+		data = decoded
+	case p.Content != nil:
+		if int64(len(*p.Content)) > maxFSWriteLimit {
+			return nil, rpcErr(-32602, "content exceeds maximum write size")
+		}
+		data = []byte(*p.Content)
+	default:
+		f, info, srcRoot, _, rerr := rt.openFSReadFile(p.FromPath)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if info.IsDir() || !info.Mode().IsRegular() {
+			_ = f.Close()
+			_ = srcRoot.Close()
+			return nil, rpcErr(-32602, "from_path must be a regular file")
+		}
+		if info.Size() > maxFSWriteLimit {
+			_ = f.Close()
+			_ = srcRoot.Close()
+			return nil, rpcErr(-32602, "from_path exceeds maximum write size")
+		}
+		readBytes, err := io.ReadAll(io.LimitReader(f, maxFSWriteLimit+1))
+		_ = f.Close()
+		_ = srcRoot.Close()
+		if err != nil {
+			return nil, rpcErr(-32004, err.Error())
+		}
+		if int64(len(readBytes)) > maxFSWriteLimit {
+			return nil, rpcErr(-32602, "from_path exceeds maximum write size")
+		}
+		data = readBytes
+	}
+
+	dlDir := rt.resolveDownloadsDir()
+	if dlDir == "" {
+		return nil, rpcErr(-32004, "downloads directory unavailable")
+	}
+	if err := os.MkdirAll(dlDir, 0o755); err != nil {
+		return nil, rpcErr(-32004, err.Error())
+	}
+	canonDl, err := resolveCanonicalPath(dlDir)
+	if err != nil {
+		return nil, rpcErr(-32004, err.Error())
+	}
+	dlRoot, err := os.OpenRoot(canonDl)
+	if err != nil {
+		return nil, rpcErr(-32004, err.Error())
+	}
+	defer dlRoot.Close()
+
+	localRel := filepath.FromSlash(relSlash)
+	parentSlash := filepath.ToSlash(filepath.Dir(localRel))
+	if parentSlash != "." && parentSlash != "" {
+		if err := dlRoot.MkdirAll(parentSlash, 0o755); err != nil {
+			return nil, rpcErr(-32004, err.Error())
+		}
+	}
+	parentRoot, openedDirs, baseName, err := openVerifiedRelParentInRoot(dlRoot, localRel)
+	if err != nil {
+		return nil, rpcErr(-32004, err.Error())
+	}
+	defer func() {
+		for i := len(openedDirs) - 1; i >= 0; i-- {
+			_ = openedDirs[i].Close()
+		}
+	}()
+
+	var chosenName string
+	for i := 1; i < 10000; i++ {
+		cand := files.SuffixedFilename(baseName, i)
+		if _, lerr := parentRoot.Lstat(cand); lerr == nil {
+			continue
+		} else if !errors.Is(lerr, os.ErrNotExist) {
+			return nil, rpcErr(-32004, lerr.Error())
+		}
+		f, oerr := parentRoot.OpenFile(cand, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if errors.Is(oerr, os.ErrExist) {
+			continue
+		}
+		if oerr != nil {
+			return nil, rpcErr(-32004, oerr.Error())
+		}
+		if _, werr := f.Write(data); werr != nil {
+			_ = f.Close()
+			_ = parentRoot.Remove(cand)
+			return nil, rpcErr(-32004, werr.Error())
+		}
+		if cerr := f.Close(); cerr != nil {
+			_ = parentRoot.Remove(cand)
+			return nil, rpcErr(-32004, cerr.Error())
+		}
+		chosenName = cand
+		break
+	}
+	if chosenName == "" {
+		return nil, rpcErr(-32004, "could not allocate unique download filename")
+	}
+
+	savedPath := filepath.Join(canonDl, chosenName)
+	if parentSlash != "." && parentSlash != "" {
+		savedPath = filepath.Join(canonDl, filepath.FromSlash(parentSlash), chosenName)
+	}
+	revealed := false
+	if p.Reveal && rt.cfg.RevealSystemPath != nil {
+		if ok, _ := rt.cfg.RevealSystemPath(rt, savedPath, action); ok {
+			revealed = true
+		}
+	}
+	return map[string]any{
+		"ok":       true,
+		"path":     savedPath,
+		"name":     chosenName,
+		"size":     len(data),
+		"revealed": revealed,
+	}, nil
+}
+
+func (rt *Runtime) resolveSystemRevealPath(rawPath string) (string, *rpcError) {
+	canon, err := resolveCanonicalPath(rawPath)
+	if err != nil {
+		return "", rpcErr(-32602, err.Error())
+	}
+	if dlDir := rt.resolveDownloadsDir(); dlDir != "" {
+		if rel, ok := pathWithinDir(canon, dlDir); ok {
+			dlRoot, err := os.OpenRoot(dlDir)
+			if err != nil {
+				return "", rpcErr(-32004, err.Error())
+			}
+			defer dlRoot.Close()
+			if rel != "." {
+				if err := checkPluginParents(dlRoot, rel); err != nil {
+					return "", rpcErr(-32004, err.Error())
+				}
+			}
+			info, err := dlRoot.Lstat(rel)
+			if err != nil || (!info.IsDir() && !info.Mode().IsRegular()) {
+				return "", rpcErr(-32004, "unsupported download item")
+			}
+			return canon, nil
+		}
+	}
+	if !rt.manifest.HasPermission(PermSystemFS) {
+		return "", missingPerm(PermSystemFS)
+	}
+	target, rerr := rt.resolveFSScopeOpts(rawPath, false, false)
+	if rerr != nil {
+		return "", rerr
+	}
+	root, err := os.OpenRoot(target.rootDir)
+	if err != nil {
+		return "", rpcErr(-32004, err.Error())
+	}
+	defer root.Close()
+	if target.rel != "." {
+		if err := checkPluginParents(root, target.rel); err != nil {
+			return "", rpcErr(-32004, err.Error())
+		}
+	}
+	info, err := root.Lstat(target.rel)
+	if err != nil || (!info.IsDir() && !info.Mode().IsRegular()) {
+		return "", rpcErr(-32004, "unsupported reveal item")
+	}
+	return target.canonPath, nil
 }
 
 func randomHex(nBytes int) string {

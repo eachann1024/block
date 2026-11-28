@@ -4,10 +4,15 @@ import (
 	"context"
 
 	"block/internal/markdown"
+	"block/internal/mindmap"
 	"block/internal/theme"
 
 	"github.com/egoist/mygo/ui"
 )
+
+func init() {
+	markdown.RegisterMindMapRenderer(mindmap.RenderMarkdownRaster)
+}
 
 // queuePreviewLocked invalidates the visible result. One worker renders the
 // latest options, so rapidly switching themes cannot pile up large bitmaps.

@@ -245,11 +245,13 @@ func (h *pluginHostUI) Capabilities() map[string]bool {
 	notify = ready && notify && mygo.NotificationsSupported() && systemintegration.CheckNotificationPermission(ctx) == nil
 	return map[string]bool{
 		"notify": notify, "notify_click": notify && notifyClick,
-		"secrets":  systemintegration.CredentialsAvailable(ctx),
-		"open_url": ready, "reveal": ready, "open_dialog": ready, "save_dialog": ready,
-		"clipboard_read": ready, "clipboard_write": ready, "trash": ready,
-		"badge": ready && systemintegration.BadgeAvailable(ctx),
-		"wake":  ready && systemintegration.WakeAvailable(ctx), "network": ready, "focus": ready,
+		"secrets":               systemintegration.CredentialsAvailable(ctx),
+		"open_url":              ready, "reveal": ready, "reveal_path": ready,
+		"open_dialog":           ready, "save_dialog": ready, "save_dialog_directory": ready,
+		"save_download":         ready,
+		"clipboard_read":        ready, "clipboard_write": ready, "trash": ready,
+		"badge":                 ready && systemintegration.BadgeAvailable(ctx),
+		"wake":                  ready && systemintegration.WakeAvailable(ctx), "network": ready, "focus": ready,
 	}
 }
 
@@ -590,7 +592,7 @@ func (h *pluginHostUI) Pick(ctx context.Context, save, directory, multiple bool,
 	}
 	var paths []string
 	var err error
-	if save {
+	if save && !directory {
 		var path string
 		path, err = files.SaveDialogGuarded(ctx, win, mygo.SaveDialogOptions{Title: title, DefaultPath: defaultPath, Filters: filters, CreateDirectories: true}, checkBeforeShow)
 		if path != "" {
@@ -598,7 +600,7 @@ func (h *pluginHostUI) Pick(ctx context.Context, save, directory, multiple bool,
 		}
 	} else {
 		paths, err = files.OpenDialogGuarded(ctx, win, mygo.OpenDialogOptions{
-			Title: title, DefaultPath: defaultPath, Filters: filters, Directory: directory, Multiple: multiple, CreateDirectories: directory,
+			Title: title, DefaultPath: defaultPath, Filters: filters, Directory: directory, Multiple: !save && multiple, CreateDirectories: directory,
 		}, checkBeforeShow)
 	}
 	if !allowed() {

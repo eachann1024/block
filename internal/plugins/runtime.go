@@ -91,6 +91,7 @@ type HostConfig struct {
 	OpenNote         func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error
 	// ContribHost handles host.titlebar/status/ui/editor/sidebar/stage methods; ok=false falls through.
 	ContribHost       func(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError, bool)
+	RevealSystemPath  func(rt *Runtime, absPath string, action *systemAction) (bool, error)
 	AI                AIHost
 	SystemIntegration bool
 	credentialScope   string
@@ -723,12 +724,13 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"notes_open", "log_actions", "action_progress", "panel_toggle", "editor_insert_mode", "dialog_token",
 		"checklist_add_folder", "item_icons", "tab_menu", "file_path", "log_timeline",
 		"progress_bar", "segmented_status", "toast_banner", "open_settings", "form_autosave", "button_link",
+		"save_download",
 	}
 	if rt.cfg.ContribHost != nil {
 		capabilities = append(capabilities, "sidebar_ignored_dirs")
 	}
 	if rt.cfg.SystemIntegration {
-		capabilities = append(capabilities, "system_integration")
+		capabilities = append(capabilities, "system_integration", "save_dialog_directory", "reveal_path")
 	}
 	// Every desktop host has menu bar icons; only macOS takes drops on them.
 	capabilities = append(capabilities, "menubar")
@@ -1885,13 +1887,14 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		"host.fs.list",
 		"host.fs.read",
 		"host.fs.write",
+		"host.fs.save_download",
 		"host.fs.mkdir",
 		"host.fs.delete",
 		"host.fs.delete_data",
 		"host.fs.rename",
 		"host.fs.copy",
 		"host.fs.atomic_swap":
-		return rt.dispatchFSHostMethod(method, params)
+		return rt.dispatchFSHostMethod(method, params, action)
 
 	case "host.crypto.hash", "host.crypto.hmac":
 		return rt.dispatchCryptoHostMethod(method, params)

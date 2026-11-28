@@ -107,7 +107,7 @@ example-sync/
     1. **笔记与编辑**：`"notes:read"`（列举、读取与打开笔记及性能快照）、`"notes:write"`（写入笔记及按版本号移入回收站）、`"notes:path"`（在 `plugin.command` 的 `context.file` 中接收本机绝对路径，不读内容）、`"editor:read"`（读取编辑器选区）、`"editor:write"`（向编辑器插入/替换内容）
     2. **系统凭据**：`"system:secrets"`（读写系统钥匙串/凭据管理器中该插件隔离的凭据）
     3. **剪贴板**：`"system:clipboard_read"`（读取系统剪贴板）、`"system:clipboard_write"`（写入系统剪贴板）
-    4. **系统文件与外部操作**：`"system:trash"`（经原生确认框移入回收站）、`"system:open"`（打开网页链接或在文件管理器定位文件）、`"system:dialogs"`（打开系统文件/目录选择框）、`"system:fs"`（在 `data_dir`、`downloads_dir`、已知笔记本及用户明确授权路径内调用 `host.fs.*`）、`"system:exec"`（通过 `host.exec.run` 无 Shell 运行 `exec_allowlist` 白名单程序）、`"ai:complete"`（通过 `host.ai.*` 调用已配置 AI 模型或打开 AI 面板）
+    4. **系统文件与外部操作**：`"system:trash"`（经原生确认框移入回收站）、`"system:open"`（打开网页链接或在文件管理器定位笔记本、下载目录及已授权路径中的文件）、`"system:dialogs"`（打开系统文件、文件夹或保存位置选择框）、`"system:fs"`（在 `data_dir`、`downloads_dir`、已知笔记本及用户明确授权路径内调用 `host.fs.*`）、`"system:exec"`（通过 `host.exec.run` 无 Shell 运行 `exec_allowlist` 白名单程序）、`"ai:complete"`（通过 `host.ai.*` 调用已配置 AI 模型或打开 AI 面板）
     5. **网络访问**：`"network"`（调用 `host.http.request` 的强制权限；可配合 `network_domains` 进一步限定允许访问的目标主机）
     - 系统集成与 `host.fs.*` / `host.http.request` / `host.exec.run` / `host.ai.*` 细则见 [协议、UI 与骨架](protocol-and-ui.md)。
   - **静默事件订阅（按需声明，不弹窗确认，共 3 项）**：仅作为事件订阅开关，不会触发安装/更新权限弹窗：

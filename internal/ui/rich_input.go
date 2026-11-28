@@ -102,6 +102,7 @@ type RichInputOptions struct {
 	HideCaret         bool
 	SuppressSelection bool
 	SuppressNavKeys   bool
+	SuppressKey       func(key ui.Key, mods ui.Modifiers) bool
 	ReadOnly          bool
 	SyncSelection     bool
 	FocusPending      bool
@@ -220,6 +221,7 @@ type RichInputState struct {
 	services        ui.Services
 	readOnly        bool
 	suppressNavKeys bool
+	suppressKey     func(key ui.Key, mods ui.Modifiers) bool
 	links           []RichLinkRange
 	codeRanges      []RichCodeRange
 	codeEdge        RichCodeEdge
@@ -1086,7 +1088,9 @@ func (s *RichInputState) lineRuneEdges(pos int) (int, int) {
 	u := runeToUTF16Off(s.text, pos)
 	lines := lay.Lines()
 	for i, ln := range lines {
-		if u >= ln.Start && (u < ln.End || i == len(lines)-1) {
+		atHardBreakEnd := i+1 < len(lines) && u == ln.End && lines[i+1].Start > ln.End
+		atUpstreamWrapEnd := pos == s.caret && s.affinity == ui.TextUpstream && i+1 < len(lines) && u == ln.End
+		if u >= ln.Start && (u < ln.End || i == len(lines)-1 || atHardBreakEnd || atUpstreamWrapEnd) {
 			return utf16ToRuneOff(s.text, ln.Start), utf16ToRuneOff(s.text, ln.End)
 		}
 	}
@@ -1304,6 +1308,9 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 	// Enter split, Backspace at start of block, undo/redo, etc. first.
 	if s.onKey != nil && s.onKey(key, mods, s.text, s.anchor, s.caret) {
 		return true
+	}
+	if s.suppressKey != nil && s.suppressKey(key, mods) {
+		return false
 	}
 	if s.suppressNavKeys {
 		switch key {
@@ -2224,6 +2231,15 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 				}
 				return y
 			}
+			lineIdxForMid := func(midY float32) int {
+				for i, ln := range lines {
+					if midY >= ln.Rect.Y && midY <= ln.Rect.Y+ln.Rect.H {
+						return i
+					}
+				}
+				return -1
+			}
+			caretLine := lineIdxForMid(cr.Y + cr.H*0.5)
 			caretY := caretYForMid(cr.Y+cr.H*0.5, cr.Y, cr.H)
 			caretX := cr.X - 1
 			if opts.CaretPos > 0 && cr.X > 1 {
@@ -2236,27 +2252,31 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 				if opts.CaretPos == codeRange.End {
 					if rects := resolveCodeChipRects(lay, lines, text, opts.FontSize, codeRange); len(rects) > 0 {
 						last := rects[len(rects)-1]
-						if opts.CaretCodeEdge == RichCodeEdgeAfter {
-							caretX = last.X + last.W + 0.5
-						} else {
-							caretX = last.X + last.W - codeRange.PadX - 0.5
+						if caretLine < 0 || lineIdxForMid(last.Y+last.H*0.5) == caretLine {
+							if opts.CaretCodeEdge == RichCodeEdgeAfter {
+								caretX = last.X + last.W + 0.5
+							} else {
+								caretX = last.X + last.W - codeRange.PadX - 0.5
+							}
+							caretY = caretYForMid(last.Y+last.H*0.5, last.Y, last.H)
 						}
-						caretY = caretYForMid(last.Y+last.H*0.5, last.Y, last.H)
 					}
 					break
 				}
 				if opts.CaretPos == codeRange.Start {
 					if rects := resolveCodeChipRects(lay, lines, text, opts.FontSize, codeRange); len(rects) > 0 {
 						first := rects[0]
-						if opts.CaretCodeEdge == RichCodeEdgeInsideStart {
-							caretX = first.X + codeRange.PadX - 1
-						} else {
-							caretX = first.X - 2.5
-							if first.X < 1.5 {
-								caretX = first.X - 1
+						if caretLine < 0 || lineIdxForMid(first.Y+first.H*0.5) == caretLine {
+							if opts.CaretCodeEdge == RichCodeEdgeInsideStart {
+								caretX = first.X + codeRange.PadX - 1
+							} else {
+								caretX = first.X - 2.5
+								if first.X < 1.5 {
+									caretX = first.X - 1
+								}
 							}
+							caretY = caretYForMid(first.Y+first.H*0.5, first.Y, first.H)
 						}
-						caretY = caretYForMid(first.Y+first.H*0.5, first.Y, first.H)
 					}
 					break
 				}
@@ -2273,6 +2293,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	st.services = c.Services()
 	st.readOnly = opts.ReadOnly
 	st.suppressNavKeys = opts.SuppressNavKeys
+	st.suppressKey = opts.SuppressKey
 	st.links = opts.Links
 	st.codeRanges = opts.CodeRanges
 	st.onChange = opts.OnChange

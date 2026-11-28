@@ -129,28 +129,11 @@ func (s *Session) ClearFormattingOnSelection() {
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
-	a, b := s.orderedSelection()
 	changed := false
-	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
-		blk := &s.doc.Blocks[idx]
-		lo, hi := s.selectionSpanRange(idx, a, b)
-		if lo >= hi {
-			continue
-		}
-		targetSpans := &blk.Spans
-		totalLen := len([]rune(blk.PlainText()))
-		if blk.Kind == model.BlockTable {
-			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
-			if !ok {
-				continue
-			}
-			targetSpans, lo, hi = cellSpans, cLo, cHi
-			totalLen = len([]rune(model.PlainTextOfSpans(*cellSpans)))
-		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
-			continue
-		}
+	s.visitSelectionSpanRanges(func(blk *model.Block, targetSpans *[]model.Span, lo, hi, totalLen int) bool {
 		if !changed {
 			s.pushUndo()
+			changed = true
 		}
 		left := sliceSpans(*targetSpans, 0, lo)
 		mid := sliceSpans(*targetSpans, lo, hi)
@@ -168,23 +151,65 @@ func (s *Session) ClearFormattingOnSelection() {
 		*targetSpans = normalizeSpans(merged)
 		blk.Dirty = true
 		blk.CleanSource = ""
-		changed = true
-	}
+		return true
+	})
 	if changed {
 		s.markDirty()
 	}
 }
 
 func (s *Session) toggleHighlightOnSelection() {
-	if !s.hasNonEmptySelection() {
+	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
-	_, curBG := s.selectionColors()
+	saw := false
+	allYellow := true
+	s.visitSelectionSpanRanges(func(_ *model.Block, spans *[]model.Span, lo, hi, _ int) bool {
+		saw = true
+		if !spansAllMatch(*spans, lo, hi, func(sp model.Span) bool { return sp.BGColor == "yellow" }) {
+			allYellow = false
+			return false
+		}
+		return true
+	})
+	if !saw {
+		return
+	}
 	target := "yellow"
-	if curBG == "yellow" {
+	if allYellow {
 		target = "default"
 	}
 	s.ApplyColorOnSelection(nil, &target)
+}
+
+func (s *Session) handleInlineFormatShortcut(mods ui.Modifiers, key ui.Key) bool {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || s.hasMenuPopupOpen() || s.isAnyInputComposing() {
+		return false
+	}
+	switch {
+	case mods == ui.Cmd && key == ui.KeyB:
+		s.ToggleMarkOnSelection(model.MarkBold)
+		return true
+	case mods == ui.Cmd && key == ui.KeyI:
+		s.ToggleMarkOnSelection(model.MarkItalic)
+		return true
+	case mods == ui.Cmd && key == ui.KeyU:
+		s.ToggleMarkOnSelection(model.MarkUnderline)
+		return true
+	case mods == ui.Cmd && key == ui.KeyE:
+		s.ToggleMarkOnSelection(model.MarkCode)
+		return true
+	case mods == ui.Cmd|ui.Shift && (key == ui.KeyX || key == ui.KeyS):
+		s.ToggleMarkOnSelection(model.MarkStrike)
+		return true
+	case mods == ui.Cmd|ui.Shift && key == ui.KeyH:
+		s.toggleHighlightOnSelection()
+		return true
+	case mods == ui.Cmd|ui.Shift && key == ui.KeyBackslash:
+		s.ClearFormattingOnSelection()
+		return true
+	}
+	return false
 }
 
 func (s *Session) cmdEnterShortcut() bool {
@@ -295,12 +320,8 @@ func (s *Session) handleBlockAndFormatShortcut(mods ui.Modifiers, key ui.Key) bo
 			s.moveBlock(idx, idx+1)
 		}
 		return true
-	case isCmdShift && key == ui.KeyH:
-		s.toggleHighlightOnSelection()
-		return true
-	case isCmdShift && key == ui.KeyBackslash:
-		s.ClearFormattingOnSelection()
-		return true
+	case isCmdShift && (key == ui.KeyH || key == ui.KeyBackslash):
+		return s.handleInlineFormatShortcut(mods, key)
 	}
 	return false
 }

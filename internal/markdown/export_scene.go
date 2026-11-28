@@ -1131,6 +1131,14 @@ func appendSceneBlocks(
 			sc.blocks = append(sc.blocks, pb)
 
 		case b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML:
+			if isMindMapCodeBlock(b) {
+				if pb, ok := buildPaintedMindMap(b, bx, y, avail, pal, legacy, &st.imagePixels); ok {
+					lastGap = 18
+					y += pb.h + lastGap
+					sc.blocks = append(sc.blocks, pb)
+					continue
+				}
+			}
 			pb := buildPaintedCode(b, bx, y, avail, pal, legacy)
 			lastGap = 18
 			y += pb.h + lastGap

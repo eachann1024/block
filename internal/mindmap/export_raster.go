@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/png"
 	"math"
+	"strings"
 
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
@@ -19,17 +20,49 @@ const (
 	rasterMaxPixels          = 8 * 1024 * 1024
 )
 
-// ExportPNG renders the mind map at up to 2x resolution onto a padded canvas and encodes it as PNG.
-func ExportPNG(root *Node, layout LayoutMode, pal theme.Palette) ([]byte, error) {
-	rgba, _, _, err := renderMindmapRaster(root, layout, pal)
+// RenderRaster lays out and renders the mind map at up to 2x resolution onto a
+// padded canvas, returning the RGBA bitmap alongside its 1x logical page size.
+func RenderRaster(root *Node, layout LayoutMode, pal theme.Palette) (*image.RGBA, int, int, error) {
+	return renderMindmapRaster(root, layout, pal)
+}
+
+// RenderMarkdownRaster parses Markdown source and renders the MindMap raster,
+// returning its RGBA image, 1x logical dimensions, and root topic alt text.
+func RenderMarkdownRaster(code, layout string, pal theme.Palette) (*image.RGBA, int, int, string, error) {
+	root := ParseMarkdown(code)
+	if root == nil {
+		return nil, 0, 0, "", errors.New("empty mindmap")
+	}
+	rgba, pageW, pageH, err := renderMindmapRaster(root, LayoutMode(layout), pal)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, "", err
+	}
+	alt := strings.TrimSpace(root.Text)
+	if alt == "" {
+		alt = "Mind Map"
+	}
+	return rgba, pageW, pageH, alt, nil
+}
+
+// EncodePNG encodes an RGBA raster image as PNG bytes.
+func EncodePNG(rgba *image.RGBA) ([]byte, error) {
+	if rgba == nil || rgba.Bounds().Empty() {
+		return nil, errors.New("cannot encode empty mindmap raster")
 	}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, rgba); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// ExportPNG renders the mind map at up to 2x resolution onto a padded canvas and encodes it as PNG.
+func ExportPNG(root *Node, layout LayoutMode, pal theme.Palette) ([]byte, error) {
+	rgba, _, _, err := renderMindmapRaster(root, layout, pal)
+	if err != nil {
+		return nil, err
+	}
+	return EncodePNG(rgba)
 }
 
 // ExportPDF renders the mind map at high resolution and wraps it in a single-page FlateDecode PDF-1.4 document.

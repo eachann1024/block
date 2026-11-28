@@ -102,7 +102,7 @@ example-sync/
     1. **Notes & Editor**: `"notes:read"`, `"notes:write"`, `"notes:path"` (host absolute path in `plugin.command` `context.file` without reading content), `"editor:read"`, `"editor:write"`
     2. **System Credentials**: `"system:secrets"` (per-plugin isolated OS keychain/credential store)
     3. **Clipboard**: `"system:clipboard_read"`, `"system:clipboard_write"`
-    4. **System Files & External Actions**: `"system:trash"`, `"system:open"`, `"system:dialogs"`, `"system:fs"` (`host.fs.*` within `data_dir`, `downloads_dir`, authorized notebooks, and granted paths), `"system:exec"` (shell-free `host.exec.run` for `exec_allowlist` binaries), `"ai:complete"` (`host.ai.*`)
+    4. **System Files & External Actions**: `"system:trash"`, `"system:open"` (open links or reveal notebook, Downloads, and granted files), `"system:dialogs"` (open file, folder, or save-location pickers), `"system:fs"` (`host.fs.*` within `data_dir`, `downloads_dir`, authorized notebooks, and granted paths), `"system:exec"` (shell-free `host.exec.run` for `exec_allowlist` binaries), `"ai:complete"` (`host.ai.*`)
     5. **Network**: `"network"` (mandatory for `host.http.request`; pair with `network_domains` to restrict target hosts)
   - **Silent Event Subscriptions (3 permissions; no confirmation prompt)**:
     - `"events:note_saved"`: note save/delete events via `plugin.event`

@@ -32,7 +32,7 @@
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本时，宿主通常在下次调用该插件且目标根目录不同（含后台 `note.saved` 事件）时关闭旧沙盒并按新 `notebook_root` 重新初始化；部分外观或界面扩展类插件会在切本时立即预热。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
-     - `ui_capabilities`：渐进能力声明数组，最多包含 40 项能力键（含按配置与平台追加的键，旧宿主可能省略部分键）；完整清单见下文「兼容性与平台实现说明」。
+     - `ui_capabilities`：渐进能力声明数组，最多包含 43 项能力键（含按配置与平台追加的键，旧宿主可能省略部分键）；完整清单见下文「兼容性与平台实现说明」。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -98,7 +98,7 @@
 
 ### 宿主方法总表
 
-下表列出当前宿主实际分发的全部 80 个 `host.*` JSON-RPC 方法及权限/清单条件。标记「默认放行，无需声明」的能力在 `manifest.permissions` 中可省略（除非另有显式声明要求）；标记「须显式声明」或敏感权限的能力必须写入 `manifest.permissions`。
+下表列出当前宿主实际分发的全部 81 个 `host.*` JSON-RPC 方法及权限/清单条件。标记「默认放行，无需声明」的能力在 `manifest.permissions` 中可省略（除非另有显式声明要求）；标记「须显式声明」或敏感权限的能力必须写入 `manifest.permissions`。
 
 <!-- host-methods-table:start -->
 | 方法 | 所需权限或清单条件 | 一句话用途 | 详细说明 |
@@ -123,6 +123,7 @@
 | `host.fs.list` | `system:fs` | 列出授权目录内文件与子目录（支持递归） | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.read` | `system:fs` | 以 UTF-8 或 Base64 读取授权路径文件 | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.write` | `system:fs` | 向授权路径写入文本或二进制文件（支持原子写） | [§4.2 · 14](protocol-and-ui.md) |
+| `host.fs.save_download` | `system:fs`（传 `reveal: true` 时另需 `system:open`） | 直接保存到用户下载目录，重名自动加 ` 2` / ` 3` 后缀并可选在文件管理器中选中 | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.mkdir` | `system:fs` | 在授权目录下创建目录 | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.delete` | `system:fs` | 删除授权路径文件或目录 | [§4.2 · 14](protocol-and-ui.md) |
 | `host.fs.delete_data` | `system:fs` | 在不跟随符号链接或 junction 的前提下安全删除插件 `data_dir` 内文件或目录 | [§4.2 · 14](protocol-and-ui.md) |
@@ -144,9 +145,9 @@
 | `host.system.capabilities` | 无需权限（检查 `system_integration`） | 查询当前平台可用的系统集成能力布尔表 | [§4.3](protocol-and-ui.md) |
 | `host.system.notify` | `system:notify`（默认放行，无需声明；笔记跳转需 `notes:read`） | 发送操作系统原生通知中心横幅 | [§4.3](protocol-and-ui.md) |
 | `host.system.open_url` | `system:open` + 用户交互动作且窗口聚焦 | 在系统默认浏览器打开 HTTP(S) 链接 | [§4.3](protocol-and-ui.md) |
-| `host.system.reveal` | `system:open` + `notes:read` + 用户交互动作且窗口聚焦 | 在系统文件管理器中显示笔记本内文件 | [§4.3](protocol-and-ui.md) |
+| `host.system.reveal` | `system:open` +（笔记本内须 `notes:read`，`path` 须在下载目录或同时持 `system:fs`）+ 用户交互动作且窗口聚焦 | 在系统文件管理器中显示笔记本、下载或已授权文件 | [§4.3](protocol-and-ui.md) |
 | `host.system.open_dialog` | `system:dialogs` + 用户交互动作且窗口聚焦 | 弹出系统原生文件或文件夹选择框 | [§4.3](protocol-and-ui.md) |
-| `host.system.save_dialog` | `system:dialogs` + 用户交互动作且窗口聚焦 | 弹出系统原生保存位置选择框 | [§4.3](protocol-and-ui.md) |
+| `host.system.save_dialog` | `system:dialogs` + 用户交互动作且窗口聚焦 | 弹出系统原生保存位置或目录选择框（支持 `directory: true`） | [§4.3](protocol-and-ui.md) |
 | `host.system.trash` | `system:trash` + `notes:write` + 用户交互动作且窗口聚焦 | 经原生确认框后将笔记本内普通文件移入回收站 | [§4.3](protocol-and-ui.md) |
 | `host.system.badge` | `system:badge`（默认放行，无需声明） | 设置或清除应用图标数字角标 | [§4.3](protocol-and-ui.md) |
 | `host.clipboard.read` | `system:clipboard_read` + 用户交互动作且窗口聚焦 | 读取系统剪贴板 UTF-8 文本 | [§4.3](protocol-and-ui.md) |
@@ -264,11 +265,12 @@
     - `{"entries": [{"level": "info", "event": "delete_remote", "notebook_root": "/abs/path/to/notebook", "path": "notes/old.md", "protocol": "webdav", "detail": "成功"}]}` -> `{"ok": true}`，把插件自己的操作记录写进宿主诊断日志 `logs/block.log`，便于用户反馈时一并导出。
     - `level` 取 `info`（默认）/`warn`/`error`；每次最多 200 条，超出部分丢弃；各字段折叠为单行并截断至 400 字节。合法的笔记本相对 `path` 会被换成绝对路径再脱敏，与宿主自身日志的路径代号一致。**不得传入笔记正文或密钥。**
 
-14. **`host.fs.*`**（需 `"system:fs"`，仅接受宿主机绝对路径；解析符号链接后再经 `os.Root` 校验授权范围并拒绝越界。授权范围含 `data_dir`、`downloads_dir`、`granted-paths.json` 登记路径，以及已注册笔记本——读取笔记本还须持 `"notes:read"`，写入笔记本还须持 `"notes:write"`。`data_dir` 下的宿主受保护文件 `granted-paths.json`、`scheduler.json`、`state.json` 禁止直接改写；`host.system.open_dialog`/`save_dialog` 仅返回路径，表单目录选择器与菜单栏拖放等入口才登记文件授权）
+14. **`host.fs.*`**（需 `"system:fs"`，除 `host.fs.save_download` 传相对文件名外仅接受宿主机绝对路径；解析符号链接后再经 `os.Root` 校验授权范围并拒绝越界。授权范围含 `data_dir`、`downloads_dir`、`granted-paths.json` 登记路径，以及已注册笔记本——读取笔记本还须持 `"notes:read"`，写入笔记本还须持 `"notes:write"`。`data_dir` 下的宿主受保护文件 `granted-paths.json`、`scheduler.json`、`state.json` 禁止直接改写；持 `"system:fs"` 时，经 `host.system.open_dialog`/`save_dialog` 选中的路径也会与表单选择器、菜单栏拖放一并登记文件授权）
     - `host.fs.list_grants`（`{}`）：返回 `{"grants": [...], "data_dir", "downloads_dir", "notebooks": [{"path", "writable"}]}`。
     - `host.fs.stat`（`{"path", "lstat"?}`）：返回 `{"exists", "path", "name", "is_dir", "is_regular", "is_symlink", "size", "mod_time", "mod_time_ms", "is_icloud_placeholder", "root_identity"?}`（现有非符号链接目录在可用时返回 `"root_identity": "<dev>:<ino>"`；传 `"lstat": true` 时不跟随末端符号链接或 Windows junction）。
     - `host.fs.list`（`{"path", "recursive"}`，最多 10000 条）：返回 `{"path", "entries": [...], "truncated": bool}`（每项含 `stat` 同名元数据，递归模式另含 `rel_path`；达到上限截断时 `"truncated"` 为 `true`）。
     - `host.fs.read`（`{"path", "encoding": "utf8"|"base64", "max_bytes"}`，默认 16 MiB、宿主上限 64 MiB）-> `{"path", "encoding", "size", "content"|"content_base64"}`；`host.fs.write`（`{"path", "content"|"content_base64", "atomic", "mkdir_parents", "expected_root"?, "expected_root_identity"?}`，宿主上限 64 MiB）。
+    - `host.fs.save_download`（`{"filename", "content"|"content_base64"|"from_path", "reveal"?}`，可检查 `ui_capabilities` 中的 `"save_download"`）：直接以独占创建方式把 UTF-8、Base64 或已授权可读普通文件（上限 64 MiB）写入 `downloads_dir`，重名时在扩展名前自动追加 `" 2"`、`" 3"`（拒绝 `.` / `..` / `\` / `:` 或以 `.` 开头的隐藏段）。传 `"reveal": true`（需额外声明 `"system:open"`）且处于窗口聚焦的用户动作中，会在文件管理器高亮选中新文件；返回 `{"ok": true, "path", "name", "size", "revealed": bool}`（无界面宿主返回 `revealed: false`）。
     - `host.fs.mkdir`（`{"path", "recursive"|"parents"}`） / `host.fs.delete`（`{"path", "recursive", "expected_root"?, "expected_root_identity"?}`） / `host.fs.delete_data`（`{"path", "recursive"?}` -> `{"ok": true, "deleted": bool, "path"}`；严格限定在插件自身 `data_dir` 下并使用启动时缓存的 `os.Root`——不含其他授权目录、下载目录或笔记本——每次调用先通过 `os.SameFile` 比对当前 `data_dir` 路径与启动句柄，不一致中止并报 `-32004`；受保护宿主文件通过 `os.SameFile` 文件身份识别而非仅凭文件名，并沿已打开的目录句柄单趟递归删除，遇符号链接/junction 报错 `-32004`，越界/受保护文件报错 `-32001`） / `host.fs.rename`（`{"from", "to", "overwrite", "mkdir_parents", "expected_root"?, "expected_root_identity"?}`，跨不同授权根时回退为先复制再删除） / `host.fs.copy`（`{"from", "to", "overwrite", "mkdir_parents", "expected_root"?, "expected_root_identity"?}`，宿主流式原子复制普通非符号链接文件，不经过 Wasm 内存；不可同路径，且 `from`/`to` 不可为授权根目录本身；返回 `{"ok": true, "from", "to", "size"}`） / `host.fs.atomic_swap`（`{"path_a", "path_b", "expected_root"?, "expected_root_identity"?}`，同目录两文件交换，平台不支持原子交换时可能成功但返回 `atomic: false`）。上述 `host.fs` 写删类方法应将 `expected_root_identity`（`"<dev>:<ino>"`）与绝对目录路径 `expected_root` 成对传入：宿主打开 `expected_root` 目录句柄并核对 `dev:ino`（不匹配/符号链接/非目录报 `-32008`），随后沿该句柄用相对路径完成写入或删除（目标不在 `expected_root` 下或传了 `expected_root` 却省略 `expected_root_identity` 报 `-32602`）；若旧版调用方仅传 `expected_root_identity` 而未传 `expected_root`，宿主会在所有包含目标路径的已授权可写目录根和已注册笔记本根中查找 `dev:ino` 一致的根（全部不匹配才返回 `-32008`）。
 
 15. **`host.crypto.*`**（内存计算无需额外权限；`host.crypto.hash` 传入 `file_path` 时需 `"system:fs"`）
@@ -299,16 +301,16 @@
 
 ### 4.3 系统集成
 
-桌面宿主在 `plugin.initialize.ui_capabilities` 中提供 `"system_integration"`。`host.system.capabilities {}` 无需额外权限，返回布尔值对象，字段为 `notify`、`notify_click`、`secrets`、`open_url`、`reveal`、`open_dialog`、`save_dialog`、`clipboard_read`、`clipboard_write`、`trash`、`badge`、`wake`、`network`、`focus`。结果反映当前桌面可用性，实际调用还受清单权限、系统授权和服务状态影响。
+桌面宿主在 `plugin.initialize.ui_capabilities` 中提供 `"system_integration"`。`host.system.capabilities {}` 无需额外权限，返回布尔值对象，字段为 `notify`、`notify_click`、`secrets`、`open_url`、`reveal`、`reveal_path`、`open_dialog`、`save_dialog`、`save_dialog_directory`、`save_download`、`clipboard_read`、`clipboard_write`、`trash`、`badge`、`wake`、`network`、`focus`。结果反映当前桌面可用性，实际调用还受清单权限、系统授权和服务状态影响。
 
 | 接口 | 权限 | 参数与返回 |
 | --- | --- | --- |
 | `host.system.notify` | 无需声明（旧清单 `system:notify` 仍兼容） | `{"title":"同步失败","body":"打开同步设置查看详情。","tone":"error"}`。开放给所有插件，直接发送操作系统原生系统通知（无论 Block 窗口是否聚焦；若需应用内右上角全局横幅，请改用 `host.ui.toast`）。`title` 和 `body` 必填，分别截断至 80 和 240 字符。可传 `notebook_root` 指定已注册笔记本内的插件设置，或同时传 `rel_path` 指定 Markdown 笔记，需 `notes:read`。可用 `timeout_ms` 缩短等待时间，默认 15000 毫秒。可传最长 128 字节的 `dedup_key` 区分文案及目标相同的独立事件，同一事件重试时沿用原值。桌面支持通知点击时，打开目标笔记或插件设置。宿主提交至系统通知服务或识别到同一事件 2 分钟内已经送达时返回 `delivered:true`。需要跨重启补送的插件应保留待发记录，直至收到 `delivered:true`。2 分钟内重复的相同事件返回 `suppressed:true`。每个插件 10 秒内最多投递 5 条不同通知，超出时返回 `-32006`，稍后重试即可。 |
 | `host.system.open_url` | `system:open` | `{"url":"https://example.com"}`，仅接受无账号和密码的 HTTP(S) 链接。 |
-| `host.system.reveal` | `system:open`、`notes:read` | `{"rel_path":"assets/example.png","notebook_root":"/abs/notebook"}`，在系统文件管理器里显示文件。 |
-| `host.system.open_dialog`、`host.system.save_dialog` | `system:dialogs` | 可传 `title`、`default_path`、`extensions`。打开框另支持 `directory`、`multiple`。选目录时省略 `extensions`。返回 `{"ok":true,"paths":["/abs/file"],"canceled":false}`，用户主动取消时 `canceled` 为 `true` 且 `paths` 为空。发起动作被用户取消或动作超时时返回 `-32007`（若系统原生选择框无法由宿主强制关闭，用户后续关闭时宿主会直接丢弃过期结果）。 |
+| `host.system.reveal` | `system:open`；笔记本内文件另须 `notes:read`；`downloads_dir` 以外的 `path` 另须 `system:fs` | 笔记本内文件传 `{"rel_path":"assets/example.png","notebook_root":"/abs/notebook"}`；其他文件传 `{"path":"/abs/file"}`（先检查 `"reveal_path"`），位于 `downloads_dir` 内只需 `system:open`，其余须是 `system:fs` 授权路径。在系统文件管理器里显示文件。 |
+| `host.system.open_dialog`、`host.system.save_dialog` | `system:dialogs` | 可传 `title`、`default_path`、`extensions`、`directory`（`save_dialog` 现亦支持，选目录时须省略 `extensions` 并检查 `"save_dialog_directory"`），`open_dialog` 另支持 `multiple`。返回 `{"ok":true,"paths":["/abs/file"],"canceled":false}`，若同时声明 `"system:fs"` 会把选中路径登记为授权：`open_dialog` 只读，`save_dialog` 可写；路径之后变成符号链接，或在文件和文件夹之间变化时，授权失效；用户主动取消时 `canceled` 为 `true` 且 `paths` 为空。发起动作被用户取消或动作超时时返回 `-32007`（若系统原生选择框无法由宿主强制关闭，用户后续关闭时宿主会直接丢弃过期结果）。 |
 | `host.clipboard.read`、`host.clipboard.write` | `system:clipboard_read`、`system:clipboard_write` | 读取传 `{}`，返回 `{"ok":true,"text":"..."}`。写入传 `{"text":"..."}`。支持最多 64 KiB UTF-8 文本。 |
-| `host.system.trash` | `system:trash`、`notes:write` | 与 `reveal` 参数相同并支持可选 `expected_root_identity`（不匹配报 `-32008`），仅支持普通文件。用户在原生确认框确认后，宿主移到系统回收站并更新相关标签页。 |
+| `host.system.trash` | `system:trash`、`notes:write` | 传 `{"rel_path","notebook_root"?,"expected_root_identity"?}`，校验可选的 `expected_root_identity`（不匹配报 `-32008`），仅支持普通文件。用户在原生确认框确认后，宿主移到系统回收站并更新相关标签页。 |
 | `host.system.badge` | 无需声明（旧清单 `system:badge` 仍兼容） | `{"count":3}`，范围 0–999，0 清除本插件角标。宿主合计已启用插件的数值，上限 999。 |
 | `host.secrets.get`、`host.secrets.set`、`host.secrets.delete` | `system:secrets` | `{"key":"auth.token"}`，写入另传 `value`（1–1536 字节，无 NUL）。键以 ASCII 字母或数字开头，后续允许字母、数字、`.`、`_`、`-`，总长最多 128 字符。读取返回 `{"ok":true,"found":true,"value":"..."}` 或 `{"ok":true,"found":false}`。删除支持重复调用。宿主按应用数据目录、插件 ID 和安装来源隔离凭据。缺少宿主安装来源记录时，凭据接口返回不可用。 |
 
@@ -318,8 +320,8 @@
 
 ### 4.4 兼容性与平台实现说明
 
-- **全部 `ui_capabilities` 能力键**（最多 40 项，旧宿主或特定平台/配置可能省略部分键，用于渐进启用特性）：
-  `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`sidebar_ignored_dirs`（目录忽略 RPC）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`toast_banner`（右上角全局通知横幅支持 `body`/`action`、`shown` 返回值与默认插件图标）、`open_settings`（`host.ui.open_settings` 打开插件设置页）、`form_autosave`（表单控件自动触发 `plugin.action`）、`button_link`（卡片内文字按钮 `variant: "link"`）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）、`system_integration`（`host.system.*` / `host.clipboard.*` / `host.secrets.*` 系统集成能力）、`menubar`（系统菜单栏图标 `contributes.menubar_items` 与 `host.menubar.set`）、`menubar_drop`（菜单栏图标接收拖放，目前仅 macOS）。
+- **全部 `ui_capabilities` 能力键**（最多 43 项，旧宿主或特定平台/配置可能省略部分键，用于渐进启用特性）：
+  `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`sidebar_ignored_dirs`（目录忽略 RPC）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`toast_banner`（右上角全局通知横幅支持 `body`/`action`、`shown` 返回值与默认插件图标）、`open_settings`（`host.ui.open_settings` 打开插件设置页）、`form_autosave`（表单控件自动触发 `plugin.action`）、`button_link`（卡片内文字按钮 `variant: "link"`）、`save_download`（`host.fs.save_download` 自动保存至下载目录并去重改名）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）、`system_integration`（`host.system.*` / `host.clipboard.*` / `host.secrets.*` 系统集成能力）、`save_dialog_directory`（`host.system.save_dialog` 支持 `directory: true` 选择目录）、`reveal_path`（`host.system.reveal` 支持按 `path` 显示下载或授权目录中的文件）、`menubar`（系统菜单栏图标 `contributes.menubar_items` 与 `host.menubar.set`）、`menubar_drop`（菜单栏图标接收拖放，目前仅 macOS）。
 - **各平台系统集成细节**：
   macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 需要通知服务支持 `actions` 才能点击通知，`notify_click:false` 时仍可能显示通知。Linux 系统凭据需在系统凭据管理器中先解锁。单次运行最多保留最近 128 条插件原生通知。系统选择框已打开时，原生后端可能需要用户关闭窗口，宿主会丢弃已过期动作的选择结果。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
 - **安全回收实现机制**：

@@ -302,7 +302,17 @@ func (c *Controller) triggerSave() {
 
 	go func() {
 		defer c.finishAction()
-		chosen := uniqueExportPath(filepath.Join(downloadsDir(dir), name))
+		chosen, rerr := files.ReserveUniqueFile(filepath.Join(downloadsDir(dir), name))
+		if rerr != nil {
+			c.mu.Lock()
+			if c.isCurrentRequestLocked(req) {
+				c.notice = rerr.Error()
+				c.savedPath = ""
+			}
+			c.mu.Unlock()
+			c.notifyRedraw()
+			return
+		}
 		c.mu.Lock()
 		if c.isCurrentRequestLocked(req) {
 			c.notice = theme.Tr("正在保存…", "Saving…")
@@ -310,7 +320,9 @@ func (c *Controller) triggerSave() {
 		}
 		c.mu.Unlock()
 		c.notifyRedraw()
-		if err := c.saveRequest(req, chosen); err == nil {
+		if err := c.saveRequest(req, chosen); err != nil {
+			_ = os.Remove(chosen)
+		} else {
 			mygo.Shell.ShowItemInFolder(chosen)
 		}
 	}()
@@ -325,22 +337,6 @@ func downloadsDir(fallback string) string {
 		}
 	}
 	return fallback
-}
-
-// uniqueExportPath appends " 2", " 3"… before the extension when p already exists.
-func uniqueExportPath(p string) string {
-	if _, err := os.Stat(p); err != nil {
-		return p
-	}
-	ext := filepath.Ext(p)
-	base := strings.TrimSuffix(p, ext)
-	for i := 2; i < 10000; i++ {
-		cand := fmt.Sprintf("%s %d%s", base, i, ext)
-		if _, err := os.Stat(cand); err != nil {
-			return cand
-		}
-	}
-	return p
 }
 
 func (c *Controller) finishAction() {

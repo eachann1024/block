@@ -123,6 +123,10 @@ func (s *Session) resetOutlineState(clearAll bool) {
 	if clearAll {
 		s.outlineListScroll = ui.ScrollState{}
 		s.outlineFilter = ""
+		s.outlineSelectedBlockID = 0
+		s.outlineLastFilterQuery = ""
+		s.outlineRevealPending = false
+		s.outlineInputComposing = false
 		s.outlineJumpLockID = 0
 		s.outlineJumpLockUntil = time.Time{}
 		s.outlineLastClickedID = 0
@@ -147,8 +151,327 @@ func (s *Session) clearOutlineOverlay(suppressBlockID model.BlockID) {
 	s.outlineLeaveAt = time.Time{}
 	s.outlineFocusPending = false
 	s.outlineFilter = ""
+	s.outlineSelectedBlockID = 0
+	s.outlineLastFilterQuery = ""
+	s.outlineRevealPending = false
+	s.outlineInputComposing = false
 	s.outlineListScroll.Y = 0
 	s.outlineSuppressBlockID = suppressBlockID
+}
+
+// HasOutlineOverlayOpen reports whether the outline hover card or list panel is visible.
+func (s *Session) HasOutlineOverlayOpen() bool {
+	return s != nil && s.outlineMode != outlineModeClosed
+}
+
+// HasOutlinePanelOpen reports whether the interactive outline list panel is open.
+func (s *Session) HasOutlinePanelOpen() bool {
+	return s != nil && s.outlineMode == outlineModePanel
+}
+
+// HasOutlineInputFocused reports whether the outline filter input owns keyboard focus.
+func (s *Session) HasOutlineInputFocused(c *ui.Context) bool {
+	return s != nil && c != nil && s.outlineInputHandle.Focused(c)
+}
+
+func outlineNavDelta(key ui.Key, mods ui.Modifiers) (int, bool) {
+	if (key == ui.KeyUp && mods == 0) || (theme.IsMacOS() && mods == ui.Ctrl && key == ui.KeyP) {
+		return -1, true
+	}
+	if (key == ui.KeyDown && mods == 0) || (theme.IsMacOS() && mods == ui.Ctrl && key == ui.KeyN) {
+		return 1, true
+	}
+	return 0, false
+}
+
+func isOutlineNavKey(key ui.Key, mods ui.Modifiers) bool {
+	if _, ok := outlineNavDelta(key, mods); ok {
+		return true
+	}
+	return (key == ui.KeyEnter || key == ui.KeyEscape) && mods == 0
+}
+
+func (s *Session) outlinePanelCapturesNav(c *ui.Context) bool {
+	if s == nil || s.outlineMode != outlineModePanel {
+		return false
+	}
+	if s.hasNonOutlineBlockingOverlay() || s.hasMenuPopupOpen() {
+		return false
+	}
+	if s.isAnyInputComposing() || s.frameCodeComposing {
+		return false
+	}
+	if s.HasMindMapFullscreen() || s.hasActiveMindMapLocalModalOrEdit() {
+		return false
+	}
+	if c != nil && s.HasAnnotationInputFocused(c) {
+		return false
+	}
+	return true
+}
+
+// CapturesOutlineNavKey reports whether the open outline panel currently captures (key, mods).
+func (s *Session) CapturesOutlineNavKey(c *ui.Context, key ui.Key, mods ui.Modifiers) bool {
+	return s.outlinePanelCapturesNav(c) && isOutlineNavKey(key, mods)
+}
+
+func (s *Session) reserveOutlineNavKeys(c *ui.Context) {
+	if c == nil {
+		return
+	}
+	c.Shortcut(0, ui.KeyUp)
+	c.Shortcut(0, ui.KeyDown)
+	c.Shortcut(0, ui.KeyEnter)
+	c.Shortcut(0, ui.KeyEscape)
+	if theme.IsMacOS() {
+		c.Shortcut(ui.Ctrl, ui.KeyP)
+		c.Shortcut(ui.Ctrl, ui.KeyN)
+	}
+}
+
+func outlineFilteredIndices(items []model.OutlineItem, filter string) []int {
+	query := strings.ToLower(strings.TrimSpace(filter))
+	filtered := make([]int, 0, len(items))
+	for origIdx, it := range items {
+		if query != "" && !strings.Contains(strings.ToLower(it.Title), query) {
+			continue
+		}
+		filtered = append(filtered, origIdx)
+	}
+	return filtered
+}
+
+func outlineIndexInFiltered(filtered []int, items []model.OutlineItem, blockID model.BlockID) bool {
+	if blockID == 0 {
+		return false
+	}
+	for _, origIdx := range filtered {
+		if items[origIdx].BlockID == blockID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Session) selectAndPreviewOutlineItem(c *ui.Context, item model.OutlineItem) {
+	s.outlineSelectedBlockID = item.BlockID
+	s.outlineRevealPending = true
+	if !s.previewOutlineBlock(item.BlockIndex) {
+		s.outlineJumpLockID = item.BlockID
+		s.outlineJumpLockUntil = time.Time{}
+	}
+	if c != nil {
+		c.Invalidate()
+	}
+}
+
+func (s *Session) syncOutlineFilterSelection(c *ui.Context, items []model.OutlineItem, filtered []int) {
+	if s == nil {
+		return
+	}
+	query := strings.ToLower(strings.TrimSpace(s.outlineFilter))
+	if query == s.outlineLastFilterQuery {
+		if query != "" {
+			if len(filtered) == 0 {
+				if s.outlineSelectedBlockID != 0 {
+					s.outlineSelectedBlockID = 0
+					s.outlineRevealPending = false
+				}
+			} else if !outlineIndexInFiltered(filtered, items, s.outlineSelectedBlockID) {
+				s.selectAndPreviewOutlineItem(c, items[filtered[0]])
+			}
+		}
+		return
+	}
+	s.outlineLastFilterQuery = query
+	s.outlineListScroll.Y = 0
+	if query == "" {
+		s.outlineSelectedBlockID = 0
+		s.outlineRevealPending = len(filtered) > 0
+		return
+	}
+	if len(filtered) == 0 {
+		s.outlineSelectedBlockID = 0
+		s.outlineRevealPending = false
+		return
+	}
+	s.selectAndPreviewOutlineItem(c, items[filtered[0]])
+}
+
+func (s *Session) restoreEditorFocusAfterOutline() {
+	if s == nil || s.doc == nil || len(s.doc.Blocks) == 0 {
+		return
+	}
+	if s.needsDetachedSelectionFocus() {
+		s.multiSelFocusPending = true
+		s.focusPending = false
+	} else if !s.readOnly {
+		s.EnsureEditorFocus()
+		s.focusPreventScroll = true
+	}
+}
+
+func (s *Session) stepOutlineSelection(c *ui.Context, filter string, delta int) bool {
+	if s == nil || s.outlineMode != outlineModePanel {
+		return false
+	}
+	items := s.Outline()
+	filtered := outlineFilteredIndices(items, filter)
+	if len(filtered) == 0 {
+		return false
+	}
+	query := strings.ToLower(strings.TrimSpace(filter))
+	if query != s.outlineLastFilterQuery {
+		s.outlineLastFilterQuery = query
+		if query != "" {
+			s.outlineSelectedBlockID = items[filtered[0]].BlockID
+		}
+	}
+
+	activeOrigIdx := s.resolveActiveOutlineIndex(items, time.Now())
+	pos := -1
+	if s.outlineSelectedBlockID != 0 {
+		for i, origIdx := range filtered {
+			if items[origIdx].BlockID == s.outlineSelectedBlockID {
+				pos = i
+				break
+			}
+		}
+	}
+	if pos < 0 && activeOrigIdx >= 0 {
+		for i, origIdx := range filtered {
+			if origIdx == activeOrigIdx {
+				pos = i
+				break
+			}
+		}
+	}
+	n := len(filtered)
+	if pos < 0 {
+		if delta >= 0 {
+			pos = 0
+		} else {
+			pos = n - 1
+		}
+	} else {
+		pos = (pos + delta%n + n) % n
+	}
+
+	target := items[filtered[pos]]
+	s.outlineSelectedBlockID = target.BlockID
+	s.outlineRevealPending = true
+	if !s.previewOutlineBlock(target.BlockIndex) {
+		s.outlineJumpLockID = target.BlockID
+		s.outlineJumpLockUntil = time.Time{}
+	}
+	if c != nil {
+		c.Invalidate()
+	}
+	return true
+}
+
+func (s *Session) confirmOutlineSelection(c *ui.Context, filter string) bool {
+	if s == nil || s.outlineMode != outlineModePanel {
+		return false
+	}
+	items := s.Outline()
+	filtered := outlineFilteredIndices(items, filter)
+	if len(filtered) == 0 {
+		return false
+	}
+	query := strings.ToLower(strings.TrimSpace(filter))
+	targetIdx := -1
+	if query != s.outlineLastFilterQuery {
+		s.outlineLastFilterQuery = query
+		if query != "" {
+			targetIdx = filtered[0]
+			s.outlineSelectedBlockID = items[targetIdx].BlockID
+		} else {
+			s.outlineSelectedBlockID = 0
+		}
+	}
+	if targetIdx < 0 && s.outlineSelectedBlockID != 0 {
+		for _, origIdx := range filtered {
+			if items[origIdx].BlockID == s.outlineSelectedBlockID {
+				targetIdx = origIdx
+				break
+			}
+		}
+	}
+	if targetIdx < 0 && s.outlineJumpLockID != 0 {
+		for _, origIdx := range filtered {
+			if items[origIdx].BlockID == s.outlineJumpLockID {
+				targetIdx = origIdx
+				break
+			}
+		}
+	}
+	if targetIdx < 0 {
+		if activeOrigIdx := s.resolveActiveOutlineIndex(items, time.Now()); activeOrigIdx >= 0 {
+			for _, origIdx := range filtered {
+				if origIdx == activeOrigIdx {
+					targetIdx = origIdx
+					break
+				}
+			}
+		}
+	}
+	if targetIdx < 0 {
+		targetIdx = filtered[0]
+	}
+
+	target := items[targetIdx]
+	hadPanelFocus := c != nil && (s.outlineInputHandle.Focused(c) || s.outlinePanelHandle.FocusWithin(c))
+	s.JumpToBlock(target.BlockIndex)
+	if hadPanelFocus {
+		s.restoreEditorFocusAfterOutline()
+	}
+	if c != nil {
+		c.Invalidate()
+	}
+	return true
+}
+
+func (s *Session) escapeOutlinePanel(c *ui.Context, restoreFocus bool) bool {
+	if s == nil || s.outlineMode != outlineModePanel {
+		return false
+	}
+	if s.outlineFilter != "" {
+		s.outlineFilter = ""
+		s.outlineLastFilterQuery = ""
+		s.outlineSelectedBlockID = 0
+		s.outlineListScroll.Y = 0
+		s.outlineRevealPending = true
+		if c != nil {
+			c.Invalidate()
+		}
+		return true
+	}
+	s.clearOutlineOverlay(s.outlineHoverBlockID)
+	if restoreFocus {
+		s.restoreEditorFocusAfterOutline()
+	}
+	if c != nil {
+		c.Invalidate()
+	}
+	return true
+}
+
+func (s *Session) handleOutlinePanelKey(c *ui.Context, key ui.Key, mods ui.Modifiers) bool {
+	if !s.outlinePanelCapturesNav(c) {
+		return false
+	}
+	if delta, ok := outlineNavDelta(key, mods); ok {
+		return s.stepOutlineSelection(c, s.outlineFilter, delta)
+	}
+	if key == ui.KeyEnter && mods == 0 {
+		return s.confirmOutlineSelection(c, s.outlineFilter)
+	}
+	if key == ui.KeyEscape && mods == 0 {
+		hadPanelFocus := c != nil && (s.HasOutlineInputFocused(c) || s.outlinePanelHandle.FocusWithin(c))
+		return s.escapeOutlinePanel(c, hadPanelFocus)
+	}
+	return false
 }
 
 func (s *Session) closeOutline(suppressBlockID model.BlockID) {
@@ -185,9 +508,14 @@ func (s *Session) switchOutlineView(c *ui.Context, next model.OutlineViewMode, n
 	case model.OutlineViewList:
 		s.outlineMode = outlineModePanel
 		s.outlineLeaveAt = time.Time{}
+		s.outlineRevealPending = true
 	case model.OutlineViewCard:
 		s.outlineMode = outlineModeHoverCard
 		s.outlineFilter = ""
+		s.outlineSelectedBlockID = 0
+		s.outlineLastFilterQuery = ""
+		s.outlineRevealPending = false
+		s.outlineInputComposing = false
 		s.outlineListScroll.Y = 0
 		if s.outlineCardBlockID == 0 && s.outlineHoverBlockID != 0 {
 			s.outlineCardBlockID = s.outlineHoverBlockID
@@ -224,6 +552,11 @@ func outlineIndexByBlockID(items []model.OutlineItem, id model.BlockID) int {
 func (s *Session) resolveActiveOutlineIndex(items []model.OutlineItem, now time.Time) int {
 	if len(items) == 0 {
 		return -1
+	}
+	if s.outlineMode == outlineModePanel && s.outlineSelectedBlockID != 0 {
+		if idx := outlineIndexByBlockID(items, s.outlineSelectedBlockID); idx >= 0 {
+			return idx
+		}
 	}
 	if s.outlineJumpLockID != 0 && (s.outlineJumpLockUntil.IsZero() || now.Before(s.outlineJumpLockUntil)) {
 		if idx := outlineIndexByBlockID(items, s.outlineJumpLockID); idx >= 0 {
@@ -591,7 +924,7 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 			TransformOrigin(0, 0.5).
 			Transition(appUi.OutlinePopoverTransition()),
 		theme.ElevationPopover,
-	)
+	).Bind(&s.outlinePanelHandle)
 	appUi.Probe(panel, "outline-popover")
 
 	var (
@@ -623,39 +956,52 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 							Label(theme.Tr("筛选目录", "Filter headings")).
 							Bind(&s.outlineInputHandle)
 						appUi.Probe(in, "outline-filter-input")
-						in.OnTextKey(func(k ui.TextKey) bool {
-							if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
-								return true
-							}
-							if k.Key == ui.KeyEscape {
-								if s.outlineFilter != "" {
-									s.outlineFilter = ""
-									s.outlineListScroll.Y = 0
-									c.Invalidate()
-									return true
-								}
-								s.clearOutlineOverlay(s.outlineHoverBlockID)
-								if s.doc != nil && len(s.doc.Blocks) > 0 {
-									if s.needsDetachedSelectionFocus() {
-										s.multiSelFocusPending = true
-										s.focusPending = false
-									} else if !s.readOnly {
-										s.EnsureEditorFocus()
-										s.focusPreventScroll = true
-									}
-								}
-								c.Invalidate()
-								return true
-							}
-							return false
-						})
+						inComposing := in.Composing()
 						if s.outlineFocusPending {
 							in.Focus()
 							s.outlineFocusPending = false
 						}
-						if in.Changed() {
-							s.outlineListScroll.Y = 0
-						}
+						s.outlineInputComposing = inComposing
+						in.ObserveInput(func(ev ui.InputEvent) {
+							switch ev.Kind {
+							case ui.InputCompose:
+								s.outlineInputComposing = ev.Text != ""
+							case ui.InputText, ui.InputCommand:
+								s.outlineInputComposing = false
+							}
+						})
+						in.OnTextKey(func(k ui.TextKey) bool {
+							if k.Key == ui.KeyTab && (k.Mods == 0 || k.Mods == ui.Shift) {
+								return true
+							}
+							if !isOutlineNavKey(k.Key, k.Mods) {
+								return false
+							}
+							if (inComposing && k.Text() == s.outlineFilter) || s.outlineInputComposing {
+								return false
+							}
+							if delta, ok := outlineNavDelta(k.Key, k.Mods); ok {
+								s.stepOutlineSelection(c, k.Text(), delta)
+								return true
+							}
+							if k.Key == ui.KeyEnter && k.Mods == 0 {
+								s.confirmOutlineSelection(c, k.Text())
+								return true
+							}
+							if k.Key == ui.KeyEscape && k.Mods == 0 {
+								if k.Text() != "" || s.outlineFilter != "" {
+									k.SetText("")
+									s.outlineLastFilterQuery = ""
+									s.outlineSelectedBlockID = 0
+									s.outlineListScroll.Y = 0
+									s.outlineRevealPending = true
+									c.Invalidate()
+									return true
+								}
+								return s.escapeOutlinePanel(c, true)
+							}
+							return false
+						})
 						inputFocused = in.Focused()
 					})
 
@@ -676,18 +1022,24 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 
 		ui.Box(c).FillWidth().Height(1).Background(pal.MenuSeparator)
 
+		filtered := outlineFilteredIndices(items, s.outlineFilter)
+		s.syncOutlineFilterSelection(c, items, filtered)
+		if s.outlineSelectedBlockID != 0 {
+			if idx := outlineIndexByBlockID(items, s.outlineSelectedBlockID); idx >= 0 {
+				activeIdx = idx
+			}
+		} else if s.outlineJumpLockID != 0 && (s.outlineJumpLockUntil.IsZero() || time.Now().Before(s.outlineJumpLockUntil)) {
+			if idx := outlineIndexByBlockID(items, s.outlineJumpLockID); idx >= 0 {
+				activeIdx = idx
+			}
+		}
+
 		headerH := theme.HeightCompact + theme.Space8 + theme.Space6 + 3
 		scrollMaxH := max(panelMaxH-headerH, 0)
 		appUi.Scroll(c.Key("outline-scroll"), &s.outlineListScroll).FillWidth().MaxHeight(scrollMaxH).Children(func() {
 			ui.Column(c.Key("outline-list")).FillWidth().Padding(theme.Space6).Gap(theme.Space2).Children(func() {
-				query := strings.ToLower(strings.TrimSpace(s.outlineFilter))
-				matched := 0
-				for origIdx, it := range items {
-					if query != "" && !strings.Contains(strings.ToLower(it.Title), query) {
-						continue
-					}
-					matched++
-					item := it
+				for _, origIdx := range filtered {
+					item := items[origIdx]
 					isActive := origIdx == activeIdx
 					indent := outlinePanelIndent(item.Level)
 					row := ui.ButtonBase(c.Key(origIdx)).
@@ -728,12 +1080,25 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 							TextColor(textCol).Grow(1).SingleLine()
 					})
 					appUi.Probe(row, fmt.Sprintf("outline-item-%d", origIdx))
+					if isActive && s.outlineRevealPending {
+						row.ScrollIntoView(ui.ScrollIntoViewOptions{
+							Block:     ui.ScrollNearest,
+							Inline:    ui.ScrollNearest,
+							Animation: appUi.JumpScrollAnimation(true),
+						})
+						s.outlineRevealPending = false
+					}
 					if row.Clicked() {
+						hadPanelFocus := s.outlineInputHandle.Focused(c) || s.outlinePanelHandle.FocusWithin(c)
 						s.JumpToBlock(item.BlockIndex)
+						if hadPanelFocus {
+							s.restoreEditorFocusAfterOutline()
+						}
 						c.Invalidate()
 					}
 				}
-				if matched == 0 {
+				s.outlineRevealPending = false
+				if len(filtered) == 0 {
 					ui.Row(c).FillWidth().Padding(theme.Space12, theme.Space8).Justify(ui.Center).Children(func() {
 						ui.Text(c, theme.Tr("无匹配标题", "No matching headings")).
 							FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
@@ -742,6 +1107,31 @@ func (s *Session) renderOutlinePanel(c *ui.Context, pal theme.Palette, items []m
 			})
 		})
 	})
+
+	if s.outlinePanelCapturesNav(c) && !inputFocused {
+		if panel.OverlayShortcut(0, ui.KeyUp) {
+			s.stepOutlineSelection(c, s.outlineFilter, -1)
+		}
+		if panel.OverlayShortcut(0, ui.KeyDown) {
+			s.stepOutlineSelection(c, s.outlineFilter, 1)
+		}
+		if theme.IsMacOS() {
+			if panel.OverlayShortcut(ui.Ctrl, ui.KeyP) {
+				s.stepOutlineSelection(c, s.outlineFilter, -1)
+			}
+			if panel.OverlayShortcut(ui.Ctrl, ui.KeyN) {
+				s.stepOutlineSelection(c, s.outlineFilter, 1)
+			}
+		}
+		if panel.OverlayShortcut(0, ui.KeyEnter) {
+			s.confirmOutlineSelection(c, s.outlineFilter)
+		}
+		if panel.OverlayShortcut(0, ui.KeyEscape) {
+			s.escapeOutlinePanel(c, s.outlinePanelHandle.FocusWithin(c))
+		}
+	} else if inputFocused && s.outlineInputComposing {
+		panel.OverlayShortcut(0, ui.KeyEscape)
+	}
 
 	return panel, listHoveredID, inputFocused
 }
@@ -912,12 +1302,14 @@ func (s *Session) updateOutlineHoverState(
 		} else {
 			s.outlineMode = outlineModePanel
 			s.outlineCardBlockID = targetID
+			s.outlineRevealPending = true
 		}
 		c.Invalidate()
 
 	case outlineModeHoverCard:
 		if preferList {
 			s.outlineMode = outlineModePanel
+			s.outlineRevealPending = true
 			c.Invalidate()
 			return
 		}
@@ -933,6 +1325,10 @@ func (s *Session) updateOutlineHoverState(
 				s.outlineCardBlockID = hoveredTickID
 			}
 			s.outlineFilter = ""
+			s.outlineSelectedBlockID = 0
+			s.outlineLastFilterQuery = ""
+			s.outlineRevealPending = false
+			s.outlineInputComposing = false
 			s.outlineListScroll.Y = 0
 			c.Invalidate()
 		}

@@ -141,9 +141,9 @@ func (ef *EdgeFloatController) PrepareFrame(
 		ef.closeSide(w, edgeSideRight, false)
 	}
 
-	// Escape closes an open floating edge card when no inner menu/popover or active MindMap owns Escape.
+	// Escape closes an open floating edge card when no inner menu/popover or active MindMap/outline owns Escape.
 	noteEditorLive := activeSess != nil && w.ActiveSurface() == nil && !w.noteSourceActive(w.ActiveNotePath())
-	mindMapOwnsEsc := noteEditorLive && (activeSess.HasAnnotationInputFocused(c) || activeSess.HasMindMapEscapeOwner(c))
+	mindMapOwnsEsc := noteEditorLive && (activeSess.HasAnnotationInputFocused(c) || activeSess.HasMindMapEscapeOwner(c) || activeSess.HasOutlineOverlayOpen())
 	if ef.active != edgeSideNone && !w.sidebarUI.HasActiveOverlay() && !w.ai.HasActiveOverlay() && !mindMapOwnsEsc {
 		if c.Shortcut(0, ui.KeyEscape) {
 			ef.closeSide(w, ef.active, true)

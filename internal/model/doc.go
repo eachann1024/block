@@ -289,6 +289,7 @@ type Block struct {
 	DecoratorPrefix  string      `json:"decoratorPrefix,omitempty"`
 	DecoratorKind    string      `json:"decoratorKind,omitempty"`
 	Language         string      `json:"language,omitempty"`
+	MindMapLayout    string      `json:"-"` // Transient live layout ("right"|"both") synced from editor state
 	ShowSource       bool        `json:"showSource,omitempty"`
 	WrapCode         bool        `json:"wrapCode,omitempty"`
 	Spans            []Span      `json:"spans,omitempty"`

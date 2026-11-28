@@ -101,17 +101,21 @@ type findMatch struct {
 }
 
 type undoSnapshot struct {
-	Doc              *model.Doc
-	FocusIdx         int
-	Anchor           Position
-	Head             Position
-	Annotations      []*model.Annotation
-	FoldTails        map[model.BlockID]model.BlockID
-	ActiveAnnotID    string
-	EditingAnnotID   string
-	EditingAnnotText string
-	CommentDraft     string
-	ToolbarPop       string
+	Doc               *model.Doc
+	FocusIdx          int
+	Anchor            Position
+	Head              Position
+	TableActiveBlock  model.BlockID
+	TableActiveRow    int
+	TableActiveCol    int
+	TableTextSelBlock model.BlockID
+	Annotations       []*model.Annotation
+	FoldTails         map[model.BlockID]model.BlockID
+	ActiveAnnotID     string
+	EditingAnnotID    string
+	EditingAnnotText  string
+	CommentDraft      string
+	ToolbarPop        string
 }
 
 // Session holds all document, selection, overlay, and collaboration state for an editor instance.
@@ -248,7 +252,13 @@ type Session struct {
 	outlineListScroll      ui.ScrollState
 	outlineFilter          string
 	outlineInputHandle     ui.Handle
+	outlinePanelHandle     ui.Handle
 	outlineFocusPending    bool
+	outlineSelectedBlockID model.BlockID
+	outlineLastFilterQuery string
+	outlineRevealPending   bool
+	outlineInputComposing  bool
+	frameCodeComposing     bool
 	outlineJumpLockID      model.BlockID
 	outlineJumpLockUntil   time.Time
 	outlineLastClickedID   model.BlockID
@@ -360,6 +370,7 @@ type Session struct {
 	tableActiveBlock  model.BlockID
 	tableActiveRow    int
 	tableActiveCol    int
+	tableTextSelBlock model.BlockID
 	tableMenuBlock    model.BlockID
 	tableMenuKind     string // "", "row", "col", "table", "cell"
 	tableMenuIndex    int
@@ -543,6 +554,7 @@ func (s *Session) SetNotePath(p string) {
 }
 
 func (s *Session) Doc() *model.Doc {
+	s.syncMindMapLayoutsToDoc()
 	return s.doc
 }
 
@@ -976,17 +988,21 @@ func (s *Session) cloneAnnotations(src []*model.Annotation) []*model.Annotation 
 
 func (s *Session) captureUndoSnapshot() undoSnapshot {
 	return undoSnapshot{
-		Doc:              s.doc.Clone(),
-		FocusIdx:         s.focusedBlock,
-		Anchor:           s.selAnchor,
-		Head:             s.selHead,
-		Annotations:      s.cloneAnnotations(s.annotations),
-		FoldTails:        cloneFoldTails(s.foldTails),
-		ActiveAnnotID:    s.activeAnnotID,
-		EditingAnnotID:   s.editingAnnotID,
-		EditingAnnotText: s.editingAnnotText,
-		CommentDraft:     s.commentDraft,
-		ToolbarPop:       s.toolbarPop,
+		Doc:               s.doc.Clone(),
+		FocusIdx:          s.focusedBlock,
+		Anchor:            s.selAnchor,
+		Head:              s.selHead,
+		TableActiveBlock:  s.tableActiveBlock,
+		TableActiveRow:    s.tableActiveRow,
+		TableActiveCol:    s.tableActiveCol,
+		TableTextSelBlock: s.tableTextSelBlock,
+		Annotations:       s.cloneAnnotations(s.annotations),
+		FoldTails:         cloneFoldTails(s.foldTails),
+		ActiveAnnotID:     s.activeAnnotID,
+		EditingAnnotID:    s.editingAnnotID,
+		EditingAnnotText:  s.editingAnnotText,
+		CommentDraft:      s.commentDraft,
+		ToolbarPop:        s.toolbarPop,
 	}
 }
 
@@ -1030,12 +1046,16 @@ func (s *Session) Undo() bool {
 	s.lastUndoKey = ""
 	s.lastUndoAt = time.Time{}
 	cur := undoSnapshot{
-		Doc:         s.doc.Clone(),
-		FocusIdx:    s.focusedBlock,
-		Anchor:      s.selAnchor,
-		Head:        s.selHead,
-		Annotations: s.cloneAnnotations(s.annotations),
-		FoldTails:   cloneFoldTails(s.foldTails),
+		Doc:               s.doc.Clone(),
+		FocusIdx:          s.focusedBlock,
+		Anchor:            s.selAnchor,
+		Head:              s.selHead,
+		TableActiveBlock:  s.tableActiveBlock,
+		TableActiveRow:    s.tableActiveRow,
+		TableActiveCol:    s.tableActiveCol,
+		TableTextSelBlock: s.tableTextSelBlock,
+		Annotations:       s.cloneAnnotations(s.annotations),
+		FoldTails:         cloneFoldTails(s.foldTails),
 	}
 	s.redoStack = append(s.redoStack, cur)
 	prev := s.undoStack[len(s.undoStack)-1]
@@ -1190,12 +1210,16 @@ func (s *Session) Redo() bool {
 	s.lastUndoKey = ""
 	s.lastUndoAt = time.Time{}
 	cur := undoSnapshot{
-		Doc:         s.doc.Clone(),
-		FocusIdx:    s.focusedBlock,
-		Anchor:      s.selAnchor,
-		Head:        s.selHead,
-		Annotations: s.cloneAnnotations(s.annotations),
-		FoldTails:   cloneFoldTails(s.foldTails),
+		Doc:               s.doc.Clone(),
+		FocusIdx:          s.focusedBlock,
+		Anchor:            s.selAnchor,
+		Head:              s.selHead,
+		TableActiveBlock:  s.tableActiveBlock,
+		TableActiveRow:    s.tableActiveRow,
+		TableActiveCol:    s.tableActiveCol,
+		TableTextSelBlock: s.tableTextSelBlock,
+		Annotations:       s.cloneAnnotations(s.annotations),
+		FoldTails:         cloneFoldTails(s.foldTails),
 	}
 	s.undoStack = append(s.undoStack, cur)
 	next := s.redoStack[len(s.redoStack)-1]
@@ -1212,6 +1236,30 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	}
 	s.selAnchor = snap.Anchor
 	s.selHead = snap.Head
+	s.tableActiveBlock = snap.TableActiveBlock
+	s.tableActiveRow = snap.TableActiveRow
+	s.tableActiveCol = snap.TableActiveCol
+	s.tableTextSelBlock = snap.TableTextSelBlock
+	if s.tableActiveBlock != 0 {
+		found := false
+		for i := range s.doc.Blocks {
+			blk := &s.doc.Blocks[i]
+			if blk.ID == s.tableActiveBlock && blk.Kind == model.BlockTable && blk.Table != nil && len(blk.Table.Rows) > 0 && len(blk.Table.Rows[0]) > 0 {
+				s.tableActiveRow = clampInt(s.tableActiveRow, 0, len(blk.Table.Rows)-1)
+				s.tableActiveCol = clampInt(s.tableActiveCol, 0, len(blk.Table.Rows[s.tableActiveRow])-1)
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.tableActiveBlock = 0
+		}
+	}
+	if !s.hasNonEmptySelection() && s.focusedBlock >= 0 && s.focusedBlock < len(s.doc.Blocks) {
+		if blk := &s.doc.Blocks[s.focusedBlock]; blk.Kind == model.BlockTable && s.tableActiveBlock != blk.ID {
+			s.syncCollapsedTableCellFocus(s.selHead)
+		}
+	}
 	s.annotations = s.cloneAnnotations(snap.Annotations)
 	clear(s.foldTails)
 	for k, v := range snap.FoldTails {
@@ -1221,8 +1269,9 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.bumpDocRev()
 	s.virtReady = false
 	s.setDirty(s.Markdown() != s.savedMarkdown)
-	s.focusPending = true
-	s.selSyncPending = true
+	s.multiSelFocusPending = s.needsDetachedSelectionFocus()
+	s.focusPending = !s.multiSelFocusPending
+	s.selSyncPending = !s.multiSelFocusPending
 	s.caretHidden = false
 	s.resetBlockDrag()
 	s.firstLineDeleteArmed = false
@@ -1326,6 +1375,7 @@ func (s *Session) CollapseSelectionToEnd() {
 }
 
 func (s *Session) SelectRange(startBlock, startOff, endBlock, endOff int) {
+	s.tableTextSelBlock = 0
 	s.selAnchor = s.clampPos(Position{Block: startBlock, Offset: startOff})
 	s.selHead = s.clampPos(Position{Block: endBlock, Offset: endOff})
 	s.focusedBlock = s.selHead.Block
@@ -1355,7 +1405,7 @@ func (s *Session) hasMenuPopupOpen() bool {
 		(s.tableMenuBlock != 0 && s.tableMenuKind != "")
 }
 
-func (s *Session) hasBlockingOverlay() bool {
+func (s *Session) hasNonOutlineBlockingOverlay() bool {
 	return s.blockMenu != nil ||
 		s.toolbarPop != "" ||
 		s.inlineAI != nil ||
@@ -1367,9 +1417,13 @@ func (s *Session) hasBlockingOverlay() bool {
 		s.editingAnnotID != "" ||
 		s.reactionPickerAnnotID != "" ||
 		s.activePlan != nil ||
-		s.outlineMode == outlineModeHoverCard ||
-		s.outlineMode == outlineModePanel ||
 		s.lightbox.Open
+}
+
+func (s *Session) hasBlockingOverlay() bool {
+	return s.hasNonOutlineBlockingOverlay() ||
+		s.outlineMode == outlineModeHoverCard ||
+		s.outlineMode == outlineModePanel
 }
 
 func (s *Session) closeTransientOverlays() {
