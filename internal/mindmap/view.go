@@ -6943,27 +6943,35 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string, cb Callbacks) {
 
 		// Pinned right-side Tutorial & Shortcuts buttons.
 		ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
+		unseen := st.lastCfgSet && !st.lastCfg.TutorialSeen
 		tutBtn := ui.ButtonBase(c.Key("mm-tut-btn-"+id)).
 			Height(theme.HeightCompact).PaddingX(theme.Space10).Margin(0, theme.Space4, 0, theme.Space4).
 			Radius(theme.RadiusMD).AlignItems(ui.Center).Gap(theme.Space4).
 			Cursor(ui.CursorPointer).Shrink(0).Label(theme.Tr("教程", "Guide")).KeepFocus()
 		bui.Tooltip(c, tutBtn, theme.Tr("观看快捷键动画教程", "Watch animated shortcut guide"))
 		tutHot := tutBtn.Hovered() || tutBtn.Pressed()
-		tutFG := pal.Accent
-		tutBG := pal.SelectionBG
-		tutBD := pal.Accent.Alpha(0.35)
+		tutFG := pal.TextSecondary
+		tutBG := ui.Transparent
+		tutBD := ui.Transparent
 		if st.TutorialOpen {
 			tutBG = pal.Accent
 			tutFG = pal.Paper
 			tutBD = pal.Accent
-		} else if tutHot {
+		} else if unseen {
 			tutBG = pal.SelectionBG
-			tutFG = pal.AccentHover
-			tutBD = pal.Accent
+			tutFG = pal.Accent
+			tutBD = pal.Accent.Alpha(0.35)
+			if tutHot {
+				tutFG = pal.AccentHover
+				tutBD = pal.Accent
+			}
+		} else if tutHot {
+			tutBG = pal.Hover
+			tutFG = pal.Text
 		}
 		tutBtn.Background(tutBG).Border(1, tutBD)
 		tutBtn.Children(func() {
-			icons.DrawAnimated(c, icons.Video, theme.IconMicro, pal.MonoIconColors(tutFG), st.TutorialOpen || tutHot)
+			icons.DrawAnimated(c, icons.Video, theme.IconMicro, pal.MonoIconColors(tutFG), st.TutorialOpen || tutHot || unseen)
 			ui.Text(c, theme.Tr("教程", "Guide")).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
 				TextColor(tutFG).SingleLine()
 		})
@@ -6971,7 +6979,7 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string, cb Callbacks) {
 			if st.TutorialOpen {
 				st.CloseTutorial(cb)
 			} else {
-				st.OpenTutorial(false)
+				st.OpenTutorial(unseen)
 			}
 			c.Invalidate()
 		}

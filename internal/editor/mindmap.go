@@ -652,9 +652,6 @@ func (s *Session) renderMindMapCodeBlock(c *ui.Context, idx int, b *model.Block,
 		s.selSyncPending = false
 	}
 	cfg := s.effectiveMindMapConfig()
-	if !s.mindMapTutorialAutoShown && st.MaybeAutoOpenTutorial(cfg, readOnly) {
-		s.mindMapTutorialAutoShown = true
-	}
 	id := fmt.Sprintf("block-%d", b.ID)
 	cb := s.mindMapCallbacks(c, b.ID, readOnly)
 	st.RenderInline(c, id, b.Code, cfg, isFocused, cb)

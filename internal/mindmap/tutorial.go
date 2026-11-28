@@ -177,6 +177,7 @@ func (tp *tutorialPlayerState) seek(sec float64, play bool, now time.Time) {
 }
 
 // OpenTutorial opens the minimalist animated shortcut tutorial modal.
+// It is only opened by explicit user click; never auto-opened on app startup.
 func (st *BlockState) OpenTutorial(firstRun bool) {
 	if st == nil {
 		return
@@ -195,26 +196,13 @@ func (st *BlockState) OpenTutorial(firstRun bool) {
 	st.tutorial.openForTheme(theme.Ocean().Dark, 0, true)
 }
 
-// MaybeAutoOpenTutorial triggers the first-use animated tutorial once when the user
-// interacts with a live mind map for the first time.
-func (st *BlockState) MaybeAutoOpenTutorial(cfg Config, readOnly bool) bool {
-	if st == nil || readOnly || cfg.TutorialSeen || st.View != ViewMap || st.TutorialOpen {
-		return false
-	}
-	if testing.Testing() || bui.IsProbeEnabled() {
-		return false
-	}
-	st.OpenTutorial(true)
-	return true
-}
-
 // CloseTutorial dismisses the tutorial modal, releases decoder resources, and
 // notifies the host when dismissing first-run onboarding.
 func (st *BlockState) CloseTutorial(cb Callbacks) {
 	if st == nil {
 		return
 	}
-	wasFirstRun := st.TutorialFirstRun
+	wasFirstRun := st.TutorialFirstRun || (st.lastCfgSet && !st.lastCfg.TutorialSeen)
 	st.TutorialOpen = false
 	st.TutorialFirstRun = false
 	if st.tutorial != nil {
