@@ -3920,7 +3920,7 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 		trigger = ui.Rect{X: vp.X + 120, Y: vp.Y + 120, W: 400, H: 120}
 	}
 	spec := appUi.PlaceAbove(trigger).WithViewport(vp).WithAlignX(appUi.AlignX{Kind: appUi.AlignCenter}).WithGap(6).WithMargin(8)
-	barW, barH := s.measuredOrEstSize("image-toolbar", 307, 38)
+	barW, barH := s.measuredOrEstSize("image-toolbar", 150, 38)
 	x, y := appUi.ResolveOrigin(spec, barW, barH, winW, winH)
 
 	imgToolbarBorder := pal.Hairline
@@ -3996,88 +3996,6 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 
 			ui.Box(c).Width(1).Height(20).MarginX(2).Background(pal.Hairline)
 
-			if strings.TrimSpace(b.ImageSrc) != "" {
-				fullLbl := theme.Tr("全屏查看", "Fullscreen")
-				fullBtn := appUi.IconButton(c, icons.Maximize, appUi.IconButtonOptions{
-					ID:           "img-fullscreen",
-					Label:        fullLbl,
-					Tooltip:      fullLbl,
-					Shortcut:     "F",
-					TooltipPill:  true,
-					TooltipAbove: true,
-					Size:         theme.HeightCompact,
-					IconSize:     theme.IconAction,
-				})
-				s.recordOverlayBtn("img-fullscreen", fullBtn)
-				if fullBtn.Clicked() {
-					s.OpenMediaLightbox(id)
-				}
-			}
-
-			if !IsSupportedVideoPath(b.ImageSrc) {
-				uploadLbl := theme.Tr("更换图片", "Replace image")
-				if b.ImageSrc == "" {
-					uploadLbl = theme.Tr("上传图片", "Upload image")
-				}
-				uploadBtn := appUi.IconButton(c, icons.Image, appUi.IconButtonOptions{
-					ID:           "img-upload",
-					Label:        uploadLbl,
-					Tooltip:      uploadLbl,
-					TooltipPill:  true,
-					TooltipAbove: true,
-					Size:         theme.HeightCompact,
-					IconSize:     theme.IconAction,
-				})
-				s.recordOverlayBtn("img-upload", uploadBtn)
-				if uploadBtn.Clicked() {
-					s.imagePopBlock = 0
-					s.imagePopKind = ""
-					s.RequestPickImages(id, true)
-				}
-
-				cropLbl := theme.Tr("裁剪图片", "Crop image")
-				cropBtn := appUi.IconButton(c, icons.Crop, appUi.IconButtonOptions{
-					ID:           "img-crop",
-					Label:        cropLbl,
-					Tooltip:      cropLbl,
-					TooltipPill:  true,
-					TooltipAbove: true,
-					Size:         theme.HeightCompact,
-					IconSize:     theme.IconAction,
-					Active:       s.imagePopBlock == id && s.imagePopKind == "crop",
-				})
-				s.recordOverlayBtn("img-crop", cropBtn)
-				if cropBtn.Clicked() {
-					if s.imagePopBlock == id && s.imagePopKind == "crop" {
-						s.imagePopKind = ""
-					} else {
-						s.imagePopBlock = id
-						s.imagePopKind = "crop"
-					}
-				}
-			}
-
-			sizeLbl := theme.Tr("设置图片尺寸", "Set image size")
-			sizeBtn := appUi.IconButton(c, icons.Sliders, appUi.IconButtonOptions{
-				ID:           "img-size",
-				Label:        sizeLbl,
-				Tooltip:      sizeLbl,
-				TooltipPill:  true,
-				TooltipAbove: true,
-				Size:         theme.HeightCompact,
-				IconSize:     theme.IconAction,
-				Active:       s.imagePopBlock == id && s.imagePopKind == "size",
-			})
-			s.recordOverlayBtn("img-size", sizeBtn)
-			if sizeBtn.Clicked() {
-				if s.imagePopBlock == id && s.imagePopKind == "size" {
-					s.imagePopKind = ""
-				} else {
-					s.imagePopBlock = id
-					s.imagePopKind = "size"
-				}
-			}
-
 			delLbl := theme.Tr("删除图片", "Delete image")
 			delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
 				ID: "img-delete", Label: delLbl, Tooltip: delLbl,
@@ -4090,11 +4008,6 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 				s.deleteBlock(idx)
 			}
 		})
-
-		// Image sub-popovers (Crop / Size / Alt) anchored independently to their trigger buttons
-		if s.imagePopBlock == id && s.imagePopKind != "" {
-			s.renderImageSubPopover(c, idx, b)
-		}
 	})
 }
 

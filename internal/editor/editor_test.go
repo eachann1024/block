@@ -1018,7 +1018,7 @@ func TestCodePreviewTableImageHandlesAndBatchPlanDiff(t *testing.T) {
 		t.Fatalf("expected 3 table cols after add-col, got %d", len(s.Doc().Blocks[4].Table.Rows[0]))
 	}
 
-	// Image alignment & crop popover via UI clicks
+	// Image alignment via UI clicks
 	s.FocusBlock(5)
 	tt.Frame()
 	lbl := theme.Tr("右对齐", "Align right")
@@ -1031,11 +1031,6 @@ func TestCodePreviewTableImageHandlesAndBatchPlanDiff(t *testing.T) {
 		t.Fatalf("expected ImageAlignRight, got %v (foundOk=%v foundR=%+v probeOk=%v probeR=%+v undo=%d dirty=%v)",
 			s.Doc().Blocks[5].ImageAlign, foundOk, foundR, probeOk, probeR, len(s.undoStack), s.dirty)
 	}
-	clickProbe(t, tt, "img-crop")
-	if _, ok := appUi.TargetBounds("image-crop-popover"); !ok {
-		t.Fatalf("expected image-crop-popover probe")
-	}
-	clickProbe(t, tt, "img-crop") // close crop popover before selection toolbar check
 
 	// Selection toolbar palette & link card via UI clicks
 	s.FocusBlock(0)
