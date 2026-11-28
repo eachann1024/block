@@ -253,7 +253,7 @@ type AppState struct {
 	OutlineView          OutlineViewMode                `json:"outline_view,omitempty"`
 	PinnedPluginButtons []string `json:"pinned_plugin_buttons,omitempty"`
 	WindowGlass         *bool    `json:"window_glass,omitempty"`
-	MindMapTutorialSeen bool     `json:"mindmap_tutorial_seen,omitempty"`
+	MindMapTutorialSeen bool     `json:"mindmap_tutorial_v2_seen,omitempty"`
 }
 
 // WindowGlassOn reports whether the sidebar and titlebar show the system window

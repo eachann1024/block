@@ -13,7 +13,7 @@ import (
 	"github.com/egoist/mygo/ui/video"
 )
 
-const tutorialDurationSec = 18.0
+const tutorialDurationSec = 10.5
 
 type tutorialChapter struct {
 	StartSec float64
@@ -25,11 +25,11 @@ type tutorialChapter struct {
 }
 
 var tutorialChapters = []tutorialChapter{
-	{StartSec: 0.0, EndSec: 3.8, Zh: "平移", En: "Pan", KeyZh: "空格+拖动", KeyEn: "Space+Drag"},
-	{StartSec: 3.8, EndSec: 7.6, Zh: "建树", En: "Create", KeyZh: "Tab / ↵", KeyEn: "Tab / Enter"},
-	{StartSec: 7.6, EndSec: 11.4, Zh: "移动", En: "Move", KeyZh: "⌥↑↓←→", KeyEn: "Alt+↑↓←→"},
-	{StartSec: 11.4, EndSec: 14.6, Zh: "折叠", En: "Fold", KeyZh: "空格", KeyEn: "Space"},
-	{StartSec: 14.6, EndSec: tutorialDurationSec, Zh: "视图", En: "Views", KeyZh: "⌘1/2/3 · ⌘0", KeyEn: "Ctrl+1/2/3 · 0"},
+	{StartSec: 0.0, EndSec: 2.2, Zh: "平移", En: "Pan", KeyZh: "空格+拖动", KeyEn: "Space+Drag"},
+	{StartSec: 2.2, EndSec: 4.4, Zh: "建树", En: "Create", KeyZh: "Tab / ↵", KeyEn: "Tab / Enter"},
+	{StartSec: 4.4, EndSec: 6.6, Zh: "移动", En: "Move", KeyZh: "⌥↑↓←→", KeyEn: "Alt+↑↓←→"},
+	{StartSec: 6.6, EndSec: 8.4, Zh: "折叠", En: "Fold", KeyZh: "空格", KeyEn: "Space"},
+	{StartSec: 8.4, EndSec: tutorialDurationSec, Zh: "视图", En: "Views", KeyZh: "⌘1/2/3", KeyEn: "Ctrl+1/2/3"},
 }
 
 type tutorialPlayerState struct {
@@ -81,7 +81,8 @@ func (tp *tutorialPlayerState) openForTheme(dark bool, startSec float64, autoPla
 		return
 	}
 	p.SetLoop(true)
-	p.SetMuted(true)
+	// The embedded tutorial MP4 has no audio track (-an); keeping muted=false avoids
+	// MyGo's ReduceMotion muted-video hold while remaining completely silent.
 	if startSec > 0.01 {
 		p.Seek(time.Duration(startSec * float64(time.Second)))
 	}
@@ -265,7 +266,7 @@ func (st *BlockState) RenderTutorialOverlay(c *ui.Context, id string, cb Callbac
 
 	if st.tutorial == nil {
 		st.tutorial = &tutorialPlayerState{}
-		st.tutorial.openForTheme(pal.Dark, 0, !st.reduceMotion)
+		st.tutorial.openForTheme(pal.Dark, 0, true)
 	} else if st.tutorial.dark != pal.Dark {
 		prevPos := st.tutorial.currentPos(now)
 		prevPlay := st.tutorial.isPlaying()
@@ -276,16 +277,19 @@ func (st *BlockState) RenderTutorialOverlay(c *ui.Context, id string, cb Callbac
 	posSec := tp.currentPos(now)
 	playing := tp.isPlaying()
 	activeCh := tutorialChapterIndex(posSec)
+	hasPlayer := tp.player != nil && !tp.failed && tp.player.Err() == nil
 	videoReady := tp.usingVideo()
 
 	if playing {
 		if videoReady {
-			c.After(80 * time.Millisecond)
-		} else if !testing.Testing() && !bui.IsProbeEnabled() && !st.reduceMotion {
+			c.After(60 * time.Millisecond)
+		} else if hasPlayer {
+			c.After(30 * time.Millisecond)
+		} else if !testing.Testing() && !bui.IsProbeEnabled() {
 			c.AnimationFrame()
 		}
-	} else if tp.player != nil && !tp.failed && !videoReady {
-		c.After(50 * time.Millisecond)
+	} else if hasPlayer && !videoReady {
+		c.After(40 * time.Millisecond)
 	}
 
 	winW, winH := c.Size()
@@ -380,12 +384,15 @@ func (st *BlockState) RenderTutorialOverlay(c *ui.Context, id string, cb Callbac
 					Background(pal.SettingsBG).Border(1, pal.Hairline).
 					Cursor(ui.CursorPointer).Clip()
 				stage.Children(func() {
-					if videoReady {
+					// Always mount ui.Video when a player exists: MyGo's video engine stays
+					// held (and never becomes Ready) until ui.Video attaches it to the frame.
+					if hasPlayer {
 						ui.Video(c, tp.player).Fill().Fit(ui.Contain).
 							Label(theme.Tr("思维导图快捷键演示动画", "Mind map shortcut animation"))
-					} else {
-						// Zero-flicker native Ocean Paper motion canvas (used during warm-up & headless fallback).
-						fallback := ui.Box(c.Key("mm-tut-fallback-" + id)).Fill()
+					}
+					if !videoReady {
+						// Zero-flicker Ocean Paper vector frame during warm-up or headless fallback.
+						fallback := ui.Box(c.Key("mm-tut-fallback-" + id)).Absolute().Top(0).Right(0).Bottom(0).Left(0).IgnoreInput(true)
 						fallback.Draw(func(p *ui.Painter, r ui.Rect) {
 							drawTutorialFallbackFrame(p, r, pal, posSec)
 						})
