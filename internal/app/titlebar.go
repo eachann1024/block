@@ -273,6 +273,7 @@ type TitlebarProps struct {
 	OnOpenUpdater     func()
 	OnOpenPluginStore func()
 	OnOpenAbout       func()
+	OnHideMark        func()
 }
 
 func slotHidden(p TitlebarProps, slotID string) bool {
@@ -365,6 +366,8 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 
 			if !p.HideMark {
 				renderBrandMark(c, p)
+			} else if p.HasUpdate {
+				renderHiddenMarkUpdateButton(c, p)
 			}
 			if !p.SidebarWide {
 				return

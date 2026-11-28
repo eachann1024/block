@@ -6832,6 +6832,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 					}()
 				},
 				HiddenSlots:     w.pluginHiddenTitlebarSlots(),
+				HideMark:        stSnap.BrandDeco.HideMark,
 				AppVersion:      updater.CurrentVersion(),
 				HasUpdate:       brandHasUpdate,
 				UpdateChecking:  brandUpdateChecking,
@@ -6855,6 +6856,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 					w.OpenSettings("app-store")
 				},
 				OnOpenAbout:       w.modals.OpenAbout,
+				OnHideMark:        func() { w.setBrandMarkHidden(true) },
 				PluginButtons:     w.pluginTitlebarButtons(),
 				PinnedPluginSlots: stSnap.PinnedPluginButtons,
 				OnTogglePinPlugin: w.togglePinnedPluginButton,
@@ -7687,6 +7689,26 @@ func (w *Workspace) renderSidebarColumn(
 // Updater returns the application update service.
 func (w *Workspace) Updater() *updater.Service {
 	return w.updater
+}
+
+// setBrandMarkHidden persists whether the titlebar "cooool.top" wordmark is hidden.
+func (w *Workspace) setBrandMarkHidden(hide bool) {
+	next, err := w.updateStateSync(func(s *model.AppState) {
+		s.BrandDeco.HideMark = hide
+	})
+	if err != nil {
+		files.LogWarnf("brand mark visibility save failed: %v", err)
+		w.notify(theme.Tr("保存设置失败", "Failed to save settings"), "error")
+		w.RequestRedraw()
+		return
+	}
+	w.mu.Lock()
+	w.state.BrandDeco.HideMark = next.BrandDeco.HideMark
+	w.mu.Unlock()
+	if hide {
+		w.notify(theme.Tr("已隐藏，可在 设置 › 外观与字体 中恢复", "Hidden. Restore it in Settings › Appearance & Fonts"), "info")
+	}
+	w.RequestRedraw()
 }
 
 func (w *Workspace) togglePinnedPluginButton(slotID string) bool {

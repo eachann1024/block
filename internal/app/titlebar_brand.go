@@ -63,6 +63,28 @@ func renderBrandMark(c *ui.Context, p TitlebarProps) {
 	}
 }
 
+// renderHiddenMarkUpdateButton keeps the update hint reachable when the brand
+// wordmark is hidden: a download glyph with a dot appears only while an update waits.
+func renderHiddenMarkUpdateButton(c *ui.Context, p TitlebarProps) {
+	status := nonEmptyOr(p.UpdateTooltip, theme.Tr("有可用更新", "Update available"))
+	btn := blockui.IconButton(c, icons.Download, blockui.IconButtonOptions{
+		ID:          "titlebar-update",
+		Size:        26,
+		IconSize:    16,
+		Label:       status,
+		Tooltip:     status,
+		ChromeHover: true,
+	}).Margin(0, 0, 0, brandMarkGap)
+	dot, size := theme.Ocean().UpdaterColors().BadgeDot, theme.UpdaterBadgeDotSize
+	btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+		blockui.RecordBounds("titlebar-update", r)
+		pt.Fill(ui.Rect{X: r.X + r.W - size - 2, Y: r.Y + 2, W: size, H: size}, dot, size/2)
+	})
+	if btn.Clicked() && p.OnOpenUpdater != nil {
+		p.OnOpenUpdater()
+	}
+}
+
 func brandVersionLabel(p TitlebarProps) string {
 	if p.AppVersion == "" {
 		return "Block"
@@ -79,6 +101,7 @@ func buildBrandMenuItems(c *ui.Context, p TitlebarProps) []blockui.MenuItemSpec 
 	}
 	icStore := icons.Plug
 	icAbout := icons.HelpCircle
+	icHide := icons.EyeOff
 	item := func(id, label, hint string, ic *icons.Icon, restoreFocus bool, fn func()) blockui.MenuItemSpec {
 		return blockui.MenuItemSpec{ID: id, Label: label, Hint: hint, Icon: ic, OnClick: func() {
 			if restoreFocus {
@@ -107,6 +130,7 @@ func buildBrandMenuItems(c *ui.Context, p TitlebarProps) []blockui.MenuItemSpec 
 		item("brand-website", theme.Tr("打开官网", "Open Website"), "", &icSite, true, func() { c.OpenURL(brandWebsiteURL) }),
 		item("brand-plugin-store", theme.Tr("插件商店", "Plugin Store"), "", &icStore, false, p.OnOpenPluginStore),
 		{Separator: true},
+		item("brand-hide", theme.Tr("隐藏 cooool.top", "Hide cooool.top"), theme.Tr("可在设置中恢复", "Restore in Settings"), &icHide, false, p.OnHideMark),
 		item("brand-about", theme.Tr("关于 Block", "About Block"), "", &icAbout, false, p.OnOpenAbout),
 	}
 	return items
