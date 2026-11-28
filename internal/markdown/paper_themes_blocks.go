@@ -122,7 +122,6 @@ func applyBlockStyles(s *PaperThemeSpec) {
 		in.CodeBG, in.CodeFG, in.CodeRadius = ink, paper, -1
 		st.Image = ImageStyle{Radius: 0.01, Caption: true, CaptionPrefix: "FIG.{n}\n", CaptionFamily: fontMono, CaptionSize: 11, CaptionTrack: 0.16, CaptionColor: ink, CaptionSide: 120}
 		st.Divider.EndColor, st.Divider.EndWidth = orange, 48
-		st.Table.NumFamily, st.Table.NumSize, st.Table.NumWeight = fontMono, 28, 700
 
 	case model.ExportThemeMist:
 		accent := rgbHex(0x3b5b8c)

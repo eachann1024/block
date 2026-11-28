@@ -429,10 +429,6 @@ type TableStyle struct {
 	PadX, PadY  float32 // 0 = 10 / 7
 	Size        float32 // 0 = 14
 	Leading     float32 // 0 = 1.45
-	NumFamily   string  // numeric cells are right-aligned in this family when set
-	NumColor    ui.Color
-	NumSize     float32
-	NumWeight   int
 	FirstColor  ui.Color // first column text colour
 	Secondary   ui.Color // colour for columns after the first
 }

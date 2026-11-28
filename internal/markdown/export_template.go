@@ -198,33 +198,6 @@ func chineseOrdinal(n int) string {
 	}
 }
 
-// isNumericCellText reports whether s looks like a numeric/metric table value
-// (e.g. "176", "99%", "176p", "232 页") suitable for tabular numeric styling.
-func isNumericCellText(s string) bool {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return false
-	}
-	runes := []rune(s)
-	first := runes[0]
-	if !(first >= '0' && first <= '9') && first != '+' && first != '-' && first != '$' && first != '¥' && first != '€' {
-		return false
-	}
-	hasDigit := false
-	for _, r := range runes {
-		if r >= '0' && r <= '9' {
-			hasDigit = true
-			continue
-		}
-		switch r {
-		case '.', ',', '%', '+', '-', '/', ':', ' ', 'p', 'P', 'x', '×', '$', '¥', '€', '页', '本', '期', '年', '月', '日':
-		default:
-			return false
-		}
-	}
-	return hasDigit
-}
-
 func isGenericFontKeyword(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui":

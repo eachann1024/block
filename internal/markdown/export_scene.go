@@ -2100,8 +2100,6 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 			if c < len(row) {
 				cellSpans = row[c].Spans
 			}
-			plain := model.PlainTextOfSpans(cellSpans)
-			isNum := !isHeader && ts.NumFamily != "" && isNumericCellText(plain)
 
 			fam := pal.BodyFamily
 			sz := bodySz
@@ -2116,14 +2114,6 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 				fg = ts.FirstColor
 			} else if c > 0 && ts.Secondary.A > 0 {
 				fg = ts.Secondary
-			}
-			if isNum {
-				fam = ts.NumFamily
-				sz = orF(ts.NumSize, sz)
-				weight = orI(ts.NumWeight, weight)
-				if ts.NumColor.A > 0 {
-					fg = ts.NumColor
-				}
 			}
 			isHeaderCell := isHeader || (c == 0 && t.HeaderCol)
 			if isHeaderCell {
@@ -2155,8 +2145,6 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 				case model.ColAlignRight:
 					align = ui.End
 				}
-			} else if isNum && !isHeaderCell {
-				align = ui.End
 			}
 
 			font := ui.Font{Family: fam, Size: sz, Weight: weight, LineHeight: bodyLead}

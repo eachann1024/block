@@ -1464,30 +1464,14 @@ func renderHTMLTable(out *strings.Builder, t *model.TableData, pal PaperThemeSpe
 				cellTag = "th"
 			}
 			var cellCSS strings.Builder
-			plain := cell.PlainText()
-			isNum := !legacy && !isHeaderCell && ts.NumFamily != "" && isNumericCellText(plain)
 			if a := t.CellAlign(r, c); a != model.ColAlignNone {
 				cellCSS.WriteString(fmt.Sprintf("text-align:%s;", a))
-			} else if isNum {
-				cellCSS.WriteString("text-align:right;")
 			}
 			if !legacy && !isHeaderCell {
 				if c == 0 && ts.FirstColor.A > 0 {
 					cellCSS.WriteString("color:" + uiColorCSS(ts.FirstColor) + ";")
 				} else if c > 0 && ts.Secondary.A > 0 {
 					cellCSS.WriteString("color:" + uiColorCSS(ts.Secondary) + ";")
-				}
-				if isNum {
-					cellCSS.WriteString("font-family:" + htmlFontStack(ts.NumFamily) + ";")
-					if ts.NumSize > 0 {
-						fmt.Fprintf(&cellCSS, "font-size:%.1fpx;", ts.NumSize)
-					}
-					if ts.NumWeight > 0 {
-						fmt.Fprintf(&cellCSS, "font-weight:%d;", ts.NumWeight)
-					}
-					if ts.NumColor.A > 0 {
-						cellCSS.WriteString("color:" + uiColorCSS(ts.NumColor) + ";")
-					}
 				}
 			}
 			if bg, ok := exportTableTint(t, r, c, pal); ok {
