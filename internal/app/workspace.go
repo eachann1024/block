@@ -6162,7 +6162,7 @@ func (w *Workspace) handlePluginCommandShortcuts(c *ui.Context) {
 		if !ok || isHostReservedShortcut(mods, key) {
 			continue
 		}
-		if sess != nil && sess.CapturesMindMapShortcut(c, mods, key) {
+		if sess != nil && (sess.CapturesOutlineNavKey(c, key, mods) || sess.CapturesMindMapShortcut(c, mods, key)) {
 			continue
 		}
 		if textFocused {
@@ -6542,7 +6542,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 		c, w, vpW, layout, inSettings, aiImmersive, activeSess,
 	)
 	noteEditorLive := activeSess != nil && activeSurf == nil && !w.noteSourceActive(activeTab)
-	sessOwnsEsc := noteEditorLive && (activeSess.HasAnnotationInputFocused(c) || activeSess.HasMindMapEscapeOwner(c))
+	sessOwnsEsc := noteEditorLive && (activeSess.HasAnnotationInputFocused(c) || activeSess.HasMindMapEscapeOwner(c) || activeSess.HasOutlineOverlayOpen())
 	if activeStage != nil && !activeStage.FullWindow && !w.modals.IsRecordingShortcut() && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !sessOwnsEsc && c.Shortcut(0, ui.KeyEscape) {
 		if sup := w.Plugins(); sup != nil {
 			sup.CloseStage(activeStage.PluginID, activeStage.StageID)
@@ -6899,13 +6899,17 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 			if !aiEligible {
 				w.syncAIEditorSelectionHidden(activeTab)
 			}
+			cardBorder := chrome.CardBorder
+			if glassActive {
+				cardBorder = ui.Transparent
+			}
 			if inSettings {
 				minMainW := max(min(layout.ContentFloor, vpW)-cardLeft-8, 0)
 				ui.Box(c.Key("stage-settings-slot")).Grow(1).MinWidth(minMainW).FillHeight().
 					Padding(0, 8, 8, cardLeft).Children(func() {
 					settingsCard := blockui.Elevate(
 						ui.Column(c.Key("stage-settings")).Fill().Radius(theme.RadiusLG).Clip().
-							Background(chrome.Card).Border(1, chrome.CardBorder).
+							Background(chrome.Card).Border(1, cardBorder).
 							Transition(blockui.SurfaceStageTransition()),
 						theme.ElevationCard,
 					)
@@ -6938,7 +6942,7 @@ func (w *Workspace) renderWorkspaceChrome(c *ui.Context) {
 					}
 					panelCard := blockui.Elevate(
 						ui.Row(c.Key("workspace-panel-card")).Fill().Radius(theme.RadiusLG).Clip().
-							Background(chrome.Card).Border(1, chrome.CardBorder),
+							Background(chrome.Card).Border(1, cardBorder),
 						cardElev,
 					)
 					blockui.Probe(panelCard, "workspace-panel-card")
