@@ -84,12 +84,15 @@ func ImportBytes(filename string, data []byte) (*Node, ImportReport, error) {
 	if root == nil {
 		root = &Node{Text: "中心主题"}
 	}
-	if strings.TrimSpace(root.Text) == "" {
+	if !root.Virtual && strings.TrimSpace(root.Text) == "" {
 		root.Text = "中心主题"
 	}
 	root.RepairParents(nil)
 	root.AssignIDs(0)
 	report.Nodes, report.Tasks, report.Links = root.CountStats()
+	if root.Virtual {
+		report.Nodes--
+	}
 	return root, report, nil
 }
 
@@ -272,8 +275,10 @@ func exportOPML(root *Node) ([]byte, error) {
 	}
 	doc := opmlDoc{
 		Version: "2.0",
-		Head:    opmlHead{Title: root.Text},
-		Body:    opmlBody{Outlines: []opmlOutline{toOutline(root)}},
+		Head:    opmlHead{Title: FirstTopic(root).Text},
+	}
+	for _, topic := range Topics(root) {
+		doc.Body.Outlines = append(doc.Body.Outlines, toOutline(topic))
 	}
 	body, err := xml.MarshalIndent(doc, "", "  ")
 	if err != nil {
@@ -398,9 +403,18 @@ func exportFreeMind(root *Node) ([]byte, error) {
 		}
 		return mn
 	}
+	top := toMM(root)
+	if root.Virtual {
+		// FreeMind allows a single root, so several central topics share a named wrapper.
+		titles := make([]string, 0, len(root.Children))
+		for _, t := range root.Children {
+			titles = append(titles, t.Text)
+		}
+		top.Text = strings.Join(titles, " · ")
+	}
 	m := mmMap{
 		Version: "1.0.1",
-		Nodes:   []mmNode{toMM(root)},
+		Nodes:   []mmNode{top},
 	}
 	body, err := xml.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -768,12 +782,16 @@ func exportXMind(root *Node, layout LayoutMode) ([]byte, error) {
 		return t
 	}
 
-	sheets := []xmindSheet{{
-		ID:        nextID("sheet"),
-		Class:     "sheet",
-		Title:     root.Text,
-		RootTopic: toTopic(root, true),
-	}}
+	// One sheet per central topic, matching how XMind keeps independent maps.
+	var sheets []xmindSheet
+	for _, topic := range Topics(root) {
+		sheets = append(sheets, xmindSheet{
+			ID:        nextID("sheet"),
+			Class:     "sheet",
+			Title:     topic.Text,
+			RootTopic: toTopic(topic, true),
+		})
+	}
 	contentBytes, err := json.Marshal(sheets)
 	if err != nil {
 		return nil, err

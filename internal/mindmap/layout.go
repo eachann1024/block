@@ -277,6 +277,9 @@ func ComputeLayout(root *Node, mode LayoutMode, tm TextMeasurer, mc *MeasureCach
 		return Bounds{}
 	}
 	tm = validMeasurer(tm)
+	if root.Virtual {
+		return computeForestLayout(root, mode, tm, mc)
+	}
 
 	// Pass 1: annotate Depth, Branch, W, H.
 	var prep func(n, parent *Node, depth, branch int)
@@ -413,6 +416,55 @@ func ComputeLayout(root *Node, mode LayoutMode, tm TextMeasurer, mc *MeasureCach
 	return bounds
 }
 
+// Camera zoom range: 5% to 800%.
+const (
+	minCameraScale float32 = 0.05
+	maxCameraScale float32 = 8.0
+)
+
+// layoutTopicGap is the vertical gap between stacked central topics on one canvas.
+const layoutTopicGap float32 = 72
+
+// computeForestLayout lays out every central topic as its own tree and stacks them
+// top-to-bottom. The invisible container gets zero size and sits at the origin.
+func computeForestLayout(forest *Node, mode LayoutMode, tm TextMeasurer, mc *MeasureCache) Bounds {
+	forest.Depth = -1
+	forest.Branch = 0
+	forest.Dir = 1
+	forest.W, forest.H, forest.SubH = 0, 0, 0
+	forest.X, forest.Y = 0, 0
+	all := Bounds{}
+	have := false
+	var curY float32
+	for _, topic := range forest.Children {
+		b := ComputeLayout(topic, mode, tm, mc)
+		topic.Parent = forest
+		dy := curY - b.MinY
+		shiftSubtree(topic, 0, dy)
+		b.MinY += dy
+		b.MaxY += dy
+		if !have {
+			all = b
+			have = true
+		} else {
+			all.MinX = min(all.MinX, b.MinX)
+			all.MinY = min(all.MinY, b.MinY)
+			all.MaxX = max(all.MaxX, b.MaxX)
+			all.MaxY = max(all.MaxY, b.MaxY)
+		}
+		curY = b.MaxY + layoutTopicGap
+	}
+	return all
+}
+
+func shiftSubtree(n *Node, dx, dy float32) {
+	n.X += dx
+	n.Y += dy
+	for _, ch := range n.Children {
+		shiftSubtree(ch, dx, dy)
+	}
+}
+
 // FitCamera computes a Camera that centers the mind map within a viewport of (vw, vh).
 func FitCamera(bounds Bounds, vw, vh, padX, padY float32) Camera {
 	if vw <= 0 {
@@ -424,8 +476,8 @@ func FitCamera(bounds Bounds, vw, vh, padX, padY float32) Camera {
 	bw := max(bounds.Width()+padX*2, 1)
 	bh := max(bounds.Height()+padY*2, 1)
 	s := min(float32(1.0), min(vw/bw, vh/bh))
-	if s < 0.15 {
-		s = 0.15
+	if s < minCameraScale {
+		s = minCameraScale
 	}
 	visW := vw / s
 	visH := vh / s
@@ -803,6 +855,14 @@ func hitTestCoreAtScale(root *Node, wx, wy, scale float32) HitResult {
 	var hit HitResult
 	var walk func(n *Node) bool
 	walk = func(n *Node) bool {
+		if n.Virtual {
+			for _, ch := range n.Children {
+				if walk(ch) {
+					return true
+				}
+			}
+			return false
+		}
 
 		// Check link badge using the exact scale-clamped circle geometry used for painting.
 		if strings.TrimSpace(n.Link) != "" {
@@ -864,6 +924,12 @@ func hitTestExtendedAtScale(root *Node, wx, wy, scale float32) HitResult {
 	bestDist2 := float32(1e18)
 	var walkExtended func(n *Node)
 	walkExtended = func(n *Node) {
+		if n.Virtual {
+			for _, ch := range n.Children {
+				walkExtended(ch)
+			}
+			return
+		}
 		dir := n.Dir
 		if dir == 0 {
 			dir = 1
@@ -880,7 +946,7 @@ func hitTestExtendedAtScale(root *Node, wx, wy, scale float32) HitResult {
 			}
 		}
 
-		if n.Parent != nil {
+		if n.Parent != nil && !n.Parent.Virtual {
 			par := n.Parent
 			px := par.X
 			if dir > 0 {
@@ -1025,7 +1091,15 @@ func HitTestDropTarget(root, dragged *Node, wx, wy float32) (*Node, DragDropPos)
 		if n == dragged {
 			return false
 		}
-		if n.Parent == nil {
+		if n.Virtual {
+			for _, ch := range n.Children {
+				if findInside(ch) {
+					return true
+				}
+			}
+			return false
+		}
+		if n.IsTopic() {
 			padX := float32(10)
 			if !n.IsOpen() {
 				padX = 48
@@ -1086,7 +1160,7 @@ func HitTestDropTarget(root, dragged *Node, wx, wy float32) (*Node, DragDropPos)
 		if p == nil || !p.IsOpen() || p == dragged || dragged.IsAncestorOf(p) {
 			return
 		}
-		if p == root {
+		if p.IsTopic() {
 			var rightSibs, leftSibs []*Node
 			for _, ch := range p.Children {
 				if ch.Dir < 0 {
@@ -1116,20 +1190,21 @@ func HitTestDropTarget(root, dragged *Node, wx, wy float32) (*Node, DragDropPos)
 
 	// In the two-sided layout the root's children are split by index, so a slot only
 	// counts when the moved node would really land on that side after the move.
-	bothMode := root.W > 0 && float32(math.Abs(float64(root.X+root.W/2))) < 0.5
 	landsOnSide := func(g siblingGroup, target *Node, pos DragDropPos) bool {
-		if !bothMode || g.parent != root {
+		topic := g.parent
+		bothMode := topic.IsTopic() && topic.W > 0 && float32(math.Abs(float64(topic.X+topic.W/2))) < 0.5
+		if !bothMode {
 			return true
 		}
-		n := len(root.Children)
-		if dragged.Parent != root {
+		n := len(topic.Children)
+		if dragged.Parent != topic {
 			n++
 		}
 		idx := target.IndexInParent()
 		if pos == DropAfter {
 			idx++
 		}
-		if dragged.Parent == root && dragged.IndexInParent() < idx {
+		if dragged.Parent == topic && dragged.IndexInParent() < idx {
 			idx--
 		}
 		k := (n + 1) / 2
@@ -1348,7 +1423,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 			} else if opt.FindActive && !opt.FindMatchIDs[n.ID] {
 				col = col.Alpha(0.28)
 			}
-			if n.Parent != nil {
+			if n.Parent != nil && !n.Parent.Virtual && !n.Virtual {
 				par := n.Parent
 				d := n.Dir
 				px := par.X
@@ -1476,7 +1551,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 			isFindMatch := opt.FindActive && opt.FindMatchIDs[n.ID]
 			isFindCurrent := opt.FindActive && n.ID == opt.FindCurrentID
 			findDimmed := opt.FindActive && !isFindMatch
-			nodeVisible := n.X+n.W >= visMinX && n.X <= visMaxX && n.Y+n.H/2 >= visMinY && n.Y-n.H/2 <= visMaxY
+			nodeVisible := !n.Virtual && n.X+n.W >= visMinX && n.X <= visMaxX && n.Y+n.H/2 >= visMinY && n.Y-n.H/2 <= visMaxY
 
 			if nodeVisible {
 				sx := wxToScreen(n.X)

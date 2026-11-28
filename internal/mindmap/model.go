@@ -128,6 +128,9 @@ type Node struct {
 	Task     *bool   `json:"k,omitempty"`
 	Folded   bool    `json:"fold,omitempty"`
 	Children []*Node `json:"c,omitempty"`
+	// Virtual marks the invisible forest container that holds several central topics
+	// (one per top-level "# " heading). It is never drawn, selected, or edited.
+	Virtual bool `json:"v,omitempty"`
 
 	// Runtime layout fields (not serialized).
 	Parent *Node   `json:"-"`
@@ -176,10 +179,11 @@ func (n *Node) Clone() *Node {
 		return nil
 	}
 	cp := &Node{
-		ID:     n.ID,
-		Text:   n.Text,
-		Link:   n.Link,
-		Folded: n.Folded,
+		ID:      n.ID,
+		Text:    n.Text,
+		Link:    n.Link,
+		Folded:  n.Folded,
+		Virtual: n.Virtual,
 	}
 	if n.Task != nil {
 		cp.Task = BoolPtr(*n.Task)
@@ -422,6 +426,58 @@ func CheckSourceSyntax(src string) []SourceIssue {
 	return issues
 }
 
+// IsTopic reports whether n is a central topic: a tree root, or a direct child of the
+// invisible forest container when the map holds several central topics.
+func (n *Node) IsTopic() bool {
+	return n != nil && !n.Virtual && (n.Parent == nil || n.Parent.Virtual)
+}
+
+// TopicOf returns the central topic that owns n (n itself when n is a central topic).
+func (n *Node) TopicOf() *Node {
+	cur := n
+	for cur != nil && !cur.IsTopic() {
+		cur = cur.Parent
+	}
+	return cur
+}
+
+// Topics lists the central topics of the map rooted at root.
+func Topics(root *Node) []*Node {
+	if root == nil {
+		return nil
+	}
+	if root.Virtual {
+		return root.Children
+	}
+	return []*Node{root}
+}
+
+// FirstTopic returns the first visible central topic of the map.
+func FirstTopic(root *Node) *Node {
+	if t := Topics(root); len(t) > 0 {
+		return t[0]
+	}
+	return nil
+}
+
+// NormalizeForest collapses a forest container with a single central topic back into
+// a plain tree and returns the effective root. Empty forests get a default topic.
+func NormalizeForest(root *Node) *Node {
+	if root == nil || !root.Virtual {
+		return root
+	}
+	if len(root.Children) == 0 {
+		root.Children = []*Node{{Text: "中心主题", Parent: root}}
+	}
+	if len(root.Children) == 1 {
+		only := root.Children[0]
+		only.Parent = nil
+		return only
+	}
+	root.Folded = false
+	return root
+}
+
 // IsOpen reports whether node n has visible children.
 func (n *Node) IsOpen() bool {
 	return n != nil && len(n.Children) > 0 && !n.Folded
@@ -464,6 +520,7 @@ func ParseMarkdown(src string) *Node {
 
 	var root *Node
 	var stack []stackEntry
+	topLevel := 0 // heading level of the first central topic; 0 = root came from a list/plain line
 
 	ensureRoot := func(title string) {
 		if root != nil {
@@ -491,6 +548,21 @@ func ParseMarkdown(src string) *Node {
 				text, link := parseInlineLink(restText)
 				root = &Node{Text: text, Link: link, Task: task}
 				stack = []stackEntry{{node: root, indent: -1, heading: lvl}}
+				topLevel = lvl
+				continue
+			}
+			// Another heading at (or above) the first topic's level starts a new central topic.
+			if lvl <= topLevel {
+				if !root.Virtual {
+					forest := &Node{Virtual: true, Children: []*Node{root}}
+					root.Parent = forest
+					root = forest
+				}
+				stack = []stackEntry{{node: root, indent: -1, heading: 0}}
+				text, link := parseInlineLink(restText)
+				node := &Node{Text: text, Link: link, Task: task, Parent: root}
+				root.Children = append(root.Children, node)
+				stack = append(stack, stackEntry{node: node, indent: -1, heading: lvl})
 				continue
 			}
 			// Pop back to a heading strictly shallower than lvl.
@@ -560,6 +632,16 @@ func SerializeMarkdown(root *Node) string {
 		return "# 中心主题\n"
 	}
 	var b strings.Builder
+	if root.Virtual {
+		for i, topic := range root.Children {
+			if i > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(SerializeMarkdown(topic))
+			b.WriteString("\n")
+		}
+		return strings.TrimRight(b.String(), "\n")
+	}
 	writeNodeMarkdown(&b, "#", root)
 
 	var writeChildren func(parent *Node, depth int)

@@ -260,7 +260,7 @@ func (st *BlockState) SyncSource(src string, cfg Config) {
 	}
 	st.invalidateLinkStatusCache()
 	if st.Root != nil && st.SelectedID != 0 && st.Root.FindByID(st.SelectedID) == nil {
-		st.SelectedID = st.Root.ID
+		st.SelectedID = st.rootTopicID()
 	}
 	if st.OutlineZoomID != 0 && (st.Root == nil || st.Root.FindByID(st.OutlineZoomID) == nil) {
 		st.OutlineZoomID = 0
@@ -654,7 +654,7 @@ func (st *BlockState) DismissTransient(cb Callbacks) bool {
 		return true
 	}
 	if st.View == ViewOutline && st.OutlineZoomID != 0 {
-		if cur := st.outlineActiveRoot(); cur != nil && cur != st.Root && cur.Parent != nil && cur.Parent != st.Root {
+		if cur := st.outlineActiveRoot(); cur != nil && cur != st.Root && !cur.IsTopic() && cur.Parent != st.Root {
 			st.OutlineZoomID = cur.Parent.ID
 		} else {
 			st.OutlineZoomID = 0
@@ -777,8 +777,20 @@ func (st *BlockState) selectedNode() *Node {
 	if n := st.Root.FindByID(st.SelectedID); n != nil {
 		return n
 	}
-	st.SelectedID = st.Root.ID
-	return st.Root
+	top := FirstTopic(st.Root)
+	if top == nil {
+		return nil
+	}
+	st.SelectedID = top.ID
+	return top
+}
+
+// rootTopicID returns the ID of the first central topic (the selection fallback).
+func (st *BlockState) rootTopicID() int {
+	if top := FirstTopic(st.Root); top != nil {
+		return top.ID
+	}
+	return 0
 }
 
 func (st *BlockState) hasMultiSelect() bool {
@@ -1017,7 +1029,7 @@ func (st *BlockState) multiSelectDeletableCount() int {
 	}
 	count := 0
 	for id := range st.SelectedIDs {
-		if n := st.Root.FindByID(id); n != nil && n.Parent != nil {
+		if n := st.Root.FindByID(id); n != nil && !n.IsTopic() {
 			count++
 		}
 	}
@@ -1068,7 +1080,7 @@ func (st *BlockState) topLevelSelectedNodesExcludingRoot() []*Node {
 		return nil
 	}
 	if !st.hasMultiSelect() {
-		if n := st.selectedNode(); n != nil && n.Parent != nil {
+		if n := st.selectedNode(); n != nil && !n.IsTopic() {
 			return []*Node{n}
 		}
 		return nil
@@ -1079,7 +1091,7 @@ func (st *BlockState) topLevelSelectedNodesExcludingRoot() []*Node {
 		if cur == nil {
 			return
 		}
-		if cur.Parent != nil && st.SelectedIDs[cur.ID] && isNodeVisibleInTree(cur) {
+		if !cur.IsTopic() && st.SelectedIDs[cur.ID] && isNodeVisibleInTree(cur) {
 			out = append(out, cur)
 			return
 		}
@@ -1090,8 +1102,10 @@ func (st *BlockState) topLevelSelectedNodesExcludingRoot() []*Node {
 			walk(ch)
 		}
 	}
-	for _, ch := range st.Root.Children {
-		walk(ch)
+	for _, top := range Topics(st.Root) {
+		for _, ch := range top.Children {
+			walk(ch)
+		}
 	}
 	return out
 }
@@ -1106,7 +1120,9 @@ func (st *BlockState) opSelectAll() {
 		if cur == nil {
 			return
 		}
-		set[cur.ID] = true
+		if !cur.Virtual {
+			set[cur.ID] = true
+		}
 		if cur.Folded {
 			return
 		}
@@ -1116,12 +1132,12 @@ func (st *BlockState) opSelectAll() {
 	}
 	walk(st.Root)
 	if len(set) <= 1 {
-		st.setSingleSelection(st.Root.ID)
+		st.setSingleSelection(st.rootTopicID())
 		return
 	}
 	st.SelectedIDs = set
 	if st.SelectedID == 0 || !set[st.SelectedID] {
-		st.SelectedID = st.Root.ID
+		st.SelectedID = st.rootTopicID()
 	}
 }
 
@@ -1130,7 +1146,7 @@ func (st *BlockState) opSelectSiblings() {
 	if n == nil {
 		return
 	}
-	if n.Parent == nil {
+	if n.IsTopic() {
 		st.setSingleSelection(n.ID)
 		return
 	}
@@ -1177,7 +1193,7 @@ func (st *BlockState) opSelectSubtree() {
 
 func (st *BlockState) opExtendSiblingSelection(delta int) {
 	n := st.selectedNode()
-	if n == nil || n.Parent == nil {
+	if n == nil || n.IsTopic() {
 		return
 	}
 	idx := n.IndexInParent()
@@ -1211,6 +1227,7 @@ func (st *BlockState) commitChange(cb Callbacks) {
 	if st.Root == nil {
 		return
 	}
+	st.Root = NormalizeForest(st.Root)
 	md := SerializeMarkdown(st.Root)
 	st.LastSource = md
 	if st.ImportUndoAfter != "" && md != st.ImportUndoAfter {
@@ -1269,7 +1286,7 @@ func (st *BlockState) opAddSibling(cb Callbacks) {
 	if n == nil {
 		return
 	}
-	if n.Parent == nil {
+	if n.IsTopic() {
 		st.opAddChild(cb)
 		return
 	}
@@ -1299,7 +1316,7 @@ func (st *BlockState) opAddSiblingBefore(cb Callbacks) {
 	if n == nil {
 		return
 	}
-	if n.Parent == nil {
+	if n.IsTopic() {
 		// On root, insert as the first child so Shift+Enter always produces a topic.
 		st.pushUndo()
 		n.Folded = false
@@ -1338,7 +1355,7 @@ func (st *BlockState) opInsertParent(cb Callbacks) {
 		return
 	}
 	n := st.selectedNode()
-	if n == nil || n.Parent == nil {
+	if n == nil || n.IsTopic() {
 		return
 	}
 	st.pushUndo()
@@ -1363,7 +1380,7 @@ func (st *BlockState) opPromote(cb Callbacks) {
 		return
 	}
 	n := st.selectedNode()
-	if n == nil || n.Parent == nil || n.Parent.Parent == nil {
+	if n == nil || n.IsTopic() || n.Parent.IsTopic() {
 		return
 	}
 	st.pushUndo()
@@ -1388,7 +1405,7 @@ func (st *BlockState) opDemote(cb Callbacks) {
 		return
 	}
 	n := st.selectedNode()
-	if n == nil || n.Parent == nil {
+	if n == nil || n.IsTopic() {
 		return
 	}
 	idx := n.IndexInParent()
@@ -1418,8 +1435,17 @@ func (st *BlockState) opDelete(cb Callbacks) {
 	st.opDeleteBranch(st.selectedNode(), cb)
 }
 
+// isDeletable reports whether n can be removed: any branch, or a central topic
+// while other central topics remain on the canvas.
+func isDeletable(n *Node) bool {
+	if n == nil || n.Virtual || n.Parent == nil {
+		return false
+	}
+	return !n.IsTopic() || len(n.Parent.Children) > 1
+}
+
 func (st *BlockState) opDeleteBranch(n *Node, cb Callbacks) {
-	if cb.ReadOnly || st.Root == nil || n == nil || n.Parent == nil {
+	if cb.ReadOnly || st.Root == nil || !isDeletable(n) {
 		return
 	}
 	st.pushUndo()
@@ -1455,7 +1481,7 @@ func (st *BlockState) deleteTargetNodes(targets []*Node, cb Callbacks) {
 	}
 	delSet := make(map[int]bool, len(targets))
 	for _, n := range targets {
-		if n != nil && n.Parent != nil {
+		if n != nil && !n.IsTopic() {
 			delSet[n.ID] = true
 		}
 	}
@@ -1465,7 +1491,7 @@ func (st *BlockState) deleteTargetNodes(targets []*Node, cb Callbacks) {
 	}
 	st.pushUndo()
 
-	nextSelID := st.Root.ID
+	nextSelID := st.rootTopicID()
 	if cur := st.Root.FindByID(st.SelectedID); cur != nil {
 		if !delSet[cur.ID] {
 			nextSelID = cur.ID
@@ -1529,7 +1555,7 @@ func (st *BlockState) opDeleteSingle(cb Callbacks) {
 		return
 	}
 	n := st.selectedNode()
-	if n == nil || n.Parent == nil {
+	if n == nil || n.IsTopic() {
 		return
 	}
 	if len(n.Children) == 0 {
@@ -1592,7 +1618,7 @@ func (st *BlockState) opDuplicate(cb Callbacks) {
 		return
 	}
 	n := st.selectedNode()
-	if n == nil || n.Parent == nil {
+	if n == nil || n.IsTopic() {
 		return
 	}
 	st.pushUndo()
@@ -1611,13 +1637,13 @@ func (st *BlockState) opDuplicate(cb Callbacks) {
 }
 
 func (st *BlockState) opReparent(dragged, target *Node, pos DragDropPos, cb Callbacks) {
-	if cb.ReadOnly || st.Root == nil || dragged == nil || target == nil || dragged.Parent == nil || dragged == target {
+	if cb.ReadOnly || st.Root == nil || dragged == nil || target == nil || dragged.IsTopic() || dragged == target {
 		return
 	}
 	if dragged.IsAncestorOf(target) {
 		return
 	}
-	if (pos == DropBefore || pos == DropAfter) && target.Parent == nil {
+	if (pos == DropBefore || pos == DropAfter) && target.IsTopic() {
 		return
 	}
 	// Skip no-op drops so undo history stays clean.
@@ -1735,7 +1761,7 @@ func (st *BlockState) opCut(c *ui.Context, cb Callbacks) bool {
 	if !st.opCopy(c) {
 		return false
 	}
-	if n.Parent != nil {
+	if !n.IsTopic() {
 		st.opDeleteBranch(n, cb)
 	}
 	return true
@@ -1787,7 +1813,7 @@ func (st *BlockState) opCollapseAll() {
 	}
 	var walk func(n *Node)
 	walk = func(n *Node) {
-		if n.Parent != nil && len(n.Children) > 0 {
+		if !n.IsTopic() && len(n.Children) > 0 {
 			n.Folded = true
 		}
 		for _, ch := range n.Children {
@@ -1876,7 +1902,7 @@ func (st *BlockState) opMoveSibling(delta int, cb Callbacks) {
 		return
 	}
 	n := st.selectedNode()
-	if n == nil || n.Parent == nil {
+	if n == nil || n.IsTopic() {
 		return
 	}
 	kids := n.Parent.Children
@@ -1892,7 +1918,7 @@ func (st *BlockState) opMoveSibling(delta int, cb Callbacks) {
 }
 
 func (st *BlockState) opToggleTask(n *Node, cb Callbacks) {
-	if cb.ReadOnly || n == nil || n.Parent == nil {
+	if cb.ReadOnly || n == nil || n.IsTopic() {
 		return
 	}
 	st.pushUndo()
@@ -1918,7 +1944,7 @@ func (st *BlockState) opFlipTaskDone(n *Node, cb Callbacks) {
 // opToggleTaskDoneOrCreate converts a non-task topic into an unchecked task,
 // or flips completion state if it is already a task (Cmd+Enter).
 func (st *BlockState) opToggleTaskDoneOrCreate(n *Node, cb Callbacks) {
-	if cb.ReadOnly || n == nil || n.Parent == nil {
+	if cb.ReadOnly || n == nil || n.IsTopic() {
 		return
 	}
 	if n.Task == nil {
@@ -1947,7 +1973,7 @@ func (st *BlockState) opUndo(cb Callbacks) {
 		st.Root = restored
 		st.NextID = max(st.NextID, maxNodeID(restored))
 		if st.Root.FindByID(st.SelectedID) == nil {
-			st.SelectedID = st.Root.ID
+			st.SelectedID = st.rootTopicID()
 		}
 		st.commitChange(cb)
 	}
@@ -1972,7 +1998,7 @@ func (st *BlockState) opRedo(cb Callbacks) {
 		st.Root = restored
 		st.NextID = max(st.NextID, maxNodeID(restored))
 		if st.Root.FindByID(st.SelectedID) == nil {
-			st.SelectedID = st.Root.ID
+			st.SelectedID = st.rootTopicID()
 		}
 		st.commitChange(cb)
 	}
@@ -1987,7 +2013,7 @@ func (st *BlockState) opNavigate(dir string) {
 	prevID := st.SelectedID
 	switch dir {
 	case "up":
-		if n.Parent != nil {
+		if n.Parent != nil { // central topics in a multi-topic map step between each other
 			if i := n.IndexInParent(); i > 0 {
 				st.SelectedID = n.Parent.Children[i-1].ID
 			} else if next := st.findVerticalNeighbor(n, -1); next != nil {
@@ -2012,18 +2038,16 @@ func (st *BlockState) opNavigate(dir string) {
 			st.SelectedID = n.Children[0].ID
 		}
 	case "in":
-		if n.Parent != nil {
+		if !n.IsTopic() {
 			st.SelectedID = n.Parent.ID
 		}
 	case "home":
-		if st.Root != nil {
-			st.SelectedID = st.Root.ID
-		}
+		st.SelectedID = n.TopicOf().ID
 	case "end":
 		if st.Root != nil {
 			cur := n
-			if cur == nil || !cur.IsOpen() {
-				cur = st.Root
+			if !cur.IsOpen() {
+				cur = n.TopicOf()
 			}
 			for cur.IsOpen() {
 				cur = cur.Children[len(cur.Children)-1]
@@ -2050,7 +2074,7 @@ func (st *BlockState) findVerticalNeighbor(n *Node, delta int) *Node {
 
 	var walk func(cur *Node)
 	walk = func(cur *Node) {
-		if cur != n && cur.Parent != nil && cur.Dir == n.Dir {
+		if cur != n && !cur.IsTopic() && cur.Dir == n.Dir {
 			dy := cur.Y - n.Y
 			if (delta < 0 && dy < -0.5) || (delta > 0 && dy > 0.5) {
 				dist := float32(math.Abs(float64(dy)))
@@ -2696,7 +2720,7 @@ func (st *BlockState) triggerExport(format Format, cb Callbacks) {
 		}
 		return
 	}
-	base := sanitizeFileBase(st.Root.Text)
+	base := sanitizeFileBase(FirstTopic(st.Root).Text)
 	ext := string(format)
 	cb.OnSaveExportFile(base+"."+ext, ext, data, func(savedPath string, saveErr error) {
 		if cb.OnNotify == nil {
@@ -3456,7 +3480,7 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 		case st.View == ViewMap && st.hasMultiSelect():
 			st.clearMultiSelect()
 		case st.View == ViewOutline && st.OutlineZoomID != 0:
-			if cur := st.outlineActiveRoot(); cur != nil && cur != st.Root && cur.Parent != nil && cur.Parent != st.Root {
+			if cur := st.outlineActiveRoot(); cur != nil && cur != st.Root && !cur.IsTopic() && cur.Parent != st.Root {
 				st.OutlineZoomID = cur.Parent.ID
 			} else {
 				st.OutlineZoomID = 0
@@ -3977,7 +4001,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			if m.Item(theme.Tr("添加子节点", "Add Child")).Shortcut(0, ui.KeyTab).Chosen() {
 				st.opAddChild(cb)
 			}
-			if n.Parent != nil {
+			if !n.IsTopic() {
 				if m.Item(theme.Tr("添加同级", "Add Sibling")).Shortcut(0, ui.KeyEnter).Chosen() {
 					st.opAddSibling(cb)
 				}
@@ -3988,7 +4012,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			st.opCopy(c)
 		}
 		if !cb.ReadOnly {
-			if n.Parent != nil {
+			if !n.IsTopic() {
 				if m.Item(theme.Tr("剪切", "Cut")).Shortcut(ui.Cmd, ui.KeyX).Chosen() {
 					st.opCut(c, cb)
 				}
@@ -4004,7 +4028,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			if m.Item(linkLbl).Shortcut(ui.Cmd, ui.KeyL).Chosen() {
 				st.beginLinkEdit(n)
 			}
-			if n.Parent != nil {
+			if !n.IsTopic() {
 				taskLbl := theme.Tr("设为任务", "Convert to Task")
 				if n.Task != nil {
 					taskLbl = theme.Tr("取消任务", "Remove Task")
@@ -4024,7 +4048,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 				st.opToggleFold()
 			}
 		}
-		if !cb.ReadOnly && (n.Parent != nil || (st.hasMultiSelect() && st.multiSelectDeletableCount() > 0)) {
+		if !cb.ReadOnly && (isDeletable(n) || (st.hasMultiSelect() && st.multiSelectDeletableCount() > 0)) {
 			m.Separator()
 			delLbl := theme.Tr("删除", "Delete")
 			if st.hasMultiSelect() {
@@ -4238,7 +4262,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 					st.beginEdit(hit.Node, false)
 					return true
 				}
-				if !cb.ReadOnly && hit.Node.Parent != nil && ev.Clicks <= 1 {
+				if !cb.ReadOnly && !hit.Node.IsTopic() && ev.Clicks <= 1 {
 					st.DragNodeID = hit.Node.ID
 					st.DragActive = false
 					st.DragStartX, st.DragStartY = ev.X, ev.Y
@@ -4555,7 +4579,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, fullscreen bool
 			}
 		case HitNode:
 			if !cb.ReadOnly && st.Root != nil {
-				if hn := st.Root.FindByID(st.HoveredID); hn != nil && hn.Parent != nil {
+				if hn := st.Root.FindByID(st.HoveredID); hn != nil && !hn.IsTopic() {
 					canvas.Cursor(ui.CursorGrab)
 				} else {
 					canvas.Cursor(ui.CursorDefault)
@@ -5041,7 +5065,7 @@ func (st *BlockState) refreshHoverAt(sx, sy float32, readOnly bool) {
 
 func (st *BlockState) zoomAt(sx, sy, targetScale float32) {
 	st.fsCamAnimActive = false
-	targetScale = clampFloat32(targetScale, 0.2, 3.0)
+	targetScale = clampFloat32(targetScale, minCameraScale, maxCameraScale)
 	if st.Camera.Scale <= 0 {
 		st.Camera.Scale = 1
 	}
@@ -5063,7 +5087,7 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 		case mods == 0:
 			switch key {
 			case ui.KeyUp, ui.KeyDown, ui.KeyLeft, ui.KeyRight, ui.KeyHome, ui.KeyEnd:
-				st.setSingleSelection(st.Root.ID)
+				st.setSingleSelection(st.rootTopicID())
 				st.EnsureVisiblePending = true
 				return true
 			case ui.KeyF3:
@@ -5089,7 +5113,10 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 		case isMMPrimaryAltMod(mods) && (key == ui.KeyT || key == ui.KeyA):
 			return false
 		}
-		n = st.Root
+		n = FirstTopic(st.Root)
+		if n == nil {
+			return false
+		}
 	}
 	leftSide := n.Dir < 0
 
@@ -5442,7 +5469,7 @@ func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Nod
 		}
 
 		// One-click task toggle for non-root nodes.
-		if sel.Parent != nil {
+		if !sel.IsTopic() {
 			taskLbl := theme.Tr("设任务", "Task")
 			if sel.Task != nil {
 				taskLbl = theme.Tr("取消任务", "No Task")

@@ -124,12 +124,35 @@ func (st *BlockState) outlineToggleFoldAll() {
 	}
 }
 
+// outlineSection resolves which title row an action came from: the active root, or
+// one of several central topics when the outline lists a multi-topic map.
+func (st *BlockState) outlineSection(activeRoot *Node, nodeID int) *Node {
+	if nodeID != 0 {
+		if n := activeRoot.FindByID(nodeID); n != nil {
+			return n
+		}
+	}
+	if activeRoot.Virtual {
+		return FirstTopic(activeRoot)
+	}
+	return activeRoot
+}
+
+func (st *BlockState) focusOutlineSection(activeRoot *Node) {
+	if sec := st.outlineSection(activeRoot, 0); sec != nil {
+		st.focusOutlineNode(sec.ID, utf8.RuneCountInString(sec.Text))
+	}
+}
+
 func outlinePathTo(root, target *Node) []*Node {
 	if root == nil || target == nil {
 		return nil
 	}
 	var rev []*Node
 	for cur := target; cur != nil; cur = cur.Parent {
+		if cur.Virtual {
+			break
+		}
 		rev = append(rev, cur)
 		if cur == root {
 			break
@@ -304,34 +327,43 @@ func (st *BlockState) renderOutlineView(c *ui.Context, id string, fullscreen boo
 					st.renderOutlineBreadcrumb(c, id, activeRoot)
 				}
 
-				// Editable heading for the active root (root topic or zoomed branch).
-				st.renderOutlineTitle(c, id, activeRoot, fullscreen, &focusJustMoved, cb)
+				sections := []*Node{activeRoot}
+				if activeRoot.Virtual {
+					sections = activeRoot.Children
+				}
+				for secIdx, section := range sections {
+					if secIdx > 0 {
+						ui.Box(c.Key(fmt.Sprintf("mm-out-sec-gap-%s-%d", id, section.ID))).FillWidth().Height(theme.Space16)
+					}
+					// Editable heading for the active root (root topic or zoomed branch).
+					st.renderOutlineTitle(c, id, section, fullscreen, &focusJustMoved, cb)
 
-				// Recursive branch items (or subtle add prompt when branch has no children).
-				if len(activeRoot.Children) == 0 && !cb.ReadOnly {
-					addBtn := ui.ButtonBase(c.Key(fmt.Sprintf("mm-out-empty-add-%s-%d", id, activeRoot.ID))).
-						FillWidth().Height(theme.HeightChrome).Padding(0, theme.Space8).
-						AlignItems(ui.Center).Gap(theme.Space6).Radius(theme.RadiusSM).
-						Cursor(ui.CursorPointer).Label(theme.Tr("添加分支", "Add item"))
-					if addBtn.Hovered() || addBtn.Pressed() {
-						addBtn.Background(pal.Hover.Alpha(0.6))
+					// Recursive branch items (or subtle add prompt when branch has no children).
+					if len(section.Children) == 0 && !cb.ReadOnly {
+						addBtn := ui.ButtonBase(c.Key(fmt.Sprintf("mm-out-empty-add-%s-%d", id, section.ID))).
+							FillWidth().Height(theme.HeightChrome).Padding(0, theme.Space8).
+							AlignItems(ui.Center).Gap(theme.Space6).Radius(theme.RadiusSM).
+							Cursor(ui.CursorPointer).Label(theme.Tr("添加分支", "Add item"))
+						if addBtn.Hovered() || addBtn.Pressed() {
+							addBtn.Background(pal.Hover.Alpha(0.6))
+						}
+						addBtn.Children(func() {
+							icons.DrawAnimated(c, icons.Plus, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary), addBtn.Hovered())
+							ui.Text(c, theme.Tr("点击添加第一个分支，或在标题按 ↵", "Click to add first item, or press Enter in title")).
+								FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
+						})
+						if addBtn.Clicked() {
+							st.pushUndo()
+							st.OutlineUndoNodeID = 0
+							created := &Node{ID: st.allocID(), Text: "", Parent: section}
+							section.Children = append(section.Children, created)
+							st.commitChange(cb)
+							st.focusOutlineNode(created.ID, 0)
+							c.Invalidate()
+						}
+					} else {
+						st.renderOutlineBranch(c, id, section, 0, fullscreen, &focusJustMoved, cb)
 					}
-					addBtn.Children(func() {
-						icons.DrawAnimated(c, icons.Plus, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary), addBtn.Hovered())
-						ui.Text(c, theme.Tr("点击添加第一个分支，或在标题按 ↵", "Click to add first item, or press Enter in title")).
-							FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
-					})
-					if addBtn.Clicked() {
-						st.pushUndo()
-						st.OutlineUndoNodeID = 0
-						created := &Node{ID: st.allocID(), Text: "", Parent: activeRoot}
-						activeRoot.Children = append(activeRoot.Children, created)
-						st.commitChange(cb)
-						st.focusOutlineNode(created.ID, 0)
-						c.Invalidate()
-					}
-				} else {
-					st.renderOutlineBranch(c, id, activeRoot, 0, fullscreen, &focusJustMoved, cb)
 				}
 			})
 		})
@@ -479,7 +511,7 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 				}
 			}
 			if isMMPrimaryMod(k.Mods) && k.Key == ui.KeyEnter {
-				if !cb.ReadOnly && activeRoot.Parent != nil {
+				if !cb.ReadOnly && !activeRoot.IsTopic() {
 					st.outlinePending = &outlineAction{kind: outlineActToggleTask, nodeID: rootID, text: live, selStart: s0, selEnd: s1}
 					return true
 				}
@@ -511,14 +543,14 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 			}
 			if k.Mods == 0 && k.Key == ui.KeyEnter {
 				if !cb.ReadOnly {
-					st.outlinePending = &outlineAction{kind: outlineActTitleEnter}
+					st.outlinePending = &outlineAction{kind: outlineActTitleEnter, nodeID: rootID}
 					return true
 				}
 			}
 			if k.Mods == 0 && k.Key == ui.KeyDown {
 				runes := []rune(live)
 				if !strings.ContainsRune(string(runes[s1:]), '\n') {
-					st.outlinePending = &outlineAction{kind: outlineActTitleDown}
+					st.outlinePending = &outlineAction{kind: outlineActTitleDown, nodeID: rootID}
 					return true
 				}
 			}
@@ -896,7 +928,7 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 							st.renderOutlineLinkBadge(c, fmt.Sprintf("mm-out-link-%s-%d", id, node.ID), node, false, cb)
 						}
 						if showActions {
-							st.renderOutlineNodeQuickActions(c, fmt.Sprintf("mm-out-act-%s-%d", id, node.ID), node, node.Parent != nil, cb)
+							st.renderOutlineNodeQuickActions(c, fmt.Sprintf("mm-out-act-%s-%d", id, node.ID), node, !node.IsTopic(), cb)
 						}
 					})
 				}
@@ -1242,7 +1274,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		}
 		return
 	case outlineActZoomOut:
-		if activeRoot != st.Root && activeRoot.Parent != nil {
+		if activeRoot != st.Root && !activeRoot.IsTopic() {
 			if activeRoot.Parent == st.Root {
 				st.OutlineZoomID = 0
 			} else {
@@ -1262,25 +1294,27 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		}
 		return
 	case outlineActTitleEnter:
+		section := st.outlineSection(activeRoot, act.nodeID)
 		if cb.ReadOnly {
 			return
 		}
-		if len(activeRoot.Children) == 0 {
+		if len(section.Children) == 0 {
 			st.pushUndo()
 			st.OutlineUndoNodeID = 0
-			created := &Node{ID: st.allocID(), Text: "", Parent: activeRoot}
-			activeRoot.Children = append(activeRoot.Children, created)
+			created := &Node{ID: st.allocID(), Text: "", Parent: section}
+			section.Children = append(section.Children, created)
 			st.commitChange(cb)
 			st.focusOutlineNode(created.ID, 0)
 		} else {
-			first := activeRoot.Children[0]
+			first := section.Children[0]
 			st.focusOutlineNode(first.ID, 0)
 		}
 		c.Invalidate()
 		return
 	case outlineActTitleDown:
-		if len(activeRoot.Children) > 0 {
-			first := activeRoot.Children[0]
+		section := st.outlineSection(activeRoot, act.nodeID)
+		if len(section.Children) > 0 {
+			first := section.Children[0]
 			st.focusOutlineNode(first.ID, 0)
 			c.Invalidate()
 		}
@@ -1329,7 +1363,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 
 	switch act.kind {
 	case outlineActDuplicate:
-		if cb.ReadOnly || node.Parent == nil {
+		if cb.ReadOnly || node.IsTopic() {
 			return
 		}
 		node.Text = live
@@ -1358,7 +1392,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		st.focusOutlineNode(node.ID, act.selStart)
 		c.Invalidate()
 	case outlineActDeleteNode:
-		if cb.ReadOnly || node.Parent == nil {
+		if cb.ReadOnly || node.IsTopic() {
 			return
 		}
 		parent := node.Parent
@@ -1406,7 +1440,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		c.Invalidate()
 
 	case outlineActNodeEnter:
-		if cb.ReadOnly || node.Parent == nil {
+		if cb.ReadOnly || node.IsTopic() {
 			return
 		}
 		st.pushUndo()
@@ -1456,7 +1490,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		c.Invalidate()
 
 	case outlineActIndent:
-		if cb.ReadOnly || node.Parent == nil {
+		if cb.ReadOnly || node.IsTopic() {
 			return
 		}
 		idx := node.IndexInParent()
@@ -1476,7 +1510,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		c.Invalidate()
 
 	case outlineActOutdent:
-		if cb.ReadOnly || node.Parent == nil || node.Parent == activeRoot || node.Parent.Parent == nil {
+		if cb.ReadOnly || node.IsTopic() || node.Parent == activeRoot || node.Parent.IsTopic() {
 			return
 		}
 		node.Text = live
@@ -1499,7 +1533,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		c.Invalidate()
 
 	case outlineActBackspaceStart:
-		if cb.ReadOnly || node.Parent == nil {
+		if cb.ReadOnly || node.IsTopic() {
 			return
 		}
 		// Match Block editor: Backspace at line start of a todo item converts it back to a bullet first.
@@ -1539,7 +1573,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 			} else if len(flat) > 1 {
 				st.focusOutlineNode(flat[1].ID, 0)
 			} else {
-				st.focusOutlineNode(activeRoot.ID, utf8.RuneCountInString(activeRoot.Text))
+				st.focusOutlineSection(activeRoot)
 			}
 			c.Invalidate()
 			return
@@ -1557,7 +1591,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		}
 
 	case outlineActMoveUp, outlineActMoveDown:
-		if cb.ReadOnly || node.Parent == nil {
+		if cb.ReadOnly || node.IsTopic() {
 			return
 		}
 		idx := node.IndexInParent()
@@ -1585,7 +1619,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 					prev := flat[i-1]
 					st.focusOutlineNode(prev.ID, utf8.RuneCountInString(prev.Text))
 				} else {
-					st.focusOutlineNode(activeRoot.ID, utf8.RuneCountInString(activeRoot.Text))
+					st.focusOutlineSection(activeRoot)
 				}
 				c.Invalidate()
 				return
