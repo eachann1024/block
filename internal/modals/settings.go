@@ -1182,11 +1182,11 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 
-			markOn := !st.BrandDeco.HideMark
-			markLabel := theme.Tr("标题栏显示 cooool.top", "Show cooool.top in Title Bar")
+			markHidden := st.BrandDeco.HideMark
+			markLabel := theme.Tr("隐藏品牌标识", "Hide Brand Mark")
 			internalui.SettingsRow(c, markLabel, func() {
-				if internalui.Switch(c, "settings-brand-mark", markLabel, &markOn) {
-					hide := !markOn
+				if internalui.Switch(c, "settings-brand-mark", markLabel, &markHidden) {
+					hide := markHidden
 					m.mutateState(func(s *model.AppState) {
 						s.BrandDeco.HideMark = hide
 					})

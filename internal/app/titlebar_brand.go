@@ -130,7 +130,7 @@ func buildBrandMenuItems(c *ui.Context, p TitlebarProps) []blockui.MenuItemSpec 
 		item("brand-website", theme.Tr("打开官网", "Open Website"), "", &icSite, true, func() { c.OpenURL(brandWebsiteURL) }),
 		item("brand-plugin-store", theme.Tr("插件商店", "Plugin Store"), "", &icStore, false, p.OnOpenPluginStore),
 		{Separator: true},
-		item("brand-hide", theme.Tr("隐藏 cooool.top", "Hide cooool.top"), theme.Tr("可在设置中恢复", "Restore in Settings"), &icHide, false, p.OnHideMark),
+		item("brand-hide", theme.Tr("隐藏品牌标识", "Hide Brand Mark"), theme.Tr("可在设置中恢复", "Restore in Settings"), &icHide, false, p.OnHideMark),
 		item("brand-about", theme.Tr("关于 Block", "About Block"), "", &icAbout, false, p.OnOpenAbout),
 	}
 	return items
