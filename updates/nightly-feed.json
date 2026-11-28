@@ -1,10 +1,76 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-28T06:50:45.312Z",
-  "latest_version": "1.0.982",
-  "latest_tag": "v1.0.982",
+  "updated_at": "2026-11-28T18:47:57.023Z",
+  "latest_version": "1.0.983",
+  "latest_tag": "v1.0.983",
   "releases": [
+    {
+      "version": "1.0.983",
+      "tag": "v1.0.983",
+      "published_at": "2026-11-28T18:47:56Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.983",
+      "prerelease": true,
+      "channel": "nightly",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "思维导图：工具栏中的任务进度胶囊已移除。"
+        ],
+        "fixes": [
+          "编辑器：粘贴 HTML 内容时不再带入主题背景色，原有高亮会统一转换为黄色。"
+        ],
+        "other": [
+          "插件接口：插件界面中新增了媒体处理的日志记录。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Mind Map: The task progress capsule has been removed from the toolbar."
+        ],
+        "fixes": [
+          "Editor: Pasting HTML content no longer brings in theme background colors, and existing highlights are converted to yellow."
+        ],
+        "other": [
+          "Plugin API: Internal logging for media handling in the plugin interface was added."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.983/block-macos-arm64.dmg",
+          "size": 22584360,
+          "sha256": "c20045e7df157d2ee75e4df5601f7980dffe91360235e8b3e8abd1fe0d10b569"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.983/block-macos-x64.dmg",
+          "size": 24682772,
+          "sha256": "edb564e89fca86bed515edd42c7c73d42294873606c27912c724427b78924a2f"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.983/block-windows-x64-setup.exe",
+          "size": 19961224,
+          "sha256": "06bca9f9bff09f098cf8b263c84e715182b738d6baaea14a120f1bf8fb164c80"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.983/block-linux-x64.deb",
+          "size": 16262830,
+          "sha256": "573208a05749d1cc9c5bec637258b234f797aff31eeb4e62a4b49a7e3b4c9536"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.983/block-linux-x64.AppImage",
+          "size": 30005752,
+          "sha256": "600a75e929fb44a12f7053b113add49b11c49a104e5d3a5f489a1e028e8a9776"
+        }
+      ]
+    },
     {
       "version": "1.0.982",
       "tag": "v1.0.982",
@@ -36,38 +102,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-macos-arm64.dmg",
-          "size": 22567347,
-          "sha256": "42b2079ef41dc3e2a59d8d10057599fecbe4c7dfd8e41c5d2de0220ea653f0cb"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-macos-x64.dmg",
-          "size": 24655695,
-          "sha256": "fa4ac3bf68ccb98689fb7130683ac471057a62f5cad67c8fa7114f5d6670d954"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-windows-x64-setup.exe",
-          "size": 19937770,
-          "sha256": "566dee5f907a09d67852bc32fee9928db4aa1d9628c5671d34afb239b912c22d"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-linux-x64.deb",
-          "size": 16248778,
-          "sha256": "9bc4eccebd66a5c48a282afe150a0d4fd18ac6c917c6d17dd43e0bea05633338"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-linux-x64.AppImage",
-          "size": 29977080,
-          "sha256": "f12620fb041c4a58f061b9cd7672c8b0b8a8dfa631f52e2f5dacb234f39e8e4c"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.981",
@@ -1658,95 +1693,6 @@
         ],
         "fixes": [],
         "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.930",
-      "tag": "v1.0.930",
-      "published_at": "2026-11-24T12:21:00Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.930",
-      "prerelease": false,
-      "channel": "stable",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "侧边栏与标签栏：现在可以为笔记本自定义图标。",
-          "思维导图：大纲视图支持直接编辑，并提供该视图专用的控件。",
-          "AI 方案审阅：待应用的 AI 修改会以细边距线直接显示在笔记中，悬停或用光标聚焦时出现浮动栏，可查看差异、预览原始内容、拒绝、重试或接受；整份方案可接受或拒绝，过期方案只能拒绝或重试，接受后可作为一步撤销。",
-          "思维导图：新增链接状态、查找辅助和任务统计，徽标布局会随缩放调整。",
-          "思维导图：大纲视图支持链接跳转，会标出失效链接，并为每一行提供快捷操作。"
-        ],
-        "improvements": [
-          "插件商店：自定义图标功能现在以原创插件插画的形式展示。",
-          "插件商店：精选轮播加入方向滑动和背景动画。",
-          "代码编辑器：查找栏改为更紧凑的样式，与笔记查找保持一致。",
-          "插件商店：精选轮播改为每 5 秒切换，并显示实时倒计时条。",
-          "AI 对话：每篇笔记只保留一个待审方案，新方案会关闭尚未审阅的旧方案；重试会重新发送原始请求，接受的修改可作为一步撤销，方案卡片不再重复完整差异。",
-          "插件商店：block-tarot 插件现在有专门设计的图标。",
-          "思维导图：画布交互、链接弹窗、HUD、查找栏和导出菜单均经过重新设计。",
-          "编辑器：思维导图链接检查和查找路由已接入，撤销状态会得到跟踪，块手柄菜单可供使用。",
-          "导出：纸张主题的页眉、无标题布局、章节卡片和 cooool.top 水印均经过重新设计。",
-          "侧边栏：自定义图标选择器移除了搜索框。"
-        ],
-        "fixes": [
-          "思维导图：Markdown 中的空白主题和换行不再丢失。",
-          "快捷键：查找命令会定位到当前活动的编辑器，桌面端快捷键绑定也已补全。",
-          "AI 对话：助手可以分页读取长页面，笔记搜索会返回片段，未转义 JSON 也能正确处理。",
-          "AI 对话：流式响应会检测长度截断，Anthropic 模型的最大输出长度已提高。",
-          "AI 对话：应用替换时会要求匹配唯一，HTML 表格的预检查更严格。",
-          "AI 对话：上下文注入或命令行历史被截断时会显示明确提示。",
-          "代码编辑器：查找栏的匹配计数前不再保留固定宽度的空隙。",
-          "编辑器：笔记查找的匹配计数前不再保留固定宽度的空隙。",
-          "代码编辑器：代码字体查找已恢复，代码会按设置的字体显示。",
-          "标签栏：AI 生成过程中仍可切换标签页和导航。",
-          "导出：主题缩略图的边角光晕已修正，窄窗口下的预览也能完整适配。",
-          "搜索：输入框的光标宽度和占位文字起始位置已对齐。"
-        ],
-        "other": [
-          "插件商店：误并入的精选区与圆点分页器改动已撤销。",
-          "插件商店：双语插件说明中的图片和 SVG 现在会经过校验。"
-        ]
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Sidebar and Tabs: Notebooks can now use custom icons.",
-          "Mindmap: The outline view now supports direct editing and provides controls specific to that view.",
-          "AI Plan Review: Pending AI changes render in place with a thin margin rule, and a floating bar appears on hover or caret focus with diff, original-content peek, reject, retry, and accept actions; whole plans can be accepted or rejected, stale plans can only be rejected or retried, and accepting a plan is a single undo step.",
-          "Mindmap: Link status, find helpers, task statistics, and a badge layout that scales with zoom are now available.",
-          "Mindmap: The outline view now supports link jumping, marks broken links, and offers quick actions for each row."
-        ],
-        "improvements": [
-          "Plugin Store: The Custom Icons feature is now presented with original plugin artwork.",
-          "Plugin Store: The featured carousel has directional slide and backdrop animations.",
-          "Code Editor: The find bar is slimmer and matches the note find experience.",
-          "Plugin Store: The featured carousel advances every five seconds and shows a live countdown bar.",
-          "AI Chat: Each note keeps only one pending plan; a newer plan dismisses the unreviewed one, Retry resends the original request, accepted edits land as a single undo step, and the chat plan card no longer duplicates the full diff.",
-          "Plugin Store: The block-tarot plugin now has a bespoke icon.",
-          "Mindmap: Canvas interactions, the link popover, HUD, find bar, and export menu have been overhauled.",
-          "Editor: Mindmap link checks and find routing are now integrated, undo state is tracked, and the block handle menu is available.",
-          "Export: Paper theme headers, the titleless layout, section cards, and cooool.top watermarks have been redesigned.",
-          "Sidebar: The custom icon picker no longer includes a search box."
-        ],
-        "fixes": [
-          "Mindmap: Blank topics and line breaks are preserved in Markdown.",
-          "Shortcuts: Find now targets the active editor, and desktop key bindings are complete.",
-          "AI Chat: The assistant can page through long pages, note search returns snippets, and unescaped JSON is handled correctly.",
-          "AI Chat: Streamed responses now detect length truncation, and Anthropic models use a higher output token limit.",
-          "AI Chat: Search-and-replace edits now require a unique match, and HTML table preflight checks are stricter.",
-          "AI Chat: Explicit notices now appear when context injection or command-line history is truncated.",
-          "Code Editor: The find bar no longer leaves a fixed-width gap before the match count.",
-          "Editor: Note search no longer leaves a fixed-width gap before the match count.",
-          "Code Editor: Code font lookup is restored, so code uses the configured font.",
-          "Tabs: Tab switching and navigation remain available while AI is generating.",
-          "Export: Theme thumbnails no longer show a corner halo, and previews fit correctly in narrow windows.",
-          "Search: Input caret width and placeholder starting position are now aligned."
-        ],
-        "other": [
-          "Plugin Store: Accidental changes to the featured area and dot pager were reverted.",
-          "Plugin Store: Images and SVGs in bilingual plugin descriptions are now validated."
-        ]
       },
       "assets": []
     }
