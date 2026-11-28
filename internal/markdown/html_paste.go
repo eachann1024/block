@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html"
+	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -947,7 +948,7 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 			st.strike = boolPtr(true)
 		}
 	}
-	if bg := cleanColorValue(cssProp(attrs, "background-color")); isHighlightBGColor(bg) {
+	if bg := pasteHighlightBG(cssProp(attrs, "background-color")); bg != "" {
 		st.bgColor = strPtr(bg)
 	}
 
@@ -955,17 +956,149 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 }
 
 func isHighlightBGColor(raw string) bool {
+	return pasteHighlightBG(raw) != ""
+}
+
+// pasteHighlightBG maps a pasted CSS background to the editor's only highlight (yellow).
+// Theme surfaces (near-transparent, gray, white, black) and unparseable values are dropped.
+func pasteHighlightBG(raw string) string {
 	bg := strings.ToLower(strings.TrimSpace(cleanColorValue(raw)))
 	if bg == "" {
-		return false
+		return ""
 	}
-	compact := strings.ReplaceAll(bg, " ", "")
-	switch compact {
-	case "white", "#fff", "#ffffff", "rgb(255,255,255)", "rgba(255,255,255,1)", "rgba(0,0,0,0)",
-		"black", "#000", "#000000", "rgb(0,0,0)", "currentcolor":
-		return false
+	switch bg {
+	case "yellow", "gold", "orange", "pink", "lime", "cyan", "aqua", "red", "green", "blue",
+		"lightyellow", "lightgreen", "lightblue", "lightpink", "khaki", "violet", "purple", "magenta", "fuchsia":
+		return "yellow"
 	}
-	return true
+	r, g, b, a, ok := parseCSSColorRGBA(bg)
+	if !ok || a < 0.25 {
+		return ""
+	}
+	hi := max(r, g, b)
+	lo := min(r, g, b)
+	chroma := hi - lo
+	if chroma < 12 {
+		return ""
+	}
+	l := (hi + lo) / 510
+	denom := 1 - abs64(2*l-1)
+	if denom <= 0 || (chroma/255)/denom < 0.15 {
+		return ""
+	}
+	return "yellow"
+}
+
+func abs64(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// parseCSSColorRGBA parses #hex, rgb()/rgba() and hsl()/hsla() into 0-255 channels and 0-1 alpha.
+func parseCSSColorRGBA(s string) (r, g, b, a float64, ok bool) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if strings.HasPrefix(s, "#") {
+		h := s[1:]
+		if len(h) == 3 || len(h) == 4 {
+			var sb strings.Builder
+			for i := 0; i < len(h); i++ {
+				sb.WriteByte(h[i])
+				sb.WriteByte(h[i])
+			}
+			h = sb.String()
+		}
+		if len(h) != 6 && len(h) != 8 {
+			return 0, 0, 0, 0, false
+		}
+		v, err := strconv.ParseUint(h, 16, 32)
+		if err != nil {
+			return 0, 0, 0, 0, false
+		}
+		a = 1
+		if len(h) == 8 {
+			a = float64(v&0xff) / 255
+			v >>= 8
+		}
+		return float64(v >> 16 & 0xff), float64(v >> 8 & 0xff), float64(v & 0xff), a, true
+	}
+	open := strings.IndexByte(s, '(')
+	if open < 0 || !strings.HasSuffix(s, ")") {
+		return 0, 0, 0, 0, false
+	}
+	fn := s[:open]
+	body := strings.NewReplacer(",", " ", "/", " ").Replace(s[open+1 : len(s)-1])
+	parts := strings.Fields(body)
+	if len(parts) != 3 && len(parts) != 4 {
+		return 0, 0, 0, 0, false
+	}
+	num := func(p string, scale float64) (float64, bool) {
+		pct := strings.HasSuffix(p, "%")
+		p = strings.TrimSuffix(strings.TrimSuffix(p, "%"), "deg")
+		f, err := strconv.ParseFloat(p, 64)
+		if err != nil {
+			return 0, false
+		}
+		if pct {
+			return f / 100 * scale, true
+		}
+		return f, true
+	}
+	a = 1
+	if len(parts) == 4 {
+		v, good := num(parts[3], 1)
+		if !good {
+			return 0, 0, 0, 0, false
+		}
+		a = v
+	}
+	switch fn {
+	case "rgb", "rgba":
+		var c [3]float64
+		for i := 0; i < 3; i++ {
+			v, good := num(parts[i], 255)
+			if !good {
+				return 0, 0, 0, 0, false
+			}
+			c[i] = v
+		}
+		return c[0], c[1], c[2], a, true
+	case "hsl", "hsla":
+		h, ok1 := num(parts[0], 360)
+		sat, ok2 := num(parts[1], 1)
+		lig, ok3 := num(parts[2], 1)
+		if !ok1 || !ok2 || !ok3 {
+			return 0, 0, 0, 0, false
+		}
+		if !strings.HasSuffix(parts[1], "%") {
+			sat /= 100
+		}
+		if !strings.HasSuffix(parts[2], "%") {
+			lig /= 100
+		}
+		cc := (1 - abs64(2*lig-1)) * sat
+		hp := math.Mod(h, 360) / 60
+		x := cc * (1 - abs64(math.Mod(hp, 2)-1))
+		var r1, g1, b1 float64
+		switch {
+		case hp < 1:
+			r1, g1 = cc, x
+		case hp < 2:
+			r1, g1 = x, cc
+		case hp < 3:
+			g1, b1 = cc, x
+		case hp < 4:
+			g1, b1 = x, cc
+		case hp < 5:
+			r1, b1 = x, cc
+		default:
+			r1, b1 = cc, x
+		}
+		m := lig - cc/2
+		return (r1 + m) * 255, (g1 + m) * 255, (b1 + m) * 255, a, true
+	}
+	return 0, 0, 0, 0, false
 }
 
 func (c *htmlPasteConverter) popInlineTag(name string) {
