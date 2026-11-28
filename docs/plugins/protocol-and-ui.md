@@ -32,7 +32,7 @@ All requests and responses are single-line UTF-8 JSON terminated by `\n`.
      ```
      - **Runtime Context**: `notebook_root` is populated only when declaring `notes:read`, `notes:write`, or `events:note_saved` and a notebook is active (otherwise `""`); `notebooks` is populated only when declaring `notes:read` (otherwise `[]`). Switching notebooks typically re-initializes the sandbox with the new `notebook_root` on the next call (including background `note.saved` events), while certain appearance/UI plugins may warm immediately on switch.
      - `downloads_dir` (defaults to `~/Downloads`, env `BLOCKMD_DOWNLOADS_DIR`): export files, backups, and user-facing output should default to `downloads_dir` rather than hidden directories inside `apps-data` or notebooks.
-     - `ui_capabilities`: progressive capability flags (up to 43 keys depending on host version, config, and OS; see Section 4.4).
+     - `ui_capabilities`: progressive capability flags (up to 44 keys depending on host version, config, and OS; see Section 4.4).
    - Return `result`: `{"ready": true}`.
 
 2. **`plugin.render`**
@@ -258,8 +258,8 @@ Interactive system operations (open URL, reveal, dialogs, clipboard, trash) requ
 
 ### 4.4 Compatibility & Platform Notes
 
-- **`ui_capabilities` keys** (up to 43 total, depending on host version, config, and OS):
-  `kv_tooltip`, `treemap`, `host_perf`, `checklist`, `checklist_add_folder`, `form_layout`, `multi_notebook`, `card_collapse`, `metric_tone`, `log_columns`, `file_picker`, `action_feedback`, `action_progress`, `note_revision`, `sidebar_sections`, `file_badges`, `sidebar_menu`, `sidebar_ignored_dirs`, `backdrops`, `status_icon`, `toast_icon`, `notes_open`, `log_actions`, `panel_toggle`, `editor_insert_mode`, `dialog_token`, `item_icons`, `tab_menu`, `file_path`, `log_timeline`, `progress_bar`, `segmented_status`, `toast_banner`, `open_settings`, `form_autosave`, `button_link`, `save_download`, `store_changelog`, `system_integration`, `save_dialog_directory`, `reveal_path`, `menubar`, `menubar_drop` (macOS only).
+- **`ui_capabilities` keys** (up to 44 total, depending on host version, config, and OS):
+  `kv_tooltip`, `treemap`, `host_perf`, `checklist`, `checklist_add_folder`, `form_layout`, `multi_notebook`, `card_collapse`, `metric_tone`, `log_columns`, `file_picker`, `action_feedback`, `action_progress`, `note_revision`, `sidebar_sections`, `file_badges`, `sidebar_menu`, `sidebar_ignored_dirs`, `backdrops`, `status_icon`, `toast_icon`, `notes_open`, `log_actions`, `log_media`, `panel_toggle`, `editor_insert_mode`, `dialog_token`, `item_icons`, `tab_menu`, `file_path`, `log_timeline`, `progress_bar`, `segmented_status`, `toast_banner`, `open_settings`, `form_autosave`, `button_link`, `save_download`, `store_changelog`, `system_integration`, `save_dialog_directory`, `reveal_path`, `menubar`, `menubar_drop` (macOS only).
 - **Platform Details**: macOS uses Notification Center (click targets persist 7 days across restarts), Keychain, and Dock; Windows uses native notifications, Credential Manager, and taskbar badge; Linux uses desktop notifications, Secret Service (must be unlocked), Unity Launcher Dock, and logind wake events.
 - **Safe Trash**: saves dirty editors before confirming, stages on the same volume, verifies file identity, restores on failure, and tracks original paths for recovery prompts.
 
@@ -327,7 +327,7 @@ All `UIItem`s (including `group.fields`) support optional `visible_when` (`{"con
 8. **`metrics`**: non-empty `metrics` array (`label`, `value`, optional `tone`), auto-laid out 1–4 columns.
 9. **`kv`**: non-empty `rows` (`label`, `value`, optional `tooltip`, `icon`).
 10. **`preview`**: `preview` object with `variant` (`"article"` | `"cards"` | `"diff"` | `"plan"`), `palette` (`"ocean"` | `"paper"` | `"ink"` | `"warm"`), required `title`, optional `badge`, `subtitle`, `body`, `before`, `after`, `cards`.
-11. **`log_list`**: required non-empty `empty_text`, optional `label`, `entries` (`title`, optional `sub_text`, `status`, `time`, `tone`, `ratio`, `tooltip`, `action_id`). With `"log_timeline"`, set `"variant": "timeline"` for `kind: "event"|"span"`, `badge`, `span`, `tags` (`<= 24`), and `details` (`<= 64`).
+11. **`log_list`**: required non-empty `empty_text`, optional `label`, `entries` (`title`, optional `sub_text`, `status`, `time`, `tone`, `ratio`, `tooltip`, `action_id`; plus with `"log_media"`, optional `media_url` for remote image thumbnail & hover preview, `copy_text` for click-to-copy with inline `"Copied"` feedback when holding `"system:clipboard_write"`, and `file_name` for non-image file icons). With `"log_timeline"`, set `"variant": "timeline"` for `kind: "event"|"span"`, `badge`, `span`, `tags` (`<= 24`), and `details` (`<= 64`).
 12. **`checklist`** (card top-level only; not allowed in `group`): `id`, `value` (`string[]`), `options` (`value`, `label`, optional `detail`/`badge`/`tooltip`). With `"checklist_add_folder"`, set `add_folder: true` for a user-managed folder list.
 13. **`group`**: `fields` (`>= 2` items of `input`/`secret`/`segmented`/`select`/`folder`/`switch`) arranged side by side.
 14. **`treemap`**: non-empty `tiles` (`id`, `label`, `bytes`, optional `detail`/`file_count`/`color`/`entries`), optional `id`, `total_bytes` (`uint64`), `summary` (`total_value` required).
