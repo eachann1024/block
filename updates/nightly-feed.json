@@ -1,10 +1,74 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-28T06:28:36.480Z",
-  "latest_version": "1.0.981",
-  "latest_tag": "v1.0.981",
+  "updated_at": "2026-11-28T06:50:45.312Z",
+  "latest_version": "1.0.982",
+  "latest_tag": "v1.0.982",
   "releases": [
+    {
+      "version": "1.0.982",
+      "tag": "v1.0.982",
+      "published_at": "2026-11-28T06:50:44Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.982",
+      "prerelease": true,
+      "channel": "nightly",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "插件接口：插件可以注册不显示在快捷键列表和命令面板中的隐藏命令。",
+          "菜单栏：点击设置菜单项可以显示 Block，用户也可以隐藏菜单栏中的插件图标。"
+        ],
+        "fixes": [
+          "导入导出：纸张主题导出时不再自动调整单元格数字对齐方式，也不会使用过大的字体。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Plugin API: Plugins can register hidden commands that stay out of the shortcut list and command palette.",
+          "Menu Bar: The Settings menu item can reveal Block, and users can hide plugin icons from the menu bar."
+        ],
+        "fixes": [
+          "Export: Paper theme exports no longer apply automatic numeric alignment to individual cells or use oversized fonts."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-macos-arm64.dmg",
+          "size": 22567347,
+          "sha256": "42b2079ef41dc3e2a59d8d10057599fecbe4c7dfd8e41c5d2de0220ea653f0cb"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-macos-x64.dmg",
+          "size": 24655695,
+          "sha256": "fa4ac3bf68ccb98689fb7130683ac471057a62f5cad67c8fa7114f5d6670d954"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-windows-x64-setup.exe",
+          "size": 19937770,
+          "sha256": "566dee5f907a09d67852bc32fee9928db4aa1d9628c5671d34afb239b912c22d"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-linux-x64.deb",
+          "size": 16248778,
+          "sha256": "9bc4eccebd66a5c48a282afe150a0d4fd18ac6c917c6d17dd43e0bea05633338"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.982/block-linux-x64.AppImage",
+          "size": 29977080,
+          "sha256": "f12620fb041c4a58f061b9cd7672c8b0b8a8dfa631f52e2f5dacb234f39e8e4c"
+        }
+      ]
+    },
     {
       "version": "1.0.981",
       "tag": "v1.0.981",
@@ -30,38 +94,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.981/block-macos-arm64.dmg",
-          "size": 22562461,
-          "sha256": "483ac24daee63bfe8e53fe764e6d8ce390b0c28d6f5b8f0f8c45c008c6c26129"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.981/block-macos-x64.dmg",
-          "size": 24653198,
-          "sha256": "5358c9e13c2f53288cce209cd1478b502b81d1860db6192b90cb5ddb311ebff2"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.981/block-windows-x64-setup.exe",
-          "size": 19936767,
-          "sha256": "cc80493ddf989530e91eb72ea7b3e5ca82f3a6d741a01a4f9c978e791ceb35bd"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.981/block-linux-x64.deb",
-          "size": 16240266,
-          "sha256": "cb084e71654d38dc301c2be77b86dba1dacb80c624df83b62b68c70f0daa991c"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.981/block-linux-x64.AppImage",
-          "size": 29981176,
-          "sha256": "590e6a55bb48b73ae8f16b062ff6e8d1d1e27f9f0f5064765058a8990177abfd"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.980",
@@ -1714,33 +1747,6 @@
           "Plugin Store: Accidental changes to the featured area and dot pager were reverted.",
           "Plugin Store: Images and SVGs in bilingual plugin descriptions are now validated."
         ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.929",
-      "tag": "v1.0.929",
-      "published_at": "2026-11-24T09:56:44Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.929",
-      "prerelease": false,
-      "channel": "stable",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "AI 对话：展开内容时固定视窗底部，防止对话界面意外跳转至顶部。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "AI Chat: Pinned the bottom of the chat view to prevent it from jumping to the top when expanding content."
-        ],
-        "other": []
       },
       "assets": []
     }
