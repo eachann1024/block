@@ -163,6 +163,97 @@ func PermissionDescription(p Permission, locale string) string {
 	}
 }
 
+// PermissionImpactExamples lists concrete, plain-language examples of what a
+// plugin holding p could do, shown before install so users can judge the risk.
+func PermissionImpactExamples(p Permission, locale string) []string {
+	en := strings.HasPrefix(strings.ToLower(locale), "en")
+	pick := func(zh, enText []string) []string {
+		if en {
+			return enText
+		}
+		return zh
+	}
+	switch p {
+	case PermNotesRead:
+		return pick(
+			[]string{"看到你所有笔记的全文，包括日记、密码备忘等私密内容", "配合「网络请求」时，可以把笔记内容发到外部服务器"},
+			[]string{"See the full text of every note, including journals or saved passwords", "Combined with Network, it could send note content to an outside server"},
+		)
+	case PermNotesWrite:
+		return pick(
+			[]string{"新建、改写或清空笔记内容", "批量修改 YAML 属性（如标签），改动可能不好逐条撤销"},
+			[]string{"Create, rewrite, or empty notes", "Bulk-edit YAML properties such as tags; changes may be hard to undo one by one"},
+		)
+	case PermNotesPath:
+		return pick(
+			[]string{"知道笔记在硬盘上的完整位置，路径里可能带有你的系统用户名"},
+			[]string{"Learn where notes live on disk; paths may include your system username"},
+		)
+	case PermEditorRead:
+		return pick(
+			[]string{"读取你正在编辑的内容和选中的文字"},
+			[]string{"Read what you are editing and the text you select"},
+		)
+	case PermEditorEdit:
+		return pick(
+			[]string{"在光标处插入或替换文字"},
+			[]string{"Insert or replace text at the cursor"},
+		)
+	case PermSystemSecrets:
+		return pick(
+			[]string{"在系统钥匙串里保存你填写的 Token、密码（只能碰自己存的那份）"},
+			[]string{"Store tokens or passwords you enter in the system keychain (only its own entries)"},
+		)
+	case PermClipboardRead:
+		return pick(
+			[]string{"在你点击操作时读到刚复制的内容，可能包含密码或验证码"},
+			[]string{"Read what you just copied when you click, which may include passwords or codes"},
+		)
+	case PermClipboardWrite:
+		return pick(
+			[]string{"覆盖你剪贴板里原有的内容"},
+			[]string{"Overwrite what is currently on your clipboard"},
+		)
+	case PermSystemTrash:
+		return pick(
+			[]string{"经你确认后，把笔记本里的文件移到回收站"},
+			[]string{"Move notebook files to the trash after you confirm"},
+		)
+	case PermSystemOpen:
+		return pick(
+			[]string{"在浏览器里打开网页链接", "在访达 / 文件管理器里定位文件"},
+			[]string{"Open web links in your browser", "Reveal files in Finder or your file manager"},
+		)
+	case PermSystemDialogs:
+		return pick(
+			[]string{"弹出选择框，你选中的文件或文件夹会交给它处理"},
+			[]string{"Show a picker; the file or folder you choose is handed to it"},
+		)
+	case PermSystemFS:
+		return pick(
+			[]string{"读写下载目录和笔记本里的文件，包括非笔记文件", "覆盖或新建文件，例如导出、同步时写入大量数据"},
+			[]string{"Read and write files in Downloads and notebooks, not just notes", "Overwrite or create files, for example when exporting or syncing"},
+		)
+	case PermSystemExec:
+		return pick(
+			[]string{"运行它声明过的电脑程序（如 git、pandoc），这些程序能做什么就能做什么", "程序运行时可能修改或生成文件、联网"},
+			[]string{"Run the programs it declares (such as git or pandoc), with whatever power those programs have", "Those programs may change files or go online while running"},
+		)
+	case PermAIComplete:
+		return pick(
+			[]string{"用你配置的 AI 模型生成文字，会消耗你的 API 额度", "把笔记片段作为提示词发给 AI 服务商"},
+			[]string{"Generate text with your configured AI model, using your API quota", "Send note excerpts to the AI provider as part of a prompt"},
+		)
+	case PermNetwork:
+		return pick(
+			[]string{"连接任意网站或服务器，上传或下载数据", "配合「读取笔记」时，笔记内容可能被发到外部"},
+			[]string{"Connect to any website or server to upload or download data", "Combined with Read Notes, note content could leave your computer"},
+		)
+	default:
+		return nil
+	}
+}
+
 // PermissionCategory groups sensitive permissions shown in install and update
 // confirmation modals. Only permissions in these 5 categories require explicit
 // user confirmation; all UI/storage/workspace-event capabilities are exempt.

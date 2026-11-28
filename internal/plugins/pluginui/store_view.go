@@ -118,7 +118,7 @@ func renderStoreFilterMenu(c *ui.Context, ctrl *Controller) {
 		{ID: "app-store-source-all", Label: theme.Tr("全部来源", "All sources"), Checked: source == "", OnClick: pick(&ctrl.storeSource, "")},
 		{ID: "app-store-source-official", Label: theme.Tr("Block 官方", "Official by Block"), Checked: source == storeSourceOfficial, OnClick: pick(&ctrl.storeSource, storeSourceOfficial)},
 		{ID: "app-store-source-reviewed", Label: theme.Tr("已审核", "Reviewed"), Checked: source == storeSourceReviewed, OnClick: pick(&ctrl.storeSource, storeSourceReviewed)},
-		{ID: "app-store-source-unreviewed", Label: theme.Tr("未审核", "Unreviewed"), Checked: source == storeSourceUnreviewed, OnClick: pick(&ctrl.storeSource, storeSourceUnreviewed)},
+		{ID: "app-store-source-unreviewed", Label: theme.Tr("社区", "Community"), Checked: source == storeSourceUnreviewed, OnClick: pick(&ctrl.storeSource, storeSourceUnreviewed)},
 		{Separator: true},
 		{ID: "app-store-sort-downloads", Label: theme.Tr("最多下载", "Most downloaded"), Checked: sortBy == "", OnClick: pick(&ctrl.storeSort, "")},
 		{ID: "app-store-sort-name", Label: theme.Tr("按名称", "By name"), Checked: sortBy == storeSortName, OnClick: pick(&ctrl.storeSort, storeSortName)},
@@ -473,15 +473,7 @@ func renderStoreSource(c *ui.Context, author, source string, fadeBG ui.Color) {
 }
 
 func renderStoreUnreviewed(c *ui.Context) {
-	color := theme.Ocean().Warning
-	ui.Row(c).MinWidth(0).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(theme.IconMicro, theme.IconMicro).Shrink(0).Radius(theme.RadiusPill).
-			Border(1, color).Center().Children(func() {
-			ui.Text(c, "!").FontSize(theme.FontMicro).FixedLineHeight(theme.IconMicro).TextColor(color)
-		})
-		ui.Text(c, theme.Tr("未审核", "Unreviewed")).FontSize(theme.FontMeta).
-			FixedLineHeight(theme.LineSmall).TextColor(color).MinWidth(0).SingleLine().Ellipsis("…")
-	})
+	bui.CommunityBadge(c, true)
 }
 
 func renderStoreAuthor(c *ui.Context, author string, bg ui.Color) {

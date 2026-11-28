@@ -148,6 +148,31 @@ func ReviewedBadge(c *ui.Context, compact bool) {
 	monochromeStatusBadge(c, theme.Tr("已审核", "Reviewed"), compact)
 }
 
+// CommunityBadge renders a neutral outlined "Community" pill for third-party
+// plugins not reviewed by Block. Same geometry as BetaBadge so adjacent badges
+// share one centerline; the tooltip states the authorship boundary without
+// implying the plugin is unsafe.
+func CommunityBadge(c *ui.Context, compact bool) {
+	pal := theme.Ocean()
+	h := theme.HeightMicro
+	padX := theme.Space8
+	if compact {
+		h = theme.KeycapHeight
+		padX = theme.Space6
+	}
+	badge := ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
+		Border(1, pal.SelectedBorder).AlignItems(ui.Center)
+	badge.Children(func() {
+		ui.Text(c, theme.Tr("社区", "Community")).
+			FontSize(theme.FontMeta).
+			FixedLineHeight(theme.LineMeta).
+			FontWeight(theme.WeightRegular).
+			TextColor(pal.TextSecondary).
+			SingleLine()
+	})
+	Tooltip(c, badge, theme.Tr("由第三方开发者独立开发与维护，非 Block 出品", "Built and maintained by an independent developer, not by Block"))
+}
+
 // FileExtBadge renders a subtle Ocean Paper extension pill (e.g. JSON, PNG, MDX)
 // beside non-.md entries in the file tree so note rows stay uncluttered while
 // non-note formats remain identifiable at a glance.

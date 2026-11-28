@@ -517,6 +517,18 @@ func (c *Controller) RenderPermissionModal(ctx *ui.Context) {
 		bodyScroll.Children(func() {
 			ui.Column(ctx).FillWidth().MinWidth(0).
 				Padding(theme.Space16, theme.Space20).Gap(theme.Space12).Children(func() {
+				if permissionPromptIsThirdParty(prompt) {
+					author := strings.TrimSpace(prompt.author)
+					note := theme.Tr("此插件由第三方开发者独立开发和维护，并非 Block 出品，Block 未审核其代码。请确认你信任它的来源。",
+						"This plugin is built and maintained by an independent developer, not by Block, and Block has not reviewed its code. Install only if you trust its source.")
+					if author != "" {
+						note = theme.Tr("此插件由 "+author+" 独立开发和维护，并非 Block 出品，Block 未审核其代码。请确认你信任它的来源。",
+							"This plugin is built and maintained by "+author+", not by Block, and Block has not reviewed its code. Install only if you trust its source.")
+					}
+					ui.Text(ctx, note).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+						TextColor(pal.TextSecondary).MinWidth(0)
+				}
 				for _, cat := range plugins.PermissionCategoryOrder {
 					perms := byCat[cat]
 					if len(perms) == 0 {
@@ -564,6 +576,21 @@ func (c *Controller) RenderPermissionModal(ctx *ui.Context) {
 									ui.Text(ctx, desc).
 										FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 										TextColor(pal.TextSecondary).MinWidth(0)
+									if examples := plugins.PermissionImpactExamples(p, locale); len(examples) > 0 {
+										ui.Column(ctx).FillWidth().MinWidth(0).Gap(theme.Space2).Children(func() {
+											ui.Text(ctx, theme.Tr("可能的效果：", "What it could do:")).
+												FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+												FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).MinWidth(0)
+											for _, ex := range examples {
+												ui.Row(ctx).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Start).Children(func() {
+													ui.Text(ctx, "•").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+														TextColor(pal.Placeholder).Shrink(0)
+													ui.Text(ctx, ex).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+														TextColor(pal.TextSecondary).MinWidth(0).Grow(1).Shrink(1)
+												})
+											}
+										})
+									}
 									if p == plugins.PermNetwork && customReason != "" {
 										ui.Text(ctx, theme.Tr("Block 不在进程层拦截联网，此项为插件自述。", "Self-declared by the plugin; Block does not sandbox outbound network access.")).
 											FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
@@ -635,4 +662,14 @@ func (c *Controller) RenderPermissionModal(ctx *ui.Context) {
 		c.dismissPermissionPrompt(prompt.id)
 		ctx.Invalidate()
 	}
+}
+
+// permissionPromptIsThirdParty reports whether the prompted plugin comes from
+// outside the verified official Block catalog.
+func permissionPromptIsThirdParty(prompt pendingPermissionPrompt) bool {
+	entry := prompt.entry
+	if entry == nil && prompt.staged != nil {
+		entry = prompt.staged.CatalogEntry
+	}
+	return entry == nil || !(entry.Verified && plugins.IsOfficialRepo(entry.Repo))
 }
