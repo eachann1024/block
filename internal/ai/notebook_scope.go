@@ -34,6 +34,7 @@ type assistantTurn struct {
 	thinking         string
 	nativeTools      bool
 	deepUI           bool
+	webSearch        bool
 	attachmentImages []map[string]any
 	cliPath          string
 	userIndex        int

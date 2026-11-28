@@ -5522,6 +5522,7 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 		}
 
 		c.renderDeepAISettingRow(cUI)
+		c.renderWebSearchSettingRow(cUI)
 	})
 	return trigAnchor
 }
