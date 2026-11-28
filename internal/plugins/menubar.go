@@ -232,12 +232,53 @@ func (m *Manifest) menubarItem(id string) (MenubarItemContrib, bool) {
 	return MenubarItemContrib{}, false
 }
 
-// MenubarItems returns the menu bar icons of enabled plugins.
+// HasMenubarItems reports whether an installed plugin declares menu bar icons.
+func (s *Supervisor) HasMenubarItems(pluginID string) bool {
+	m, ok := s.installedManifest(pluginID)
+	return ok && m.Contributes != nil && len(m.Contributes.MenubarItems) > 0
+}
+
+// MenubarHidden reports whether the user hid a plugin's menu bar icons.
+func (s *Supervisor) MenubarHidden(pluginID string) bool {
+	if s == nil || s.contrib == nil {
+		return false
+	}
+	s.contrib.mu.RLock()
+	defer s.contrib.mu.RUnlock()
+	return s.contrib.menubarHidden[pluginID]
+}
+
+// SetMenubarHidden shows or hides a plugin's menu bar icons, persistently.
+func (s *Supervisor) SetMenubarHidden(pluginID string, hidden bool) {
+	if s == nil || s.contrib == nil || pluginID == "" {
+		return
+	}
+	s.contrib.mu.Lock()
+	if s.contrib.menubarHidden[pluginID] == hidden {
+		s.contrib.mu.Unlock()
+		return
+	}
+	if hidden {
+		s.contrib.menubarHidden[pluginID] = true
+	} else {
+		delete(s.contrib.menubarHidden, pluginID)
+	}
+	s.contrib.saveLocked()
+	s.contrib.mu.Unlock()
+	s.notifyRedraw()
+	s.notifyMenubarChanged()
+}
+
+// MenubarItems returns the menu bar icons of enabled plugins the user has
+// not hidden.
 func (s *Supervisor) MenubarItems() []ResolvedMenubarItem {
 	loc := s.Locale()
 	var out []ResolvedMenubarItem
 	for _, a := range s.enabledContribs() {
 		m := a.Manifest
+		if s.MenubarHidden(m.ID) {
+			continue
+		}
 		for _, it := range m.Contributes.MenubarItems {
 			r := ResolvedMenubarItem{
 				PluginID:    m.ID,

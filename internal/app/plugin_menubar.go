@@ -364,14 +364,23 @@ func (m *pluginMenubar) buildMenu(it plugins.ResolvedMenubarItem) *mygo.Menu {
 		})
 	}
 	// A command icon runs on click, so it gets no menu of its own.
-	if it.HasSettings && (len(it.Menu) > 0 || it.Command == "") {
+	if len(it.Menu) > 0 || it.Command == "" {
 		separator()
 		pluginID := it.PluginID
+		if it.HasSettings {
+			items = append(items, &mygo.MenuItem{
+				Label: theme.Tr("插件设置…", "Plugin Settings…"),
+				Click: func(*mygo.MenuItem, *mygo.Window) {
+					// Activating while the status menu is still tracking is
+					// ignored by macOS, so reveal Block once the menu closed.
+					time.AfterFunc(50*time.Millisecond, func() { m.h.OpenPluginSettings(pluginID) })
+				},
+			})
+		}
 		items = append(items, &mygo.MenuItem{
-			Label: theme.Tr("插件设置…", "Plugin Settings…"),
+			Label: theme.Tr("隐藏菜单栏图标", "Hide from Menu Bar"),
 			Click: func(*mygo.MenuItem, *mygo.Window) {
-				mygo.App.Focus()
-				m.h.w.OpenSettings("plugin:" + pluginID)
+				go m.hide(pluginID)
 			},
 		})
 	}
@@ -382,6 +391,22 @@ func (m *pluginMenubar) buildMenu(it plugins.ResolvedMenubarItem) *mygo.Menu {
 		return nil
 	}
 	return mygo.NewMenu(items)
+}
+
+// hide removes a plugin's icons from the menu bar and says where to bring
+// them back.
+func (m *pluginMenubar) hide(pluginID string) {
+	sup := m.h.w.Plugins()
+	if sup == nil {
+		return
+	}
+	sup.SetMenubarHidden(pluginID, true)
+	m.h.MenubarFeedback(plugins.ToastRequest{
+		PluginID: pluginID,
+		Message:  theme.Tr("已隐藏菜单栏图标", "Hidden from the menu bar"),
+		Body:     theme.Tr("可在该插件设置页右上角「更多」菜单中重新显示", "Show it again from the More menu on the plugin's settings page"),
+		Tone:     "info",
+	}, "")
 }
 
 // runEntry runs on the main thread, where the clipboard is read for an

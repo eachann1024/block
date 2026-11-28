@@ -1010,6 +1010,24 @@ func (c *Controller) buildUninstallMenuItem(
 	}
 }
 
+// buildMenubarToggleItem is a checked row that shows or hides a plugin's
+// menu bar icons; ok is false for plugins without any.
+func (c *Controller) buildMenubarToggleItem(id, pluginID string) (bui.MenuItemSpec, bool) {
+	if !c.sup.HasMenubarItems(pluginID) {
+		return bui.MenuItemSpec{}, false
+	}
+	shown := !c.sup.MenubarHidden(pluginID)
+	return bui.MenuItemSpec{
+		ID:      id,
+		Label:   theme.Tr("在菜单栏显示图标", "Show in Menu Bar"),
+		Checked: shown,
+		OnClick: func() {
+			c.CloseTitlebarOverlays()
+			c.sup.SetMenubarHidden(pluginID, shown)
+		},
+	}, true
+}
+
 func (c *Controller) buildStoreDetailMoreMenuItems(
 	ctx *ui.Context,
 	entry plugins.StoreAppEntry,
@@ -1028,6 +1046,9 @@ func (c *Controller) buildStoreDetailMoreMenuItems(
 			},
 		})
 		items = append(items, bui.MenuItemSpec{Separator: true})
+	}
+	if mb, ok := c.buildMenubarToggleItem("app-store-detail-menubar", entry.ID); ok {
+		items = append(items, mb, bui.MenuItemSpec{Separator: true})
 	}
 	items = append(items, c.buildUninstallMenuItem("app-store-detail-uninstall", entry.ID, installingID != "", nil))
 	return items
@@ -1135,7 +1156,12 @@ func (c *Controller) buildPluginMoreMenuItems(
 		})
 	}
 
-	// 5. Separator + Uninstall (danger, unified guard with App Store detail).
+	// 5. Show or hide the plugin's menu bar icons.
+	if mb, ok := c.buildMenubarToggleItem("plugin-menu-menubar-"+pluginID, pluginID); ok {
+		items = append(items, mb)
+	}
+
+	// 6. Separator + Uninstall (danger, unified guard with App Store detail).
 	if pluginID != plugins.DiagnosticsPluginID {
 		items = append(items, bui.MenuItemSpec{Separator: true})
 		items = append(items, c.buildUninstallMenuItem("plugin-hdr-uninstall-"+pluginID, pluginID, vs.Loading, func() {
